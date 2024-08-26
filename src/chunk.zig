@@ -49,8 +49,6 @@ pub const Chunk = struct {
     /// location context for helper methods that simply return no context errors.
     curNode: ?*ast.Node,
 
-    in_ct_expr: bool,
-
     ///
     /// Sema pass
     ///
@@ -270,7 +268,6 @@ pub const Chunk = struct {
             .funcs = .{},
             .resolve_stack = .{},
             .arg_stack = .{},
-            .in_ct_expr = false,
             .host_types = .{},
             .host_funcs = .{},
         };

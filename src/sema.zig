@@ -5452,7 +5452,7 @@ pub const ChunkExt = struct {
                     return c.semaByte(val, node);
                 } else {
                     const val = try std.fmt.parseInt(u64, literal, 10);
-                    return c.semaInt(@intCast(val), node);
+                    return c.semaInt(@bitCast(val), node);
                 }
             },
             .binLit => {
@@ -6459,7 +6459,22 @@ pub const ChunkExt = struct {
 
         switch (node.op) {
             .minus => {
-                const child = try c.semaExprHint(node.child, expr.target_t);
+                var child: ExprResult = undefined;
+                if (node.child.type() == .decLit) {
+                    const literal = c.ast.nodeString(node.child);
+                    if (expr.target_t == bt.Float) {
+                        const val = try std.fmt.parseFloat(f64, literal);
+                        return c.semaFloat(-val, expr.node);
+                    } else if (expr.target_t == bt.Byte) {
+                        const val: i8 = @intCast(-(try std.fmt.parseInt(i9, literal, 10)));
+                        return c.semaByte(@bitCast(val), expr.node);
+                    } else {
+                        const val: i64 = @intCast(-(try std.fmt.parseInt(i65, literal, 10)));
+                        return c.semaInt(val, expr.node);
+                    }
+                } else {
+                    child = try c.semaExprHint(node.child, expr.target_t);
+                }
                 if (child.type.isDynAny()) {
                     return c.semaCallObjSym2(child.irIdx, getUnOpName(.minus), &.{}, expr.node);
                 }

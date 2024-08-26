@@ -341,7 +341,8 @@ pub const Tokenizer = struct {
             },
             '@' => try t.pushToken(.at, start),
             '-' => {
-                if (peek(t) == '-') {
+                const next = peek(t);
+                if (next == '-') {
                     advance(t);
                     // Single line comment. Ignore chars until eol.
                     while (!isAtEnd(t)) {
@@ -358,10 +359,10 @@ pub const Tokenizer = struct {
                         try t.comments.append(t.alloc, cy.IndexSlice(u32).init(start, t.nextPos));
                     }
                     return .{ .stateT = .end };
-                } else if (peek(t) == '>') {
+                } else if (next == '>') {
                     advance(t);
                     try t.pushToken(.minus_right_angle, start);
-                } else if (peek(t) == '.' and peekAhead(t, 1) == '.') {
+                } else if (next == '.' and peekAhead(t, 1) == '.') {
                     advance(t);
                     advance(t);
                     try t.pushToken(.minus_double_dot, start);

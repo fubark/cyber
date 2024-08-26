@@ -3770,7 +3770,7 @@ fn pushReleaseExt(c: *Chunk, slot: u8, node: *ast.Node, desc: u32) !void {
 
 fn genConstIntExt(c: *Chunk, val: i64, dst: LocalId, node: *ast.Node) !GenValue {
     // TODO: Can be constU8.
-    if (val <= std.math.maxInt(i8)) {
+    if (val >= 0 and val <= std.math.maxInt(i8)) {
         try c.pushCode(.constIntV8, &.{ @bitCast(@as(i8, @intCast(val))), dst }, node);
         return regValue(c, dst, false);
     }

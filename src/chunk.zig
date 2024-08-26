@@ -82,8 +82,6 @@ pub const Chunk = struct {
     /// The slots in the front are reserved for the call convention and params.
     slot_stack: std.ArrayListUnmanaged(bc.Slot),
 
-    curSelfSym: ?*cy.Sym,
-
     /// Record other chunks that this chunk's static initializer depends on.
     symInitChunkDeps: std.AutoHashMapUnmanaged(*cy.Chunk, void),
 
@@ -239,7 +237,6 @@ pub const Chunk = struct {
             .operandStack = .{},
             .unwind_stack = .{},
             .curBlock = undefined,
-            .curSelfSym = null,
             .buf = undefined,
             .jitBuf = undefined,
             .x64Enc = undefined,

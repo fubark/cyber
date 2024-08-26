@@ -1633,7 +1633,14 @@ pub fn getHostTypeId(c: *cy.Chunk, type_sym: *cy.Sym, opt_name: ?[]const u8, nod
     return type_id;
 }
 
+const ResolveContextType = enum(u8) {
+    incomplete,
+    sym,
+    func,
+};
+
 pub const ResolveContext = struct {
+    type: ResolveContextType,
     has_ct_params: bool,
 
     /// Interpret ct exprs as inferred ct params.
@@ -1650,6 +1657,11 @@ pub const ResolveContext = struct {
     /// Compile-time params in this context.
     /// TODO: Avoid hash map if 2 or fewer ct params.
     ct_params: std.StringHashMapUnmanaged(cy.Value),
+
+    data: union {
+        sym: *cy.Sym,
+        func: *cy.Func,
+    },
 
     fn deinit(self: *ResolveContext, c: *cy.Chunk) void {
         var iter = self.ct_params.iterator();
@@ -1670,8 +1682,10 @@ pub const ResolveContext = struct {
 
 fn pushFuncVariantResolveContext(c: *cy.Chunk, variant: *cy.sym.FuncVariant) !void {
     var new = ResolveContext{
+        .type = .func,
         .has_ct_params = true,
         .ct_params = .{},
+        .data = .{ .func = variant.func },
     };
     for (variant.template.params, 0..) |param, i| {
         const arg = variant.args[i];
@@ -1683,22 +1697,49 @@ fn pushFuncVariantResolveContext(c: *cy.Chunk, variant: *cy.sym.FuncVariant) !vo
 
 pub fn pushVariantResolveContext(c: *cy.Chunk, variant: *cy.sym.Variant) !void {
     var new = ResolveContext{
+        .type = .sym,
         .has_ct_params = true,
         .ct_params = .{},
+        .data = .{ .sym = variant.data.sym },
     };
-    const template = variant.root_template;
+    try setContextTemplateParams(c, &new, variant.root_template, variant.args);
+    try c.resolve_stack.append(c.alloc, new);
+}
+
+pub fn setContextTemplateParams(c: *cy.Chunk, ctx: *ResolveContext, template: *cy.sym.Template, args: []const cy.Value) !void {
     for (template.params, 0..) |param, i| {
-        const arg = variant.args[i];
+        const arg = args[i];
         c.vm.retain(arg);
-        try new.setCtParam(c, param.name, arg);
+        try ctx.setCtParam(c, param.name, arg);
     }
+}
+
+pub fn pushSymResolveContext(c: *cy.Chunk, sym: *cy.Sym) !void {
+    const new = ResolveContext{
+        .type = .sym,
+        .has_ct_params = false,
+        .ct_params = .{},
+        .data = .{ .sym = sym },
+    };
+    try c.resolve_stack.append(c.alloc, new);
+}
+
+pub fn pushFuncResolveContext(c: *cy.Chunk, func: *cy.Func) !void {
+    const new = ResolveContext{
+        .type = .func,
+        .has_ct_params = false,
+        .ct_params = .{},
+        .data = .{ .func = func },
+    };
     try c.resolve_stack.append(c.alloc, new);
 }
 
 pub fn pushResolveContext(c: *cy.Chunk) !void {
     const new = ResolveContext{
+        .type = .incomplete,
         .has_ct_params = false,
         .ct_params = .{},
+        .data = undefined,
     };
     try c.resolve_stack.append(c.alloc, new);
 }
@@ -2161,7 +2202,7 @@ pub fn resolveObjectLikeType(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Obje
     if (object_like.getVariant()) |variant| {
         try pushVariantResolveContext(c, variant);
     } else {
-        try pushResolveContext(c);
+        try pushSymResolveContext(c, object_like);
     }
     defer popResolveContext(c);
 
@@ -2339,7 +2380,7 @@ pub fn resolveFunc2(c: *cy.Chunk, func: *cy.Func, has_parent_ctx: bool) !void {
         return;
     }
 
-    try pushResolveContext(c);
+    try pushFuncResolveContext(c, func);
     defer popResolveContext(c);
     getResolveContext(c).has_parent_ctx = has_parent_ctx;
     getResolveContext(c).parse_ct_inferred_params = true;
@@ -2575,11 +2616,6 @@ pub fn methodDecl(c: *cy.Chunk, func: *cy.Func) !void {
 }
 
 pub fn methodDecl2(c: *cy.Chunk, func: *cy.Func) !void {
-    const parent = func.parent.parent.?;
-
-    c.curSelfSym = parent;
-    defer c.curSelfSym = null;
-
     // Object method.
     const blockId = try pushFuncProc(c, func);
     c.semaProcs.items[blockId].isMethodBlock = true;
@@ -3383,6 +3419,15 @@ pub fn getResolvedSym(c: *cy.Chunk, name: []const u8, node: *ast.Node, distinct:
                 return NameResult.initCtValue(.{ .type = param.getTypeId(), .value = param });
             }
         }
+
+        if (std.mem.eql(u8, "Self", name)) {
+            if (ctx.type == .func) {
+                if (ctx.data.func.parent.type == .func) {
+                    return NameResult.initSym(ctx.data.func.parent.parent.?);
+                }
+            }
+        }
+
         if (!ctx.has_parent_ctx) {
             break;
         }

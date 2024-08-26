@@ -293,40 +293,43 @@ const vm_types = [_]C.HostTypeEntry{
     htype("func_ct",        C.CREATE_TYPE(createCtFuncType)),
 };
 
-fn createCtFuncType(vm: ?*C.VM, c_mod: C.Sym, type_id: cy.TypeId, decl: C.Node) callconv(.C) C.Sym {
+fn createCtFuncType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) C.Sym {
     _ = vm;
     const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
     const c = chunk_sym.chunk;
 
     var ctx = cy.sema.getResolveContext(c);
     const sig: cy.sema.FuncSigId = @intCast(ctx.ct_params.get("SIG").?.asBoxInt());
+    const type_id = c.sema.pushType() catch @panic("error");
     const sym = c.createCtFuncType(@ptrCast(chunk_sym), "func_ct", type_id, sig, C.fromNode(decl)) catch @panic("error");
     return @as(*cy.Sym, @ptrCast(sym)).toC();
 }
 
-fn createFuncUnionType(vm: ?*C.VM, c_mod: C.Sym, type_id: cy.TypeId, decl: C.Node) callconv(.C) C.Sym {
+fn createFuncUnionType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) C.Sym {
     _ = vm;
     const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
     const c = chunk_sym.chunk;
 
     var ctx = cy.sema.getResolveContext(c);
     const sig: cy.sema.FuncSigId = @intCast(ctx.ct_params.get("SIG").?.asBoxInt());
+    const type_id = c.sema.pushType() catch @panic("error");
     const sym = c.createFuncUnionType(@ptrCast(chunk_sym), "Func", type_id, sig, C.fromNode(decl)) catch @panic("error");
     return @as(*cy.Sym, @ptrCast(sym)).toC();
 }
 
-fn createFuncPtrType(vm: ?*C.VM, c_mod: C.Sym, type_id: cy.TypeId, decl: C.Node) callconv(.C) C.Sym {
+fn createFuncPtrType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) C.Sym {
     _ = vm;
     const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
     const c = chunk_sym.chunk;
 
     var ctx = cy.sema.getResolveContext(c);
     const sig: cy.sema.FuncSigId = @intCast(ctx.ct_params.get("SIG").?.asBoxInt());
+    const type_id = c.sema.pushType() catch @panic("error");
     const sym = c.createFuncPtrType(@ptrCast(chunk_sym), "funcptr", type_id, sig, C.fromNode(decl)) catch @panic("error");
     return @as(*cy.Sym, @ptrCast(sym)).toC();
 }
 
-fn createArrayType(vm: ?*C.VM, c_mod: C.Sym, type_id: cy.TypeId, decl: C.Node) callconv(.C) C.Sym {
+fn createArrayType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) C.Sym {
     _ = decl;
     _ = vm;
     const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
@@ -335,6 +338,7 @@ fn createArrayType(vm: ?*C.VM, c_mod: C.Sym, type_id: cy.TypeId, decl: C.Node) c
     var ctx = cy.sema.getResolveContext(c);
     const n: usize = @intCast(ctx.ct_params.get("N").?.asBoxInt());
     const elem_t = ctx.ct_params.get("T").?.castHeapObject(*cy.heap.Type).type;
+    const type_id = c.sema.pushType() catch @panic("error");
     const sym = c.createArrayType(@ptrCast(chunk_sym), "array_t", type_id, n, elem_t) catch @panic("error");
     return @as(*cy.Sym, @ptrCast(sym)).toC();
 }

@@ -198,7 +198,7 @@ typedef enum {
     CL_BIND_TYPE_CREATE,
 } CLBindTypeKind;
 
-typedef CLSym (*CLCreateTypeFn)(CLVM* vm, CLSym mod, CLTypeId type_id, CLNode decl);
+typedef CLSym (*CLCreateTypeFn)(CLVM* vm, CLSym mod, CLNode decl);
 
 // Given an object, return the pointer of an array and the number of children.
 // If there are no children, return NULL and 0 for the length.

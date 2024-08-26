@@ -1438,8 +1438,7 @@ fn resolveCustomTypeResult(c: *cy.Chunk, name_path: DeclNamePathResult, decl: *a
             return @ptrCast(type_sym);
         },
         C.BindTypeCreate => {
-            const type_id = try c.sema.pushType();
-            const sym = host_t.data.create.create_fn.?(@ptrCast(c.vm), name_path.parent.toC(), type_id, C.toNode(@ptrCast(decl)));
+            const sym = host_t.data.create.create_fn.?(@ptrCast(c.vm), name_path.parent.toC(), C.toNode(@ptrCast(decl)));
             return cy.Sym.fromC(sym);
         },
         else => return error.Unsupported,

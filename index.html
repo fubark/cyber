@@ -990,7 +990,7 @@ table tbody tr:nth-child(even) {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 373-d804987</div>
+    <div class="sub-title">v0.4-dev 381-2eee654</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -3215,70 +3215,70 @@ print typeof('my str').id()
 <h3 id="type-symbol"><code>type symbol</code> <a href="#type-symbol">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-error"><code>type error</code> <a href="#type-error">#</a></h3>
-<blockquote><p><code>func sym(self any) symbol</code></p>
+<blockquote><p><code>func sym(self) symbol</code></p>
 <p>Return the underlying <code>symbol</code>.</p>
 </blockquote><blockquote><p><code>func error.$call(val any) error</code></p>
 <p>Create an error from symbol.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-byte"><code>type byte</code> <a href="#type-byte">#</a></h3>
-<blockquote><p><code>func $prefix~(self any) byte</code></p>
-</blockquote><blockquote><p><code>func $infix<(self any, o byte) bool</code></p>
-</blockquote><blockquote><p><code>func $infix<=(self any, o byte) bool</code></p>
-</blockquote><blockquote><p><code>func $infix>(self any, o byte) bool</code></p>
-</blockquote><blockquote><p><code>func $infix>=(self any, o byte) bool</code></p>
-</blockquote><blockquote><p><code>func $infix+(self any, o byte) byte</code></p>
-</blockquote><blockquote><p><code>func $infix-(self any, o byte) byte</code></p>
-</blockquote><blockquote><p><code>func $infix*(self any, o byte) byte</code></p>
-</blockquote><blockquote><p><code>func $infix/(self any, o byte) byte</code></p>
-</blockquote><blockquote><p><code>func $infix%(self any, o byte) byte</code></p>
-</blockquote><blockquote><p><code>func $infix^(self any, o byte) byte</code></p>
-</blockquote><blockquote><p><code>func $infix&(self any, o byte) byte</code></p>
-</blockquote><blockquote><p><code>func $infix|(self any, o byte) byte</code></p>
-</blockquote><blockquote><p><code>func $infix||(self any, o byte) byte</code></p>
-</blockquote><blockquote><p><code>func $infix<<(self any, o int) byte</code></p>
-</blockquote><blockquote><p><code>func $infix>>(self any, o int) byte</code></p>
-</blockquote><blockquote><p><code>func fmt(self any, format NumberFormat) String</code></p>
+<blockquote><p><code>func $prefix~(self) byte</code></p>
+</blockquote><blockquote><p><code>func $infix<(self, o byte) bool</code></p>
+</blockquote><blockquote><p><code>func $infix<=(self, o byte) bool</code></p>
+</blockquote><blockquote><p><code>func $infix>(self, o byte) bool</code></p>
+</blockquote><blockquote><p><code>func $infix>=(self, o byte) bool</code></p>
+</blockquote><blockquote><p><code>func $infix+(self, o byte) byte</code></p>
+</blockquote><blockquote><p><code>func $infix-(self, o byte) byte</code></p>
+</blockquote><blockquote><p><code>func $infix*(self, o byte) byte</code></p>
+</blockquote><blockquote><p><code>func $infix/(self, o byte) byte</code></p>
+</blockquote><blockquote><p><code>func $infix%(self, o byte) byte</code></p>
+</blockquote><blockquote><p><code>func $infix^(self, o byte) byte</code></p>
+</blockquote><blockquote><p><code>func $infix&(self, o byte) byte</code></p>
+</blockquote><blockquote><p><code>func $infix|(self, o byte) byte</code></p>
+</blockquote><blockquote><p><code>func $infix||(self, o byte) byte</code></p>
+</blockquote><blockquote><p><code>func $infix<<(self, o int) byte</code></p>
+</blockquote><blockquote><p><code>func $infix>>(self, o int) byte</code></p>
+</blockquote><blockquote><p><code>func fmt(self, format NumberFormat) String</code></p>
 <p>Formats the byte using a NumberFormat.</p>
-</blockquote><blockquote><p><code>func fmt(self any, format NumberFormat, config Table) String</code></p>
+</blockquote><blockquote><p><code>func fmt(self, format NumberFormat, config Table) String</code></p>
 <p><code>opts.pad</code> provides the ASCII rune that is used for padding with a string length of <code>config.width</code>.</p>
 </blockquote><blockquote><p><code>func $call(b byte) byte</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-int"><code>type int</code> <a href="#type-int">#</a></h3>
-<blockquote><p><code>func $prefix~(self any) int</code></p>
-</blockquote><blockquote><p><code>func $prefix-(self any) int</code></p>
-</blockquote><blockquote><p><code>func $infix<(self any, o int) bool</code></p>
-</blockquote><blockquote><p><code>func $infix<=(self any, o int) bool</code></p>
-</blockquote><blockquote><p><code>func $infix>(self any, o int) bool</code></p>
-</blockquote><blockquote><p><code>func $infix>=(self any, o int) bool</code></p>
-</blockquote><blockquote><p><code>func $infix+(self any, o int) int</code></p>
-</blockquote><blockquote><p><code>func $infix-(self any, o int) int</code></p>
-</blockquote><blockquote><p><code>func $infix*(self any, o int) int</code></p>
-</blockquote><blockquote><p><code>func $infix/(self any, o int) int</code></p>
-</blockquote><blockquote><p><code>func $infix%(self any, o int) int</code></p>
-</blockquote><blockquote><p><code>func $infix^(self any, o int) int</code></p>
-</blockquote><blockquote><p><code>func $infix&(self any, o int) int</code></p>
-</blockquote><blockquote><p><code>func $infix|(self any, o int) int</code></p>
-</blockquote><blockquote><p><code>func $infix||(self any, o int) int</code></p>
-</blockquote><blockquote><p><code>func $infix<<(self any, o int) int</code></p>
-</blockquote><blockquote><p><code>func $infix>>(self any, o int) int</code></p>
-</blockquote><blockquote><p><code>func fmt(self any, format NumberFormat) String</code></p>
+<blockquote><p><code>func $prefix~(self) int</code></p>
+</blockquote><blockquote><p><code>func $prefix-(self) int</code></p>
+</blockquote><blockquote><p><code>func $infix<(self, o int) bool</code></p>
+</blockquote><blockquote><p><code>func $infix<=(self, o int) bool</code></p>
+</blockquote><blockquote><p><code>func $infix>(self, o int) bool</code></p>
+</blockquote><blockquote><p><code>func $infix>=(self, o int) bool</code></p>
+</blockquote><blockquote><p><code>func $infix+(self, o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix-(self, o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix*(self, o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix/(self, o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix%(self, o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix^(self, o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix&(self, o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix|(self, o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix||(self, o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix<<(self, o int) int</code></p>
+</blockquote><blockquote><p><code>func $infix>>(self, o int) int</code></p>
+</blockquote><blockquote><p><code>func fmt(self, format NumberFormat) String</code></p>
 <p>Formats the integer using a NumberFormat.</p>
-</blockquote><blockquote><p><code>func fmt(self any, format NumberFormat, config Table) String</code></p>
+</blockquote><blockquote><p><code>func fmt(self, format NumberFormat, config Table) String</code></p>
 <p><code>opts.pad</code> provides the ASCII rune that is used for padding with a string length of <code>config.width</code>.</p>
 </blockquote><blockquote><p><code>func int.$call(val any) int</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-float"><code>type float</code> <a href="#type-float">#</a></h3>
-<blockquote><p><code>func $prefix-(self any) float</code></p>
-</blockquote><blockquote><p><code>func $infix<(self any, o float) bool</code></p>
-</blockquote><blockquote><p><code>func $infix<=(self any, o float) bool</code></p>
-</blockquote><blockquote><p><code>func $infix>(self any, o float) bool</code></p>
-</blockquote><blockquote><p><code>func $infix>=(self any, o float) bool</code></p>
-</blockquote><blockquote><p><code>func $infix+(self any, o float) float</code></p>
-</blockquote><blockquote><p><code>func $infix-(self any, o float) float</code></p>
-</blockquote><blockquote><p><code>func $infix*(self any, o float) float</code></p>
-</blockquote><blockquote><p><code>func $infix/(self any, o float) float</code></p>
-</blockquote><blockquote><p><code>func $infix%(self any, o float) float</code></p>
-</blockquote><blockquote><p><code>func $infix^(self any, o float) float</code></p>
+<blockquote><p><code>func $prefix-(self) float</code></p>
+</blockquote><blockquote><p><code>func $infix<(self, o float) bool</code></p>
+</blockquote><blockquote><p><code>func $infix<=(self, o float) bool</code></p>
+</blockquote><blockquote><p><code>func $infix>(self, o float) bool</code></p>
+</blockquote><blockquote><p><code>func $infix>=(self, o float) bool</code></p>
+</blockquote><blockquote><p><code>func $infix+(self, o float) float</code></p>
+</blockquote><blockquote><p><code>func $infix-(self, o float) float</code></p>
+</blockquote><blockquote><p><code>func $infix*(self, o float) float</code></p>
+</blockquote><blockquote><p><code>func $infix/(self, o float) float</code></p>
+</blockquote><blockquote><p><code>func $infix%(self, o float) float</code></p>
+</blockquote><blockquote><p><code>func $infix^(self, o float) float</code></p>
 </blockquote><blockquote><p><code>func float.$call(val any) float</code></p>
 <p>Converts the value to a <code>float</code>. Panics if type conversion fails.</p>
 </blockquote><a href="#modules">^topic</a>
@@ -3295,42 +3295,42 @@ print typeof('my str').id()
 <h3 id="type-any"><code>type any</code> <a href="#type-any">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-type"><code>type type</code> <a href="#type-type">#</a></h3>
-<blockquote><p><code>func id(self any) int</code></p>
+<blockquote><p><code>func id(self) int</code></p>
 </blockquote><blockquote><p><code>func type.$call(val any) type</code></p>
 <p>Return the type of a value.  See <code>typeof</code> to obtain the type of an expression at compile-time.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-list"><code>type List</code> <a href="#type-list">#</a></h3>
-<blockquote><p><code>func $index(self any, idx int) T</code></p>
-</blockquote><blockquote><p><code>func $index(self any, range Range) List[T]</code></p>
-</blockquote><blockquote><p><code>func $setIndex(self any, idx int, val T) <void></code></p>
-</blockquote><blockquote><p><code>func append(self any, val T) <void></code></p>
+<blockquote><p><code>func $index(self, idx int) T</code></p>
+</blockquote><blockquote><p><code>func $index(self, range Range) List[T]</code></p>
+</blockquote><blockquote><p><code>func $setIndex(self, idx int, val T) <void></code></p>
+</blockquote><blockquote><p><code>func append(self, val T) <void></code></p>
 <p>Appends a value to the end of the list.</p>
-</blockquote><blockquote><p><code>func appendAll(self any, list List[T]) <void></code></p>
+</blockquote><blockquote><p><code>func appendAll(self, list List[T]) <void></code></p>
 <p>Appends the elements of another list to the end of this list.</p>
-</blockquote><blockquote><p><code>func insert(self any, idx int, val T) <void></code></p>
+</blockquote><blockquote><p><code>func insert(self, idx int, val T) <void></code></p>
 <p>Inserts a value at index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func iterator(self any) ListIterator[T]</code></p>
+</blockquote><blockquote><p><code>func iterator(self) ListIterator[T]</code></p>
 <p>Returns a new iterator over the list elements.</p>
-</blockquote><blockquote><p><code>func join(self any, sep String) String</code></p>
+</blockquote><blockquote><p><code>func join(self, sep String) String</code></p>
 <p>Returns a new string that joins the elements with <code>separator</code>.</p>
-</blockquote><blockquote><p><code>func len(self any) int</code></p>
+</blockquote><blockquote><p><code>func len(self) int</code></p>
 <p>Returns the number of elements in the list.</p>
-</blockquote><blockquote><p><code>func remove(self any, idx int) <void></code></p>
+</blockquote><blockquote><p><code>func remove(self, idx int) <void></code></p>
 <p>Removes an element at index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func resize(self any, size int) <void></code></p>
+</blockquote><blockquote><p><code>func resize(self, size int) <void></code></p>
 <p>Resizes the list to <code>len</code> elements. If the new size is bigger, <code>none</code> values  are appended to the list. If the new size is smaller, elements at the end of the list are removed.</p>
-</blockquote><blockquote><p><code>func resize_(self any, elem_t int, size int) <void></code></p>
-</blockquote><blockquote><p><code>func sort(self any, lessFn <func_type>) <void></code></p>
+</blockquote><blockquote><p><code>func resize_(self, elem_t int, size int) <void></code></p>
+</blockquote><blockquote><p><code>func sort(self, lessFn <func_type>) <void></code></p>
 <p>Sorts the list with the given <code>less</code> function.  If element <code>a</code> should be ordered before <code>b</code>, the function should return <code>true</code> otherwise <code>false</code>.</p>
 </blockquote><blockquote><p><code>func List.fill(val T, n int) List[T]</code></p>
 <p>Creates a list with initial capacity of <code>n</code> and values set to <code>val</code>.  If the value is an object, it is shallow copied <code>n</code> times.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-listiterator"><code>type ListIterator</code> <a href="#type-listiterator">#</a></h3>
-<blockquote><p><code>func next(self any) ?T</code></p>
-</blockquote><blockquote><p><code>func next_(self any, ret_t int) ?T</code></p>
+<blockquote><p><code>func next(self) ?T</code></p>
+</blockquote><blockquote><p><code>func next_(self, ret_t int) ?T</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-tuple"><code>type Tuple</code> <a href="#type-tuple">#</a></h3>
-<blockquote><p><code>func $index(self any, idx int) any</code></p>
+<blockquote><p><code>func $index(self, idx int) any</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-funcsig"><code>type FuncSig</code> <a href="#type-funcsig">#</a></h3>
 <a href="#modules">^topic</a>
@@ -3343,88 +3343,88 @@ print typeof('my str').id()
 <h3 id="type-funcsym_t"><code>type funcsym_t</code> <a href="#type-funcsym_t">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-table"><code>type Table</code> <a href="#type-table">#</a></h3>
-<blockquote><p><code>func $initPair(self any, key String, value any) <void></code></p>
-</blockquote><blockquote><p><code>func $get(self any, name String) dyn</code></p>
-</blockquote><blockquote><p><code>func $set(self any, name String, value any) </code></p>
-</blockquote><blockquote><p><code>func $index(self any, key any) dyn</code></p>
-</blockquote><blockquote><p><code>func $setIndex(self any, key any, value any) <void></code></p>
+<blockquote><p><code>func $initPair(self, key String, value any) <void></code></p>
+</blockquote><blockquote><p><code>func $get(self, name String) dyn</code></p>
+</blockquote><blockquote><p><code>func $set(self, name String, value any) </code></p>
+</blockquote><blockquote><p><code>func $index(self, key any) dyn</code></p>
+</blockquote><blockquote><p><code>func $setIndex(self, key any, value any) <void></code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-map"><code>type Map</code> <a href="#type-map">#</a></h3>
-<blockquote><p><code>func $initPair(self any, key any, value any) <void></code></p>
-</blockquote><blockquote><p><code>func $index(self any, key any) dyn</code></p>
-</blockquote><blockquote><p><code>func $setIndex(self any, key any, val any) <void></code></p>
-</blockquote><blockquote><p><code>func contains(self any, key any) bool</code></p>
+<blockquote><p><code>func $initPair(self, key any, value any) <void></code></p>
+</blockquote><blockquote><p><code>func $index(self, key any) dyn</code></p>
+</blockquote><blockquote><p><code>func $setIndex(self, key any, val any) <void></code></p>
+</blockquote><blockquote><p><code>func contains(self, key any) bool</code></p>
 <p>Returns whether there is a value mapped to <code>key</code>.</p>
-</blockquote><blockquote><p><code>func get(self any, key any) ?any</code></p>
+</blockquote><blockquote><p><code>func get(self, key any) ?any</code></p>
 <p>Returns value mapped to <code>key</code> or returns <code>none</code>.</p>
-</blockquote><blockquote><p><code>func remove(self any, key any) bool</code></p>
+</blockquote><blockquote><p><code>func remove(self, key any) bool</code></p>
 <p>Removes the element with the given key <code>key</code>.</p>
-</blockquote><blockquote><p><code>func size(self any) int</code></p>
+</blockquote><blockquote><p><code>func size(self) int</code></p>
 <p>Returns the number of key-value pairs in the map.</p>
-</blockquote><blockquote><p><code>func iterator(self any) MapIterator</code></p>
+</blockquote><blockquote><p><code>func iterator(self) MapIterator</code></p>
 <p>Returns a new iterator over the map elements.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-mapiterator"><code>type MapIterator</code> <a href="#type-mapiterator">#</a></h3>
-<blockquote><p><code>func next(self any) ?any</code></p>
+<blockquote><p><code>func next(self) ?any</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-string"><code>type String</code> <a href="#type-string">#</a></h3>
-<blockquote><p><code>func $index(self any, idx int) int</code></p>
+<blockquote><p><code>func $index(self, idx int) int</code></p>
 <p>Returns the rune at byte index <code>idx</code>. The replacement character (0xFFFD) is returned for an invalid UTF-8 rune.</p>
-</blockquote><blockquote><p><code>func $index(self any, range Range) String</code></p>
+</blockquote><blockquote><p><code>func $index(self, range Range) String</code></p>
 <p>Returns a slice into this string from a <code>Range</code> with <code>start</code> (inclusive) to <code>end</code> (exclusive) byte indexes.</p>
-</blockquote><blockquote><p><code>func $infix+(self any, o any) String</code></p>
+</blockquote><blockquote><p><code>func $infix+(self, o any) String</code></p>
 <p>Returns a new string that concats this string and <code>str</code>.</p>
-</blockquote><blockquote><p><code>func concat(self any, o String) String</code></p>
+</blockquote><blockquote><p><code>func concat(self, o String) String</code></p>
 <p>Returns a new string that concats this string and <code>str</code>.</p>
-</blockquote><blockquote><p><code>func count(self any) int</code></p>
+</blockquote><blockquote><p><code>func count(self) int</code></p>
 <p>Returns the number of runes in the string.</p>
-</blockquote><blockquote><p><code>func endsWith(self any, suffix String) bool</code></p>
+</blockquote><blockquote><p><code>func endsWith(self, suffix String) bool</code></p>
 <p>Returns whether the string ends with <code>suffix</code>.</p>
-</blockquote><blockquote><p><code>func find(self any, needle String) ?int</code></p>
+</blockquote><blockquote><p><code>func find(self, needle String) ?int</code></p>
 <p>Returns the first byte index of substring <code>needle</code> in the string or <code>none</code> if not found. SIMD enabled.</p>
-</blockquote><blockquote><p><code>func findAnyByte(self any, set List[byte]) ?int</code></p>
+</blockquote><blockquote><p><code>func findAnyByte(self, set List[byte]) ?int</code></p>
 <p>Returns the first index of any byte in <code>set</code> or <code>none</code> if not found.</p>
-</blockquote><blockquote><p><code>func findAnyRune(self any, runes List[int]) ?int</code></p>
+</blockquote><blockquote><p><code>func findAnyRune(self, runes List[int]) ?int</code></p>
 <p>Returns the first byte index of any rune in <code>runes</code> or <code>none</code> if not found. SIMD enabled.</p>
-</blockquote><blockquote><p><code>func findByte(self any, b byte) ?int</code></p>
+</blockquote><blockquote><p><code>func findByte(self, b byte) ?int</code></p>
 <p>Returns the first index of <code>byte</code> in the array or <code>none</code> if not found.</p>
-</blockquote><blockquote><p><code>func findRune(self any, rune int) ?int</code></p>
+</blockquote><blockquote><p><code>func findRune(self, rune int) ?int</code></p>
 <p>Returns the first byte index of a rune <code>needle</code> in the string or <code>none</code> if not found. SIMD enabled.</p>
-</blockquote><blockquote><p><code>func fmtBytes(self any, format NumberFormat) String</code></p>
+</blockquote><blockquote><p><code>func fmtBytes(self, format NumberFormat) String</code></p>
 <p>Formats each byte in the string using a NumberFormat.  Each byte is zero padded.</p>
-</blockquote><blockquote><p><code>func getByte(self any, idx int) byte</code></p>
+</blockquote><blockquote><p><code>func getByte(self, idx int) byte</code></p>
 <p>Returns the byte value (0-255) at the given index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func getInt(self any, idx int, endian symbol) int</code></p>
+</blockquote><blockquote><p><code>func getInt(self, idx int, endian symbol) int</code></p>
 <p>Returns the int value of the 6 bytes starting from <code>idx</code> with the given endianness (.little or .big).</p>
-</blockquote><blockquote><p><code>func getInt32(self any, idx int, endian symbol) int</code></p>
+</blockquote><blockquote><p><code>func getInt32(self, idx int, endian symbol) int</code></p>
 <p>Returns the int value of the 4 bytes starting from <code>idx</code> with the given endianness (.little or .big).</p>
-</blockquote><blockquote><p><code>func insert(self any, idx int, str String) String</code></p>
+</blockquote><blockquote><p><code>func insert(self, idx int, str String) String</code></p>
 <p>Returns a new string with <code>str</code> inserted at byte index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func insertByte(self any, idx int, byte int) String</code></p>
+</blockquote><blockquote><p><code>func insertByte(self, idx int, byte int) String</code></p>
 <p>Returns a new array with <code>byte</code> inserted at index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func isAscii(self any) bool</code></p>
+</blockquote><blockquote><p><code>func isAscii(self) bool</code></p>
 <p>Returns whether the string contains all ASCII runes.</p>
-</blockquote><blockquote><p><code>func len(self any) int</code></p>
+</blockquote><blockquote><p><code>func len(self) int</code></p>
 <p>Returns the byte length of the string. See <code>count()</code> to obtain the number of runes.</p>
-</blockquote><blockquote><p><code>func less(self any, other String) bool</code></p>
+</blockquote><blockquote><p><code>func less(self, other String) bool</code></p>
 <p>Returns whether this string is lexicographically before <code>other</code>.</p>
-</blockquote><blockquote><p><code>func lower(self any) String</code></p>
+</blockquote><blockquote><p><code>func lower(self) String</code></p>
 <p>Returns this string in lowercase.</p>
-</blockquote><blockquote><p><code>func replace(self any, needle String, replacement String) String</code></p>
+</blockquote><blockquote><p><code>func replace(self, needle String, replacement String) String</code></p>
 <p>Returns a new string with all occurrences of <code>needle</code> replaced with <code>replacement</code>.</p>
-</blockquote><blockquote><p><code>func repeat(self any, n int) String</code></p>
+</blockquote><blockquote><p><code>func repeat(self, n int) String</code></p>
 <p>Returns a new string with this string repeated <code>n</code> times.</p>
-</blockquote><blockquote><p><code>func seek(self any, idx int) int</code></p>
+</blockquote><blockquote><p><code>func seek(self, idx int) int</code></p>
 <p>Returns the starting byte index for the rune index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func sliceAt(self any, idx int) String</code></p>
+</blockquote><blockquote><p><code>func sliceAt(self, idx int) String</code></p>
 <p>Returns the UTF-8 rune starting at byte index <code>idx</code> as a string.</p>
-</blockquote><blockquote><p><code>func split(self any, sep String) List[String]</code></p>
+</blockquote><blockquote><p><code>func split(self, sep String) List[String]</code></p>
 <p>Returns a list of UTF-8 strings split at occurrences of <code>sep</code>.</p>
-</blockquote><blockquote><p><code>func startsWith(self any, prefix String) bool</code></p>
+</blockquote><blockquote><p><code>func startsWith(self, prefix String) bool</code></p>
 <p>Returns whether the string starts with <code>prefix</code>.</p>
-</blockquote><blockquote><p><code>func trim(self any, mode symbol, delims String) String</code></p>
+</blockquote><blockquote><p><code>func trim(self, mode symbol, delims String) String</code></p>
 <p>Returns the string with ends trimmed from runes in <code>delims</code>. <code>mode</code> can be .left, .right, or .ends.</p>
-</blockquote><blockquote><p><code>func upper(self any) String</code></p>
+</blockquote><blockquote><p><code>func upper(self) String</code></p>
 <p>Returns this string in uppercase.</p>
 </blockquote><blockquote><p><code>func String.$call(val any) String</code></p>
 <p>Converts a value to a string.</p>
@@ -3432,38 +3432,38 @@ print typeof('my str').id()
 <h3 id="type-array_t"><code>type array_t</code> <a href="#type-array_t">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-array"><code>type Array</code> <a href="#type-array">#</a></h3>
-<blockquote><p><code>func $index(self any, idx int) <ref></code></p>
-</blockquote><blockquote><p><code>func iterator(self any) RefSliceIterator[T]</code></p>
+<blockquote><p><code>func $index(self, idx int) <ref></code></p>
+</blockquote><blockquote><p><code>func iterator(self) RefSliceIterator[T]</code></p>
 <p>Returns a new iterator over the array.</p>
-</blockquote><blockquote><p><code>func len(self any) int</code></p>
+</blockquote><blockquote><p><code>func len(self) int</code></p>
 <p>Returns the number of elements in the array.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-pointer"><code>type pointer</code> <a href="#type-pointer">#</a></h3>
-<blockquote><p><code>func $index(self any, idx int) *T</code></p>
-</blockquote><blockquote><p><code>func $index(self any, range Range) [*]T</code></p>
-</blockquote><blockquote><p><code>func $setIndex(self any, idx int, val T) <void></code></p>
-</blockquote><blockquote><p><code>func addr(self any) int</code></p>
+<blockquote><p><code>func $index(self, idx int) *T</code></p>
+</blockquote><blockquote><p><code>func $index(self, range Range) [*]T</code></p>
+</blockquote><blockquote><p><code>func $setIndex(self, idx int, val T) <void></code></p>
+</blockquote><blockquote><p><code>func addr(self) int</code></p>
 <p>When pointer runtime safety is enabled, this returns the raw pointer address as an <code>int64</code>.   Otherwise, the pointer itself is bitcasted to an <code>int64</code>.</p>
-</blockquote><blockquote><p><code>func asObject(self any) any</code></p>
+</blockquote><blockquote><p><code>func asObject(self) any</code></p>
 <p>Casts the pointer to a Cyber object. The object is retained before it's returned.</p>
-</blockquote><blockquote><p><code>func fromCstr(self any, offset int) String</code></p>
+</blockquote><blockquote><p><code>func fromCstr(self, offset int) String</code></p>
 <p>Returns a <code>String</code> from a null terminated C string.</p>
-</blockquote><blockquote><p><code>func get(self any, offset int, ctype symbol) dyn</code></p>
+</blockquote><blockquote><p><code>func get(self, offset int, ctype symbol) dyn</code></p>
 <p>Dereferences the pointer at a byte offset and returns the C value converted to Cyber.</p>
-</blockquote><blockquote><p><code>func getString(self any, offset int, len int) String</code></p>
+</blockquote><blockquote><p><code>func getString(self, offset int, len int) String</code></p>
 <p>Returns a <code>String</code> with a copy of the byte data starting from an offset to the specified length.</p>
-</blockquote><blockquote><p><code>func set(self any, offset int, ctype symbol, val any) <void></code></p>
+</blockquote><blockquote><p><code>func set(self, offset int, ctype symbol, val any) <void></code></p>
 <p>Converts the value to a compatible C value and writes it to a byte offset from this pointer.</p>
 </blockquote><blockquote><p><code>func pointer.$call(T type, addr int) *T</code></p>
 <p>Converts an <code>int</code> to a <code>pointer</code> value.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-externfunc"><code>type ExternFunc</code> <a href="#type-externfunc">#</a></h3>
-<blockquote><p><code>func addr(self any) int</code></p>
+<blockquote><p><code>func addr(self) int</code></p>
 <p>Returns the memory address as an <code>int</code>. The value may be negative since it's  bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.</p>
-</blockquote><blockquote><p><code>func ptr(self any) *<void></code></p>
+</blockquote><blockquote><p><code>func ptr(self) *<void></code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-fiber"><code>type Fiber</code> <a href="#type-fiber">#</a></h3>
-<blockquote><p><code>func status(self any) symbol</code></p>
+<blockquote><p><code>func status(self) symbol</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-range"><code>type Range</code> <a href="#type-range">#</a></h3>
 <a href="#modules">^topic</a>
@@ -3475,54 +3475,54 @@ print typeof('my str').id()
 </blockquote><blockquote><p><code>func Future.new(T type) Future[T]</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-futureresolver"><code>type FutureResolver</code> <a href="#type-futureresolver">#</a></h3>
-<blockquote><p><code>func complete(self any, val T) <void></code></p>
-</blockquote><blockquote><p><code>func future(self any) Future[T]</code></p>
+<blockquote><p><code>func complete(self, val T) <void></code></p>
+</blockquote><blockquote><p><code>func future(self) Future[T]</code></p>
 </blockquote><blockquote><p><code>func FutureResolver.new(T type) FutureResolver[T]</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-ref"><code>type Ref</code> <a href="#type-ref">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-refslice"><code>type RefSlice</code> <a href="#type-refslice">#</a></h3>
-<blockquote><p><code>func $index(self any, idx int) <ref></code></p>
-</blockquote><blockquote><p><code>func $index(self any, range Range) <ref_slice></code></p>
-</blockquote><blockquote><p><code>func $setIndex(self any, idx int, val T) <void></code></p>
-</blockquote><blockquote><p><code>func iterator(self any) RefSliceIterator[T]</code></p>
-</blockquote><blockquote><p><code>func len(self any) int</code></p>
+<blockquote><p><code>func $index(self, idx int) <ref></code></p>
+</blockquote><blockquote><p><code>func $index(self, range Range) <ref_slice></code></p>
+</blockquote><blockquote><p><code>func $setIndex(self, idx int, val T) <void></code></p>
+</blockquote><blockquote><p><code>func iterator(self) RefSliceIterator[T]</code></p>
+</blockquote><blockquote><p><code>func len(self) int</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-refsliceiterator"><code>type RefSliceIterator</code> <a href="#type-refsliceiterator">#</a></h3>
-<blockquote><p><code>func next(self any) ?T</code></p>
+<blockquote><p><code>func next(self) ?T</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-ptrslice"><code>type PtrSlice</code> <a href="#type-ptrslice">#</a></h3>
-<blockquote><p><code>func $index(self any, idx int) *T</code></p>
-</blockquote><blockquote><p><code>func $index(self any, range Range) [*]T</code></p>
-</blockquote><blockquote><p><code>func $setIndex(self any, idx int, val T) <void></code></p>
-</blockquote><blockquote><p><code>func endsWith(self any, suffix [*]T) bool</code></p>
+<blockquote><p><code>func $index(self, idx int) *T</code></p>
+</blockquote><blockquote><p><code>func $index(self, range Range) [*]T</code></p>
+</blockquote><blockquote><p><code>func $setIndex(self, idx int, val T) <void></code></p>
+</blockquote><blockquote><p><code>func endsWith(self, suffix [*]T) bool</code></p>
 <p>Returns whether the array ends with <code>suffix</code>.</p>
-</blockquote><blockquote><p><code>func findScalar(self any, needle T) ?int</code></p>
+</blockquote><blockquote><p><code>func findScalar(self, needle T) ?int</code></p>
 <p>Returns the first index of <code>needle</code> in the slice or <code>none</code> if not found.</p>
-</blockquote><blockquote><p><code>func iterator(self any) PtrSliceIterator[T]</code></p>
-</blockquote><blockquote><p><code>func len(self any) int</code></p>
-</blockquote><blockquote><p><code>func startsWith(self any, prefix [*]T) bool</code></p>
+</blockquote><blockquote><p><code>func iterator(self) PtrSliceIterator[T]</code></p>
+</blockquote><blockquote><p><code>func len(self) int</code></p>
+</blockquote><blockquote><p><code>func startsWith(self, prefix [*]T) bool</code></p>
 <p>Returns whether the array starts with <code>prefix</code>.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-ptrsliceiterator"><code>type PtrSliceIterator</code> <a href="#type-ptrsliceiterator">#</a></h3>
-<blockquote><p><code>func next(self any) ?T</code></p>
+<blockquote><p><code>func next(self) ?T</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-imemory-trait"><code>type IMemory trait</code> <a href="#type-imemory-trait">#</a></h3>
-<blockquote><p><code>func alloc(self any, len int) [*]byte</code></p>
-</blockquote><blockquote><p><code>func free(self any, buf [*]byte) <void></code></p>
+<blockquote><p><code>func alloc(self, len int) [*]byte</code></p>
+</blockquote><blockquote><p><code>func free(self, buf [*]byte) <void></code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-memory"><code>type Memory</code> <a href="#type-memory">#</a></h3>
-<blockquote><p><code>func new(self any, T type) *T</code></p>
-</blockquote><blockquote><p><code>func alloc(self any, T type, n int) [*]T</code></p>
-</blockquote><blockquote><p><code>func free(self any, ptr *T) </code></p>
-</blockquote><blockquote><p><code>func free(self any, slice [*]T) </code></p>
+<blockquote><p><code>func new(self, T type) *T</code></p>
+</blockquote><blockquote><p><code>func alloc(self, T type, n int) [*]T</code></p>
+</blockquote><blockquote><p><code>func free(self, ptr *T) </code></p>
+</blockquote><blockquote><p><code>func free(self, slice [*]T) </code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-defaultmemory"><code>type DefaultMemory</code> <a href="#type-defaultmemory">#</a></h3>
-<blockquote><p><code>func alloc(self any, len int) [*]byte</code></p>
-</blockquote><blockquote><p><code>func free(self any, buf [*]byte) <void></code></p>
+<blockquote><p><code>func alloc(self, len int) [*]byte</code></p>
+</blockquote><blockquote><p><code>func free(self, buf [*]byte) <void></code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-exprtype"><code>type ExprType</code> <a href="#type-exprtype">#</a></h3>
-<blockquote><p><code>func getType(self any) type</code></p>
+<blockquote><p><code>func getType(self) type</code></p>
 </blockquote><!-- core.end -->
 <a href="#modules">^topic</a>
 <h2 id="mod-cy"><code>mod cy</code> <a href="#mod-cy">#</a></h2>
@@ -3554,23 +3554,23 @@ print cy.toCyon([1, 2, 3])
 <h3 id="type-evalresult"><code>type EvalResult</code> <a href="#type-evalresult">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-value"><code>type Value</code> <a href="#type-value">#</a></h3>
-<blockquote><p><code>func dump(self any) String</code></p>
-</blockquote><blockquote><p><code>func getTypeId(self any) int</code></p>
-</blockquote><blockquote><p><code>func toHost(self any) any</code></p>
+<blockquote><p><code>func dump(self) String</code></p>
+</blockquote><blockquote><p><code>func getTypeId(self) int</code></p>
+</blockquote><blockquote><p><code>func toHost(self) any</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-vm"><code>type VM</code> <a href="#type-vm">#</a></h3>
-<blockquote><p><code>func eval(self any, code String) EvalResult</code></p>
-</blockquote><blockquote><p><code>func eval(self any, uri String, code String, config EvalConfig) EvalResult</code></p>
-</blockquote><blockquote><p><code>func getErrorSummary(self any) String</code></p>
-</blockquote><blockquote><p><code>func getPanicSummary(self any) String</code></p>
+<blockquote><p><code>func eval(self, code String) EvalResult</code></p>
+</blockquote><blockquote><p><code>func eval(self, uri String, code String, config EvalConfig) EvalResult</code></p>
+</blockquote><blockquote><p><code>func getErrorSummary(self) String</code></p>
+</blockquote><blockquote><p><code>func getPanicSummary(self) String</code></p>
 </blockquote><blockquote><p><code>func VM.new() VM</code></p>
 <p>Create an isolated VM.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-repl"><code>type REPL</code> <a href="#type-repl">#</a></h3>
-<blockquote><p><code>func printIntro(self any) </code></p>
-</blockquote><blockquote><p><code>func read(self any, read_line dyn) ?String</code></p>
-</blockquote><blockquote><p><code>func evalPrint(self any, code String) <void></code></p>
-</blockquote><blockquote><p><code>func getPrefix(self any) String</code></p>
+<blockquote><p><code>func printIntro(self) </code></p>
+</blockquote><blockquote><p><code>func read(self, read_line dyn) ?String</code></p>
+</blockquote><blockquote><p><code>func evalPrint(self, code String) <void></code></p>
+</blockquote><blockquote><p><code>func getPrefix(self) String</code></p>
 </blockquote><blockquote><p><code>func REPL.new() REPL</code></p>
 </blockquote><!-- cy.end -->
 <a href="#modules">^topic</a>
@@ -3805,56 +3805,56 @@ for map -> {k, v}:
 <p>Writes <code>contents</code> as a string or bytes to a file.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-file"><code>type File</code> <a href="#type-file">#</a></h3>
-<blockquote><p><code>func close(self any) <void></code></p>
+<blockquote><p><code>func close(self) <void></code></p>
 <p>Closes the file handle. File ops invoked afterwards will return <code>error.Closed</code>.</p>
-</blockquote><blockquote><p><code>func iterator(self any) File</code></p>
-</blockquote><blockquote><p><code>func next(self any) String</code></p>
-</blockquote><blockquote><p><code>func read(self any, n int) String</code></p>
+</blockquote><blockquote><p><code>func iterator(self) File</code></p>
+</blockquote><blockquote><p><code>func next(self) String</code></p>
+</blockquote><blockquote><p><code>func read(self, n int) String</code></p>
 <p>Reads at most <code>n</code> bytes as an <code>Array</code>. <code>n</code> must be at least 1.  A result with length 0 indicates the end of file was reached.</p>
-</blockquote><blockquote><p><code>func readAll(self any) String</code></p>
+</blockquote><blockquote><p><code>func readAll(self) String</code></p>
 <p>Reads to the end of the file and returns the content as an <code>Array</code>.</p>
-</blockquote><blockquote><p><code>func seek(self any, n int) <void></code></p>
+</blockquote><blockquote><p><code>func seek(self, n int) <void></code></p>
 <p>Seeks the read/write position to <code>pos</code> bytes from the start. Negative <code>pos</code> is invalid.</p>
-</blockquote><blockquote><p><code>func seekFromCur(self any, n int) <void></code></p>
+</blockquote><blockquote><p><code>func seekFromCur(self, n int) <void></code></p>
 <p>Seeks the read/write position by <code>pos</code> bytes from the current position.</p>
-</blockquote><blockquote><p><code>func seekFromEnd(self any, n int) <void></code></p>
+</blockquote><blockquote><p><code>func seekFromEnd(self, n int) <void></code></p>
 <p>Seeks the read/write position by <code>pos</code> bytes from the end. Positive <code>pos</code> is invalid.</p>
-</blockquote><blockquote><p><code>func stat(self any) Map</code></p>
+</blockquote><blockquote><p><code>func stat(self) Map</code></p>
 <p>Returns info about the file as a <code>Map</code>.</p>
-</blockquote><blockquote><p><code>func streamLines(self any) File</code></p>
+</blockquote><blockquote><p><code>func streamLines(self) File</code></p>
 <p>Equivalent to <code>streamLines(4096)</code>.</p>
-</blockquote><blockquote><p><code>func streamLines(self any, bufSize int) File</code></p>
+</blockquote><blockquote><p><code>func streamLines(self, bufSize int) File</code></p>
 <p>Returns an iterable that streams lines ending in <code>\n</code>, <code>\r</code>, <code>\r\n</code>, or the <code>EOF</code>.  The lines returned include the new line character(s).  A buffer size of <code>bufSize</code> bytes is allocated for reading.  If <code>\r</code> is found at the end of the read buffer, the line is returned instead of  waiting to see if the next read has a connecting <code>\n</code>.</p>
-</blockquote><blockquote><p><code>func write(self any, val String) int</code></p>
+</blockquote><blockquote><p><code>func write(self, val String) int</code></p>
 <p>Writes a <code>String</code> at the current file position.  The number of bytes written is returned.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-dir"><code>type Dir</code> <a href="#type-dir">#</a></h3>
-<blockquote><p><code>func iterator(self any) DirIterator</code></p>
+<blockquote><p><code>func iterator(self) DirIterator</code></p>
 <p>Returns a new iterator over the directory entries.  If this directory was not opened with the iterable flag, <code>error.NotAllowed</code> is returned instead.</p>
-</blockquote><blockquote><p><code>func stat(self any) Map</code></p>
+</blockquote><blockquote><p><code>func stat(self) Map</code></p>
 <p>Returns info about the file as a <code>Map</code>.</p>
-</blockquote><blockquote><p><code>func walk(self any) DirIterator</code></p>
+</blockquote><blockquote><p><code>func walk(self) DirIterator</code></p>
 <p>Returns a new iterator over the directory recursive entries.  If this directory was not opened with the iterable flag, <code>error.NotAllowed</code> is returned instead.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-diriterator"><code>type DirIterator</code> <a href="#type-diriterator">#</a></h3>
-<blockquote><p><code>func next(self any) ?Map</code></p>
+<blockquote><p><code>func next(self) ?Map</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-ffi"><code>type FFI</code> <a href="#type-ffi">#</a></h3>
-<blockquote><p><code>func bindCallback(self any, fn any, params List[dyn], ret symbol) ExternFunc</code></p>
+<blockquote><p><code>func bindCallback(self, fn any, params List[dyn], ret symbol) ExternFunc</code></p>
 <p>Creates an <code>ExternFunc</code> that contains a C function pointer with the given signature.  The extern function is a wrapper that calls the provided user function.  Once created, the extern function is retained and managed by the FFI context.</p>
-</blockquote><blockquote><p><code>func bindLib(self any, path ?String) any</code></p>
+</blockquote><blockquote><p><code>func bindLib(self, path ?String) any</code></p>
 <p>Calls <code>bindLib(path, [:])</code>.</p>
-</blockquote><blockquote><p><code>func bindLib(self any, path ?String, config Table) any</code></p>
+</blockquote><blockquote><p><code>func bindLib(self, path ?String, config Table) any</code></p>
 <p>Creates a handle to a dynamic library and functions declared from <code>cfunc</code>.  By default, an anonymous object is returned with the C-functions binded as the object's methods.  If <code>config</code> contains <code>gen_table: true</code>, a <code>Table</code> is returned instead with C-functions  binded as function values.</p>
-</blockquote><blockquote><p><code>func bindObjPtr(self any, obj any) *<void></code></p>
+</blockquote><blockquote><p><code>func bindObjPtr(self, obj any) *<void></code></p>
 <p>Returns a Cyber object's pointer. Operations on the pointer is unsafe,  but it can be useful when passing it to C as an opaque pointer.  The object is also retained and managed by the FFI context.</p>
-</blockquote><blockquote><p><code>func cbind(self any, mt type, fields List[dyn]) <void></code></p>
+</blockquote><blockquote><p><code>func cbind(self, mt type, fields List[dyn]) <void></code></p>
 <p>Binds a Cyber type to a C struct.</p>
-</blockquote><blockquote><p><code>func cfunc(self any, name String, params List[dyn], ret any) <void></code></p>
+</blockquote><blockquote><p><code>func cfunc(self, name String, params List[dyn], ret any) <void></code></p>
 <p>Declares a C function which will get binded to the library handle created from <code>bindLib</code>.</p>
-</blockquote><blockquote><p><code>func new(self any, ctype symbol) *<void></code></p>
+</blockquote><blockquote><p><code>func new(self, ctype symbol) *<void></code></p>
 <p>Allocates memory for a C struct or primitive with the given C type specifier.  A <code>pointer</code> to the allocated memory is returned.  Eventually this will return a <code>cpointer</code> instead which will be more idiomatic to use.</p>
-</blockquote><blockquote><p><code>func unbindObjPtr(self any, obj any) <void></code></p>
+</blockquote><blockquote><p><code>func unbindObjPtr(self, obj any) <void></code></p>
 <p>Releases the object from the FFI context.  External code should no longer use the object's pointer since it's not guaranteed to exist  or point to the correct object.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-carray"><code>type CArray</code> <a href="#type-carray">#</a></h3>

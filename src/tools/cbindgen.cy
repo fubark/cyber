@@ -86,7 +86,7 @@ for structs -> name:
     var finalFieldTypes = {_}
     for fieldTypes -> ftype:
         ftype = ensureBindType(ftype)
-        if typeof(ftype) == String:
+        if type(ftype) == String:
             finalFieldTypes.append(getApiName(ftype))
         else:
             finalFieldTypes.append(ftype)
@@ -99,7 +99,7 @@ for funcs -> fn:
     var finalParams = {_}
     for fn.params -> param:
         param = ensureBindType(param)
-        if typeof(param) == String:
+        if type(param) == String:
             finalParams.append(getApiName(param))
         else:
             finalParams.append(param as symbol)
@@ -227,7 +227,7 @@ let rootVisitor(cursor, parent, state):
         else:
             var atype = clang.lib.clang_getTypedefDeclUnderlyingType(cursor)
             var bindType = toBindType(atype)
-            if typeof(bindType) == symbol or bindType != name:
+            if type(bindType) == symbol or bindType != name:
                 aliases[name] = bindType
                 out += "type $(getApiName(name)) -> $(toCyType(bindType, true))\n\n"
 
@@ -266,7 +266,7 @@ let rootVisitor(cursor, parent, state):
             let fieldt = struct.fieldTypes[i]
             out += "    $(name) $(toCyType(fieldt, false))"
             if is(fieldt, symbol.voidPtr) or
-                (typeof(fieldt) == String and fieldt.startsWith('os.CArray{')):
+                (type(fieldt) == String and fieldt.startsWith('os.CArray{')):
                 out += " -- $(struct.cxFieldTypes[i])"
             out += "\n"
 
@@ -455,6 +455,7 @@ let macrosRootVisitor(cursor, parent, state):
     case clang.CXCursor_StructDecl: pass
     case clang.CXCursor_EnumDecl: pass
     case clang.CXCursor_FunctionDecl: pass
+    case clang.CXCursor_LinkageSpec: pass
     case clang.CXCursor_VarDecl:
         if !name.startsWith('var_'):
             -- Skip non-macro vars.
@@ -477,6 +478,7 @@ let macrosRootVisitor(cursor, parent, state):
             var initName = fromCXString(cxInitName)
             switch initCur.kind
             case clang.CXCursor_InvalidFile: pass
+            case clang.CXCursor_UnexposedExpr: pass
             case clang.CXCursor_CXXFunctionalCastExpr:
                 var state = State{type=.initVar, data={}}
                 var cstate = clang.ffi.bindObjPtr(state)
@@ -518,7 +520,7 @@ func fromCXString(cxStr any) String:
     return cname.fromCstr(0)
 
 let toCyType(nameOrSym, forRet):
-    if typeof(nameOrSym) == symbol:
+    if type(nameOrSym) == symbol:
         switch nameOrSym
         case symbol.voidPtr   : return '*void'
         case symbol.bool      : return 'bool'
@@ -526,6 +528,8 @@ let toCyType(nameOrSym, forRet):
         case symbol.uint      : return 'int'
         case symbol.char      : return 'int'
         case symbol.uchar     : return 'int'
+        case symbol.short     : return 'int'
+        case symbol.ushort    : return 'int'
         case symbol.long      : return 'int'
         case symbol.ulong     : return 'int'
         case symbol.float     : return 'float'
@@ -544,12 +548,12 @@ let toCyType(nameOrSym, forRet):
         return getApiName(nameOrSym)
 
 func ensureBindType(nameOrSym any) dyn:
-    if typeof(nameOrSym) == symbol:
+    if type(nameOrSym) == symbol:
         return nameOrSym
     else:
         if aliases.contains(nameOrSym):
             var og = aliases[nameOrSym]
-            if typeof(og) == symbol:
+            if type(og) == symbol:
                 return og
         return nameOrSym
 
@@ -565,6 +569,9 @@ let toBindType(cxType):
     switch cxType.kind
     case clang.CXType_Float             : return symbol.float
     case clang.CXType_Double            : return symbol.double
+    case clang.CXType_Short             : return symbol.short
+    case clang.CXType_UShort            : return symbol.ushort
+    case clang.CXType_ULong             : return symbol.ulong
     case clang.CXType_Long              : return symbol.long
     case clang.CXType_LongLong          : return symbol.long
     case clang.CXType_ULongLong         : return symbol.ulong
@@ -572,6 +579,7 @@ let toBindType(cxType):
     case clang.CXType_Bool              : return symbol.bool
     case clang.CXType_Int               : return symbol.int
     case clang.CXType_UInt              : return symbol.uint
+    case clang.CXType_SChar             : return symbol.char
     case clang.CXType_Char_S            : return symbol.char
     case clang.CXType_UChar             : return symbol.uchar
     case clang.CXType_Pointer           : return symbol.voidPtr

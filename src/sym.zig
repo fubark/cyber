@@ -686,6 +686,7 @@ const VariantKeyContext = struct {
                     const typeId = val.asHeapObject().type.type;
                     c.update(std.mem.asBytes(&typeId));
                 },
+                bt.FuncSig,
                 bt.Integer => {
                     const i = val.asHeapObject().integer.val;
                     c.update(std.mem.asBytes(&i));
@@ -725,6 +726,7 @@ const VariantKeyContext = struct {
                         return false;
                     }
                 },
+                bt.FuncSig,
                 bt.Integer => {
                     return av.asBoxInt() == b[i].asBoxInt();
                 },

@@ -174,7 +174,6 @@ type float #float64_t:
 @host type placeholder1 _
 @host type placeholder2 _
 @host type placeholder3 _
-@host type placeholder4 _
 @host type taglit _
 
 @host type dyn _
@@ -276,17 +275,19 @@ type float #float64_t:
 type Tuple _:
     @host func $index(self, idx int) any
 
+@host type FuncSig #int64_t
+
 -- Function pointer.
-@host type funcptr_t[SIG int] _
+@host type funcptr_t[SIG FuncSig] _
 
 -- Function union.
-@host type funcunion_t[SIG int] _
+@host type funcunion_t[SIG FuncSig] _
 
 -- Any function.
 @host type Func _
 
 -- Function symbol.
-@host type funcsym_t[SIG int] _
+@host type funcsym_t[SIG FuncSig] _
 
 @host
 type Table:

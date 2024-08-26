@@ -1578,6 +1578,7 @@ pub const VmExt = struct {
     pub const allocArray = Root.allocArray;
     pub const allocPointer = Root.allocPointer;
     pub const allocInt = Root.allocInt;
+    pub const allocFuncSig = Root.allocFuncSig;
     pub const allocBoxValue = Root.allocBoxValue;
     pub const allocRefSlice = Root.allocRefSlice;
     pub const allocSlice = Root.allocSlice;
@@ -1831,6 +1832,16 @@ pub fn allocTccState(self: *cy.VM, state: *tcc.TCCState, optLib: ?*std.DynLib) !
     return Value.initNoCycPtr(obj);
 }
 
+pub fn allocFuncSig(self: *cy.VM, sig: cy.sema.FuncSigId) !Value {
+    const obj = try allocPoolObject(self);
+    obj.integer = .{
+        .type_id = bt.FuncSig,
+        .rc = 1,
+        .val = @intCast(sig),
+    };
+    return Value.initNoCycPtr(obj);
+}
+
 pub fn allocInt(self: *cy.VM, val: i64) !Value {
     const obj = try allocPoolObject(self);
     obj.integer = .{
@@ -2066,6 +2077,9 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                     freePoolObject(vm, obj);
                 },
             }
+        },
+        bt.FuncSig => {
+            freePoolObject(vm, obj);
         },
         bt.Integer => {
             freePoolObject(vm, obj);

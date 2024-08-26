@@ -28,7 +28,7 @@ pub fn pushNodeValuesCstr(c: *cy.Chunk, args: []const *ast.Node, template: *cy.s
     }
     for (args, 0..) |arg, i| {
         const param = params[i];
-        const exp_type = try resolveTemplateParamType(c, param.type, ct_arg_start);
+        const exp_type = try resolveTemplateParamType(c, param.type, c.valueStack.items.ptr + ct_arg_start);
         const res = try resolveCtValue(c, arg);
         try c.valueStack.append(c.alloc, res.value);
 
@@ -43,16 +43,68 @@ pub fn pushNodeValuesCstr(c: *cy.Chunk, args: []const *ast.Node, template: *cy.s
 }
 
 /// This is similar to `sema_func.resolveTemplateParamType` except it only cares about ct_ref.
-fn resolveTemplateParamType(c: *cy.Chunk, type_id: cy.TypeId, ct_arg_start: usize) !cy.TypeId {
+fn resolveTemplateParamType(c: *cy.Chunk, type_id: cy.TypeId, ct_args: [*]const cy.Value) !cy.TypeId {
     const type_e = c.sema.types.items[type_id];
     if (type_e.kind == .ct_ref) {
-        const ct_arg = c.valueStack.items[ct_arg_start + type_e.data.ct_infer.ct_param_idx];
+        const ct_arg = ct_args[type_e.data.ct_infer.ct_param_idx];
         if (ct_arg.getTypeId() != bt.Type) {
             return error.TODO;
         }
         return ct_arg.asHeapObject().type.type;
     } else if (type_e.info.ct_ref) {
-        return error.TODO;
+        // Contains nested ct-dependent arg.
+        if (type_e.sym.getVariant()) |variant| {
+            const template = variant.root_template;
+
+            const value_start = c.valueStack.items.len;
+            defer {
+                const values = c.valueStack.items[value_start..];
+                for (values) |val| {
+                    c.vm.release(val);
+                }
+                c.valueStack.items.len = value_start;
+            }
+
+            for (variant.args) |arg| {
+                if (arg.getTypeId() == bt.Type) {
+                    const arg_t = arg.asHeapObject().type.type;
+                    const rarg_t = try resolveTemplateParamType(c, arg_t, ct_args);
+                    const rarg_t_v = try c.vm.allocType(rarg_t);
+                    try c.valueStack.append(c.alloc, rarg_t_v);
+                } else if (arg.getTypeId() == bt.FuncSig) {
+                    const sig = c.sema.getFuncSig(@intCast(arg.asBoxInt()));
+
+                    const type_start = c.typeStack.items.len;
+                    defer c.typeStack.items.len = type_start;
+
+                    for (sig.params()) |param| {
+                        const param_te = c.sema.getType(param.type);
+                        if (param_te.info.ct_ref) {
+                            const param_t = try resolveTemplateParamType(c, param.type, ct_args);
+                            try c.typeStack.append(c.alloc, param_t);
+                        } else {
+                            try c.typeStack.append(c.alloc, param.type);
+                        }
+                    }
+                    var ret_t = sig.ret;
+                    const ret_te = c.sema.getType(sig.ret);
+                    if (ret_te.info.ct_ref) {
+                        ret_t = try resolveTemplateParamType(c, ret_t, ct_args);
+                    }
+                    const new_sig = try c.sema.ensureFuncSig(@ptrCast(c.typeStack.items[type_start..]), ret_t);
+                    const new_sigv = try c.vm.allocFuncSig(new_sig);
+                    try c.valueStack.append(c.alloc, new_sigv);
+                } else {
+                    return error.TODO;
+                }
+            }
+
+            const args = c.valueStack.items[value_start..];
+            const type_sym = try cte.expandTemplate(c, template, args);
+            return type_sym.getStaticType().?;
+        } else {
+            return error.Unexpected;
+        }
     } else {
         return type_id;
     }
@@ -192,28 +244,44 @@ pub fn expandCtFuncTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []co
         res.value_ptr.* = variant;
         try template.variants.append(c.alloc, variant);
 
+        // Resolve dependent return type.
+        var ret_t = c.sema.getFuncSig(template.sigId).getRetType();
+        const ret_te = c.sema.getType(ret_t);
+        if (ret_te.info.ct_ref) {
+            ret_t = try resolveTemplateParamType(c, ret_t, variant.args.ptr);
+        }
+
+        // Resolve dependent func sig. There are no rt params since they are compile-time params.
+        const sig = try c.sema.ensureFuncSig(&.{}, ret_t);
+
         // Generate ct func.
         const func = try c.createFunc(.userFunc, @ptrCast(template), @ptrCast(template.decl.child_decl), false);
         defer c.vm.alloc.destroy(func);
-        const func_sig = c.compiler.sema.getFuncSig(template.sigId);
-        func.funcSigId = template.sigId;
+        const func_sig = c.sema.getFuncSig(sig);
+        func.funcSigId = sig;
         func.retType = func_sig.getRetType();
         func.reqCallTypeCheck = func_sig.reqCallTypeCheck;
         func.numParams = @intCast(func_sig.params_len);
 
         // Perform sema.
-        const loc = c.ir.buf.items.len;
-        defer c.ir.buf.items.len = loc;
-        try sema.pushVariantResolveContext(c, variant);
-        defer sema.popResolveContext(c);
-        try sema.funcDecl2(c, func);
+        const src_chunk = template.chunk();
+        try sema.pushResolveContext(src_chunk);
+        const rctx = sema.getResolveContext(src_chunk);
+        try sema.setContextTemplateParams(src_chunk, rctx, template, args_dupe);
+        defer sema.popResolveContext(src_chunk);
+        const loc = src_chunk.ir.buf.items.len;
+        defer {
+            src_chunk.ir.buf.items.len = loc;
+            src_chunk.ir.func_blocks.items.len -= 1;
+        }
+        try sema.funcDecl2(src_chunk, func);
 
         // Perform bc gen.
-        const loc_n = c.ir.getNode(loc);
-        c.buf = &c.compiler.buf;
+        const loc_n = src_chunk.ir.getNode(loc);
+        src_chunk.buf = &c.compiler.buf;
         // TODO: defer restore bc state.
-        try bcgen.prepareFunc(c.compiler, null, func);
-        try bcgen.funcBlock(c, loc, loc_n);
+        try bcgen.prepareFunc(src_chunk.compiler, null, func);
+        try bcgen.funcBlock(src_chunk, loc, loc_n);
 
         const rt_id = c.compiler.genSymMap.get(func).?.func.id;
         const rt_func = c.vm.funcSyms.buf[rt_id];
@@ -221,7 +289,7 @@ pub fn expandCtFuncTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []co
         defer c.vm.release(func_val);
 
         try c.vm.prepCtEval(&c.compiler.buf);
-        const retv = try c.vm.callFunc(func_val, args_dupe, .{});
+        const retv = try c.vm.callFunc(func_val, &.{}, .{});
         c.vm.retain(retv);
         variant.data = .{ .ct_val = retv };
 
@@ -246,13 +314,17 @@ pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy
         }
 
         var ct_infer = false;
-        var ct_ref = false;
+        var ct_dep = false;
         for (args) |arg| {
             if (arg.getTypeId() == bt.Type) {
                 const type_id = arg.asHeapObject().type.type;
                 const type_e = c.sema.types.items[type_id];
                 ct_infer = ct_infer or type_e.info.ct_infer;
-                ct_ref = ct_ref or type_e.info.ct_ref;
+                ct_dep = ct_dep or type_e.info.ct_ref;
+            } else if (arg.getTypeId() == bt.FuncSig) {
+                const sig = c.sema.getFuncSig(@intCast(arg.asHeapObject().integer.val));
+                ct_infer = ct_infer or sig.ct_infer;
+                ct_dep = ct_dep or sig.ct_dep;
             }
         }
 
@@ -273,7 +345,7 @@ pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy
 
         const new_type = new_sym.getStaticType().?;
         c.sema.types.items[new_type].info.ct_infer = ct_infer;
-        c.sema.types.items[new_type].info.ct_ref = ct_ref;
+        c.sema.types.items[new_type].info.ct_ref = ct_dep;
 
         // Allow circular reference by resolving after the new symbol has been added to the cache.
         // In the case of a distinct type, a new sym is returned after resolving.
@@ -348,7 +420,7 @@ pub const CtValue = struct {
 };
 
 // TODO: Evaluate const expressions.
-pub fn resolveCtValue(c: *cy.Chunk, expr: *ast.Node) !CtValue {
+pub fn resolveCtValue(c: *cy.Chunk, expr: *ast.Node) anyerror!CtValue {
     switch (expr.type()) {
         .raw_string_lit => {
             const str = c.ast.nodeString(expr);
@@ -415,8 +487,29 @@ pub fn resolveCtValue(c: *cy.Chunk, expr: *ast.Node) !CtValue {
             }
             return c.reportErrorFmt("Unsupported conversion to compile-time value: {}", &.{v(sym.type)}, expr);
         },
-        .ptr,
         .array_expr => {
+            const array_expr = expr.cast(.array_expr);
+            var left = try sema.resolveSym(c, array_expr.left);
+            if (left.type != .template) {
+                return c.reportErrorFmt("Unsupported array expression.", &.{}, expr);
+            }
+            const template = left.cast(.template);
+            if (template.kind == .ct_func) {
+                const ct_val = try cte.expandCtFuncTemplateOnCallArgs(c, template, array_expr.args, expr);
+                return CtValue{
+                    .type = ct_val.getTypeId(),
+                    .value = ct_val,
+                };
+            } else {
+                const sym = try cte.expandTemplateOnCallArgs(c, template, array_expr.args, expr);
+                const typev = try c.vm.allocType(sym.getStaticType().?);
+                return CtValue{
+                    .type = bt.Type,
+                    .value = typev,
+                };
+            }
+        },
+        .ptr => {
             const type_id = try sema.resolveSymType(c, expr);
             return CtValue{
                 .type = bt.Type,

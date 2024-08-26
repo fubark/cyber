@@ -854,7 +854,7 @@ fn assignStmt(c: *cy.Chunk, node: *ast.Node, left_n: *ast.Node, right: *ast.Node
                 }
 
                 if (type_sym.getVariant()) |variant| {
-                    if (variant.root_template == c.sema.pointer_tmpl) {
+                    if (variant.getSymTemplate() == c.sema.pointer_tmpl) {
                         const child_t = variant.args[0].castHeapObject(*cy.heap.Type).type;
                         const child_ts = c.sema.getTypeSym(child_t);
                         const sym = child_ts.getMod().?.getSym(name) orelse {
@@ -1161,7 +1161,7 @@ fn semaAccessFieldName(c: *cy.Chunk, rec: ExprResult, name: []const u8, field: *
         }
 
         if (type_sym.getVariant()) |variant| {
-            if (variant.root_template == c.sema.pointer_tmpl) {
+            if (variant.getSymTemplate() == c.sema.pointer_tmpl) {
                 const child_t = variant.args[0].castHeapObject(*cy.heap.Type).type;
                 const child_ts = c.sema.getTypeSym(child_t);
                 const sym = child_ts.getMod().?.getSym(name) orelse {
@@ -1686,30 +1686,43 @@ pub const ResolveContext = struct {
     }
 };
 
-fn pushFuncVariantResolveContext(c: *cy.Chunk, variant: *cy.sym.FuncVariant) !void {
-    var new = ResolveContext{
-        .type = .func,
-        .has_ct_params = true,
-        .ct_params = .{},
-        .data = .{ .func = variant.func },
-    };
-    for (variant.template.params, 0..) |param, i| {
-        const arg = variant.args[i];
-        c.vm.retain(arg);
-        try new.setCtParam(c, param.name, arg);
-    }
-    try c.resolve_stack.append(c.alloc, new);
-}
-
 pub fn pushVariantResolveContext(c: *cy.Chunk, variant: *cy.sym.Variant) !void {
-    var new = ResolveContext{
-        .type = .sym,
-        .has_ct_params = true,
-        .ct_params = .{},
-        .data = .{ .sym = variant.data.sym },
-    };
-    try setContextTemplateParams(c, &new, variant.root_template, variant.args);
-    try c.resolve_stack.append(c.alloc, new);
+    switch (variant.type) {
+        .sym => {
+            var new = ResolveContext{
+                .type = .sym,
+                .has_ct_params = true,
+                .ct_params = .{},
+                .data = .{ .sym = variant.data.sym.sym },
+            };
+            try setContextTemplateParams(c, &new, variant.data.sym.template, variant.args);
+            try c.resolve_stack.append(c.alloc, new);
+        }, 
+        .ct_val => {
+            var new = ResolveContext{
+                .type = .incomplete,
+                .has_ct_params = true,
+                .ct_params = .{},
+                .data = undefined,
+            };
+            try setContextTemplateParams(c, &new, variant.data.ct_val.template, variant.args);
+            try c.resolve_stack.append(c.alloc, new);
+        },
+        .func => {
+            var new = ResolveContext{
+                .type = .func,
+                .has_ct_params = true,
+                .ct_params = .{},
+                .data = .{ .func = variant.data.func.func },
+            };
+            for (variant.data.func.template.params, 0..) |param, i| {
+                const arg = variant.args[i];
+                c.vm.retain(arg);
+                try new.setCtParam(c, param.name, arg);
+            }
+            try c.resolve_stack.append(c.alloc, new);
+        },
+    }
 }
 
 pub fn setContextTemplateParams(c: *cy.Chunk, ctx: *ResolveContext, template: *cy.sym.Template, args: []const cy.Value) !void {
@@ -1761,7 +1774,7 @@ pub fn popResolveContext(c: *cy.Chunk) void {
 }
 
 /// Allow an explicit `opt_header_decl` so that template specialization can use it to override @host attributes.
-pub fn reserveFuncTemplateVariant(c: *cy.Chunk, tfunc: *cy.Func, opt_header_decl: ?*ast.Node, variant: *cy.sym.FuncVariant) !*cy.sym.Func {
+pub fn reserveFuncTemplateVariant(c: *cy.Chunk, tfunc: *cy.Func, opt_header_decl: ?*ast.Node, variant: *cy.sym.Variant) !*cy.sym.Func {
     var func: *cy.Func = undefined;
     const decl = tfunc.decl.?.cast(.funcDecl);
     if (decl.stmts.len == 0) {
@@ -2356,6 +2369,9 @@ pub fn reserveHostFunc2(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: *
 }
 
 pub fn resolveFuncVariant(c: *cy.Chunk, func: *cy.Func) !void {
+    if (func.isResolved()) {
+        return;
+    }
     switch (func.type) {
         .hostFunc => {
             try sema.resolveHostFuncVariant(c, func);
@@ -2428,7 +2444,7 @@ pub fn getHostAttrName(c: *cy.Chunk, attr: *ast.Attribute) !?[]const u8 {
 }
 
 pub fn resolveHostFuncVariant(c: *cy.Chunk, func: *cy.Func) !void {
-    try pushFuncVariantResolveContext(c, func.variant.?);
+    try pushVariantResolveContext(c, func.variant.?);
     defer popResolveContext(c);
     getResolveContext(c).expand_ct_inferred_params = true;
 
@@ -2505,7 +2521,7 @@ pub fn reserveUserFunc2(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *
 }
 
 pub fn resolveUserFuncVariant(c: *cy.Chunk, func: *cy.Func) !void {
-    try pushFuncVariantResolveContext(c, func.variant.?);
+    try pushVariantResolveContext(c, func.variant.?);
     defer popResolveContext(c);
     getResolveContext(c).expand_ct_inferred_params = true;
 
@@ -2596,7 +2612,7 @@ fn resolveToFuncTemplate(c: *cy.Chunk, func: *cy.Func, sig_id: FuncSigId, ct_par
 
 pub fn methodDecl(c: *cy.Chunk, func: *cy.Func) !void {
     if (func.variant) |variant| {
-        try pushFuncVariantResolveContext(c, variant);
+        try pushVariantResolveContext(c, variant);
         defer popResolveContext(c);
         try methodDecl2(c, func);
         return;
@@ -2628,7 +2644,7 @@ pub fn methodDecl2(c: *cy.Chunk, func: *cy.Func) !void {
 
 pub fn funcDecl(c: *cy.Chunk, func: *cy.Func) !void {
     if (func.variant) |variant| {
-        try pushFuncVariantResolveContext(c, variant);
+        try pushVariantResolveContext(c, variant);
         defer popResolveContext(c);
         try funcDecl2(c, func);
         return;
@@ -4961,7 +4977,7 @@ pub const ChunkExt = struct {
         const sym = left.data.sym.resolved();
         if (sym.getStaticType()) |type_id| {
             if (left.data.sym.getVariant()) |variant| {
-                if (variant.root_template == c.sema.list_tmpl) {
+                if (variant.getSymTemplate() == c.sema.list_tmpl) {
                     const nargs = node.init.args.len;
                     const loc = try c.ir.pushEmptyExpr(.list, c.alloc, ir.ExprType.init(type_id), expr.node);
                     const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, nargs);
@@ -5825,7 +5841,7 @@ pub const ChunkExt = struct {
                 const variant = type_e.sym.getVariant() orelse {
                     return c.reportError("Expected pointer type.", expr.node);
                 };
-                if (variant.root_template != c.sema.pointer_tmpl) {
+                if (variant.getSymTemplate() != c.sema.pointer_tmpl) {
                     return c.reportError("Expected pointer type.", expr.node);
                 }
 
@@ -5844,7 +5860,7 @@ pub const ChunkExt = struct {
 
                 const target_sym = c.sema.getTypeSym(expr.target_t);
                 if (target_sym.getVariant()) |variant| {
-                    if (variant.root_template == c.sema.list_tmpl) {
+                    if (variant.getSymTemplate() == c.sema.list_tmpl) {
                         const nargs = init_lit.args.len;
                         const loc = try c.ir.pushEmptyExpr(.list, c.alloc, ir.ExprType.init(expr.target_t), node);
                         const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, nargs);
@@ -5858,7 +5874,7 @@ pub const ChunkExt = struct {
 
                         c.ir.setExprData(loc, .list, .{ .nargs = @intCast(nargs), .args = args_loc });
                         return ExprResult.initStatic(loc, expr.target_t);
-                    } else if (variant.root_template == c.sema.array_tmpl) {
+                    } else if (variant.getSymTemplate() == c.sema.array_tmpl) {
                         const elem_t = variant.args[1].asHeapObject().type.type;
 
                         const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, init_lit.args.len);
@@ -6150,7 +6166,7 @@ pub const ChunkExt = struct {
 
                 const type_s = c.sema.getTypeSym(child.type.id);
                 if (type_s.getVariant()) |variant| {
-                    if (variant.root_template == c.sema.future_tmpl) {
+                    if (variant.getSymTemplate() == c.sema.future_tmpl) {
                         const ret = variant.args[0].asHeapObject().type.type;
                         const irIdx = try c.ir.pushExpr(.await_expr, c.alloc, ret, node, .{
                             .expr = child.irIdx,
@@ -6507,10 +6523,10 @@ pub const ChunkExt = struct {
         if (expr.hasTargetType()) {
             const target_te = c.sema.getType(expr.target_t);
             if (target_te.sym.getVariant()) |variant| {
-                if (variant.root_template == c.sema.pointer_tmpl) {
+                if (variant.getSymTemplate() == c.sema.pointer_tmpl) {
                     const child_t = variant.args[0].castHeapObject(*cy.heap.Type).type;
                     child_cstr.target_t = child_t;
-                } else if (variant.root_template == c.sema.ptr_slice_tmpl) {
+                } else if (variant.getSymTemplate() == c.sema.ptr_slice_tmpl) {
                     const child_t = variant.args[0].castHeapObject(*cy.heap.Type).type;
                     // Pick an arbitrary array size for inferred type.
                     const array_t = try getArrayType(c, 1, child_t);

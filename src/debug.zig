@@ -780,7 +780,7 @@ fn dumpValue2(vm: *cy.VM, state: *DumpValueState, w: anytype, val: cy.Value, con
                     else => {
                         const type_e = vm.sema.getType(type_id);
                         if (type_e.sym.getVariant()) |variant| {
-                            if (variant.root_template == vm.sema.pointer_tmpl) {
+                            if (variant.getSymTemplate() == vm.sema.pointer_tmpl) {
                                 try w.print("0x{x}", .{obj.object.firstValue.val});
                             }
                         }

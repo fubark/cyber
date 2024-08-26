@@ -494,7 +494,7 @@ pub const ChunkExt = struct {
 
         // TODO: A type variant sym's module should cache expanded methods.
         if (modSym.getVariant()) |variant| {
-            if (variant.root_template.getMod().getSym(name)) |sym| {
+            if (variant.getSymTemplate().getMod().getSym(name)) |sym| {
                 return sym;
             }
         }

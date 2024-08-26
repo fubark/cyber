@@ -251,13 +251,13 @@ pub const SemaExt = struct {
     pub fn isRefType(s: *cy.Sema, id: cy.TypeId) bool {
         const sym = s.getTypeSym(id);
         const variant = sym.getVariant() orelse return false;
-        return variant.root_template == s.ref_tmpl;
+        return variant.getSymTemplate() == s.ref_tmpl;
     }
 
     pub fn isPointerType(s: *cy.Sema, id: cy.TypeId) bool {
         const sym = s.getTypeSym(id);
         const variant = sym.getVariant() orelse return false;
-        return variant.root_template == s.pointer_tmpl;
+        return variant.getSymTemplate() == s.pointer_tmpl;
     }
 
     pub fn getPointerChildType(s: *cy.Sema, id: cy.TypeId) cy.TypeId {

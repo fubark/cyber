@@ -96,8 +96,8 @@ pub const Sym = extern struct {
                     variant.args = &.{};
 
                     if (variant.type == .ct_val) {
-                        vm.release(variant.data.ct_val);
-                        variant.data.ct_val = cy.Value.Void;
+                        vm.release(variant.data.ct_val.ct_val);
+                        variant.data.ct_val.ct_val = cy.Value.Void;
                     }
                 }
             },
@@ -647,22 +647,35 @@ pub const TemplateParam = struct {
 const VariantType = enum(u8) {
     sym,
     ct_val,
+    func,
 };
 
 pub const Variant = struct {
     type: VariantType,
 
-    /// Back link to the root template.
-    /// Can be used to check what template the symbol comes from. Also used for pushing the variant context.
-    root_template: *Template,
-
     /// Owned args. Can be used to print params along with the template type.
     args: []const cy.Value,
 
     data: union {
-        sym: *Sym,
-        ct_val: cy.Value,
+        sym: struct {
+            /// Back link to the template.
+            /// Can be used to check what template the symbol comes from. Also used for pushing the variant context.
+            template: *Template,
+            sym: *Sym,
+        },
+        ct_val: struct {
+            template: *Template,
+            ct_val: cy.Value,
+        },
+        func: struct {
+            template: *FuncTemplate,
+            func: *cy.Func,
+        },
     },
+
+    pub fn getSymTemplate(self: *Variant) *Template {
+        return self.data.sym.template;
+    }
 };
 
 fn deinitVariant(vm: *cy.VM, variant: *Variant) void {
@@ -671,7 +684,7 @@ fn deinitVariant(vm: *cy.VM, variant: *Variant) void {
     }
     vm.alloc.free(variant.args);
     if (variant.type == .ct_val) {
-        vm.release(variant.data.ct_val);
+        vm.release(variant.data.ct_val.ct_val);
     }
 }
 
@@ -996,23 +1009,14 @@ pub const Chunk = extern struct {
     }
 };
 
-pub const FuncVariant = struct {
-    /// Owned args. Can be used to print params along with the template func.
-    args: []const cy.Value,
-
-    template: *FuncTemplate,
-
-    func: *Func,
-};
-
 pub const FuncTemplate = struct {
     sig: cy.sema.FuncSigId,
 
     params: []const FuncTemplateParam,
 
     /// Template args to variant. Keys are not owned.
-    variant_cache: std.HashMapUnmanaged([]const cy.Value, *FuncVariant, VariantKeyContext, 80),
-    variants: std.ArrayListUnmanaged(*FuncVariant),
+    variant_cache: std.HashMapUnmanaged([]const cy.Value, *Variant, VariantKeyContext, 80),
+    variants: std.ArrayListUnmanaged(*Variant),
 
     pub fn deinit(self: *FuncTemplate, alloc: std.mem.Allocator) void {
         for (self.variants.items) |variant| {
@@ -1060,7 +1064,7 @@ pub const Func = struct {
         },
         template: *FuncTemplate,
     },
-    variant: ?*FuncVariant,
+    variant: ?*Variant,
     reqCallTypeCheck: bool,
     numParams: u8,
 
@@ -1072,6 +1076,10 @@ pub const Func = struct {
 
     /// Whether it has already emitted IR.
     emitted: bool,
+
+    /// Whether this func's static dependencies have also been resolved and emitted.
+    /// This is useful for comptime evaluation to check whether it needs to compile deps.
+    emitted_deps: bool = false,
 
     pub fn deinit(self: *Func, alloc: std.mem.Allocator) void {
         if (self.type == .template and self.isResolved()) {
@@ -1692,37 +1700,38 @@ pub fn writeSymName(s: *cy.Sema, w: anytype, sym: *cy.Sym, config: SymFormatConf
 
     if (config.emit_template_args) {
         if (sym.getVariant()) |variant| {
-            if (variant.root_template == s.option_tmpl) {
+            const template = variant.getSymTemplate();
+            if (template == s.option_tmpl) {
                 try w.writeAll("?");
                 const arg = variant.args[0].asHeapObject();
                 try s.writeTypeName(w, arg.type.type, config.from);
                 return;
-            } else if (variant.root_template == s.pointer_tmpl) {
+            } else if (template == s.pointer_tmpl) {
                 try w.writeAll("*");
                 const arg = variant.args[0].asHeapObject();
                 try s.writeTypeName(w, arg.type.type, config.from);
                 return;
-            } else if (variant.root_template == s.ptr_slice_tmpl) {
+            } else if (template == s.ptr_slice_tmpl) {
                 try w.writeAll("[*]");
                 const arg = variant.args[0].asHeapObject();
                 try s.writeTypeName(w, arg.type.type, config.from);
                 return;
-            } else if (variant.root_template == s.ref_slice_tmpl) {
+            } else if (template == s.ref_slice_tmpl) {
                 try w.writeAll("[]");
                 const arg = variant.args[0].asHeapObject();
                 try s.writeTypeName(w, arg.type.type, config.from);
                 return;
-            } else if (variant.root_template == s.func_ptr_tmpl) {
+            } else if (template == s.func_ptr_tmpl) {
                 try w.writeAll("func");
                 const sig: cy.sema.FuncSigId = @intCast(variant.args[0].asBoxInt());
                 try s.writeFuncSigStr(w, sig, config.from);
                 return;
-            } else if (variant.root_template == s.func_union_tmpl) {
+            } else if (template == s.func_union_tmpl) {
                 try w.writeAll("Func");
                 const sig: cy.sema.FuncSigId = @intCast(variant.args[0].asBoxInt());
                 try s.writeFuncSigStr(w, sig, config.from);
                 return;
-            } else if (variant.root_template == s.func_sym_tmpl) {
+            } else if (template == s.func_sym_tmpl) {
                 try w.writeAll("funcsym");
                 const sig: cy.sema.FuncSigId = @intCast(variant.args[0].asBoxInt());
                 try s.writeFuncSigStr(w, sig, config.from);
@@ -1790,7 +1799,7 @@ fn writeLocalTemplateArgs(s: *cy.Sema, w: anytype, variant: *cy.sym.Variant, con
     }
 }
 
-fn writeLocalFuncTemplateArgs(s: *cy.Sema, w: anytype, variant: *cy.sym.FuncVariant, config: SymFormatConfig) !void {
+fn writeLocalFuncTemplateArgs(s: *cy.Sema, w: anytype, variant: *cy.sym.Variant, config: SymFormatConfig) !void {
     const args = variant.args;
     if (args[0].getTypeId() != bt.Type) {
         return error.Unsupported;

@@ -127,8 +127,8 @@ pub const VM = struct {
     type_method_map: std.HashMapUnmanaged(rt.TypeMethodKey, rt.FuncGroupId, cy.hash.KeyU64Context, 80),
 
     /// Regular function symbol table.
-    /// TODO: The only reason this exists right now is for FFI to dynamically set binded functions to empty static functions.
-    ///       Once func types, and var func pointers are done this can be removed.
+    /// During codegen function calls only depend on a reserved runtime func id.
+    /// The callee can then be generated later or by a separate chunk worker.
     funcSyms: cy.List(rt.FuncSymbol),
     funcSymDetails: cy.List(rt.FuncSymDetail),
 
@@ -3147,7 +3147,7 @@ fn zPopFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, retValue: Val
 fn zFutureValue(vm: *cy.VM, mb_future: Value) callconv(.C) vmc.Value {
     const type_s = vm.c.types[mb_future.getTypeId()].sym;
     if (type_s.getVariant()) |variant| {
-        if (variant.root_template == vm.sema.future_tmpl) {
+        if (variant.getSymTemplate() == vm.sema.future_tmpl) {
             const future = mb_future.castHostObject(*cy.heap.Future);
             vm.retain(future.val);
             return @bitCast(future.val);
@@ -3160,7 +3160,7 @@ fn zFutureValue(vm: *cy.VM, mb_future: Value) callconv(.C) vmc.Value {
 fn zAwait(vm: *cy.VM, value: Value) callconv(.C) vmc.ResultCode {
     const type_s = vm.c.types[value.getTypeId()].sym;
     if (type_s.getVariant()) |variant| {
-        if (variant.root_template == vm.sema.future_tmpl) {
+        if (variant.getSymTemplate() == vm.sema.future_tmpl) {
             const future = value.castHostObject(*cy.heap.Future);
             if (future.completed) {
                 // Continue if completed Future.

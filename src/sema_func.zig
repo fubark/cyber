@@ -307,7 +307,7 @@ fn inferCtArgs(c: *cy.Chunk, arg_t: cy.TypeId, infer_t: cy.TypeId) !bool {
     };
 
     const infer_variant = infer_e.sym.getVariant().?;
-    if (variant.root_template != infer_variant.root_template) {
+    if (variant.getSymTemplate() != infer_variant.getSymTemplate()) {
         // Parent templates don't match.
         return false;
     }
@@ -351,7 +351,7 @@ fn inferCtArgValues(c: *cy.Chunk, arg: cy.Value, infer: cy.Value) !bool {
     };
 
     const infer_variant = infer_e.sym.getVariant().?;
-    if (variant.root_template != infer_variant.root_template) {
+    if (variant.getSymTemplate() != infer_variant.getSymTemplate()) {
         // Parent templates don't match.
         return false;
     }
@@ -420,7 +420,7 @@ fn resolveTemplateParamType2(c: *cy.Chunk, type_id: cy.TypeId, ct_arg_start: usi
 
     // Contains nested ct_infer, ct_refs.
     if (type_e.sym.getVariant()) |variant| {
-        const template = variant.root_template;
+        const template = variant.getSymTemplate();
 
         const value_start = c.valueStack.items.len;
         defer {

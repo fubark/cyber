@@ -926,4 +926,160 @@ pub const Buffer = struct {
         self.setStmtData(idx, code, data);
         return idx;
     }
+
+    pub fn visitStmt(self: *Buffer, alloc: std.mem.Allocator, loc: u32) !Visitor {
+        var new = Visitor{
+            .alloc = alloc,
+            .buf = self,
+            .node_queue = std.fifo.LinearFifo(u32, .Dynamic).init(alloc),
+            .state_queue = std.fifo.LinearFifo(VisitState, .Dynamic).init(alloc),
+        };
+        try new.node_queue.writeItem(loc);
+        try new.state_queue.writeItem(.{ .is_stmt = true });
+        return new;
+    }
+};
+
+const VisitEntry = struct {
+    loc: u32,
+    is_stmt: bool,
+};
+
+const VisitState = struct {
+    is_stmt: bool,
+};
+
+const Visitor = struct {
+    alloc: std.mem.Allocator,
+    buf: *Buffer,
+    temp_nodes: std.ArrayListUnmanaged(u32) = .{},
+    temp_states: std.ArrayListUnmanaged(VisitState) = .{},
+    node_queue: std.fifo.LinearFifo(u32, .Dynamic),
+    state_queue: std.fifo.LinearFifo(VisitState, .Dynamic),
+
+    pub fn next(self: *Visitor) !?VisitEntry {
+        if (self.node_queue.count == 0) {
+            return null;
+        }
+        const loc = self.node_queue.readItem().?;
+        const state = self.state_queue.readItem().?;
+        if (state.is_stmt) {
+            const code = self.buf.getStmtCode(loc);
+            switch (code) {
+                .funcBlock => {
+                    const data = self.buf.getStmtData(loc, .funcBlock);
+                    self.clearTemps();
+                    try self.pushStmts(data.bodyHead);
+                    try self.prependTemps();
+                },
+                .retExprStmt => {
+                    const data = self.buf.getStmtData(loc, .retExprStmt);
+                    try self.prependExpr(data.expr);
+                },
+                .exprStmt => {
+                    const data = self.buf.getStmtData(loc, .exprStmt);
+                    try self.prependExpr(data.expr);
+                },
+                .ifStmt => {
+                    const data = self.buf.getStmtData(loc, .ifStmt);
+
+                    self.clearTemps();
+                    try self.pushExpr(data.cond);
+                    try self.pushStmts(data.body_head);
+
+                    if (data.else_block != cy.NullId) {
+                        var else_loc = data.else_block;
+                        while (else_loc != cy.NullId) {
+                            const else_b = self.buf.getExprData(else_loc, .else_block);
+                            if (else_b.cond != cy.NullId) {
+                                try self.pushExpr(else_b.cond);
+                                try self.pushStmts(else_b.body_head);
+                            } else {
+                                try self.pushStmts(else_b.body_head);
+                            }
+                            else_loc = else_b.else_block;
+                        }
+                    }
+                    try self.prependTemps();
+                },
+                else => {
+                    std.debug.panic("TODO: {}", .{code});
+                }
+            }
+        } else {
+            const code = self.buf.getExprCode(loc);
+            switch (code) {
+                .call_sym => {
+                    const data = self.buf.getExprData(loc, .call_sym);
+                    const args = self.buf.getArray(data.args, u32, data.numArgs);
+                    try self.prependExprs(args);
+                },
+                .preBinOp => {
+                    const data = self.buf.getExprData(loc, .preBinOp).binOp;
+                    try self.prependExprs(&.{data.left, data.right});
+                },
+                .throw => {
+                    const data = self.buf.getExprData(loc, .throw);
+                    try self.prependExpr(data.expr);
+                },
+                .truev,
+                .falsev,
+                .float,
+                .int,
+                .errorv,
+                .string,
+                .type => {},
+                else => {
+                    std.debug.panic("TODO: {}", .{code});
+                }
+            }
+        }
+        return .{
+            .loc = loc,
+            .is_stmt = state.is_stmt,
+        };
+    }
+
+    fn prependExprs(self: *Visitor, locs: []align(1) const u32) !void {
+        for (0..locs.len) |i| {
+            try self.node_queue.unget(&.{locs[locs.len-i-1]});
+            try self.state_queue.unget(&.{.{ .is_stmt = false }});
+        }
+    }
+
+    fn prependExpr(self: *Visitor, loc: u32) !void {
+        try self.node_queue.unget(&.{ loc });
+        try self.state_queue.unget(&.{.{ .is_stmt = false }});
+    }
+
+    fn clearTemps(self: *Visitor) void {
+        self.temp_nodes.clearRetainingCapacity();
+        self.temp_states.clearRetainingCapacity();
+    }
+
+    fn prependTemps(self: *Visitor) !void {
+        try self.node_queue.unget(self.temp_nodes.items);
+        try self.state_queue.unget(self.temp_states.items);
+    }
+
+    fn pushExpr(self: *Visitor, loc: u32) !void {
+        try self.temp_nodes.append(self.alloc, loc);
+        try self.temp_states.append(self.alloc, .{ .is_stmt = false });
+    }
+
+    fn pushStmts(self: *Visitor, head: u32) !void {
+        var stmt = head;
+        while (stmt != cy.NullId) {
+            try self.temp_nodes.append(self.alloc, stmt);
+            try self.temp_states.append(self.alloc, .{ .is_stmt = true });
+            stmt = self.buf.getStmtNext(stmt);
+        }
+    }
+
+    pub fn deinit(self: *Visitor) void {
+        self.node_queue.deinit();
+        self.state_queue.deinit();
+        self.temp_nodes.deinit(self.alloc);
+        self.temp_states.deinit(self.alloc);
+    }
 };

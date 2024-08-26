@@ -3292,7 +3292,10 @@ pub fn symbol(c: *cy.Chunk, sym: *Sym, expr: Expr, prefer_ct_sym: bool) !ExprRes
             if (member.is_choice_type) {
                 return semaInitChoiceNoPayload(c, member, node);
             } else {
-                const typeId = member.payloadType;
+                var typeId = member.payloadType;
+                if (typeId == cy.NullId) {
+                    typeId = member.type;
+                }
                 const ctype = CompactType.init(typeId);
                 const irIdx = try c.ir.pushExpr(.enumMemberSym, c.alloc, typeId, node, .{
                     .type = member.type,

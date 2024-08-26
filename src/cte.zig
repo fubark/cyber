@@ -135,7 +135,7 @@ pub fn expandTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.Template, args: 
     return expandTemplate(c, template, arg_vals);
 }
 
-pub fn expandCtFuncTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.Template, args: []const *ast.Node, node: *ast.Node) !cy.Value {
+pub fn expandCtFuncTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.Template, args: []const *ast.Node, node: *ast.Node) !CtValue {
     // Accumulate compile-time args.
     const valueStart = c.valueStack.items.len;
     defer {

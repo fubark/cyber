@@ -24,7 +24,7 @@ type GenFoo[T type]:
     a T
 
 func Foo[T type] type:
-    if T == int:
+    if eqType[T, int]:
         return int
     else:
         return GenFoo[T]

@@ -7,11 +7,11 @@ func foo(a metatype) bool:
 t.eq(foo(float), true)
         
 -- From var.
-var mt = float
+var mt = metatype(float)
 t.eq(foo(mt), true)
 
 -- Cast erased type.
-mt = t.erase(float)
+mt = t.erase(metatype(float))
 t.eq(foo(mt as metatype), true)
 
 --cytest: pass

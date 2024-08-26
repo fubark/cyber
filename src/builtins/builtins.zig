@@ -49,7 +49,9 @@ const funcs = [_]C.HostFuncEntry{
     func("queueTask",      zErrFunc(queueTask)),
     func("runestr",        zErrFunc(runestr)),
     func("sizeof_",        sizeof),
-    func("typeof",         typeof),
+
+    // Compile-time funcs.
+    func("typeid_",        typeid),
 
     // bool
     func("bool.$call",     boolCall),
@@ -233,6 +235,7 @@ const funcs = [_]C.HostFuncEntry{
 
     // metatype
     func("metatype.id",        metatypeId),
+    func("metatype.$call",     metatype_call),
 
     // Future
     func("Future.complete_",   zErrFunc(Future_complete)),
@@ -773,7 +776,12 @@ pub fn sizeof(vm: *cy.VM) Value {
     }
 }
 
-pub fn typeof(vm: *cy.VM) Value {
+pub fn typeid(vm: *cy.VM) Value {
+    const val = vm.getObject(*cy.heap.Type, 0);
+    return cy.Value.initInt(@intCast(val.type));
+}
+
+pub fn metatype_call(vm: *cy.VM) Value {
     const val = vm.getValue(0);
     const typeId = val.getTypeId();
     return cy.heap.allocMetaType(vm, @intFromEnum(cy.heap.MetaTypeKind.object), typeId) catch fatal();

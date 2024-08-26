@@ -4,7 +4,7 @@
 --| Returns whether two values are equal.
 --| Panics with `error.AssertError` if types or values do not match up.
 func eq(a #T, b T) bool:
-    return eq_((T).id(), a, b)
+    return eq_(typeid[T], a, b)
 
 @host -func eq_(t int, a #T, b T) bool
 
@@ -43,7 +43,7 @@ func fail(msg String):
 --| Asserts that an error was thrown when invoking a function.
 func throws(fn any, err error):
     var res = try fn()
-    if typeof(res) != error:
+    if metatype(res) != metatype(error):
         fail('Expected error.')
     if res != err:
         fail("Expected `$(err)`, found `$(res)`.")

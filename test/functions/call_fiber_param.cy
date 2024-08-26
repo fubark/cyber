@@ -1,7 +1,7 @@
 use t 'test'
 
 func foo(a Fiber) bool:
-    return typeof(a) == Fiber
+    return metatype(a) == metatype(Fiber)
 
 func start() dyn:
     pass

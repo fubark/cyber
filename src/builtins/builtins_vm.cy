@@ -1,5 +1,9 @@
+--|
+--| Functions.
+--|
+
 func bitcast(#D type, val #S) D:
-    return bitcast_(D, (D).id(), val, (S).id())
+    return bitcast_(D, typeid[D], val, typeid[S])
 
 @host -func bitcast_(#D type, dst_t int, val #S, src_t int) D
 
@@ -41,7 +45,7 @@ func bitcast(#D type, val #S) D:
 @host func performGC() Map
 
 func ptrcast(#D type, val #S) *D:
-    return ptrcast_(D, (S).id(), val)
+    return ptrcast_(D, typeid[S], val)
 
 @host -func ptrcast_(#D type, src_t int, val #S) *D
 
@@ -57,12 +61,30 @@ func ptrcast(#D type, val #S) *D:
 @host func runestr(val int) String
 
 func sizeof(#T type) int:
-    return sizeof_((T).id())
+    return sizeof_(typeid[T])
 
 @host func sizeof_(type_id int) int
 
---| Returns the value's type as a `metatype` object.
-@host func typeof(val any) metatype
+--|
+--| Compile-time functions.
+--|
+
+--| Returns whether two types are the same.
+func eqType[T type, U type] bool:
+    return typeid[T] == typeid[U]
+
+--| Returns the type ID of a type.
+func typeid[T type] int:
+    return typeid_(T)
+
+@host func typeid_(T type) int
+
+--| Returns the type of a value at compile-time.
+--@host @comptime func typeof(val Expr) type
+
+--|
+--| Types.
+--|
 
 @host type void _
 
@@ -227,7 +249,7 @@ type float #float64_t:
 
     --| Returns a new iterator over the list elements.
     func iterator(self) ListIterator[T]:
-        return self.iterator_((ListIterator[T]).id())
+        return self.iterator_(typeid[ListIterator[T]])
 
     @host -func iterator_(self, ret_type int) ListIterator[T]
 
@@ -243,7 +265,7 @@ type float #float64_t:
     --| Resizes the list to `len` elements. If the new size is bigger, `none` values
     --| are appended to the list. If the new size is smaller, elements at the end of the list are removed.
     func resize(self, size int) void:
-        self.resize_((T).id(), size)
+        self.resize_(typeid[T], size)
 
     @host func resize_(self, elem_t int, size int) void
 
@@ -267,7 +289,7 @@ type float #float64_t:
 
 @host type ListIterator[T type] _:
     func next(self) ?T:
-        return self.next_((Option[T]).id())
+        return self.next_(typeid[Option[T]])
 
     @host func next_(self, ret_t int) ?T
 
@@ -441,7 +463,7 @@ type String _:
 
 type Array[N int, T type] array_t[N, T]:
     func $index(self, idx int) &T:
-        return self.index(N, (T).id(), idx)
+        return self.index(N, typeid[T], idx)
 
     @host -func index(self, n int, elem_t int, idx int) &T
 
@@ -473,17 +495,17 @@ type Array[N int, T type] array_t[N, T]:
 
 type pointer[T type] #int64_t:
     func $index(self, idx int) *T:
-        return self.index((T).id(), idx)
+        return self.index(typeid[T], idx)
 
     @host -func index(self, elem_t int, idx int) *T
 
     func $index(self, range Range) [*]T:
-        return self.indexRange(([*]T).id(), range)
+        return self.indexRange(typeid[[*]T], range)
 
     @host -func indexRange(self, slice_t int, range Range) [*]T
 
     func $setIndex(self, idx int, val T) void:
-        self.setIndex((T).id(), idx, val)
+        self.setIndex(typeid[T], idx, val)
 
     @host -func setIndex(self, elem_t int, idx int, val T) void
 
@@ -525,8 +547,11 @@ type Fiber _:
 type metatype _:
     @host func id(self) int
 
-func metatype.$call(#T type) metatype:
-    return T
+--| Can be used to infer from a compile-time type.
+func metatype.$call(m metatype) metatype:
+    return m
+
+@host func metatype.$call(val any) metatype
 
 @host
 type Range struct:
@@ -543,12 +568,12 @@ type Option[T type] enum:
 
 --| Returns a `Future[T]` that has a completed value.
 func Future.complete(val #T) Future[T]:
-    return Future.complete_(val, (Future[T]).id())
+    return Future.complete_(val, typeid[Future[T]])
     
 @host -func Future.complete_(val #T, ret_type int) Future[T]
 
 func Future.new(#T type) Future[T]:
-    return Future.new_(T, (Future[T]).id())
+    return Future.new_(T, typeid[Future[T]])
 
 @host -func Future.new_(#T type, ret_type int) Future[T]
 
@@ -557,7 +582,7 @@ func Future.new(#T type) Future[T]:
     @host func future(self) Future[T]
 
 func FutureResolver.new(#T type) FutureResolver[T]:
-    return FutureResolver.new_(T, (Future[T]).id(), (FutureResolver[T]).id())
+    return FutureResolver.new_(T, typeid[Future[T]], typeid[FutureResolver[T]])
 
 @host -func FutureResolver.new_(#T type, future_t int, ret_t int) FutureResolver[T]
 

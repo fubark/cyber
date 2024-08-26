@@ -1,5 +1,6 @@
 /// Using C headers as the single source of truth.
 const std = @import("std");
+const cy = @import("cyber.zig");
 const c = @cImport({
     @cInclude("include/cyber.h");
 });
@@ -123,18 +124,20 @@ pub inline fn CORE_TYPE_EXT(type_id: TypeId, get_children: GetChildrenFn, finali
         }},
     };
 }
-pub inline fn CORE_TYPE_DECL(type_id: TypeId) HostType {
-    return HostType{
-        .type = c.CL_BIND_TYPE_CORE_DECL,
-        .data = .{ .core_decl = .{
-            .type_id = type_id,
-        }},
-    };
-}
-pub inline fn DECL_TYPE(out_type_id: ?*TypeId) HostType {
+pub inline fn DECL_TYPE(type_id: TypeId) HostType {
     return HostType{
         .type = c.CL_BIND_TYPE_DECL,
         .data = .{ .decl = .{
+            .type_id = type_id,
+            .out_type_id = null,
+        }},
+    };
+}
+pub inline fn DECL_TYPE_GET(out_type_id: *TypeId) HostType {
+    return HostType{
+        .type = c.CL_BIND_TYPE_DECL,
+        .data = .{ .decl = .{
+            .type_id = NullId,
             .out_type_id = out_type_id,
         }},
     };
@@ -198,6 +201,15 @@ pub fn toStr(s: []const u8) Str {
 }
 pub const NullStr = Str{ .ptr = null, .len = 0 };
 pub const NullSlice = Slice{ .ptr = null, .len = 0};
+pub const NullId = std.math.maxInt(u32);
+
+pub const Node = c.CLNode;
+pub fn fromNode(node: Node) *cy.ast.Node {
+    return @ptrCast(@alignCast(node.ptr));
+}
+pub fn toNode(node: *cy.ast.Node) Node {
+    return Node{ .ptr = node };
+}
 
 pub const ValueSlice = c.CLValueSlice;
 pub const FuncFn = c.CLFuncFn;
@@ -250,7 +262,6 @@ pub const FuncEnumType = enum(u8) {
 
 pub const BindTypeHostObj = c.CL_BIND_TYPE_HOSTOBJ;
 pub const BindTypeCoreCustom = c.CL_BIND_TYPE_CORE_CUSTOM;
-pub const BindTypeCoreDecl = c.CL_BIND_TYPE_CORE_DECL;
 pub const BindTypeDecl = c.CL_BIND_TYPE_DECL;
 pub const BindTypeCreate = c.CL_BIND_TYPE_CREATE;
 

@@ -86,6 +86,10 @@ typedef struct CLSym {
     void* ptr;
 } CLSym;
 
+typedef struct CLNode {
+    void* ptr;
+} CLNode;
+
 typedef struct CLModule {
     void* ptr;
 } CLModule;
@@ -183,19 +187,16 @@ typedef enum {
     // Create a new object type with it's own memory layout and finalizer.
     CL_BIND_TYPE_HOSTOBJ,
 
-    // Create a new type and bind the generated type id.
+    // Use the provided declaration with a predefined or generated type id.
     CL_BIND_TYPE_DECL,
 
-    // Create a new type that has has a predefined type id.
+    // Create a new type that has a predefined type id.
     CL_BIND_TYPE_CORE_CUSTOM,
-
-    // Create a new type from the given type declaration with a predefined type id.
-    CL_BIND_TYPE_CORE_DECL,
 
     CL_BIND_TYPE_CREATE,
 } CLBindTypeKind;
 
-typedef CLSym (*CLCreateTypeFn)(CLVM* vm, CLSym mod, CLTypeId type_id);
+typedef CLSym (*CLCreateTypeFn)(CLVM* vm, CLSym mod, CLTypeId type_id, CLNode decl);
 
 // Given an object, return the pointer of an array and the number of children.
 // If there are no children, return NULL and 0 for the length.
@@ -238,10 +239,8 @@ typedef struct CLHostType {
             CLFinalizerFn finalizer;
         } hostobj;
         struct {
-            // The reserved `typeId` is used for the new type.
+            // If `CL_NULLID`, a new type id is generated and written to a non-null `out_type_id`.
             CLTypeId type_id;
-        } core_decl;
-        struct {
             CLTypeId* out_type_id;
         } decl;
         struct {

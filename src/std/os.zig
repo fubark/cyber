@@ -109,8 +109,8 @@ pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
         htype("Dir",          C.HOST_OBJECT(&cli_data.DirT, null, fs.dirFinalizer)),
         htype("DirIterator",  C.HOST_OBJECT(&cli_data.DirIterT, fs.dirIterGetChildren, fs.dirIterFinalizer)),
         htype("FFI",          C.HOST_OBJECT(&cli_data.FFIT, ffi.ffiGetChildren, ffi.ffiFinalizer)),
-        htype("CArray",       C.DECL_TYPE(&cli_data.CArrayT)),
-        htype("CDimArray",    C.DECL_TYPE(&cli_data.CDimArrayT)),
+        htype("CArray",       C.DECL_TYPE_GET(&cli_data.CArrayT)),
+        htype("CDimArray",    C.DECL_TYPE_GET(&cli_data.CDimArrayT)),
     };
 
     var config = C.ModuleConfig{

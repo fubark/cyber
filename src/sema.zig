@@ -1393,7 +1393,7 @@ fn resolveCustomTypeResult(c: *cy.Chunk, name_path: DeclNamePathResult, decl: *a
         },
         C.BindTypeCreate => {
             const type_id = try c.sema.pushType();
-            const sym = host_t.data.create.create_fn.?(@ptrCast(c.vm), name_path.parent.toC(), type_id);
+            const sym = host_t.data.create.create_fn.?(@ptrCast(c.vm), name_path.parent.toC(), type_id, C.toNode(@ptrCast(decl)));
             return cy.Sym.fromC(sym);
         },
         else => return error.Unsupported,
@@ -1590,10 +1590,10 @@ pub fn getHostTypeId(c: *cy.Chunk, type_sym: *cy.Sym, opt_name: ?[]const u8, nod
     const bind_name = opt_name orelse type_sym.name();
     if (c.host_types.get(bind_name)) |host_t| {
         switch (host_t.type) {
-            C.BindTypeCoreDecl => {
-                return host_t.data.core_decl.type_id;
-            },
             C.BindTypeDecl => {
+                if (host_t.data.decl.type_id != cy.NullId) {
+                    return host_t.data.decl.type_id;
+                }
                 const type_id = try c.sema.pushType();
                 if (host_t.data.decl.out_type_id) |out_type_id| {
                     out_type_id.* = type_id;
@@ -1627,10 +1627,17 @@ pub fn getHostTypeId(c: *cy.Chunk, type_sym: *cy.Sym, opt_name: ?[]const u8, nod
         return c.reportErrorFmt("Failed to load @host type `{}`.", &.{v(bind_name)}, node);
     }
 
-    if (host_t.type != C.BindTypeCoreDecl) {
+    if (host_t.type != C.BindTypeDecl) {
         return error.Unsupported;
     }
-    return host_t.data.core_decl.type_id;
+    if (host_t.data.decl.type_id != cy.NullId) {
+        return host_t.data.decl.type_id;
+    }
+    const type_id = try c.sema.pushType();
+    if (host_t.data.decl.out_type_id) |out_type_id| {
+        out_type_id.* = type_id;
+    }
+    return type_id;
 }
 
 pub const ResolveContext = struct {

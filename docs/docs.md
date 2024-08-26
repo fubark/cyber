@@ -2231,26 +2231,18 @@ r = foo()         -- Calls the function `random`.
 ```
 
 ### Call block syntax.
-The call block appends a lambda to a call expression's arguments:
+The call block appends a lambda to a call expression's last argument:
 ```cy
-func Button(name String, size int, on_click any):
-    return {
+func Button(name String, size int, on_click func() void) ButtonConfig:
+    return .{
         name = name,
         size = size,
         on_click = on_click,
     }
 
-Button('Count', 10) => ():
+Button('Count', 10, ():
     print 'on click'
 ```
-
-If arguments are omitted from the call expression they can be appended inside the call block using named arguments: *Planned Feature*
-```cy
-Button('Count') => ():
-    .size = 10
-    print 'on click'
-```
-Arguments assigned in the call block can be unordered.
 
 ### Piping.
 > _Planned Feature_

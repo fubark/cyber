@@ -2348,7 +2348,7 @@ pub const Parser = struct {
         });
     }
 
-    fn parseCallArg(self: *Parser) !?*ast.Node {
+    fn parseCallArg(self: *Parser, allow_block_expr: bool) !?*ast.Node {
         self.consumeWhitespaceTokens();
         const token = self.peek();
         if (token.tag() == .ident) {
@@ -2356,7 +2356,7 @@ pub const Parser = struct {
                 // Named arg.
                 _ = self.consume();
                 _ = self.consume();
-                const arg = (try self.parseExpr(.{})) orelse {
+                const arg = (try self.parseExpr(.{ .allow_block_expr = allow_block_expr })) orelse {
                     return self.reportError("Expected arg expression.", &.{});
                 };
                 return self.ast.newNodeErase(.namedArg, .{
@@ -2377,8 +2377,9 @@ pub const Parser = struct {
         defer self.node_stack.items.len = start;
 
         var has_named_arg = false;
+        var call_block = false;
         inner: {
-            var arg = (try self.parseCallArg()) orelse {
+            var arg = (try self.parseCallArg(allow_block_expr)) orelse {
                 break :inner;
             };
             try self.pushNode(arg);
@@ -2390,8 +2391,12 @@ pub const Parser = struct {
                 if (token.tag() != .comma and token.tag() != .new_line) {
                     break;
                 }
+                if (arg.type() == .lambda_multi) {
+                    call_block = true;
+                    break;
+                }
                 self.advance();
-                arg = (try self.parseCallArg()) orelse {
+                arg = (try self.parseCallArg(allow_block_expr)) orelse {
                     break;
                 };
                 try self.pushNode(arg);
@@ -2403,53 +2408,14 @@ pub const Parser = struct {
 
         hasNamedArg.* = has_named_arg;
 
-        self.consumeWhitespaceTokens();
-        if (self.peek().tag() != .right_paren) {
-            return self.reportError("Expected closing parenthesis.", &.{});
-        }
-        self.advance();
-
-        if (allow_block_expr) {
-            // Parse call block syntax.
-            const block_start = self.next_pos;
-            if (self.peek().tag() == .equal_right_angle) {
-                self.advance();
-                const params = try self.parseParenAndFuncParams();
-                if (self.peek().tag() != .colon) {
-                    return self.reportError("Expected colon.", &.{});
-                }
-                self.advance();
-
-                const child_indent = try self.parseFirstChildIndent(self.cur_indent);
-                const prev_indent = self.pushIndent(child_indent);
-                defer self.cur_indent = prev_indent;
-
-                const stmt_start = self.node_stack.items.len;
-
-                while (true) {
-                    const stmt = try self.parseStatement(.{});
-                    try self.pushNode(stmt);
-
-                    const parse_indent_start = self.next_pos;
-                    if (!try self.consumeNextLineIndent(child_indent)) {
-                        self.next_pos = parse_indent_start;
-                        break;
-                    }
-                }
-
-                const stmts = try self.ast.dupeNodes(self.node_stack.items[stmt_start..]);
-                self.node_stack.items.len = stmt_start;
-
-                const lambda = try self.ast.newNodeErase(.lambda_multi, .{
-                    .sig_t = .infer,
-                    .stmts = stmts,
-                    .params = params,
-                    .pos = self.tokenSrcPos(block_start),
-                    .ret = null,
-                });
-                try self.pushNode(lambda);
+        if (!call_block) {
+            self.consumeWhitespaceTokens();
+            if (self.peek().tag() != .right_paren) {
+                return self.reportError("Expected closing parenthesis.", &.{});
             }
+            self.advance();
         }
+
         return self.ast.dupeNodes(self.node_stack.items[start..]);
     }
 
@@ -2676,7 +2642,7 @@ pub const Parser = struct {
         }
         self.advance();
 
-        const callee = (try self.parseCallArg()) orelse {
+        const callee = (try self.parseCallArg(false)) orelse {
             return self.reportError("Expected entry function callee.", &.{});
         };
 
@@ -2685,7 +2651,7 @@ pub const Parser = struct {
         if (self.peek().tag() == .comma) {
             self.advance();
             inner: {
-                var arg = (try self.parseCallArg()) orelse {
+                var arg = (try self.parseCallArg(false)) orelse {
                     break :inner;
                 };
                 try self.pushNode(arg);
@@ -2696,7 +2662,7 @@ pub const Parser = struct {
                         break;
                     }
                     self.advance();
-                    arg = (try self.parseCallArg()) orelse {
+                    arg = (try self.parseCallArg(false)) orelse {
                         break;
                     };
                     try self.pushNode(arg);

@@ -2,7 +2,7 @@ var b = 123
 var .a = b
 
 --cytest: error
---CompileError: Could not find the symbol `b`.
+--CompileError: Undeclared variable `b`.
 --
 --main:2:10:
 --var .a = b

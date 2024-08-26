@@ -330,13 +330,13 @@ if (!aot) {
 }
     run.case("vars/local_attr_error.cy");
     run.case("vars/local_decl_infers_dyn.cy");
-    run.case("vars/local_dup_captured_error.cy");
+
     run.case("vars/local_dup_error.cy");
-    run.case("vars/local_dup_static_error.cy");
     run.case("vars/local_init_dyn_panic.cy");
     run.case("vars/local_init_error.cy");
 if (!aot) {
     run.case("vars/local_init.cy");
+    run.case("vars/local_shadow_after_ref.cy");
     run.case("vars/op_assign.cy");
 }
     run.case("vars/read_undeclared_error.cy");

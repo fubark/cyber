@@ -2840,11 +2840,7 @@ fn reserveLocalName(c: *cy.Chunk, name: []const u8, declType: TypeId, hidden: bo
         if (proc.nameToVar.get(name)) |varInfo| {
             if (varInfo.blockId == c.semaBlocks.items.len - 1) {
                 const svar = &c.varStack.items[varInfo.varId];
-                if (svar.isParentLocalAlias()) {
-                    return c.reportErrorFmt("`{}` already references a parent local variable.", &.{v(name)}, node);
-                } else if (svar.type == .staticAlias) {
-                    return c.reportErrorFmt("`{}` already references a static variable.", &.{v(name)}, node);
-                } else {
+                if (svar.type == .local) {
                     return c.reportErrorFmt("Variable `{}` is already declared in the block.", &.{v(name)}, node);
                 }
             } else {
@@ -4394,12 +4390,15 @@ pub fn lookupIdent(self: *cy.Chunk, name: []const u8, node: *ast.Node) !LookupId
             }
             return self.reportErrorFmt("Undeclared variable `{}`.", &.{v(name)}, node);
         };
-        switch (res) {
-            .static => |sym| {
-                _ = try pushStaticVarAlias(self, name, sym);
-            },
-            else => {}
-        }
+        // Caller should be responsible for caching.
+        // switch (res) {
+        //     .static => |sym| {
+        //         if (!prefer_ct_sym) {
+        //             _ = try pushStaticVarAlias(self, name, sym);
+        //         }
+        //     },
+        //     else => {}
+        // }
         return res;
     }
 }

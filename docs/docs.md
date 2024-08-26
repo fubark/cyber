@@ -2014,6 +2014,7 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
   * [Shorthand syntax.](#shorthand-syntax)
   * [Call block syntax.](#call-block-syntax)
   * [Piping.](#piping)
+  * [Compile-time call.](#compile-time-call)
 * [Function templates.](#function-templates)
   * [Explicit template call.](#explicit-template-call)
   * [Expand function.](#expand-function)
@@ -2246,6 +2247,26 @@ Button('Count', 10, ():
 
 ### Piping.
 > _Planned Feature_
+
+### Compile-time call.
+Any function can be invoked at compile-time using `#` before the arguments:
+```cy
+func fib(n int) int:
+    if n < 2:
+        return n
+    return fib(n - 1) + fib(n - 2)
+
+var res = fib#(30)
+print res         --> 832040
+```
+The result of the function call is used instead of emitting a runtime function call.
+The call arguments must be compile-time compatible values.
+
+There is no need for `#` if the caller is already in a compile-time context: *Compile-time if is planned.*
+```cy
+#if fib(30) == 832040:
+    print 'Correct result.'
+```
 
 ## Function templates.
 Function declarations can include template parameters to create a function template:

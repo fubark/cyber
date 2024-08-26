@@ -314,6 +314,7 @@ pub const CallExpr = struct {
     callee: *Node align(8),
     args: []*Node,
     hasNamedArg: bool,
+    ct: bool = false,
 };
 
 pub const ArrayLit = struct {
@@ -404,7 +405,7 @@ pub const FuncDecl = struct {
 pub const FuncParam = struct {
     name_type: *Node align(8),
     type: ?*Node,
-    ct_param: bool,
+    template: bool,
 };
 
 pub const UseAlias = struct {
@@ -785,7 +786,7 @@ pub const Node = struct {
             .funcDecl       => self.cast(.funcDecl).pos,
             .func_param     => {
                 const param = self.cast(.func_param);
-                return param.name_type.pos() - @intFromBool(param.ct_param);
+                return param.name_type.pos() - @intFromBool(param.template);
             },
             .func_type      => self.cast(.func_type).pos,
             .group          => self.cast(.group).pos,

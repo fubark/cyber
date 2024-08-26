@@ -554,7 +554,7 @@ pub const Parser = struct {
         return self.ast.newNode(.func_param, .{
             .name_type = ident,
             .type = null,
-            .ct_param = false,
+            .template = false,
         });
     }
 
@@ -605,7 +605,7 @@ pub const Parser = struct {
     }
 
     fn parseFuncParam(self: *Parser) anyerror!*ast.FuncParam {
-        var ct_param = false;
+        var template_param = false;
         var name_type: *ast.Node = undefined;
         if (self.peek().tag() == .pound) {
             self.advance();
@@ -614,7 +614,7 @@ pub const Parser = struct {
             }
             name_type = @ptrCast(try self.newSpanNode(.ident, self.next_pos));
             self.advance();
-            ct_param = true;
+            template_param = true;
         } else {
             const next = self.peek();
             if (next.tag() == .ident) {
@@ -639,7 +639,7 @@ pub const Parser = struct {
         return self.ast.newNode(.func_param, .{
             .name_type = name_type,
             .type = type_spec,
-            .ct_param = ct_param,
+            .template = template_param,
         });
     }
 
@@ -2733,6 +2733,12 @@ pub const Parser = struct {
                 },
                 .left_paren => {
                     left = @ptrCast(try self.parseCallExpression(left, config.allow_block_expr));
+                },
+                .pound => {
+                    self.advance();
+                    const call = try self.parseCallExpression(left, config.allow_block_expr);
+                    call.ct = true;
+                    left = @ptrCast(call);
                 },
                 .minus_double_dot,
                 .dot_dot,

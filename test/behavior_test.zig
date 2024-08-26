@@ -81,6 +81,8 @@ if (!aot) {
 
     run.case("functions/assign_capture_local_error.cy");
     run.case("functions/assign_error.cy");
+    run.case("functions/call_at_ct.cy");
+    run.case("functions/call_at_ct_error.cy");
     run.case("functions/call_block.cy");
 }
     run.case("functions/call_bool_param_error.cy");

@@ -421,6 +421,12 @@ pub const CtValue = struct {
 
 // TODO: Evaluate const expressions.
 pub fn resolveCtValue(c: *cy.Chunk, expr: *ast.Node) anyerror!CtValue {
+    return (try resolveCtValueOpt(c, expr)) orelse {
+        return c.reportError("Expected compile-time value.", expr);
+    };
+}
+
+pub fn resolveCtValueOpt(c: *cy.Chunk, expr: *ast.Node) anyerror!?CtValue {
     switch (expr.type()) {
         .raw_string_lit => {
             const str = c.ast.nodeString(expr);
@@ -447,45 +453,32 @@ pub fn resolveCtValue(c: *cy.Chunk, expr: *ast.Node) anyerror!CtValue {
         },
         .ident => {
             const name = c.ast.nodeString(expr);
-
-            // Look in ct context.
-            var resolve_ctx_idx = c.resolve_stack.items.len-1;
-            while (true) {
-                const ctx = c.resolve_stack.items[resolve_ctx_idx];
-                if (ctx.ct_params.size > 0) {
-                    if (ctx.ct_params.get(name)) |param| {
-                        c.vm.retain(param);
-                        return .{
-                            .type = param.getTypeId(),
-                            .value = param,
+            const res = try sema.lookupIdent(c, name, expr);
+            switch (res) {
+                .global, .local => return null,
+                .static => |sym| {
+                    if (sym.getStaticType()) |type_id| {
+                        return CtValue{
+                            .type = bt.Type,
+                            .value = try c.vm.allocType(type_id),
                         };
                     }
-                }
-                if (!ctx.has_parent_ctx) {
-                    break;
-                }
-                resolve_ctx_idx -= 1;
+                    if (sym.type == .func) {
+                        const func_sym = sym.cast(.func);
+                        if (func_sym.numFuncs == 1) {
+                            const func_t = try cy.sema.getCtFuncType(c, func_sym.first.funcSigId);
+                            return CtValue{
+                                .type = func_t,
+                                .value = try c.vm.allocFuncSym(func_t, func_sym.first),
+                            };
+                        }
+                    }
+                    return c.reportErrorFmt("Unsupported conversion to compile-time value: {}", &.{v(sym.type)}, expr);
+                },
+                .ct_value => |ct_value| {
+                    return ct_value;
+                },
             }
-
-            const sym = try sema.resolveSym(c, expr);
-            if (sym.getStaticType()) |type_id| {
-                return CtValue{
-                    .type = bt.Type,
-                    .value = try c.vm.allocType(type_id),
-                };
-            }
-
-            if (sym.type == .func) {
-                const func_sym = sym.cast(.func);
-                if (func_sym.numFuncs == 1) {
-                    const func_t = try cy.sema.getCtFuncType(c, func_sym.first.funcSigId);
-                    return CtValue{
-                        .type = func_t,
-                        .value = try c.vm.allocFuncSym(func_t, func_sym.first),
-                    };
-                }
-            }
-            return c.reportErrorFmt("Unsupported conversion to compile-time value: {}", &.{v(sym.type)}, expr);
         },
         .array_expr => {
             const array_expr = expr.cast(.array_expr);
@@ -495,11 +488,7 @@ pub fn resolveCtValue(c: *cy.Chunk, expr: *ast.Node) anyerror!CtValue {
             }
             const template = left.cast(.template);
             if (template.kind == .ct_func) {
-                const ct_val = try cte.expandCtFuncTemplateOnCallArgs(c, template, array_expr.args, expr);
-                return CtValue{
-                    .type = ct_val.getTypeId(),
-                    .value = ct_val,
-                };
+                return try cte.expandCtFuncTemplateOnCallArgs(c, template, array_expr.args, expr);
             } else {
                 const sym = try cte.expandTemplateOnCallArgs(c, template, array_expr.args, expr);
                 const typev = try c.vm.allocType(sym.getStaticType().?);

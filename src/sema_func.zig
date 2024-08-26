@@ -234,7 +234,11 @@ fn resolveRtArg(c: *cy.Chunk, arg: Argument, node: *ast.Node, opt_target_t: ?cy.
 fn matchArg(c: *cy.Chunk, arg: Argument, param: sema.FuncParam, ct_arg_start: usize, single_func: bool) !Argument {
     if (param.ct) {
         // Compile-time param.
-        const ct_value = try cte.resolveCtValue(c, arg.node);
+        const ct_value = (try cte.resolveCtValueOpt(c, arg.node)) orelse {
+            var new_arg = arg;
+            new_arg.resolve_t = .incompat;
+            return new_arg;
+        };
         if (ct_value.type != param.type) {
             c.vm.release(ct_value.value);
             var new_arg = arg;

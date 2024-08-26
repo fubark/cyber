@@ -4297,7 +4297,7 @@ fn referenceSym(c: *cy.Chunk, sym: *Sym, node: *ast.Node) !void {
     }
 }
 
-const VarLookupResult = union(enum) {
+const LookupIdentResult = union(enum) {
     global: *Sym,
     static: *Sym,
     ct_value: cte.CtValue,
@@ -4308,11 +4308,11 @@ const VarLookupResult = union(enum) {
 
 /// Static var lookup is skipped for callExpr since there is a chance it can fail on a
 /// symbol with overloaded signatures.
-pub fn getOrLookupVar(self: *cy.Chunk, name: []const u8, node: *ast.Node) !VarLookupResult {
-    if (self.semaProcs.items.len == 1 and self.isInStaticInitializer()) {
-        return (try lookupStaticVar(self, name, node)) orelse {
+pub fn lookupIdent(self: *cy.Chunk, name: []const u8, node: *ast.Node) !LookupIdentResult {
+    if (self.semaProcs.items.len == 0) {
+        return (try lookupStaticIdent(self, name, node)) orelse {
             if (self.use_global) {
-                return VarLookupResult{ .global = @ptrCast(self.compiler.global_sym.?) };
+                return LookupIdentResult{ .global = @ptrCast(self.compiler.global_sym.?) };
             }
             return self.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, node);
         };
@@ -4322,7 +4322,7 @@ pub fn getOrLookupVar(self: *cy.Chunk, name: []const u8, node: *ast.Node) !VarLo
     if (proc.nameToVar.get(name)) |varInfo| {
         const svar = self.varStack.items[varInfo.varId];
         if (svar.type == .staticAlias) {
-            return VarLookupResult{
+            return LookupIdentResult{
                 .static = svar.inner.staticAlias,
             };
         } else if (svar.isParentLocalAlias()) {
@@ -4332,14 +4332,14 @@ pub fn getOrLookupVar(self: *cy.Chunk, name: []const u8, node: *ast.Node) !VarLo
             if (self.isInStaticInitializer() and self.semaBlockDepth() == 0) {
                 return self.reportErrorFmt("Can not reference local `{}` in a static initializer.", &.{v(name)}, node);
             }
-            return VarLookupResult{
+            return LookupIdentResult{
                 .local = varInfo.varId,
             };
         } else {
             if (self.isInStaticInitializer() and self.semaBlockDepth() == 0) {
                 return self.reportErrorFmt("Can not reference local `{}` in a static initializer.", &.{v(name)}, node);
             }
-            return VarLookupResult{
+            return LookupIdentResult{
                 .local = varInfo.varId,
             };
         }
@@ -4361,13 +4361,13 @@ pub fn getOrLookupVar(self: *cy.Chunk, name: []const u8, node: *ast.Node) !VarLo
             resVar.inner.local.isParamCopied = true;
         }
         const id = try pushCapturedVar(self, name, res.varId, parentVar.vtype);
-        return VarLookupResult{
+        return LookupIdentResult{
             .local = id,
         };
     } else {
-        const res = (try lookupStaticVar(self, name, node)) orelse {
+        const res = (try lookupStaticIdent(self, name, node)) orelse {
             if (self.use_global) {
-                return VarLookupResult{ .global = @ptrCast(self.compiler.global_sym.?) };
+                return LookupIdentResult{ .global = @ptrCast(self.compiler.global_sym.?) };
             }
             return self.reportErrorFmt("Undeclared variable `{}`.", &.{v(name)}, node);
         };
@@ -4381,16 +4381,16 @@ pub fn getOrLookupVar(self: *cy.Chunk, name: []const u8, node: *ast.Node) !VarLo
     }
 }
 
-fn lookupStaticVar(c: *cy.Chunk, name: []const u8, node: *ast.Node) !?VarLookupResult {
+fn lookupStaticIdent(c: *cy.Chunk, name: []const u8, node: *ast.Node) !?LookupIdentResult {
     const res = (try getResolvedSym(c, name, node, false)) orelse {
         return null;
     };
     switch (res.type) {
         .sym => {
-            return VarLookupResult{ .static = res.data.sym };
+            return LookupIdentResult{ .static = res.data.sym };
         },
         .ct_value => {
-            return VarLookupResult{ .ct_value = res.data.ct_value };
+            return LookupIdentResult{ .ct_value = res.data.ct_value };
         },
     }
 }
@@ -6229,7 +6229,7 @@ pub const ChunkExt = struct {
         } else if (node.callee.type() == .ident) {
             const name = c.ast.nodeString(node.callee);
 
-            const varRes = try getOrLookupVar(c, name, node.callee);
+            const varRes = try lookupIdent(c, name, node.callee);
             switch (varRes) {
                 .global,
                 .local => {

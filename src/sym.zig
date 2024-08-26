@@ -1156,7 +1156,7 @@ pub const ChunkExt = struct {
             .typeAlias,
             .hostobj_t,
             .trait_t,
-            .object_t   => return bt.MetaType,
+            .object_t   => return bt.Type,
             .func => {
                 const func = sym.cast(.func);
                 if (func.numFuncs == 1) {

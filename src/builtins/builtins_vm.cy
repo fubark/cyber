@@ -202,7 +202,12 @@ type float #float64_t:
 
 @host type any _
 
-@host type type _
+@host type type _:
+    @host func id(self) int
+
+--| Return the type of a value.
+--| See `typeof` to obtain the type of an expression at compile-time.
+@host func type.$call(val any) type
 
 -- @host type ListValue[T type] struct:
 --     @host func $index(self, idx int) &T
@@ -542,16 +547,6 @@ type ExternFunc _:
 @host
 type Fiber _:
     @host func status(self) symbol
-
-@host
-type metatype _:
-    @host func id(self) int
-
---| Can be used to infer from a compile-time type.
-func metatype.$call(m metatype) metatype:
-    return m
-
-@host func metatype.$call(val any) metatype
 
 @host
 type Range struct:

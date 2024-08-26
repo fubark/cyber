@@ -116,7 +116,7 @@ t.eq(String(123.00000123), '123.00000123')
 t.eq(String(int(123)), '123')
 t.eq(String(error.foo), 'error.foo')
 t.eq(String(symbol.foo), 'symbol.foo')
-t.eq(String(float), 'metatype: float')
+t.eq(String(float), 'type: float')
 
 -- typeof()
 t.eq(typeof(true), bool)

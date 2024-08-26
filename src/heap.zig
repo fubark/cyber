@@ -138,7 +138,6 @@ pub const HeapObject = extern union {
     pointer: Pointer,
     integer: Int,
     type: Type,
-    metatype: MetaType,
 
     pub inline fn getTypeId(self: HeapObject) cy.TypeId {
         return self.head.typeId & vmc.TYPE_MASK;
@@ -186,18 +185,6 @@ pub const Type = extern struct {
     rc: u32,
     type: cy.TypeId,
 };    
-
-pub const MetaTypeKind = enum {
-    object,
-};
-
-/// MetaType needs a RC to prevent ARC cleanup of the internal type and source code.
-pub const MetaType = extern struct {
-    typeId: cy.TypeId align (8),
-    rc: u32,
-    typeKind: u32,
-    type: u32,
-};
 
 pub const Tuple = extern struct {
     typeId: cy.TypeId,
@@ -955,17 +942,6 @@ pub fn allocType(self: *cy.VM, typeId: cy.TypeId) !Value {
     obj.type = .{
         .typeId = bt.Type,
         .rc = 1,
-        .type = typeId,
-    };
-    return Value.initNoCycPtr(obj);
-}
-
-pub fn allocMetaType(self: *cy.VM, typeKind: u8, typeId: cy.TypeId) !Value {
-    const obj = try allocPoolObject(self);
-    obj.metatype = .{
-        .typeId = bt.MetaType,
-        .rc = 1,
-        .typeKind = typeKind,
         .type = typeId,
     };
     return Value.initNoCycPtr(obj);
@@ -2004,10 +1980,22 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
         if (obj.isFreed()) {
             cy.panicFmt("Double free object: {*} Should have been discovered in release op.", .{obj});
         } else {
-            const desc = vm.bufPrintValueShortStr(&cy.tempBuf, Value.initPtr(obj)) catch cy.fatal();
-            log.tracevIf(log_mem, "free type={}({s}) {*}: `{s}`", .{
-                obj.getTypeId(), vm.getTypeName(obj.getTypeId()), obj, desc,
-            });
+            if (log_free or log_mem) {
+                // Avoid printing too much details about the value here
+                // since it can be dependent on something already freed. (e.g. `type` that already has freed template args)
+                var desc: []const u8 = undefined;
+                if (obj.getTypeId() == bt.Type) {
+                    var fbuf = std.io.fixedBufferStream(&cy.tempBuf);
+                    var w = fbuf.writer();
+                    w.print("type: {s}", .{vm.sema.getTypeBaseName(obj.type.type)}) catch cy.fatal();
+                    desc = fbuf.getWritten();
+                } else {
+                    desc = vm.bufPrintValueShortStr(&cy.tempBuf, Value.initPtr(obj)) catch cy.fatal();
+                }
+                log.tracev("free type={}({s}) {*}: `{s}`", .{
+                    obj.getTypeId(), vm.getTypeName(obj.getTypeId()), obj, desc,
+                });
+            }
         }
     }
     const typeId = obj.getTypeId();
@@ -2171,9 +2159,6 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
             }
         },
         bt.Type => {
-            freePoolObject(vm, obj);
-        },
-        bt.MetaType => {
             freePoolObject(vm, obj);
         },
         else => {
@@ -2458,7 +2443,6 @@ test "heap internals." {
         }
         try t.eq(@sizeOf(Object), 16);
         try t.eq(@sizeOf(UpValue), 16);
-        try t.eq(@sizeOf(MetaType), 16);
         if (cy.hasFFI) {
             try t.eq(@sizeOf(TccState), 32);
         }

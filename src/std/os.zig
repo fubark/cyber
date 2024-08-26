@@ -322,11 +322,11 @@ fn parseArgs(vm: *cy.VM) anyerror!Value {
                 return error.InvalidArgument;
             }
             const entryType = entry.getByString("type") orelse return error.InvalidArgument;
-            if (!entryType.isObjectType(bt.MetaType)) {
+            if (!entryType.isObjectType(bt.Type)) {
                 return error.InvalidArgument;
             }
             var optType: OptionType = undefined;
-            switch (entryType.asHeapObject().metatype.type) {
+            switch (entryType.asHeapObject().type.type) {
                 bt.String => {
                     optType = .string;
                 },

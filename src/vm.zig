@@ -1623,17 +1623,9 @@ pub const VM = struct {
             bt.Map => {
                 try std.fmt.format(w, "Map ({})", .{obj.map.inner.size});
             },
-            bt.MetaType => {
-                const symType: cy.heap.MetaTypeKind = @enumFromInt(obj.metatype.type);
-                if (symType == .object) {
-                    const name = self.compiler.sema.getTypeBaseName(obj.metatype.type);
-                    try std.fmt.format(w, "metatype: {s}", .{name});
-                } else {
-                    try w.writeAll("Unknown Symbol");
-                }
-            },
             bt.Type => {
-                const name = self.compiler.sema.getTypeBaseName(obj.type.type);
+                const name = try self.sema.allocTypeName(obj.type.type);
+                defer self.alloc.free(name);
                 try std.fmt.format(w, "type: {s}", .{name});
             },
             else => {
@@ -1693,11 +1685,11 @@ fn evalCompareBool(left: Value, right: Value) bool {
                 return std.mem.eql(u8, lstr, rstr);
             }
         },
-        bt.MetaType => {
-            if (right.getTypeId() == bt.MetaType) {
-                const l = left.asHeapObject().metatype;
-                const r = right.asHeapObject().metatype;
-                return l.typeKind == r.typeKind and l.type == r.type;
+        bt.Type => {
+            if (right.getTypeId() == bt.Type) {
+                const l = left.asHeapObject().type;
+                const r = right.asHeapObject().type;
+                return l.type == r.type;
             }
         },
         else => {},
@@ -1717,13 +1709,6 @@ fn evalCompare(left: Value, right: Value) Value {
                 const lstr = left.asString();
                 const rstr = right.asString();
                 return Value.initBool(std.mem.eql(u8, lstr, rstr));
-            }
-        },
-        bt.MetaType => {
-            if (right.getTypeId() == bt.MetaType) {
-                const l = left.asHeapObject().metatype;
-                const r = right.asHeapObject().metatype;
-                return Value.initBool(l.typeKind == r.typeKind and l.type == r.type);
             }
         },
         bt.Type => {
@@ -1750,13 +1735,6 @@ fn evalCompareNot(left: cy.Value, right: cy.Value) cy.Value {
                 const lstr = left.asString();
                 const rstr = right.asString();
                 return Value.initBool(!std.mem.eql(u8, lstr, rstr));
-            }
-        },
-        bt.MetaType => {
-            if (right.getTypeId() == bt.MetaType) {
-                const l = left.asHeapObject().metatype;
-                const r = right.asHeapObject().metatype;
-                return Value.initBool(l.typeKind != r.typeKind or l.type != r.type);
             }
         },
         bt.Type => {

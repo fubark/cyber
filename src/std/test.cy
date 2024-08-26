@@ -43,7 +43,7 @@ func fail(msg String):
 --| Asserts that an error was thrown when invoking a function.
 func throws(fn any, err error):
     var res = try fn()
-    if metatype(res) != metatype(error):
+    if type(res) != error:
         fail('Expected error.')
     if res != err:
         fail("Expected `$(err)`, found `$(res)`.")

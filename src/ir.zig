@@ -496,9 +496,6 @@ pub const FuncUnion = struct {
 
 pub const Type = struct {
     typeId: TypeId,
-
-    /// Whether to emit runtime type or compile-time type.
-    ct: bool,
 };
 
 pub const CoinitCall = struct {
@@ -1022,6 +1019,7 @@ const Visitor = struct {
                     const data = self.buf.getExprData(loc, .throw);
                     try self.prependExpr(data.expr);
                 },
+                .local,
                 .truev,
                 .falsev,
                 .float,

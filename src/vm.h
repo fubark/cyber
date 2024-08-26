@@ -361,7 +361,6 @@ typedef enum {
     CodeStaticVar,
     CodeSetStaticVar,
     CodeContext,
-    CodeMetatype,
     CodeType,
     CodeEnd,
     NumCodes,
@@ -401,7 +400,7 @@ enum {
     TYPE_FIBER = 23,
     TYPE_UPVALUE = 24,
     TYPE_TCC_STATE = 25,
-    TYPE_METATYPE = 26,
+    TYPE_PLACEHOLDER3 = 26,
     TYPE_RANGE = 27,
     TYPE_TABLE = 28,
     TYPE_MEMORY = 29,
@@ -675,7 +674,6 @@ typedef union HeapObject {
     Object object;
     Trait trait;
     Range range;
-    MetaType metatype;
     Type type;
     FuncPtr func_ptr;
     FuncUnion func_union;

@@ -74,8 +74,8 @@ pub const FFI = struct {
     }
 
     fn toElemCType(self: *FFI, vm: *cy.VM, spec: Value) !CType {
-        if (spec.isObjectType(bt.MetaType)) {
-            const typeId = spec.asHeapObject().metatype.type;
+        if (spec.isObjectType(bt.Type)) {
+            const typeId = spec.asHeapObject().type.type;
             if (self.typeToCStruct.contains(typeId)) {
                 return CType{ .object = typeId };
             } else {
@@ -458,11 +458,7 @@ pub fn ffiCbind(vm: *cy.VM) anyerror!Value {
     const alloc = vm.alloc;
     const ffi = vm.getHostObject(*FFI, 0);
     const mt = vm.getValue(1).asHeapObject();
-    if (mt.metatype.typeKind != @intFromEnum(cy.heap.MetaTypeKind.object)) {
-        log.tracev("Not an object Symbol", .{});
-        return error.InvalidArgument;
-    }
-    const typeId = mt.metatype.type;
+    const typeId = mt.type.type;
     const fieldsList = &vm.getValue(2).asHeapObject().list;
 
     if (ffi.typeToCStruct.contains(typeId)) {

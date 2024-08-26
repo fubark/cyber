@@ -98,9 +98,6 @@ if (!aot) {
     run.case("functions/call_fiber_param.cy");
 }
     run.case("functions/call_float_param_error.cy");
-if (!aot) {
-    run.case("functions/call_metatype_param.cy");
-}
     run.case("functions/call_method_missing_error.cy");
 if (!aot) {
     run.case("functions/call_method_missing_panic.cy");
@@ -127,6 +124,7 @@ if (!aot) {
     run.case("functions/call_static_lambda_incompat_arg_panic.cy");
     run.case("functions/call_string_param_error.cy");
     run.case("functions/call_symbol_param_error.cy");
+    run.case("functions/call_type_param.cy");
     run.case("functions/call_typed_param.cy");
     run.case("functions/call_undeclared_error.cy");   
     run.case("functions/call_void_return_error.cy");
@@ -266,8 +264,8 @@ if (!aot) {
     run.case("meta/get_set.cy"); 
     run.case("meta/init_pair.cy"); 
     run.case("meta/init_pair_error.cy"); 
-    run.case("meta/metatype.cy");
     run.case("meta/set_panic.cy"); 
+    run.case("meta/type.cy");
 
     run.case("concurrency/fibers.cy");
     run.case("concurrency/await.cy");

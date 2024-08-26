@@ -129,8 +129,7 @@ t.eq(nc.b, 6)
 
 -- Using Object sym as a value.
 var sym = Node
-t.eq(typeof(sym), metatype)
-t.eq(String(sym), 'metatype: Node')
+t.eq(String(sym), 'type: Node')
 
 -- Dynamic variable.
 let val = t.erase(Node{value=123})

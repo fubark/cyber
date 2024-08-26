@@ -211,7 +211,7 @@ type FFI _:
     @host func bindObjPtr(self, obj any) *void
 
     --| Binds a Cyber type to a C struct.
-    @host func cbind(self, mt metatype, fields List[dyn]) void
+    @host func cbind(self, mt type, fields List[dyn]) void
 
     --| Declares a C function which will get binded to the library handle created from `bindLib`.
     @host func cfunc(self, name String, params List[dyn], ret any) void

@@ -233,9 +233,9 @@ const funcs = [_]C.HostFuncEntry{
     // Fiber
     func("Fiber.status",       fiberStatus),
 
-    // metatype
-    func("metatype.id",        metatypeId),
-    func("metatype.$call",     metatype_call),
+    // type
+    func("type.id",            type_id_),
+    func("type.$call",         zErrFunc(type_call)),
 
     // Future
     func("Future.complete_",   zErrFunc(Future_complete)),
@@ -279,7 +279,6 @@ const vm_types = [_]C.HostTypeEntry{
     htype("String",         C.CORE_TYPE(bt.String)),
     htype("ExternFunc",     C.CORE_TYPE(bt.ExternFunc)),
     htype("Fiber",          C.CORE_TYPE(bt.Fiber)),
-    htype("metatype",       C.CORE_TYPE(bt.MetaType)),
     htype("Range",          C.DECL_TYPE(bt.Range)),
     htype("TccState",       C.CORE_TYPE(bt.TccState)),
     htype("Future",         C.HOST_OBJECT(null, futureGetChildren, null)),
@@ -781,10 +780,15 @@ pub fn typeid(vm: *cy.VM) Value {
     return cy.Value.initInt(@intCast(val.type));
 }
 
-pub fn metatype_call(vm: *cy.VM) Value {
+pub fn type_call(vm: *cy.VM) !Value {
     const val = vm.getValue(0);
     const typeId = val.getTypeId();
-    return cy.heap.allocMetaType(vm, @intFromEnum(cy.heap.MetaTypeKind.object), typeId) catch fatal();
+    return cy.heap.allocType(vm, typeId);
+}
+
+fn type_id_(vm: *cy.VM) Value {
+    const obj = vm.getObject(*cy.heap.Type, 0);
+    return Value.initInt(obj.type);
 }
 
 pub fn listFinalizer(vm_: ?*C.VM, obj: ?*anyopaque) callconv(.C) void {
@@ -1250,11 +1254,6 @@ fn Future_complete(vm: *cy.VM) anyerror!Value {
     future.castHostObject(*cy.heap.Future).val = value;
     future.castHostObject(*cy.heap.Future).completed = true;
     return future;
-}
-
-fn metatypeId(vm: *cy.VM) Value {
-    const obj = vm.getObject(*cy.heap.MetaType, 0);
-    return Value.initInt(obj.type);
 }
 
 fn pointerAsObject(vm: *cy.VM) Value {

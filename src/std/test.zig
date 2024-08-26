@@ -192,9 +192,9 @@ fn eq2(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) bool {
                     return false;
                 }
             },
-            bt.MetaType => {
-                const actv = act.asHeapObject().metatype;
-                const expv = exp.asHeapObject().metatype;
+            bt.Type => {
+                const actv = act.asHeapObject().type;
+                const expv = exp.asHeapObject().type;
                 if (std.meta.eql(actv, expv)) {
                     return true;
                 } else {

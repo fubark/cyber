@@ -987,7 +987,7 @@ fn reserveCoreTypes(self: *Compiler) !void {
         bt.Fiber,
         bt.UpValue,
         bt.TccState,
-        bt.MetaType,
+        bt.Placeholder3,
         bt.Range,
         bt.Table,
         bt.Memory,

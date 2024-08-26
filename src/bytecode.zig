@@ -717,12 +717,6 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const dst = pc[5].val;
             len += try fmt.printCount(w, "%{} = type(id={})", &.{v(dst), v(type_id)});
         },
-        .metatype => {
-            const sym_t = pc[1].val;
-            const sym_id = @as(*const align(1) u32, @ptrCast(pc + 2)).*;
-            const dst = pc[6].val;
-            len += try fmt.printCount(w, "%{} = metatype(kind={}, sym={})", &.{v(dst), v(sym_t), v(sym_id)});
-        },
         .addr_local => {
             const local = pc[1].val;
             const up_struct = pc[2].val == 1;
@@ -1069,8 +1063,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             return 6 + num_fields;
         },
         .trait,
-        .coinit,
-        .metatype => {
+        .coinit => {
             return 7;
         },
         .forRangeInit => {
@@ -1316,7 +1309,6 @@ pub const OpCode = enum(u8) {
 
     /// Allocates a symbol object to a destination local.
     /// [symType] [symId] [dst]
-    metatype = vmc.CodeMetatype,
     type = vmc.CodeType,
 
     cast = vmc.CodeCast,

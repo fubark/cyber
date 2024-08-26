@@ -6,7 +6,7 @@ t.eq(123, 234)
 --panic: error.AssertError
 --
 --test:7:12 eq:
---    return eq_((T).id(), a, b)
+--    return eq_(typeid[T], a, b)
 --           ^
 --main:3:3 main:
 --t.eq(123, 234)

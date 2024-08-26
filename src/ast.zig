@@ -560,14 +560,14 @@ pub const SeqDestructure = struct {
     pos: u32,
 };
 
-const Specialization = struct {
+pub const Specialization = struct {
     args: []*Node align(8),
-    decl: *Node,
+    child_decl: *Node,
 };
 
 pub const TemplateDecl = struct {
     params: []*FuncParam align(8),
-    decl: *Node,
+    child_decl: *Node,
 };
 
 pub const Range = struct {
@@ -818,7 +818,7 @@ pub const Node = struct {
             .runeLit        => self.cast(.runeLit).pos,
             .seqDestructure => self.cast(.seqDestructure).pos,
             .semaSym        => cy.NullId,
-            .specialization => self.cast(.specialization).decl.pos(),
+            .specialization => self.cast(.specialization).child_decl.pos(),
             .staticDecl     => self.cast(.staticDecl).pos,
             .stringLit      => self.cast(.stringLit).pos,
             .stringTemplate => self.cast(.stringTemplate).parts[0].pos(),
@@ -827,7 +827,7 @@ pub const Node = struct {
             .switchStmt     => self.cast(.switchStmt).pos,
             .symbol_lit     => self.cast(.symbol_lit).pos,
             .table_decl     => self.cast(.table_decl).pos,
-            .template       => self.cast(.template).decl.pos(),
+            .template       => self.cast(.template).child_decl.pos(),
             .throwExpr      => self.cast(.throwExpr).pos,
             .trait_decl     => self.cast(.trait_decl).pos,
             .trueLit        => self.cast(.trueLit).pos,
@@ -1104,10 +1104,10 @@ pub const AstView = struct {
                 return self.nodeString(n.cast(.use_alias).name);
             },
             .template => {
-                return self.declNamePath(n.cast(.template).decl);
+                return self.declNamePath(n.cast(.template).child_decl);
             },
             .specialization => {
-                return self.declNamePath(n.cast(.specialization).decl);
+                return self.declNamePath(n.cast(.specialization).child_decl);
             },
             .staticDecl => {
                 return self.getNamePathInfo(n.cast(.staticDecl).name).name_path;

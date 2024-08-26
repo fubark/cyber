@@ -800,14 +800,14 @@ pub const Parser = struct {
             const args = try self.parseArrayLiteral2();
             return self.ast.newNodeErase(.specialization, .{
                 .args = args,
-                .decl = undefined,
+                .child_decl = undefined,
             });
         } else {
             self.advance();
             const params = try self.parseFuncParams(&.{}, true);
             return self.ast.newNodeErase(.template, .{
                 .params = params,
-                .decl = undefined,
+                .child_decl = undefined,
             });
         }
     }
@@ -866,9 +866,9 @@ pub const Parser = struct {
 
         if (opt_template) |template| {
             if (template.type() == .specialization) {
-                template.cast(.specialization).decl = decl;
+                template.cast(.specialization).child_decl = decl;
             } else {
-                template.cast(.template).decl = decl;
+                template.cast(.template).child_decl = decl;
             }
             return template;
         } else {
@@ -1237,7 +1237,7 @@ pub const Parser = struct {
             const args = try self.parseArrayLiteral2();
             opt_template = try self.ast.newNodeErase(.specialization, .{
                 .args = args,
-                .decl = undefined,
+                .child_decl = undefined,
             });
             try self.staticDecls.append(self.alloc, @ptrCast(opt_template));
             self.consumeWhitespaceTokens();
@@ -1285,9 +1285,9 @@ pub const Parser = struct {
 
         if (opt_template) |template| {
             if (template.type() == .specialization) {
-                template.cast(.specialization).decl = @ptrCast(decl);
+                template.cast(.specialization).child_decl = @ptrCast(decl);
             } else {
-                template.cast(.template).decl = @ptrCast(decl);
+                template.cast(.template).child_decl = @ptrCast(decl);
             }
             return template;
         } else {

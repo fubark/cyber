@@ -215,15 +215,20 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn declareTemplate(c: *cy.Chunk, parent: *cy.Sym, name: []const u8,
-        sigId: cy.sema.FuncSigId, is_root: bool, params: []cy.sym.TemplateParam, kind: cy.sym.TemplateType,
-        child_decl: *ast.Node, decl: *ast.TemplateDecl) !*cy.sym.Template {
+    pub fn reserveTemplate(c: *cy.Chunk, parent: *cy.Sym, name: []const u8,
+        is_root: bool, kind: cy.sym.TemplateType, decl: *ast.TemplateDecl) !*cy.sym.Template {
 
-        const sym = try c.createTemplate(parent, name, sigId, is_root, params, kind, child_decl);
+        const sym = try c.createTemplate(parent, name, is_root, kind, decl);
         const mod = parent.getMod().?;
         try addUniqueSym(c, mod, name, @ptrCast(sym), @ptrCast(decl));
         return sym;
     }
+
+    pub fn resolveTemplate(c: *cy.Chunk, sym: *cy.sym.Template, sig: sema.FuncSigId, params: []cy.sym.TemplateParam) !void {
+        _ = c;
+        sym.sigId = sig;
+        sym.params = params;
+    } 
 
     pub fn declareEnumMember(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, typeId: types.TypeId,
         is_choice_type: bool, val: u32, payloadType: cy.TypeId, decl: *ast.EnumMember) !*cy.sym.EnumMember {

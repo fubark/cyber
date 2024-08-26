@@ -300,7 +300,7 @@ fn genDeclEntry(vm: *cy.VM, view: ast.AstView, decl: *ast.Node, state: *ParseCyb
         .typeAliasDecl => {},
         .template => {
             const template = decl.cast(.template);
-            const child = try genDeclEntry(vm, view, template.decl, state);
+            const child = try genDeclEntry(vm, view, template.child_decl, state);
             try vm.mapSet(entry, try vm.retainOrAllocAstring("child"), child);
         },
         .funcDecl => {

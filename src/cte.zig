@@ -187,7 +187,7 @@ pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy
         res.value_ptr.* = variant;
         try root_template.variants.append(c.alloc, variant);
 
-        const new_sym = try sema.reserveTemplateVariant(c, root_template, root_template.child_decl, variant);
+        const new_sym = try sema.reserveTemplateVariant(c, root_template, root_template.decl.child_decl, variant);
         variant.data.sym = new_sym;
 
         const new_type = new_sym.getStaticType().?;

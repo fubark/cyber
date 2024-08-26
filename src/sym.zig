@@ -570,7 +570,7 @@ pub const TemplateType = enum {
 /// TODO: Consider splitting into Template and FuncTemplate.
 pub const Template = struct {
     head: Sym,
-    child_decl: *ast.Node,
+    decl: *ast.TemplateDecl,
 
     sigId: cy.sema.FuncSigId,
 
@@ -580,6 +580,9 @@ pub const Template = struct {
 
     /// Owned by root template.
     params: []TemplateParam,
+
+    /// Resolved when the template is resolved.
+    specializations: std.ArrayListUnmanaged(*ast.Specialization),
 
     /// Template args to variant. Keys are not owned.
     variant_cache: std.HashMapUnmanaged([]const cy.Value, *Variant, VariantKeyContext, 80),
@@ -602,6 +605,8 @@ pub const Template = struct {
         if (self.is_root) {
             alloc.free(self.params);
         }
+
+        self.specializations.deinit(alloc);
     }
 
     pub fn getMod(self: *Template) *cy.Module {
@@ -1399,17 +1404,17 @@ pub const ChunkExt = struct {
     }
 
     pub fn createTemplate(c: *cy.Chunk, parent: *Sym, name: []const u8,
-        sigId: cy.sema.FuncSigId, is_root: bool, params: []TemplateParam, kind: TemplateType,
-        child_decl: *ast.Node) !*Template {
+        is_root: bool, kind: TemplateType, decl: *ast.TemplateDecl) !*Template {
         const sym = try createSym(c.alloc, .template, .{
             .head = Sym.init(.template, parent, name),
             .kind = kind,
-            .child_decl = child_decl,
+            .decl = decl,
             .is_root = is_root,
-            .params = params,
-            .sigId = sigId,
+            .params = &.{},
+            .sigId = cy.NullId,
             .variant_cache = .{},
             .variants = .{},
+            .specializations = .{},
             .mod = undefined,
         });
         sym.getMod().* = cy.Module.init(c);

@@ -1253,32 +1253,28 @@ const InitFieldResult = struct {
     idx: u8,
 };
 
-pub fn declareTemplate(c: *cy.Chunk, node: *ast.TemplateDecl) !*cy.sym.Template {
-    try pushResolveContext(c);
-    getResolveContext(c).prefer_ct_type = true;
-    defer popResolveContext(c);
-
+pub fn reserveTemplate(c: *cy.Chunk, node: *ast.TemplateDecl) !*cy.sym.Template {
     var name_n: *ast.Node = undefined;
     var template_t: cy.sym.TemplateType = undefined;
-    switch (node.decl.type()) {
+    switch (node.child_decl.type()) {
         .objectDecl => {
-            name_n = node.decl.cast(.objectDecl).name.?;
+            name_n = node.child_decl.cast(.objectDecl).name.?;
             template_t = .object_t;
         },
         .structDecl => {
-            name_n = node.decl.cast(.structDecl).name.?;
+            name_n = node.child_decl.cast(.structDecl).name.?;
             template_t = .struct_t;
         },
         .enumDecl => {
-            name_n = node.decl.cast(.enumDecl).name;
+            name_n = node.child_decl.cast(.enumDecl).name;
             template_t = .enum_t;
         },
         .custom_decl => {
-            name_n = node.decl.cast(.custom_decl).name;
+            name_n = node.child_decl.cast(.custom_decl).name;
             template_t = .custom_t;
         },
         .distinct_decl => {
-            name_n = node.decl.cast(.distinct_decl).name;
+            name_n = node.child_decl.cast(.distinct_decl).name;
             template_t = .distinct_t;
         },
         else => {
@@ -1287,17 +1283,62 @@ pub fn declareTemplate(c: *cy.Chunk, node: *ast.TemplateDecl) !*cy.sym.Template 
     }
 
     const decl_path = try ensureDeclNamePath(c, @ptrCast(c.sym), name_n);
+    return c.reserveTemplate(decl_path.parent, decl_path.name.base_name, true, template_t, node);
+}
+
+pub fn resolveTemplate(c: *cy.Chunk, sym: *cy.sym.Template) !void {
+    try pushResolveContext(c);
+    getResolveContext(c).prefer_ct_type = true;
+    defer popResolveContext(c);
 
     var sigId: FuncSigId = undefined;
-    const is_root = decl_path.parent.type != .template;
-    var params: []cy.sym.TemplateParam = undefined;
-    if (is_root) {
-        params = try resolveTemplateSig(c, node.params, &sigId);
-    } else {
-        params = decl_path.parent.cast(.template).params;
-        sigId = decl_path.parent.cast(.template).sigId;
+    const params = try resolveTemplateSig(c, sym.decl.params, &sigId);
+    try c.resolveTemplate(sym, sigId, params);
+
+    // Resolve specializations.
+    for (sym.specializations.items) |decl| {
+        try sema.pushResolveContext(c);
+        defer sema.popResolveContext(c);
+
+        // TODO: Check that specialization doesn't exist already.
+
+        // Get CT template args.
+        const typeStart = c.typeStack.items.len;
+        const valueStart = c.valueStack.items.len;
+        defer {
+            c.typeStack.items.len = typeStart;
+
+            // Values need to be released.
+            const values = c.valueStack.items[valueStart..];
+            for (values) |val| {
+                c.vm.release(val);
+            }
+            c.valueStack.items.len = valueStart;
+        }
+        try cy.cte.pushNodeValues(c, decl.args);
+        const arg_types = c.typeStack.items[typeStart..];
+        const args = c.valueStack.items[valueStart..];
+
+        // Check against template signature.
+        if (!cy.types.isTypeFuncSigCompat(c.compiler, @ptrCast(arg_types), .not_void, sym.sigId)) {
+            return error.IncompatSig;
+        }
+
+        const args_dupe = try c.alloc.dupe(cy.Value, args);
+        for (args_dupe) |arg| {
+            c.vm.retain(arg);
+        }
+
+        const variant = try c.alloc.create(cy.sym.Variant);
+        variant.* = .{
+            .type = .specialization,
+            .root_template = sym,
+            .args = args_dupe,
+            .data = .{ .specialization = decl.child_decl },
+        };
+        try sym.variant_cache.putContext(c.alloc, args_dupe, variant, .{ .sema = c.sema });
+        try sym.variants.append(c.alloc, variant);
     }
-    return c.declareTemplate(decl_path.parent, decl_path.name.base_name, sigId, is_root, params, template_t, node.decl, node);
 }
 
 /// Explicit `decl` for specialization declarations.
@@ -1748,27 +1789,27 @@ pub fn reserveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, opt_head
 
     switch (template.kind) {
         .object_t => {
-            const object_t = try c.createObjectType(@ptrCast(c.sym), name, @ptrCast(template.child_decl));
+            const object_t = try c.createObjectType(@ptrCast(c.sym), name, @ptrCast(template.decl.child_decl));
             object_t.variant = variant;
 
-            const header_decl = opt_header_decl orelse template.child_decl;
+            const header_decl = opt_header_decl orelse template.decl.child_decl;
             const type_id = try resolveTypeIdFromDecl(c, @ptrCast(object_t), header_decl.cast(.objectDecl).attrs, header_decl);
             try resolveObjectTypeId(c, object_t, type_id);
 
             return @ptrCast(object_t);
         },
         .struct_t => {
-            const struct_t = try c.createStructType(@ptrCast(c.sym), name, false, @ptrCast(template.child_decl));
+            const struct_t = try c.createStructType(@ptrCast(c.sym), name, false, @ptrCast(template.decl.child_decl));
             struct_t.variant = variant;
 
-            const header_decl = opt_header_decl orelse template.child_decl;
+            const header_decl = opt_header_decl orelse template.decl.child_decl;
             const type_id = try resolveTypeIdFromDecl(c, @ptrCast(struct_t), header_decl.cast(.structDecl).attrs, header_decl);
             try resolveStructTypeId(c, struct_t, type_id);
 
             return @ptrCast(struct_t);
         },
         .custom_t => {
-            const header_decl = opt_header_decl orelse template.child_decl;
+            const header_decl = opt_header_decl orelse template.decl.child_decl;
 
             try pushVariantResolveContext(tchunk, variant);
             defer popResolveContext(tchunk);
@@ -1783,7 +1824,7 @@ pub fn reserveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, opt_head
             return custom_t;
         },
         .enum_t => {
-            const decl = template.child_decl.cast(.enumDecl);
+            const decl = template.decl.child_decl.cast(.enumDecl);
             const sym = try c.createEnumType(@ptrCast(c.sym), name, decl.isChoiceType, decl);
             sym.variant = variant;
             if (template == c.sema.option_tmpl) {
@@ -1792,11 +1833,11 @@ pub fn reserveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, opt_head
             return @ptrCast(sym);
         },
         .distinct_t => {
-            const decl = template.child_decl.cast(.distinct_decl);
+            const decl = template.decl.child_decl.cast(.distinct_decl);
             const sym = try c.createDistinctType(@ptrCast(c.sym), name, decl);
             sym.variant = variant;
 
-            const header_decl = opt_header_decl orelse template.child_decl;
+            const header_decl = opt_header_decl orelse template.decl.child_decl;
             const type_id = try resolveTypeIdFromDecl(c, @ptrCast(sym), header_decl.cast(.distinct_decl).attrs, header_decl);
             try resolveDistinctTypeId(c, sym, type_id);
 
@@ -1817,12 +1858,12 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
     switch (sym.type) {
         .object_t => {
             const object_t = sym.cast(.object_t);
-            try resolveObjectLikeType(tchunk, @ptrCast(sym), template.child_decl.cast(.objectDecl));
+            try resolveObjectLikeType(tchunk, @ptrCast(sym), template.decl.child_decl.cast(.objectDecl));
 
             try pushVariantResolveContext(tchunk, object_t.variant.?);
             defer popResolveContext(tchunk);
 
-            const object_decl = template.child_decl.cast(.objectDecl);
+            const object_decl = template.decl.child_decl.cast(.objectDecl);
             for (object_decl.funcs) |func_n| {
                 const func = try reserveNestedFunc(tchunk, @ptrCast(object_t), func_n, true);
                 // func.sym.?.variant = object_t.variant.?;
@@ -1836,7 +1877,7 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
             try pushVariantResolveContext(tchunk, hostobj_t.variant.?);
             defer popResolveContext(tchunk);
 
-            const custom_decl = template.child_decl.cast(.custom_decl);
+            const custom_decl = template.decl.child_decl.cast(.custom_decl);
 
             for (custom_decl.funcs) |func_n| {
                 const func = try reserveNestedFunc(tchunk, @ptrCast(hostobj_t), func_n, true);
@@ -1863,12 +1904,12 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
         },
         .struct_t => {
             const struct_t = sym.cast(.struct_t);
-            try resolveObjectLikeType(tchunk, @ptrCast(sym), template.child_decl.cast(.structDecl));
+            try resolveObjectLikeType(tchunk, @ptrCast(sym), template.decl.child_decl.cast(.structDecl));
 
             try pushVariantResolveContext(tchunk, struct_t.variant.?);
             defer popResolveContext(tchunk);
 
-            const struct_decl = template.child_decl.cast(.structDecl);
+            const struct_decl = template.decl.child_decl.cast(.structDecl);
             for (struct_decl.funcs) |func_n| {
                 const func = try reserveNestedFunc(tchunk, @ptrCast(struct_t), func_n, true);
                 // func.sym.?.variant = object_t.variant.?;
@@ -1879,7 +1920,7 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
         },
         .enum_t => {
             const enum_t = sym.cast(.enum_t);
-            try resolveEnumType(tchunk, enum_t, @ptrCast(template.child_decl));
+            try resolveEnumType(tchunk, enum_t, @ptrCast(template.decl.child_decl));
             return sym;
         },
         .distinct_t => {
@@ -1889,7 +1930,7 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
             try pushVariantResolveContext(tchunk, distinct_t.variant.?);
             defer popResolveContext(tchunk);
 
-            const distinct_decl = template.child_decl.cast(.distinct_decl);
+            const distinct_decl = template.decl.child_decl.cast(.distinct_decl);
             for (distinct_decl.funcs) |func_n| {
                 const func = try reserveNestedFunc(tchunk, new_sym, func_n, true);
                 // func.sym.?.variant = object_t.variant.?;
@@ -1903,7 +1944,7 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
             try pushVariantResolveContext(tchunk, type_sym.variant.?);
             defer popResolveContext(tchunk);
 
-            const custom_decl = template.child_decl.cast(.custom_decl);
+            const custom_decl = template.decl.child_decl.cast(.custom_decl);
 
             for (custom_decl.funcs) |func_n| {
                 const func = try reserveNestedFunc(tchunk, @ptrCast(type_sym), func_n, true);

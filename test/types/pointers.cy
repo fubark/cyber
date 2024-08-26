@@ -54,4 +54,13 @@ test.eq(ptr.addr(), 3735928559)
 var foo_ptr *Foo = *.{a=123}
 test.eq(foo_ptr.a, 123)
 
+-- Infer pointer slice child type.
+var foo_slice [*]Foo = *.{
+    .{a=123},
+    .{a=234},
+}
+test.eq(foo_slice.len(), 2)
+test.eq(foo_slice[0].a, 123)
+test.eq(foo_slice[1].a, 234)
+
 --cytest: pass

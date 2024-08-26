@@ -5836,6 +5836,19 @@ pub const ChunkExt = struct {
 
                         c.ir.setExprData(loc, .list, .{ .nargs = @intCast(nargs), .args = args_loc });
                         return ExprResult.initStatic(loc, expr.target_t);
+                    } else if (variant.root_template == c.sema.array_tmpl) {
+                        const elem_t = variant.args[1].asHeapObject().type.type;
+
+                        const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, init_lit.args.len);
+                        for (init_lit.args, 0..) |arg, i| {
+                            const res = try c.semaExprTarget(arg, elem_t);
+                            c.ir.setArrayItem(args_loc, u32, i, res.irIdx);
+                        }
+
+                        const final_arr_t = try getArrayType(c, init_lit.args.len, elem_t);
+                        const loc = try c.ir.pushEmptyExpr(.array, c.alloc, ir.ExprType.init(final_arr_t), node);
+                        c.ir.setExprData(loc, .array, .{ .nargs = @intCast(init_lit.args.len), .args = args_loc });
+                        return ExprResult.initStatic(loc, final_arr_t);
                     }
                 }
 
@@ -6419,7 +6432,27 @@ pub const ChunkExt = struct {
         return ExprResult.initStatic(irIdx, ref_t);
     }
 
-    pub fn semaArrayRefSlice(c: *cy.Chunk, arr: ExprResult, node: *ast.Node) !ExprResult{
+    pub fn semaArrayPtrSlice(c: *cy.Chunk, arr: ExprResult, node: *ast.Node) !ExprResult {
+        const array_t = c.sema.getType(arr.type.id);
+        const elem_t = array_t.data.array.elem_t;
+        const slice_t = try getPtrSliceType(c, elem_t);
+        const ptr_t = try getPointerType(c, elem_t);
+
+        var b: ObjectBuilder = .{ .c = c };
+        try b.begin(slice_t, 2, node);
+        var loc = try c.ir.pushExpr(.address_of, c.alloc, ptr_t, node, .{
+            .expr = arr.irIdx,
+        });
+        b.pushArg(ExprResult.initStatic(loc, ptr_t));
+
+        const len = try semaInt(c, @intCast(array_t.data.array.n), node);
+        b.pushArg(len);
+        loc = b.end();
+
+        return ExprResult.initStatic(loc, slice_t);
+    }
+
+    pub fn semaArrayRefSlice(c: *cy.Chunk, arr: ExprResult, node: *ast.Node) !ExprResult {
         const array_t = c.sema.getType(arr.type.id);
         const elem_t = array_t.data.array.elem_t;
         const slice_t = try getRefSliceType(c, elem_t);
@@ -6450,6 +6483,11 @@ pub const ChunkExt = struct {
                 if (variant.root_template == c.sema.pointer_tmpl) {
                     const child_t = variant.args[0].castHeapObject(*cy.heap.Type).type;
                     child_cstr.target_t = child_t;
+                } else if (variant.root_template == c.sema.ptr_slice_tmpl) {
+                    const child_t = variant.args[0].castHeapObject(*cy.heap.Type).type;
+                    // Pick an arbitrary array size for inferred type.
+                    const array_t = try getArrayType(c, 1, child_t);
+                    child_cstr.target_t = array_t;
                 }
             }
         }
@@ -6462,6 +6500,11 @@ pub const ChunkExt = struct {
         if (child.resType == .local) {
             // Ensure lifted var so pointer doesn't get invalidated from stack resizing.
             try ensureLiftedVar(c, child.data.local);
+        }
+
+        const child_te = c.sema.getType(child.type.id);
+        if (child_te.kind == .array) {
+            return semaArrayPtrSlice(c, child, expr.node);
         }
 
         const ptr_t = try getPointerType(c, child.type.id);
@@ -7548,6 +7591,13 @@ pub fn getPointerType(c: *cy.Chunk, elem_t: cy.TypeId) !cy.TypeId {
     return sym.getStaticType().?;
 }
 
+pub fn getPtrSliceType(c: *cy.Chunk, elem_t: cy.TypeId) !cy.TypeId {
+    const arg = try c.vm.allocType(elem_t);
+    defer c.vm.release(arg);
+    const sym = try cte.expandTemplate(c, c.sema.ptr_slice_tmpl, &.{ arg });
+    return sym.getStaticType().?;
+}
+
 pub fn getRefType(c: *cy.Chunk, elem_t: cy.TypeId) !cy.TypeId {
     const arg = try c.vm.allocType(elem_t);
     defer c.vm.release(arg);
@@ -7587,5 +7637,14 @@ pub fn getCtFuncType(c: *cy.Chunk, sig: FuncSigId) !cy.TypeId {
     const arg = try c.vm.allocFuncSig(sig);
     defer c.vm.release(arg);
     const sym = try cte.expandTemplate(c, c.sema.func_sym_tmpl, &.{ arg });
+    return sym.getStaticType().?;
+}
+
+pub fn getArrayType(c: *cy.Chunk, n: u64, elem_t: cy.TypeId) !cy.TypeId {
+    const n_arg = try c.vm.allocInt(@bitCast(n));
+    defer c.vm.release(n_arg);
+    const elem_arg = try c.vm.allocType(elem_t);
+    defer c.vm.release(elem_arg);
+    const sym = try cte.expandTemplate(c, c.sema.array_tmpl, &.{ n_arg, elem_arg });
     return sym.getStaticType().?;
 }

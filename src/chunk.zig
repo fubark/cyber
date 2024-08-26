@@ -347,7 +347,7 @@ pub const Chunk = struct {
         }
         self.funcs.deinit(self.alloc);
 
-        // Deinit chunk syms.
+        // Deinit chunk syms. Any retained values must already be freed in case they need to reference syms.
         for (self.syms.items) |sym| {
             sym.destroy(self.vm, self.alloc);
         }
@@ -359,6 +359,7 @@ pub const Chunk = struct {
         }
         self.deferred_funcs.deinit(self.alloc);
 
+        // Free source last since nodes, syms depend on it.
         self.alloc.free(self.srcUri);
         self.parser.deinit();
         if (self.srcOwned) {

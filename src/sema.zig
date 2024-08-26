@@ -1286,7 +1286,7 @@ pub fn reserveTemplate(c: *cy.Chunk, node: *ast.TemplateDecl) !*cy.sym.Template 
     }
 
     const decl_path = try ensureDeclNamePath(c, @ptrCast(c.sym), name_n);
-    return c.reserveTemplate(decl_path.parent, decl_path.name.base_name, true, template_t, node);
+    return c.reserveTemplate(decl_path.parent, decl_path.name.base_name, template_t, node);
 }
 
 pub fn resolveTemplate(c: *cy.Chunk, sym: *cy.sym.Template) !void {

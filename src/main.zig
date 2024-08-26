@@ -241,7 +241,7 @@ fn repl(alloc: std.mem.Allocator) !void {
     }
     if (cy.TrackGlobalRC) {
         vm.deinitRtObjects();
-        vm.compiler.deinitModRetained();
+        vm.compiler.deinitValues();
         try cy.arc.checkGlobalRC(&vm);
     }
 }
@@ -299,7 +299,7 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
     }
     if (cy.TrackGlobalRC) {
         vm.deinitRtObjects();
-        vm.compiler.deinitModRetained();
+        vm.compiler.deinitValues();
         try cy.arc.checkGlobalRC(&vm);
     }
 }

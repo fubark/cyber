@@ -129,13 +129,13 @@ pub const Compiler = struct {
         try self.reinitPerRun();    
     }
 
-    pub fn deinitModRetained(self: *Compiler) void {
+    pub fn deinitValues(self: *Compiler) void {
         for (self.chunks.items) |chunk| {
             for (chunk.syms.items) |sym| {
-                sym.deinitRetained(self.vm);
+                sym.deinitValues(self.vm);
             }
             for (chunk.funcs.items) |func| {
-                func.deinitRetained(self.vm);
+                func.deinitValues(self.vm);
             }
         }
     }
@@ -155,7 +155,7 @@ pub const Compiler = struct {
         }
 
         // Retained vars are deinited first since they can depend on types/syms.
-        self.deinitModRetained();
+        self.deinitValues();
 
         // Free any remaining import tasks.
         for (self.import_tasks.items) |task| {

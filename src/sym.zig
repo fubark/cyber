@@ -79,26 +79,16 @@ pub const Sym = extern struct {
 
     /// This is mainly used at the end of execution to release values
     /// so that the global rc can be compared against 0.
-    pub fn deinitRetained(self: *Sym, vm: *cy.VM) void {
+    pub fn deinitValues(self: *Sym, vm: *cy.VM) void {
         if (self.getMod()) |mod| {
-            mod.deinitRetained(vm);
+            mod.deinitValues(vm);
         }
 
         switch (self.type) {
             .template => {
                 const template = self.cast(.template);
-
                 for (template.variants.items) |variant| {
-                    for (variant.args) |arg| {
-                        cy.arc.release(vm, arg);
-                    }
-                    vm.alloc.free(variant.args);
-                    variant.args = &.{};
-
-                    if (variant.type == .ct_val) {
-                        vm.release(variant.data.ct_val.ct_val);
-                        variant.data.ct_val.ct_val = cy.Value.Void;
-                    }
+                    deinitVariantValues(vm, variant);
                 }
             },
             else => {},
@@ -580,8 +570,6 @@ pub const Template = struct {
 
     kind: TemplateType,
 
-    is_root: bool,
-
     /// Owned by root template.
     params: []TemplateParam,
 
@@ -593,14 +581,6 @@ pub const Template = struct {
 
     pub fn getMod(self: *Template) *cy.Module {
         return @ptrCast(&self.mod);
-    }
-
-    pub fn root(self: *Template) *Template {
-        if (self.is_root) {
-            return self;
-        } else {
-            return self.head.parent.?.cast(.template).root();
-        }
     }
 
     pub fn getExpandedSymFrom(self: *Template, from_template: *Template, from: *Sym) *Sym {
@@ -629,14 +609,11 @@ fn deinitTemplate(vm: *cy.VM, template: *Template) void {
     template.getMod().deinit(vm.alloc);
 
     for (template.variants.items) |variant| {
-        deinitVariant(vm, variant);
         vm.alloc.destroy(variant);
     }
     template.variants.deinit(vm.alloc);
     template.variant_cache.deinit(vm.alloc);
-    if (template.is_root) {
-        vm.alloc.free(template.params);
-    }
+    vm.alloc.free(template.params);
 }
 
 pub const TemplateParam = struct {
@@ -678,13 +655,15 @@ pub const Variant = struct {
     }
 };
 
-fn deinitVariant(vm: *cy.VM, variant: *Variant) void {
+fn deinitVariantValues(vm: *cy.VM, variant: *Variant) void {
     for (variant.args) |arg| {
         vm.release(arg);
     }
     vm.alloc.free(variant.args);
+    variant.args = &.{};
     if (variant.type == .ct_val) {
         vm.release(variant.data.ct_val.ct_val);
+        variant.data.ct_val.ct_val = cy.Value.Void;
     }
 }
 
@@ -1093,10 +1072,11 @@ pub const Func = struct {
         }
     }
 
-    pub fn deinitRetained(self: *Func, vm: *cy.VM) void {
+    pub fn deinitValues(self: *Func, vm: *cy.VM) void {
         if (self.type != .template) {
             return;
         }
+
         if (self.isResolved()) {
             const template = self.data.template;
 
@@ -1431,12 +1411,11 @@ pub const ChunkExt = struct {
     }
 
     pub fn createTemplate(c: *cy.Chunk, parent: *Sym, name: []const u8,
-        is_root: bool, kind: TemplateType, decl: *ast.TemplateDecl) !*Template {
+        kind: TemplateType, decl: *ast.TemplateDecl) !*Template {
         const sym = try createSym(c.alloc, .template, .{
             .head = Sym.init(.template, parent, name),
             .kind = kind,
             .decl = decl,
-            .is_root = is_root,
             .params = &.{},
             .sigId = cy.NullId,
             .variant_cache = .{},

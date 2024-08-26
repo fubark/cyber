@@ -41,7 +41,7 @@ pub const Module = struct {
         };
     }
 
-    pub fn deinitRetained(self: *Module, vm: *cy.VM) void {
+    pub fn deinitValues(self: *Module, vm: *cy.VM) void {
         if (cy.Trace and self.retainedVars.items.len > 0) {
             log.tracev("deinit retained: {}", .{self.retainedVars.items.len});
         }
@@ -208,9 +208,9 @@ pub const ChunkExt = struct {
     }
 
     pub fn reserveTemplate(c: *cy.Chunk, parent: *cy.Sym, name: []const u8,
-        is_root: bool, kind: cy.sym.TemplateType, decl: *ast.TemplateDecl) !*cy.sym.Template {
+        kind: cy.sym.TemplateType, decl: *ast.TemplateDecl) !*cy.sym.Template {
 
-        const sym = try c.createTemplate(parent, name, is_root, kind, decl);
+        const sym = try c.createTemplate(parent, name, kind, decl);
         const mod = parent.getMod().?;
         try addUniqueSym(c, mod, name, @ptrCast(sym), @ptrCast(decl));
         return sym;

@@ -32,7 +32,7 @@ export fn clCreate() *cy.VM {
 
 export fn clDeinit(vm: *cy.VM) void {
     vm.deinitRtObjects();
-    vm.compiler.deinitModRetained();
+    vm.compiler.deinitValues();
 }
 
 export fn clDestroy(vm: *cy.VM) void {

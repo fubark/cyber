@@ -986,7 +986,7 @@ pub fn ffiBindLib(vm: *cy.VM, config: BindLibConfig) !Value {
 
             const ptr_t = try cy.vm.getFuncPtrType(vm, cfunc.funcSigId);
             const funcVal = try cy.heap.allocHostFuncPtr(vm, ptr_t, func, @intCast(cfunc.params.len),
-                cfunc.funcSigId, cyState, funcSig.reqCallTypeCheck);
+                cfunc.funcSigId, cyState, funcSig.info.reqCallTypeCheck);
             try table.asHeapObject().table.set(vm, symKey, funcVal);
             vm.release(symKey);
             vm.release(funcVal);
@@ -1033,7 +1033,7 @@ pub fn ffiBindLib(vm: *cy.VM, config: BindLibConfig) !Value {
             const func = cy.ptrAlignCast(cy.ZHostFuncFn, funcPtr);
 
             const func_sig = vm.compiler.sema.getFuncSig(cfunc.funcSigId);
-            const func_sym = rt.FuncSymbol.initHostFunc(@ptrCast(func), func_sig.reqCallTypeCheck, true, func_sig.numParams(), cfunc.funcSigId);
+            const func_sym = rt.FuncSymbol.initHostFunc(@ptrCast(func), func_sig.info.reqCallTypeCheck, true, func_sig.numParams(), cfunc.funcSigId);
             const group = try vm.addFuncGroup();
             _ = try vm.addGroupFunc(group, cfunc.namez, cfunc.funcSigId, func_sym);
             try @call(.never_inline, cy.VM.setMethodGroup, .{vm, sid, cfunc.namez, group});

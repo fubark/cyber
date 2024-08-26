@@ -253,7 +253,7 @@ pub fn prepareFunc(c: *cy.Compiler, opt_group: ?rt.FuncGroupId, func: *cy.Func) 
                 log.tracev("prep func: {s}", .{symPath});
             }
             const funcSig = c.sema.getFuncSig(func.funcSigId);
-            const rtFunc = rt.FuncSymbol.initHostFunc(@ptrCast(func.data.hostFunc.ptr), funcSig.reqCallTypeCheck, func.isMethod(), funcSig.numParams(), func.funcSigId);
+            const rtFunc = rt.FuncSymbol.initHostFunc(@ptrCast(func.data.hostFunc.ptr), funcSig.info.reqCallTypeCheck, func.isMethod(), funcSig.numParams(), func.funcSigId);
             if (opt_group) |group| {
                 _ = try addGroupFunc(c, group, func, rtFunc);
             } else {

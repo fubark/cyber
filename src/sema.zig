@@ -2418,7 +2418,7 @@ pub fn resolveFunc2(c: *cy.Chunk, func: *cy.Func, has_parent_ctx: bool) !void {
 
     const sig_id = try resolveFuncSig(c, func, false);
     const sig = c.sema.getFuncSig(sig_id);
-    if (sig.is_template) {
+    if (sig.info.is_template) {
         const ct_params = getResolveContext(c).ct_params;
         try resolveToFuncTemplate(c, func, sig_id, ct_params);
         return;
@@ -6982,7 +6982,10 @@ pub const FuncParam = packed struct {
 };
 
 pub const FuncSigId = u32;
-pub const FuncSig = packed struct {
+
+/// Turning this into to packed struct fails web-lib ReleaseFast strip=true,
+/// however, it seems an inner packed struct `info` works.
+pub const FuncSig = struct {
     /// Last elem is the return type sym.
     params_ptr: [*]const FuncParam,
     ret: cy.TypeId,
@@ -6994,16 +6997,18 @@ pub const FuncSig = packed struct {
     /// If a param is not the any type.
     // isParamsTyped: bool,
 
-    /// Requires type checking if any param is not `dynamic` or `any`.
-    reqCallTypeCheck: bool,
+    info: packed struct {
+        /// Requires type checking if any param is not `dynamic` or `any`.
+        reqCallTypeCheck: bool,
 
-    is_template: bool,
+        is_template: bool,
 
-    /// Contains a param or return type that is dependent on a compile-time param.
-    ct_dep: bool,
+        /// Contains a param or return type that is dependent on a compile-time param.
+        ct_dep: bool,
 
-    /// Contains a param that infers a compile-time param.
-    ct_infer: bool,
+        /// Contains a param that infers a compile-time param.
+        ct_infer: bool,
+    },
 
     pub inline fn params(self: FuncSig) []const FuncParam {
         return self.params_ptr[0..self.params_len];
@@ -7213,10 +7218,12 @@ pub const Sema = struct {
                 .params_ptr = new.ptr,
                 .params_len = @intCast(new.len),
                 .ret = ret,
-                .reqCallTypeCheck = reqCallTypeCheck,
-                .is_template = is_template,
-                .ct_dep = ct_dep,
-                .ct_infer = ct_infer,
+                .info = .{
+                    .reqCallTypeCheck = reqCallTypeCheck,
+                    .is_template = is_template,
+                    .ct_dep = ct_dep,
+                    .ct_infer = ct_infer,
+                },
             });
             res.value_ptr.* = id;
             res.key_ptr.* = .{
@@ -7475,7 +7482,7 @@ test "sema internals." {
     }
 
     if (cy.is32Bit) {
-        try t.eq(@sizeOf(FuncSig), 16);
+        try t.eq(@sizeOf(FuncSig), 12);
     } else {
         try t.eq(@sizeOf(FuncSig), 16);
     }

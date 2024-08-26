@@ -588,7 +588,7 @@ export fn clNewFuncDyn(vm: *cy.VM, numParams: u32, func: c.FuncFn) Value {
 export fn clNewFunc(vm: *cy.VM, params: [*]const cy.TypeId, numParams: u32, retType: cy.TypeId, func: c.FuncFn) Value {
     const funcSigId = vm.sema.ensureFuncSig(@ptrCast(params[0..numParams]), retType) catch fatal();
     const funcSig = vm.sema.funcSigs.items[funcSigId];
-    return vm.allocHostFuncUnion(bt.Func, @ptrCast(func), numParams, funcSigId, null, funcSig.reqCallTypeCheck) catch fatal();
+    return vm.allocHostFuncUnion(bt.Func, @ptrCast(func), numParams, funcSigId, null, funcSig.info.reqCallTypeCheck) catch fatal();
 }
 
 test "clNewFunc()" {

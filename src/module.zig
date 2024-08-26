@@ -351,7 +351,7 @@ pub const ChunkExt = struct {
         const func_sig = c.compiler.sema.getFuncSig(sig);
         func.funcSigId = sig;
         func.retType = func_sig.getRetType();
-        func.reqCallTypeCheck = func_sig.reqCallTypeCheck;
+        func.reqCallTypeCheck = func_sig.info.reqCallTypeCheck;
         func.numParams = @intCast(func_sig.params_len);
     }
 
@@ -447,7 +447,7 @@ pub const ChunkExt = struct {
         const func_sig = c.compiler.sema.getFuncSig(func_sig_id);
         func.funcSigId = func_sig_id;
         func.retType = func_sig.getRetType();
-        func.reqCallTypeCheck = func_sig.reqCallTypeCheck;
+        func.reqCallTypeCheck = func_sig.info.reqCallTypeCheck;
         func.numParams = @intCast(func_sig.params_len);
     }
 

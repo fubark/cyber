@@ -350,7 +350,7 @@ pub fn expandValueTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []con
         const func_sig = c.sema.getFuncSig(sig);
         func.funcSigId = sig;
         func.retType = func_sig.getRetType();
-        func.reqCallTypeCheck = func_sig.reqCallTypeCheck;
+        func.reqCallTypeCheck = func_sig.info.reqCallTypeCheck;
         func.numParams = @intCast(func_sig.params_len);
         func.variant = variant;
 
@@ -402,8 +402,8 @@ pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy
                 ct_dep = ct_dep or type_e.info.ct_ref;
             } else if (arg.getTypeId() == bt.FuncSig) {
                 const sig = c.sema.getFuncSig(@intCast(arg.asHeapObject().integer.val));
-                ct_infer = ct_infer or sig.ct_infer;
-                ct_dep = ct_dep or sig.ct_dep;
+                ct_infer = ct_infer or sig.info.ct_infer;
+                ct_dep = ct_dep or sig.info.ct_dep;
             }
         }
 

@@ -69,10 +69,6 @@ func sizeof(#T type) int:
 --| Compile-time functions.
 --|
 
---| Returns whether two types are the same.
-func eqType[T type, U type] bool:
-    return typeid[T] == typeid[U]
-
 --| Returns the type ID of a type.
 func typeid[T type] int:
     return typeid_(T)

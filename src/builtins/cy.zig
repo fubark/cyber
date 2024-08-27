@@ -331,7 +331,6 @@ fn genDeclEntry(vm: *cy.VM, view: ast.AstView, decl: *ast.Node, state: *ParseCyb
             }
             try vm.mapSet(entry, try vm.retainOrAllocAstring("funcs"), funcs_);
         },
-        .table_decl,
         .objectDecl => {
             const object_decl = decl.cast(.objectDecl);
             const funcs_ = try vm.allocEmptyListDyn();

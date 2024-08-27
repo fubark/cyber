@@ -813,16 +813,6 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                         sym.members_ptr = members.ptr;
                         sym.members_len = @intCast(members.len);
                     },
-                    .table_decl => {
-                        const decl = node.cast(.table_decl);
-                        const sym = try sema.reserveTableType(chunk, decl);
-                        
-                        try sema.reserveTableMethods(chunk, @ptrCast(sym));
-
-                        for (decl.funcs) |func| {
-                            _ = try sema.reserveNestedFunc(chunk, @ptrCast(sym), func, false);
-                        }
-                    },
                     .enumDecl => {
                         _ = try sema.reserveEnum(chunk, node.cast(.enumDecl));
                     },
@@ -905,7 +895,6 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                             .objectDecl,
                             .staticDecl,
                             .structDecl,
-                            .table_decl,
                             .typeAliasDecl,
                             .template => {},
                             else => {
@@ -1087,12 +1076,7 @@ fn resolveSyms(self: *Compiler) !void {
                 .object_t => {
                     const object_t = sym.cast(.object_t);
                     const decl = object_t.decl.?;
-                    if (decl.type() == .table_decl) {
-                        try sema.resolveTableFields(chunk, @ptrCast(sym));
-                        try sema.resolveTableMethods(chunk, @ptrCast(sym));
-                    } else {
-                        try sema.resolveObjectLikeType(chunk, sym, decl.cast(.objectDecl));
-                    }
+                    try sema.resolveObjectLikeType(chunk, sym, decl.cast(.objectDecl));
                 },
                 .enum_t => {
                     const enum_t = sym.cast(.enum_t);

@@ -708,7 +708,7 @@ typedef struct ZList {
 
 #define TYPE_KIND_STRUCT 8
 #define TYPE_KIND_OPTION 9
-#define TYPE_KIND_FUNC_UNION 18
+#define TYPE_KIND_FUNC_UNION 17
 
 typedef struct TypeEntry {
     void* sym;

@@ -26,7 +26,6 @@ pub const TypeKind = enum(u8) {
     option,
     trait,
     bare,
-    table,
     ct_ref,
     ct_infer,
     distinct,
@@ -66,9 +65,6 @@ pub const Type = extern struct {
     info: TypeInfo,
 
     data: extern union {
-        table: extern struct {
-            numFields: u16,
-        },
         // This is duped from ObjectType so that object creation/destruction avoids the lookup from `sym`.
         object: extern struct {
             numFields: u16,

@@ -511,52 +511,6 @@ pub const Parser = struct {
         });
     }
 
-    fn parseLetTableFields(self: *Parser) ![]*ast.Node {
-        self.consumeWhitespaceTokens();
-        if (self.peek().tag() == .right_brace) {
-            self.advance();
-            return &.{};
-        }
-        if (self.peek().tag() != .ident) {
-            return self.reportError("Expected field identifier.", &.{});
-        }
-
-        var start = self.next_pos;
-        var field = try self.newSpanNode(.ident, start);
-        self.advance();
-
-        const field_start = self.node_stack.items.len;
-        defer self.node_stack.items.len = field_start;
-        try self.pushNode(@ptrCast(field));
-
-        while (true) {
-            self.consumeWhitespaceTokens();
-            if (self.peek().tag() == .comma) {
-                self.advance();
-                self.consumeWhitespaceTokens();
-            } else if(self.peek().tag() == .right_brace) {
-                self.advance();
-                break;
-            } else {
-                return self.reportError("Expected `,` or `}`.", &.{});
-            }
-            if (self.peek().tag() == .right_brace) {
-                self.advance();
-                break;
-            }
-
-            start = self.next_pos;
-            if (self.peek().tag() != .ident) {
-                return self.reportError("Expected field identifier.", &.{});
-            }
-
-            field = try self.newSpanNode(.ident, start);
-            self.advance();
-            try self.pushNode(@ptrCast(field));
-        }
-        return self.ast.dupeNodes(self.node_stack.items[field_start..]);
-    }
-
     fn parseFuncParam(self: *Parser) anyerror!*ast.FuncParam {
         var template_param = false;
         var name_type: *ast.Node = undefined;
@@ -3385,43 +3339,6 @@ pub const Parser = struct {
         const name = (try self.parseOptNamePath()) orelse {
             return self.reportError("Expected local name identifier.", &.{});
         };
-
-        if (self.peek().tag() == .left_brace) {
-            self.advance();
-
-            // Parse as custom table declaration.
-            const fields = try self.parseLetTableFields();
-            if (self.peek().tag() == .new_line) {
-                const decl = try self.ast.newNode(.table_decl, .{
-                    .name = name,
-                    .attrs = attrs,
-                    .fields = fields,
-                    .funcs = &.{},
-                    .pos = self.tokenSrcPos(start),
-                });
-                try self.staticDecls.append(self.alloc, @ptrCast(decl));
-                return @ptrCast(decl);
-            }
-
-            if (self.peek().tag() != .colon) {
-                return self.reportError("Expected `:`.", &.{});
-            }
-            self.advance();
-            
-            const req_indent = try self.parseFirstChildIndent(self.cur_indent);
-            const prev_indent = self.pushIndent(req_indent);
-            defer self.cur_indent = prev_indent;
-            const funcs = try self.parseTypeFuncs(req_indent);
-            const decl = try self.ast.newNode(.table_decl, .{
-                .name = name,
-                .attrs = attrs,
-                .fields = fields,
-                .funcs = funcs,
-                .pos = self.tokenSrcPos(start),
-            });
-            try self.staticDecls.append(self.alloc, @ptrCast(decl));
-            return @ptrCast(decl);
-        }
 
         // Parse as dynamic var decl.
         const has_name_path = name.type() == .name_path;

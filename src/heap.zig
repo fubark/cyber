@@ -2313,21 +2313,6 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                     }
                     freePoolObject(vm, obj);
                 },
-                .table => {
-                    const numFields = entry.data.table.numFields;
-                    const field_vals = obj.object.getValuesConstPtr()[0..numFields];
-                    for (field_vals) |field| {
-                        if (skip_cyc_children and field.isCycPointer()) {
-                            continue;
-                        }
-                        cy.arc.release(vm, field);
-                    }
-                    if (numFields <= 4) {
-                        freePoolObject(vm, obj);
-                    } else {
-                        freeExternalObject(vm, obj, (1 + numFields) * @sizeOf(Value), true);
-                    }
-                },
                 .object => {
                     const numFields = entry.data.object.numFields;
                     if (entry.data.object.has_boxed_fields) {

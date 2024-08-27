@@ -353,7 +353,6 @@ pub fn semaStmt(c: *cy.Chunk, node: *ast.Node) !void {
             const stmt = node.cast(.assignStmt);
             _ = try assignStmt(c, node, stmt.left, stmt.right, .{});
         },
-        .table_decl,
         .trait_decl,
         .objectDecl,
         .structDecl,
@@ -1974,41 +1973,6 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
     }
 }
 
-pub fn reserveTableMethods(c: *cy.Chunk, obj: *cy.sym.ObjectType) !void {
-    _ = try c.reserveHostFunc(@ptrCast(obj), "$get", null, true, false);
-    _ = try c.reserveHostFunc(@ptrCast(obj), "$set", null, true, false);
-    _ = try c.reserveHostFunc(@ptrCast(obj), "$index", null, true, false);
-    _ = try c.reserveHostFunc(@ptrCast(obj), "$setIndex", null, true, false);
-}
-
-pub fn resolveTableMethods(c: *cy.Chunk, obj: *cy.sym.ObjectType) !void {
-    const mod = obj.getMod();
-
-    const get = mod.getSym("$get").?.cast(.func).first;
-    var sig = try c.sema.ensureFuncSigRt(&.{ obj.type, bt.String }, bt.Dyn);
-    try c.resolveHostFunc(get, sig, cy.bindings.tableGet);
-
-    const set = mod.getSym("$set").?.cast(.func).first;
-    sig = try c.sema.ensureFuncSigRt(&.{ obj.type, bt.String, bt.Any }, bt.Void);
-    try c.resolveHostFunc(set, sig, cy.builtins.zErrFunc(cy.bindings.tableSet));
-
-    const index = mod.getSym("$index").?.cast(.func).first;
-    sig = try c.sema.ensureFuncSigRt(&.{ obj.type, bt.Any }, bt.Dyn);
-    try c.resolveHostFunc(index, sig, cy.bindings.tableIndex);
-
-    const set_index = mod.getSym("$setIndex").?.cast(.func).first;
-    sig = try c.sema.ensureFuncSigRt(&.{ obj.type, bt.Any, bt.Any }, bt.Void);
-    try c.resolveHostFunc(set_index, sig, cy.builtins.zErrFunc(cy.bindings.tableSet));
-}
-
-pub fn reserveTableType(c: *cy.Chunk, decl: *ast.TableDecl) !*cy.sym.ObjectType {
-    const name = c.ast.nodeString(decl.name);
-    const sym = try c.reserveObjectType(@ptrCast(c.sym), name, @ptrCast(decl));
-    const type_id = try resolveTypeIdFromDecl(c, @ptrCast(sym), decl.attrs, @ptrCast(decl));
-    try resolveTableTypeId(c, sym, type_id);
-    return sym;
-}
-
 pub fn reserveTraitType(c: *cy.Chunk, decl: *ast.TraitDecl) !*cy.sym.TraitType {
     const name = c.ast.nodeString(decl.name);
     const sym = try c.reserveTraitType(@ptrCast(c.sym), name, @ptrCast(decl));
@@ -2053,18 +2017,6 @@ pub fn resolveTraitTypeId(c: *cy.Chunk, trait_t: *cy.sym.TraitType, type_id: cy.
         .sym = @ptrCast(trait_t),
         .kind = .trait,
         .data = undefined,
-        .info = .{},
-    };
-}
-
-pub fn resolveTableTypeId(c: *cy.Chunk, object_t: *cy.sym.ObjectType, type_id: cy.TypeId) !void {
-    object_t.type = type_id;
-    c.compiler.sema.types.items[type_id] = .{
-        .sym = @ptrCast(object_t),
-        .kind = .table,
-        .data = .{ .table = .{
-            .numFields = cy.NullU16,
-        }},
         .info = .{},
     };
 }
@@ -2171,37 +2123,6 @@ pub fn resolveDistinctType(c: *cy.Chunk, distinct_t: *cy.sym.DistinctType) !*cy.
     }
     distinct_t.resolved = new_sym;
     return new_sym;
-}
-
-pub fn resolveTableFields(c: *cy.Chunk, obj: *cy.sym.ObjectType) !void {
-    const node = obj.decl.?.cast(.table_decl);
-
-    const fields = try c.alloc.alloc(cy.sym.FieldInfo, node.fields.len + 1);
-    errdefer c.alloc.free(fields);
-
-    // First field is reserved as `table_data Map`.
-    var field_sym = try c.declareField(@ptrCast(obj), "table_data", 0, bt.Map, null);
-    fields[0] = .{
-        .sym = @ptrCast(field_sym),
-        .type = bt.Map,
-        .offset = 0,
-    };
-
-    // Load custom fields.
-    for (node.fields, 1..) |field, i| {
-        const field_name = c.ast.nodeString(field);
-        field_sym = try c.declareField(@ptrCast(obj), field_name, i, bt.Dyn, @ptrCast(field));
-        fields[i] = .{
-            .sym = @ptrCast(field_sym),
-            .type = bt.Dyn,
-            .offset = 0,
-        };
-    }
-    obj.fields = fields.ptr;
-    obj.numFields = @intCast(fields.len);
-    c.sema.types.items[obj.type].data.table = .{
-        .numFields = @intCast(obj.numFields),
-    };
 }
 
 pub fn resolveDistinctTypeId(c: *cy.Chunk, distinct_t: *cy.sym.DistinctType, opt_type: ?cy.TypeId) !void {

@@ -3306,7 +3306,6 @@ The main execution context is a fiber as well. Once the main fiber has finished,
 * [Dynamic variables.](#dynamic-variables)
 * [Runtime type checking.](#runtime-type-checking)
 * [Dynamic tables.](#dynamic-tables)
-* [Custom tables.](#custom-tables)
 * [Dynamic inference.](#dynamic-inference)
 
 [^top](#table-of-contents)
@@ -3369,29 +3368,6 @@ a.name = 'Nova'
 print a.name     --> Nova
 ```
 Read more about how to use [Tables](#tables).
-
-## Custom tables.
-Custom tables allow declaring fields and methods.
-
-```cy
-let Counter{ count }:
-    let inc():
-        count += 1
-        
-let c = Counter{count=0}
-c.inc()
-print c.count       --> 1
-```
-Fields are declared inside the braces and separated with commas.
-Unlike typed declarations, the fields declared only serve as a subset constraint.
-Additional fields can still be initialized and used.
-
-Tables can be declared without any methods:
-```cy
-let Vec3{x, y, z}
-
-let v = Vec3{x=1, y=2, z=3}
-```
 
 ## Dynamic inference.
 When the inference tag is used in a dynamic context, it will attempt to resolve its value at runtime.

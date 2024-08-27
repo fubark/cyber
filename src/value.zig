@@ -524,20 +524,6 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) anyerror!Value {
                         }
                         return new;
                     },
-                    .table => {
-                        const numFields = entry.data.table.numFields;
-                        const fields = obj.object.getValuesConstPtr()[0..numFields];
-                        var new: Value = undefined;
-                        if (numFields <= 4) {
-                            new = try cy.heap.allocObjectSmall(vm, obj.getTypeId(), fields);
-                        } else {
-                            new = try cy.heap.allocObject(vm, obj.getTypeId(), fields);
-                        }
-                        for (fields) |field| {
-                            cy.arc.retain(vm, field);
-                        }
-                        return new;
-                    },
                     else => {
                         fmt.panic("Unsupported copy host object. {}", &.{fmt.v(entry.kind)});
                     },

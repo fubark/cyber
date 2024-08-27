@@ -97,7 +97,6 @@ pub const NodeType = enum(u7) {
     switchExpr,
     switchStmt,
     symbol_lit,
-    table_decl,
     throwExpr,
     trait_decl,
     trueLit,
@@ -444,14 +443,6 @@ pub const Field = struct {
     hidden: bool,
 };
 
-pub const TableDecl = struct {
-    name: *Node align(8),
-    attrs: []*Attribute,
-    fields: []*Node,
-    funcs: []*FuncDecl,
-    pos: u32,
-};
-
 pub const TraitDecl = struct {
     name: *Node align(8),
     attrs: []*Attribute,
@@ -688,7 +679,6 @@ fn NodeData(comptime node_t: NodeType) type {
         .switchExpr     => SwitchBlock,
         .switchStmt     => SwitchBlock,
         .symbol_lit     => Span,
-        .table_decl     => TableDecl,
         .throwExpr      => ThrowExpr,
         .trait_decl     => TraitDecl,
         .trueLit        => Token,
@@ -830,7 +820,6 @@ pub const Node = struct {
             .switchExpr     => self.cast(.switchExpr).pos,
             .switchStmt     => self.cast(.switchStmt).pos,
             .symbol_lit     => self.cast(.symbol_lit).pos,
-            .table_decl     => self.cast(.table_decl).pos,
             .template       => self.cast(.template).child_decl.pos(),
             .throwExpr      => self.cast(.throwExpr).pos,
             .trait_decl     => self.cast(.trait_decl).pos,
@@ -918,7 +907,7 @@ pub const UnaryOp = enum(u8) {
 };
 
 test "ast internals." {
-    try t.eq(std.enums.values(NodeType).len, 101);
+    try t.eq(std.enums.values(NodeType).len, 100);
     try t.eq(@sizeOf(NodeHeader), 1);
 }
 
@@ -1059,10 +1048,6 @@ pub const AstView = struct {
 
     pub fn declNamePath(self: AstView, n: *Node) ![]const u8 {
         switch (n.type()) {
-            .table_decl => {
-                const object_decl = n.cast(.table_decl);
-                return self.nodeString(object_decl.name);
-            },
             .cstruct_decl => {
                 const cstruct = n.cast(.cstruct_decl);
                 if (cstruct.name) |name| {

@@ -188,7 +188,6 @@ if (!aot) {
     run.case("types/func_return_type_error.cy");
     run.case("types/func_param_type_undeclared_error.cy");
 if (!aot) {
-    run.case("types/let_table.cy");
     run.case("types/object_init_dyn_field.cy");
     run.case("types/object_init_field.cy");
     run.case("types/object_init_field_error.cy");

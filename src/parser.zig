@@ -992,6 +992,7 @@ pub const Parser = struct {
                 return self.reportError("Expected comma or right parenthesis.", &.{});
             }
             self.advance();
+            self.consumeWhitespaceTokens();
             field = (try self.parseObjectField()) orelse return error.Unexpected;
             try self.pushNode(@ptrCast(field));
         }
@@ -1097,10 +1098,11 @@ pub const Parser = struct {
         } else if (token.tag() == .left_paren) {
             self.advance();
             const fields = try self.parseTupleFields();
-            if (token.tag() != .colon) {
+            if (self.peek().tag() != .colon) {
                 return self.newObjectDecl(start, ntype, name, config, &.{}, fields, &.{}, true);
             }
 
+            self.advance();
             const req_indent = try self.parseFirstChildIndent(self.cur_indent);
             const prev_indent = self.pushIndent(req_indent);
             defer self.cur_indent = prev_indent;
@@ -1141,10 +1143,11 @@ pub const Parser = struct {
         } else if (token.tag() == .left_paren) {
             self.advance();
             const fields = try self.parseTupleFields();
-            if (token.tag() != .colon) {
+            if (self.peek().tag() != .colon) {
                 return self.newObjectDecl(start, .objectDecl, name, config, &.{}, fields, &.{}, true);
             }
 
+            self.advance();
             const req_indent = try self.parseFirstChildIndent(self.cur_indent);
             const prev_indent = self.pushIndent(req_indent);
             defer self.cur_indent = prev_indent;

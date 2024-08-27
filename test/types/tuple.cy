@@ -18,6 +18,11 @@ s = .{a=234, b='xyz'}
 test.eq(s.a, 234)
 test.eq(s.b, 'xyz')
 
+-- Struct tuple with functions.
+type S2 struct(a int, b String):
+    func foo(self):
+        pass
+
 type O(a int, b String)
 
 var o = O{123, 'abc'}
@@ -35,5 +40,10 @@ test.eq(o.b, 'abc')
 o = .{a=234, b='xyz'}
 test.eq(o.a, 234)
 test.eq(o.b, 'xyz')
+
+-- Object tuple with functions.
+type O2(a int, b String):
+    func foo(self):
+        pass
 
 --cytest: pass

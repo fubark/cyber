@@ -1098,7 +1098,6 @@ pub const Parser = struct {
             self.advance();
             const fields = try self.parseTupleFields();
             if (token.tag() != .colon) {
-                try self.consumeNewLineOrEnd();
                 return self.newObjectDecl(start, ntype, name, config, &.{}, fields, &.{}, true);
             }
 
@@ -1143,7 +1142,6 @@ pub const Parser = struct {
             self.advance();
             const fields = try self.parseTupleFields();
             if (token.tag() != .colon) {
-                try self.consumeNewLineOrEnd();
                 return self.newObjectDecl(start, .objectDecl, name, config, &.{}, fields, &.{}, true);
             }
 

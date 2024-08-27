@@ -439,53 +439,6 @@ pub const Parser = struct {
         });
     }
 
-    fn parseLetLambda(self: *Parser) !*ast.Node {
-        const start = self.next_pos;
-
-        // Assume first token is `let`.
-        self.advance();
-
-        const params = try self.parseParenAndFuncParams();
-
-        if (self.peek().tag() == .equal_right_angle) {
-            self.advance();
-
-            // Parse body expr.
-            try self.pushBlock();
-            const expr = (try self.parseExpr(.{})) orelse {
-                return self.reportError("Expected lambda body expression.", &.{});
-            };
-            _ = self.popBlock();
-
-            return self.ast.newNodeErase(.lambda_expr, .{
-                .params = params,
-                .sig_t = .let,
-                .stmts = @as([*]*ast.Node, @ptrCast(@alignCast(expr)))[0..1],
-                .pos = self.tokenSrcPos(start),
-                .ret = null,
-            });
-        }
-
-        if (self.peek().tag() != .colon) {
-            return self.reportError("Expected lambda body.", &.{});
-        }
-        self.advance();
-
-        try self.pushBlock();
-        const stmts = try self.parseSingleOrIndentedBodyStmts();
-        _ = self.popBlock();
-
-        const lambda = try self.ast.newNodeErase(.lambda_multi, .{
-            .params = params,
-            .sig_t = .let,
-            .stmts = stmts,
-            .pos = self.tokenSrcPos(start),
-            .ret = null,
-        });
-        @as(*ast.Node, @ptrCast(lambda)).setBlockExpr(true);
-        return lambda;
-    }
-
     fn parseFuncLambdaOrType(self: *Parser) !*ast.Node {
         const start = self.next_pos;
 
@@ -3208,9 +3161,6 @@ pub const Parser = struct {
                     .inc = true,
                     .pos = self.tokenSrcPos(start),
                 });
-            },
-            .let_k => {
-                return @ptrCast(try self.parseLetLambda());
             },
             .func_k => {
                 return @ptrCast(try self.parseFuncLambdaOrType());

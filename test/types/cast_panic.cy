@@ -1,5 +1,5 @@
 use test
-let a = test.erase(123)
+dyn a = test.erase(123)
 print(a as float)
 
 --cytest: error

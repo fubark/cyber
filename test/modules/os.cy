@@ -16,7 +16,7 @@ os.access('test/assets/file.txt', .read)
 
 -- args()
 -- Not available from static linking.
-let res = os.args()
+dyn res = os.args()
 t.eq(res.len() > 0, true)
 
 -- createDir()
@@ -56,7 +56,7 @@ t.eq(os.dirName('/root/bar.txt').?, '/root')
 
 -- openDir()
 dir = os.openDir('test')
-let info = dir.stat()
+dyn info = dir.stat()
 t.eq(info['type'], symbol.dir)
 
 -- openFile()
@@ -150,7 +150,7 @@ t.eq(os.readFile('test/assets/write.txt'), 'foobarabcxyz')
 -- Dir.iterator()
 dir = os.openDir('test/assets/dir', true)
 var iter = dir.iterator()
-let entries = {_}
+dyn entries = {_}
 while iter.next() -> n:
     entries.append(n)
 t.eq(entries.len(), 3)

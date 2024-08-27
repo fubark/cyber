@@ -6,7 +6,7 @@ type S:
     func foo(self) int:
         return 123
 
-let o = test.erase(S{})
+dyn o = test.erase(S{})
 o.foo(234)
 
 --cytest: error

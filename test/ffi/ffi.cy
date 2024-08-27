@@ -3,7 +3,7 @@ use os
 
 -- Not found.
 var ffi = os.newFFI()
-let lib = try ffi.bindLib('xyz123.so')
+dyn lib = try ffi.bindLib('xyz123.so')
 t.eq(lib, error.FileNotFound)
 
 var libPath ?String = none
@@ -58,7 +58,7 @@ t.eq(lib.testArray({123.0, 321.0}), 444.0)
 
 -- object arg and return type.
 var cstr = os.cstr('foo')
-let res = lib.testObject(MyObject{a=123.0, b=10, c=cstr, d=true})
+dyn res = lib.testObject(MyObject{a=123.0, b=10, c=cstr, d=true})
 t.eq(res.a, 123.0)
 t.eq(res.b, 10)
 t.eq(res.c.fromCstr(0), 'foo')

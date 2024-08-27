@@ -27,7 +27,7 @@ Cyber is a fast, efficient, and concurrent scripting language. The landing page 
 These docs provide a reference manual for the language. You can read it in order or jump around using the navigation. You may come across features that are marked `Incomplete` or `Planned`. This is because the docs are written as if all features have been completed already.
 
 ## Type System.
-Cyber is a statically typed language so the documentation will provide examples using typed syntax. However, dynamic typing is also supported with a less restrictive syntax. If you're coming from a language such as Python, JavaScript, or Lua, it can be easier to get started with [Dynamic Typing](#dynamic-typing).
+Cyber is a statically typed language. However, dynamic typing is also supported. If you're coming from a language such as Python, JavaScript, or Lua, it can be easier to get started with [Dynamic Typing](#dynamic-typing).
 
 ## Hello World.
 ```cy
@@ -319,7 +319,7 @@ There are `29` general keywords. This list categorizes them:
 - [Type embedding](#type-embedding): `use`
 - [Error Handling](#error-handling): `try` `catch` `throw`
 - [Modules](#modules): `use` `mod`
-- [Dynamic Typing](#dynamic-typing): `let`
+- [Dynamic Typing](#dynamic-typing): `dyn`
 
 ### Contextual keywords.
 These keywords only have meaning in a certain context.
@@ -2683,10 +2683,10 @@ int add(int a, int b) {
 ## Bind library.
 `bindLib` accepts the path to the library and returns a object which can be used to invoke the functions declared from `cfunc`:
 ```cy
-let lib = ffi.bindLib('./mylib.so')
+dyn lib = ffi.bindLib('./mylib.so')
 lib.add(123, 321)
 ```
-Note that `let` is used to allow `lib` to be used dynamically since the type is unknown at compile-time.
+Note that `dyn` is used to allow `lib` to be used dynamically since the type is unknown at compile-time.
 
 ### Search path.
 If the path argument to `bindLib` is just a filename, the search steps for the library is specific to the operating system. Provide an absolute (eg. '/foo/mylib.so') or relative (eg. './mylib.so') path to load from a direct location instead. When the path argument is `none`, it loads the currently running executable as a library allowing you to bind exported functions from the Cyber CLI or your own application/runtime.
@@ -2735,7 +2735,7 @@ type MyObject:
 
 ffi.cbind(MyObject, {.float, .voidPtr, .bool})
 ffi.cfunc('foo', {MyObject}, MyObject)
-let lib = ffi.bindLib('./mylib.so')
+dyn lib = ffi.bindLib('./mylib.so')
 
 var res = lib.foo(MyObject{a=123.0, b=os.cstr('foo'), c=true})
 ```
@@ -2756,7 +2756,7 @@ MyObject foo(MyObject o) {
 `cbind` also generates `ptrTo[Type]` as a helper function to dereference an opaque ptr to a new Cyber object:
 ```cy
 ffi.cfunc('foo', {MyObject}, .voidPtr)
-let lib = ffi.bindLib('./mylib.so')
+dyn lib = ffi.bindLib('./mylib.so')
 
 var ptr = lib.foo(MyObject{a=123, b=os.cstr('foo'), c=true})
 var res = lib.ptrToMyObject(ptr)
@@ -3312,17 +3312,17 @@ The main execution context is a fiber as well. Once the main fiber has finished,
 
 Dynamic typing is supported with a less restrictive syntax. This can reduce the amount of friction when writing code, but it can also result in more runtime errors.
 
-In Cyber, the `let` keyword is used exclusively for dynamic declarations.
+In Cyber, the `dyn` keyword is used exclusively for dynamic declarations.
 
 ## Dynamic variables.
-Variables declared with `let` are implicitly given the `dyn` type:
+Variables declared with `dyn` are implicitly given the `dyn` type:
 ```cy
-let a = 123
+dyn a = 123
 ```
 
 Typically a dynamic variable defers type checking to runtime, but if the compiler determines that an operation will always fail at runtime, a compile error is reported instead:
 ```cy
-let a = '100'
+dyn a = '100'
 
 print a / 2
 --> CompileError: Can not find the symbol `$infix/` in `String`
@@ -3341,7 +3341,7 @@ If the type of a dynamic variable can not be determined at compile-time, type ch
 In this example, the type for `a` is unknown after assigning the return of a dynamic call to `erase`.
 Any operation on `a` would defer type checking to runtime:
 ```cy
-let a = erase(123)
+dyn a = erase(123)
 
 print a(1, 2, 3)
 --> panic: Expected a function.
@@ -3349,7 +3349,7 @@ print a(1, 2, 3)
 
 If a dynamic variable's **recent type** differs between two branches of execution, the type is considered unknown after the branches are merged. Any operations on the variable afterwards will defer type checking to runtime:
 ```cy
-let a = 123
+dyn a = 123
 if a > 20:
     a = 'hello'
 
@@ -3363,7 +3363,7 @@ print a(1, 2, 3)
 The builtin `Table` type is used to create dynamic objects.
 Tables are initialized with the record literal:
 ```cy
-let a = {}
+dyn a = {}
 a.name = 'Nova'
 print a.name     --> Nova
 ```

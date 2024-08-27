@@ -75,8 +75,8 @@ type CXType:
     kind int
     data List[dyn]
  
-let .lib = load(ffi) -- Make lib dependent on ffi.
-let .ffi = false
+dyn .lib = load(ffi) -- Make lib dependent on ffi.
+dyn .ffi = false
 
 func load(dummy any) dyn:
     ffi = os.newFFI()

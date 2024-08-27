@@ -44,7 +44,7 @@ t.eq(newList.len(), 2)
 t.eq(newList[0], 123)
 t.eq(newList[1], s)
 var oldMap = Map{a=123, b=s}
-let newMap = copy(oldMap)
+dyn newMap = copy(oldMap)
 t.eq(newMap == oldMap, false)
 t.eq(newMap.size(), 2)
 t.eq(newMap['a'], 123)
@@ -55,7 +55,7 @@ t.eq(newStr, oldStr)
 var rcList = {_}
 s.foo = 123
 s.bar = rcList
-let newS = copy(s)
+dyn newS = copy(s)
 t.eq(newS == s, false)
 t.eq(newS.foo, 123)
 t.eq(newS.bar, rcList)
@@ -65,7 +65,7 @@ t.eq(newS.bar, rcList)
 -- float(), see float_test.cy
 
 -- int()
-let res = int('100')
+dyn res = int('100')
 t.eq(typeof(res), int)
 t.eq(res, 100)
 t.eq(int(100.1), 100)

@@ -5,17 +5,17 @@ type Animal enum:
     case Tiger
 
 -- enum to int.
-let n = Animal.Tiger
+var n = Animal.Tiger
 t.eq(int(n), 1)
 
 -- Using enum declared afterwards.
-n = Animal2.Tiger
-t.eq(int(n), 1)
+var n2 = Animal2.Tiger
+t.eq(int(n2), 1)
 
 -- Reassign using symbol literal.
-n = Animal2.Tiger
-n = .Dragon
-t.eq(int(n), 2)
+n2 = Animal2.Tiger
+n2 = .Dragon
+t.eq(int(n2), 2)
 
 type Animal2 enum:
     case Bear

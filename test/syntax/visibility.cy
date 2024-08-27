@@ -20,7 +20,7 @@
 -- Variable declaration.
 -var .foov = 123
 
--- `let` variable declaration.
--let .foov2 = 123
+-- `dyn` variable declaration.
+-dyn .foov2 = 123
 
 --cytest: pass

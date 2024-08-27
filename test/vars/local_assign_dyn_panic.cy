@@ -1,6 +1,6 @@
 use test
 
-let a = test.erase(123)
+dyn a = test.erase(123)
 var b = ''
 b = a
 

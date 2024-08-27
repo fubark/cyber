@@ -673,10 +673,6 @@ pub fn resolveCtExprOpt(c: *cy.Chunk, expr: *ast.Node) anyerror!?CtExpr {
                 return CtExpr.initSym(sym);
             }
         },
-        .void => {
-            const sym = c.sema.getTypeSym(bt.Void);
-            return CtExpr.initSym(sym);
-        },
         .ptr_slice => {
             const ptr_slice = expr.cast(.ptr_slice);
             const sym = try cte.expandTemplateOnCallArgs(c, c.sema.ptr_slice_tmpl, &.{ ptr_slice.elem }, expr);

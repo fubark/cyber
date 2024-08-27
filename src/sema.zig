@@ -5115,11 +5115,6 @@ pub const ChunkExt = struct {
                 const ctype = CompactType.init(sym.getStaticType().?);
                 return ExprResult.initCustom(cy.NullId, .sym, ctype, .{ .sym = sym });
             },
-            .void => {
-                const sym = c.sema.getTypeSym(bt.Void);
-                const ctype = CompactType.init(sym.getStaticType().?);
-                return ExprResult.initCustom(cy.NullId, .sym, ctype, .{ .sym = sym });
-            },
             else => {
                 // No chance it's a symbol path.
                 return c.semaExpr2(expr);

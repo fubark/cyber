@@ -7,7 +7,7 @@ func happy(a int) int:
     return a
 
 -- No error.
-let a = false
+dyn a = false
 try:
     a = 1
 catch:

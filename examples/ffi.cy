@@ -9,6 +9,6 @@ use os
 
 var ffi = os.newFFI()
 ffi.cfunc('add', {symbol.int, symbol.int}, symbol.int)
--- let lib = ffi.bindLib('./libfoo.so')
-let lib = ffi.bindLib('./libfoo.dylib')
+-- dyn lib = ffi.bindLib('./libfoo.so')
+dyn lib = ffi.bindLib('./libfoo.dylib')
 print lib.add(123, 321)

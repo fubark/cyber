@@ -11,7 +11,7 @@ use cy
 use os
 use md '../src/tools/md4c.cy'
 
-let args = os.parseArgs(.{
+dyn args = os.parseArgs(.{
     { name='version', type=String, default='DEV' },
     { name='import-style', type=bool, default=false },
 })
@@ -136,7 +136,7 @@ os.writeFile("$(curDir)/docs.html", html)
 
 var .out = ''
 var .htmlContent = ''
-let .textContent = ''
+dyn .textContent = ''
 var .state = State.main
 var .parsingToc = false
 var .tocLinks = {_}
@@ -210,7 +210,7 @@ func enterBlock(block_t md.BLOCKTYPE, detail_p *void, userdata *void) int:
         out += '<p>'
         return 0
     case md.BLOCK_CODE:
-        let detail = md.lib.ptrToBLOCK_CODE_DETAIL_S(detail_p)
+        dyn detail = md.lib.ptrToBLOCK_CODE_DETAIL_S(detail_p)
         var lang = getAttrText(detail.lang)
         out += """<pre><code class="language-$(lang)">"""
         return 0
@@ -262,10 +262,10 @@ func leaveBlock(block_t md.BLOCKTYPE, detail_p *void, userdata *void) int:
         out += '</td>'
         return 0 
     case md.BLOCK_H:
-        let detail = md.lib.ptrToBLOCK_H_DETAIL_S(detail_p)
+        dyn detail = md.lib.ptrToBLOCK_H_DETAIL_S(detail_p)
         textContent = textContent.trim(.ends, " \n")
 
-        let id = textContent.replace(' ', '-')
+        dyn id = textContent.replace(' ', '-')
         id = id.replace('.', '')
         id = id.replace('/', '')
         id = id.replace('$', '')
@@ -325,7 +325,7 @@ func enterSpan(span_t md.SPANTYPE, detail_p *void, userdata *void) int:
             out += '<code>'
         return 0
     case md.SPAN_A:
-        let detail = md.lib.ptrToSPAN_A_DETAIL_S(detail_p)
+        dyn detail = md.lib.ptrToSPAN_A_DETAIL_S(detail_p)
 
         var href = getAttrText(detail.href)
         var title = getAttrText(detail.title)

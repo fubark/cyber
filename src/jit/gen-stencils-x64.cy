@@ -8,7 +8,7 @@ use os
 var out = ''
 var curDir = os.dirName(#modUri)
 
-let outLLBuf = llvm.ffi.new(.voidPtr)
+dyn outLLBuf = llvm.ffi.new(.voidPtr)
 var outMsg = llvm.ffi.new(.charPtr)
 if llvm.CreateMemoryBufferWithContentsOfFile(os.cstr("$(curDir)/stencils.o"), outLLBuf, outMsg) != 0:
     throw error.Unexpected
@@ -25,7 +25,7 @@ if binType != llvm.BinaryTypeELF64L:
     throw error.UnexpectedObjectFormat
 
 -- Find text section.
-let codeBuf = false
+dyn codeBuf = false
 var llSectIter = llvm.ObjectFileCopySectionIterator(llBin)
 while llvm.ObjectFileIsSectionIteratorAtEnd(llBin, llSectIter) == 0:
     var cname = llvm.GetSectionName(llSectIter)
@@ -53,7 +53,7 @@ type Sym:
     code String
 
 -- First pass accumulates the unordered symbols.
-let syms = {_}
+dyn syms = {_}
 var symMap = {}
 while llvm.ObjectFileIsSymbolIteratorAtEnd(llBin, llSymIter) == 0:
     if llvm.GetSectionContainsSymbol(llSectIter, llSymIter) == 0:
@@ -110,7 +110,7 @@ while llvm.IsRelocationIteratorAtEnd(llSectIter, llRelocIter) == 0:
         instOffset = 1
 
     -- Find relevant func sym.
-    let found = false
+    dyn found = false
     for syms -> sym, i:
         if offset >= sym.addr:
             if i < syms.len()-1 and offset >= syms[i+1].addr:

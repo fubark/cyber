@@ -45,7 +45,7 @@ if args['rest'].len() <= 2:
     print 'Missing path to header file.'
     os.exit(1)
 
-let headerPath = args['rest'][2]
+dyn headerPath = args['rest'][2]
 print headerPath
 
 var headerSrc = os.readFile(headerPath)
@@ -55,10 +55,10 @@ var unit = getTranslationUnit(headerPath)
 
 for 0..clang.lib.clang_getNumDiagnostics(unit) -> i:
     var diag = clang.lib.clang_getDiagnostic(unit, i)
-    let spelling = clang.lib.clang_getDiagnosticSpelling(diag)
+    dyn spelling = clang.lib.clang_getDiagnosticSpelling(diag)
     print spelling.fromCstr(0)
 
-let cursor = clang.lib.clang_getTranslationUnitCursor(unit)
+dyn cursor = clang.lib.clang_getTranslationUnitCursor(unit)
 
 skipMap['__gnuc_va_list'] = true
 skipMap['va_list'] = true
@@ -77,8 +77,8 @@ clang.lib.clang_visitChildren(cursor, cvisitor.ptr(), cstate)
 
 -- Generate ffi init.
 out += "\nuse os\n"
-out += "let .ffi = false\n"
-out += "let .lib = load()\n"
+out += "dyn .ffi = false\n"
+out += "dyn .lib = load()\n"
 out += "func load() dyn:\n"
 out += "    ffi = os.newFFI()\n"
 for structs -> name:
@@ -109,7 +109,7 @@ for funcs -> fn:
     else:
         out += "    ffi.cfunc('$(fn.name)', {$(finalParams.join(', '))}, $(finalRet))\n"
 var libPath = if (existingLibPath) 'libPath' else "'$(args['libpath'])'"
-out += "    let lib = ffi.bindLib(Option[String].some($(libPath)), {gen_table=false})\n"
+out += "    dyn lib = ffi.bindLib(Option[String].some($(libPath)), {gen_table=false})\n"
 out += "    return lib\n\n"
 
 -- Generate macros.
@@ -129,7 +129,7 @@ var .cvisitor = pointer(void, 0)
 var .out = ''
 var .skipChildren = false
 var .aliases = Map{}    -- aliasName -> structName or binding symbol (eg: .voidPtr)
-let .struct = false
+dyn .struct = false
 var .structMap = Map{}  -- structName -> list of fields (symOrName)
 var .enumMap = Map{}
 var .structs = {_}
@@ -180,7 +180,7 @@ type State:
     type StateType
     data dyn
 
-let visitor(cursor, parent, client_data):
+func visitor(cursor dyn, parent dyn, client_data dyn) dyn:
     var state State = client_data.asObject()
     switch state.type
     case StateType.root:
@@ -198,7 +198,7 @@ let visitor(cursor, parent, client_data):
     else:
         throw error.Unsupported
 
-let rootVisitor(cursor, parent, state):
+func rootVisitor(cursor dyn, parent dyn, state dyn) dyn:
     var cxName = clang.lib.clang_getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
 
@@ -263,7 +263,7 @@ let rootVisitor(cursor, parent, state):
             if skipChildren:
                 out += '-- '
 
-            let fieldt = struct.fieldTypes[i]
+            dyn fieldt = struct.fieldTypes[i]
             out += "    $(name) $(toCyType(fieldt, false))"
             if is(fieldt, symbol.voidPtr) or
                 (type(fieldt) == String and fieldt.startsWith('os.CArray{')):
@@ -354,14 +354,14 @@ let rootVisitor(cursor, parent, state):
 
     return clang.CXChildVisit_Continue
 
-let structVisitor(cursor, parent, state):
+func structVisitor(cursor dyn, parent dyn, state dyn) dyn:
     var cxName = clang.lib.clang_getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
 
     switch cursor.kind
     case clang.CXCursor_FieldDecl:
         -- print "field $(cursor.kind) $(name)"
-        let ftype = clang.lib.clang_getCursorType(cursor)
+        dyn ftype = clang.lib.clang_getCursorType(cursor)
         var fsym = toBindType(ftype)
 
         struct.fieldTypes.append(fsym)
@@ -374,7 +374,7 @@ let structVisitor(cursor, parent, state):
         print "unsupported $(cursor.kind) $(name)"
     return clang.CXChildVisit_Continue
 
-let enumVisitor(cursor, parent, state):
+func enumVisitor(cursor dyn, parent dyn, state dyn) dyn:
     var cxName = clang.lib.clang_getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
     var val = clang.lib.clang_getEnumConstantDeclValue(cursor)
@@ -392,11 +392,11 @@ func genMacros(headerPath String):
     os.writeFile('macros.hpp', hpp)
 
     var unit = getMacrosTranslationUnit('macros.hpp')
-    let cursor = clang.lib.clang_getTranslationUnitCursor(unit)
+    dyn cursor = clang.lib.clang_getTranslationUnitCursor(unit)
 
     for 0..clang.lib.clang_getNumDiagnostics(unit) -> i:
         var diag = clang.lib.clang_getDiagnostic(unit, i)
-        let spelling = clang.lib.clang_getDiagnosticSpelling(diag)
+        dyn spelling = clang.lib.clang_getDiagnosticSpelling(diag)
         print spelling.fromCstr(0)
 
     out += "-- Macros\n"
@@ -405,7 +405,7 @@ func genMacros(headerPath String):
     var cstate = clang.ffi.bindObjPtr(state)
     clang.lib.clang_visitChildren(cursor, cvisitor.ptr(), cstate)
 
-let initListExpr(cursor, parent, state):
+func initListExpr(cursor dyn, parent dyn, state dyn) dyn:
     switch cursor.kind
     case clang.CXCursor_IntegerLiteral:
         var eval = clang.lib.clang_Cursor_Evaluate(cursor)
@@ -417,7 +417,7 @@ let initListExpr(cursor, parent, state):
 
     return clang.CXChildVisit_Continue
 
-let initVarVisitor(cursor, parent, state):
+func initVarVisitor(cursor dyn, parent dyn, state dyn) dyn:
     var cxName = clang.lib.clang_getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
 
@@ -437,7 +437,7 @@ let initVarVisitor(cursor, parent, state):
 
     return clang.CXChildVisit_Continue
 
-let macrosRootVisitor(cursor, parent, state):
+func macrosRootVisitor(cursor dyn, parent dyn, state dyn) dyn:
     var cxName = clang.lib.clang_getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
 
@@ -473,7 +473,7 @@ let macrosRootVisitor(cursor, parent, state):
         switch kind
         case clang.CXEval_UnExposed:
             -- Can't eval to primitive. Check for struct intializer.
-            let initCur = clang.lib.clang_Cursor_getVarDeclInitializer(cursor)
+            dyn initCur = clang.lib.clang_Cursor_getVarDeclInitializer(cursor)
 
             var cxInitName = clang.lib.clang_getCursorDisplayName(initCur)
             var initName = fromCXString(cxInitName)
@@ -488,7 +488,7 @@ let macrosRootVisitor(cursor, parent, state):
 
                 var initT = state.data['type']
 
-                let struct = getStruct(initT)
+                dyn struct = getStruct(initT)
                 var kvs = {_}
                 for struct.fieldNames -> fieldn, i:
                     kvs.append("$(fieldn)=$(state.data['args'][i])")
@@ -503,7 +503,7 @@ let macrosRootVisitor(cursor, parent, state):
             var val = clang.lib.clang_EvalResult_getAsDouble(eval)
             out += "var .$(finalName) float = $(val)\n"
         case clang.CXEval_StrLiteral:
-            let strz = clang.lib.clang_EvalResult_getAsStr(eval)
+            dyn strz = clang.lib.clang_EvalResult_getAsStr(eval)
             var str = strz.fromCstr(0)
             out += """var .$(finalName) String = "$(str)"\n"""
         else:
@@ -517,10 +517,10 @@ let macrosRootVisitor(cursor, parent, state):
     return clang.CXChildVisit_Continue
 
 func fromCXString(cxStr any) String:
-    let cname = clang.lib.clang_getCString(cxStr)
+    dyn cname = clang.lib.clang_getCString(cxStr)
     return cname.fromCstr(0)
 
-let toCyType(nameOrSym, forRet):
+func toCyType(nameOrSym dyn, forRet dyn) dyn:
     if type(nameOrSym) == symbol:
         switch nameOrSym
         case symbol.voidPtr   : return '*void'
@@ -566,7 +566,7 @@ func getStruct(name any) dyn:
         return structMap[alias]
     return false
 
-let toBindType(cxType):
+func toBindType(cxType dyn) dyn:
     switch cxType.kind
     case clang.CXType_Float             : return symbol.float
     case clang.CXType_Double            : return symbol.double
@@ -607,7 +607,7 @@ let toBindType(cxType):
         throw error.Unsupported
     case clang.CXType_Elaborated:
         var decl = clang.lib.clang_getTypeDeclaration(cxType)
-        let declType = clang.lib.clang_getCursorType(decl)
+        dyn declType = clang.lib.clang_getCursorType(decl)
         var name = fromCXString(clang.lib.clang_getCursorDisplayName(decl))
 
         if declType.kind == clang.CXType_Typedef:

@@ -3,7 +3,7 @@ use test
 type S:
     a any
 
-let o = test.erase(S{})
+dyn o = test.erase(S{})
 o.foo()
 
 --cytest: error

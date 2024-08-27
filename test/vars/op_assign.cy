@@ -1,7 +1,7 @@
 use t 'test'
 
 -- Op assign to variable.
-let a = 1
+var a = 1
 a += 10
 t.eq(a, 11)
 
@@ -21,8 +21,8 @@ s.foo += 10
 t.eq(s.foo, 11)
 
 -- Op assign to index.
-a = {1}
-a[0] += 1
-t.eq(a[0], 2)
+var b = {1}
+b[0] += 1
+t.eq(b[0], 2)
 
 --cytest: pass

@@ -2,7 +2,7 @@ use t 'test'
 
 -- Switch no case.
 var a = 123
-let res = 0
+dyn res = 0
 switch a
 case 0 : res = 1
 case 10: res = 2
@@ -58,7 +58,7 @@ t.eq(res, 2)
 -- Switch in a nested block. Tests parsing.
 func foo():
     var a = 123
-    let res = 0
+    dyn res = 0
     switch a
     case 0 :
         res = 1

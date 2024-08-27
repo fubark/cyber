@@ -193,7 +193,7 @@ test "ARC for function return values." {
         \\func foo() S:
         \\  var a = S{value=123}
         \\  return a
-        \\let s = foo()
+        \\dyn s = foo()
         \\t.eq(s.value, 123)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
@@ -248,7 +248,7 @@ test "ARC on temp locals in expressions." {
 test "ARC in loops." {
     // A non-rcCandidate var is reassigned to a rcCandidate var inside a loop.
     try eval(.{},
-        \\let a = 123
+        \\dyn a = 123
         \\for 0..3:
         \\  a = 'abc{123}'   -- copyReleaseDst
     , struct { fn func(run: *Runner, res: EvalResult) !void {
@@ -260,7 +260,7 @@ test "ARC in loops." {
 
     // A non-rcCandidate var is reassigned to a rcCandidate var inside a loop and if branch.
     try eval(.{},
-        \\let a = 123
+        \\dyn a = 123
         \\for 0..3:
         \\  if true:
         \\    a = "abc$(123)"    -- copyReleaseDst
@@ -275,7 +275,7 @@ test "ARC in loops." {
     try eval(.{},
         \\type S:
         \\  foo any
-        \\let a = 123
+        \\dyn a = 123
         \\for 0..3:
         \\  a = S{foo=123}.foo
     , struct { fn func(run: *Runner, res: EvalResult) !void {
@@ -496,7 +496,7 @@ test "os constants" {
 test "Stack trace unwinding." {
     try eval(.{ .silent = true },
         \\use test
-        \\let a = test.erase(123)
+        \\dyn a = test.erase(123)
         \\1 + a.foo
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, c.ErrorPanic,
@@ -522,7 +522,7 @@ test "Stack trace unwinding." {
     try eval(.{ .silent = true },
         \\use test
         \\func foo() int:
-        \\  let a = test.erase(123)
+        \\  dyn a = test.erase(123)
         \\  return 1 + a.foo
         \\foo()
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {

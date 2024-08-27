@@ -1975,8 +1975,8 @@ func IsSymbolIteratorAtEnd(ObjectFile *void, SI *void) Bool:
     return lib.LLVMIsSymbolIteratorAtEnd(ObjectFile, SI)
 
 use os
-let .ffi = false
-let .lib = load()
+dyn .ffi = false
+dyn .lib = load()
 func load() dyn:
     ffi = os.newFFI()
     ffi.cbind(OpaqueMemoryBuffer_S, {_})
@@ -2758,7 +2758,7 @@ func load() dyn:
     ffi.cfunc('LLVMIsSectionIteratorAtEnd', {symbol.voidPtr, symbol.voidPtr}, symbol.int)
     ffi.cfunc('LLVMGetSymbols', {symbol.voidPtr}, symbol.voidPtr)
     ffi.cfunc('LLVMIsSymbolIteratorAtEnd', {symbol.voidPtr, symbol.voidPtr}, symbol.int)
-    let lib = ffi.bindLib(Option[String].some('libLLVM.dylib'), {gen_table=false})
+    dyn lib = ffi.bindLib(Option[String].some('libLLVM.dylib'), {gen_table=false})
     return lib
 
 -- Macros

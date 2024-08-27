@@ -2,7 +2,7 @@ use t 'test'
 use cy
 
 -- eval()
-let res = cy.eval('1')
+dyn res = cy.eval('1')
 t.eq(res, 1)
 res = cy.eval('1 + 2')
 t.eq(res, 3)
@@ -45,7 +45,7 @@ t.eq(res['decls'][0]['type'], 'enumDecl')
 t.eq(res['decls'][0]['name'], 'foo')
 
 -- parseCyon()
-let val = cy.parseCyon('123')
+dyn val = cy.parseCyon('123')
 t.eq(val, 123)
 val = cy.parseCyon('"foo"')
 t.eq(val, 'foo')

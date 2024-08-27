@@ -1,4 +1,4 @@
--- ./src/tools/cbindgen.cy -o src/tools/md4c.cy ~/repos/md4c/src/md4c.h -I/opt/homebrew/Cellar/llvm/17.0.5/include -libpath libmd4c.dylib -stripPrefix MD
+-- ./src/tools/cbindgen.cy -o src/tools/md4c.cy ~/repos/md4c/src/md4c.h -I/opt/homebrew/Cellar/llvm/18.1.8/include -libpath libmd4c.dylib -stripPrefix MD
 
 var .libPath = switch os.system:
     case 'linux' => 'libmd4c.so'
@@ -148,8 +148,8 @@ func md_parse(text *void, size SIZE, parser *void, userdata *void) int:
     return lib.md_parse(text, size, parser, userdata)
 
 use os
-let .ffi = false
-let .lib = load()
+dyn .ffi = false
+dyn .lib = load()
 func load() dyn:
     ffi = os.newFFI()
     ffi.cbind(ATTRIBUTE_S, {symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.voidPtr})
@@ -165,11 +165,11 @@ func load() dyn:
     ffi.cbind(SPAN_WIKILINK_S, {ATTRIBUTE})
     ffi.cbind(PARSER_S, {symbol.uint, symbol.uint, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr})
     ffi.cfunc('md_parse', {symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.voidPtr}, symbol.int)
-    let lib = ffi.bindLib(Option[String].some(libPath), {gen_table=false})
+    dyn lib = ffi.bindLib(Option[String].some(libPath), {gen_table=false})
     return lib
 
 -- Macros
-var .GCC_HAVE_DWARF2_CFI_ASM int = 1
+var ._GCC_HAVE_DWARF2_CFI_ASM int = 1
 var .FLAG_COLLAPSEWHITESPACE int = 1
 var .FLAG_PERMISSIVEATXHEADERS int = 2
 var .FLAG_PERMISSIVEURLAUTOLINKS int = 4

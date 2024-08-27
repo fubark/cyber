@@ -37,7 +37,7 @@ contexts:
     - match: '\b(or|and|not)\b'
       scope: keyword.operator.cyber
 
-    - match: '\b(var|as|let|context)\b'
+    - match: '\b(var|const|as|context|dyn)\b'
       scope: keyword.variable.cyber
 
     - match: '\b(func|return|self)\b'

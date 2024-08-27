@@ -1,4 +1,4 @@
-let a = foo(123)
+dyn a = foo(123)
 a = foo(a)
 func foo(a float) dyn:
     return 'foo'

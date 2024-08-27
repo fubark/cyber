@@ -56,7 +56,7 @@ t.eq(v2.x, 3.0)
 t.eq(v2.y, 4.0)
 
 -- Calling object func from another module.
-let v = a.Vec2.new(3, 4)
+dyn v = a.Vec2.new(3, 4)
 t.eq(v.x, 3.0)
 t.eq(v.y, 4.0)
 

@@ -57,7 +57,7 @@ t.eq(iters, 2)
 -- Break releases current block vars.
 for 0..10 -> i:
     if i == 2:
-        let a = {_}
+        dyn a = {_}
         break
 
 -- Continue.
@@ -71,7 +71,7 @@ t.eq(iters, 9)
 -- Continue releases current block vars.
 for 0..10 -> i:
     if i == 2:
-        let a = {_}
+        dyn a = {_}
         continue
 
 -- Single line block.

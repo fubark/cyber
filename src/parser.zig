@@ -597,6 +597,7 @@ pub const Parser = struct {
         const start = self.next_pos;
         var token = self.peek();
         switch (token.tag()) {
+            .dyn_k,
             .void_k,
             .struct_k,
             .enum_k,
@@ -800,6 +801,7 @@ pub const Parser = struct {
             .question,
             .ampersand,
             .pound,
+            .dyn_k,
             .void_k,
             .type_k,
             .symbol_k,
@@ -1855,9 +1857,9 @@ pub const Parser = struct {
                             .allow_decl = config.allow_decls,
                         });
                     },
-                    .let_k => {
+                    .dyn_k => {
                         self.advance();
-                        return self.parseLetDecl(&.{}, true, config.allow_decls);
+                        return self.parseDynDecl(&.{}, true, config.allow_decls);
                     },
                     .var_k => {
                         self.advance();
@@ -1926,8 +1928,8 @@ pub const Parser = struct {
             .context_k => {
                 return @ptrCast(try self.parseContextDecl());
             },
-            .let_k => {
-                return try self.parseLetDecl(&.{}, false, config.allow_decls);
+            .dyn_k => {
+                return try self.parseDynDecl(&.{}, false, config.allow_decls);
             },
             else => {},
         }
@@ -2028,7 +2030,7 @@ pub const Parser = struct {
             return self.parseFuncDecl(.{ .hidden = hidden, .attrs = attrs, .allow_decl = allow_decls });
         } else if (self.peek().tag() == .var_k) {
             return try self.parseVarDecl(.{ .hidden = hidden, .attrs = attrs, .typed = true, .allow_static = allow_decls });
-        } else if (self.peek().tag() == .let_k) {
+        } else if (self.peek().tag() == .dyn_k) {
             return try self.parseVarDecl(.{ .hidden = hidden, .attrs = attrs, .typed = false, .allow_static = allow_decls });
         } else if (self.peek().tag() == .type_k) {
             return try self.parseTypeDecl(.{
@@ -2824,7 +2826,11 @@ pub const Parser = struct {
             },
             .void_k => {
                 self.advance();
-                return try self.ast.newNodeErase(.void, .{ .pos = self.tokenSrcPos(start) });
+                return @ptrCast(try self.newSpanNode(.ident, start));
+            },
+            .dyn_k => {
+                self.advance();
+                return @ptrCast(try self.newSpanNode(.ident, start));
             },
             .dec => {
                 self.advance();
@@ -3327,7 +3333,7 @@ pub const Parser = struct {
         return self.cur_indent;
     }
 
-    fn parseLetDecl(self: *Parser, attrs: []*ast.Attribute, hidden: bool, allow_static: bool) !*ast.Node {
+    fn parseDynDecl(self: *Parser, attrs: []*ast.Attribute, hidden: bool, allow_static: bool) !*ast.Node {
         const start = self.next_pos;
         self.advance();
 
@@ -3697,7 +3703,7 @@ fn toBinExprOp(op: cy.tokenizer.TokenType) ?cy.ast.BinaryExprOp {
         .else_k, .enum_k, .err, .error_k, .equal, .equal_right_angle,
         .false_k, .float, .for_k, .func_k, .Func_k,
         .hex, .ident, .if_k, .mod_k, .indent,
-        .left_brace, .left_bracket, .left_paren, .let_k,
+        .left_brace, .left_bracket, .left_paren, .dyn_k,
         .minus_double_dot, .new_line, .none_k, .not_k, .object_k, .oct, .pass_k, .underscore, .pound, .question,
         .return_k, .right_brace, .right_bracket, .right_paren, .rune, .raw_string,
         .string, .struct_k, .switch_k, .symbol_k, .templateExprStart, .templateString,

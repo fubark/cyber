@@ -119,6 +119,8 @@ pub fn pushNodeValues(c: *cy.Chunk, args: []const *ast.Node) !void {
 }
 
 pub fn expandTemplateOnCallArgs(c: *cy.Chunk, template: *cy.sym.Template, args: []const *ast.Node, node: *ast.Node) !*cy.Sym {
+    try sema.ensureResolvedTemplate(c, template);
+
     // Accumulate compile-time args.
     const valueStart = c.valueStack.items.len;
     defer {
@@ -383,6 +385,8 @@ pub fn expandValueTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []con
 }
 
 pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy.Value) !*cy.Sym {
+    try sema.ensureResolvedTemplate(c, template);
+    
     // Ensure variant type.
     const res = try template.variant_cache.getOrPutContext(c.alloc, args, .{ .sema = c.sema });
     if (!res.found_existing) {

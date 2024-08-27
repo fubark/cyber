@@ -570,7 +570,7 @@ pub const Template = struct {
 
     kind: TemplateType,
 
-    /// Owned by root template.
+    /// Owned.
     params: []TemplateParam,
 
     /// Template args to variant. Keys are not owned.
@@ -578,6 +578,10 @@ pub const Template = struct {
     variants: std.ArrayListUnmanaged(*Variant),
 
     mod: vmc.Module,
+
+    pub fn isResolved(self: *Template) bool {
+        return self.sigId != cy.NullId;
+    }
 
     pub fn getMod(self: *Template) *cy.Module {
         return @ptrCast(&self.mod);

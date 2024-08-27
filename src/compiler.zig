@@ -1113,7 +1113,7 @@ fn resolveSyms(self: *Compiler) !void {
                     try sema.resolveTypeAlias(chunk, @ptrCast(sym));
                 },
                 .template => {
-                    try sema.resolveTemplate(chunk, @ptrCast(sym));
+                    try sema.ensureResolvedTemplate(chunk, @ptrCast(sym));
                 },
                 .trait_t => {},
                 else => {},

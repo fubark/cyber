@@ -3526,6 +3526,13 @@ pub fn getResolvedSym(c: *cy.Chunk, name: []const u8, node: *ast.Node, distinct:
     return null;
 }
 
+pub fn ensureResolvedTemplate(c: *cy.Chunk, template: *cy.sym.Template) !void {
+    if (template.isResolved()) {
+        return;
+    }
+    try sema.resolveTemplate(c, template);
+}
+
 pub fn ensureCompleteType(c: *cy.Chunk, type_id: cy.TypeId, node: *ast.Node) anyerror!void {
     const sym = c.sema.getTypeSym(type_id);
     const type_e = c.sema.getType(type_id);

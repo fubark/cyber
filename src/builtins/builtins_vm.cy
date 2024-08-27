@@ -285,7 +285,10 @@ type float #float64_t:
 
 --| Creates a list with initial capacity of `n` and values set to `val`.
 --| If the value is an object, it is shallow copied `n` times.
-@host func List.fill(val #T, n int) List[T]
+func List.fill(val #T, n int) List[T]:
+    return List.fill(typeid[List[T]], val, n)
+
+@host -func List.fill(type_id int, val #T, n int) List[T]
 
 @host type ListIterator[T type] _:
     func next(self) ?T:

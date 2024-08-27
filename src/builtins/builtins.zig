@@ -562,7 +562,8 @@ fn traceReleases(vm: *cy.VM) Value {
 }
 
 pub fn listFill(vm: *cy.VM) Value {
-    return vm.allocListFill(vm.getValue(0), @intCast(vm.getInt(1))) catch cy.fatal();
+    const type_id: cy.TypeId = @intCast(vm.getInt(0));
+    return vm.allocListFill(type_id, vm.getValue(1), @intCast(vm.getInt(2))) catch cy.fatal();
 }
 
 pub fn refcast(vm: *cy.VM) anyerror!Value {

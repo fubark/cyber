@@ -977,6 +977,7 @@ pub const Parser = struct {
     }
 
     fn parseTupleFields(self: *Parser) ![]*ast.Field {
+        self.consumeWhitespaceTokens();
         var field = (try self.parseObjectField()) orelse return &.{};
 
         const field_start = self.node_stack.items.len;

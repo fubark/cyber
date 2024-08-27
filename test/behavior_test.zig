@@ -62,7 +62,6 @@ if (!aot) {
     run.case("syntax/indentation.cy");
 }
     run.case("syntax/last_line_empty_indent.cy");
-    run.case("syntax/let_func_param_error.cy");
     run.case("syntax/no_stmts.cy");
     run.case("syntax/object_decl_eof.cy");
     run.case("syntax/object_decl_typespec_eof.cy");
@@ -137,8 +136,6 @@ if (!aot) {
     run.case("functions/func_union_type_error.cy");
     run.case("functions/lambda.cy");
     run.case("functions/lambda_incompat_arg_panic.cy");
-    run.case("functions/let_call_recursive.cy");
-    run.case("functions/let_func.cy");
     run.case("functions/namespace_call.cy");
     run.case("functions/object_funcs.cy");
     run.case("functions/overload.cy");

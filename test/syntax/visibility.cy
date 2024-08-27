@@ -17,10 +17,6 @@
 -func foo():
     pass
 
--- `let` function declaration.
--let foo2():
-    pass
-
 -- Variable declaration.
 -var .foov = 123
 

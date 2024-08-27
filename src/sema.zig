@@ -5890,7 +5890,7 @@ pub const ChunkExt = struct {
                     try appendFuncParamVars(c, lambda.params, @ptrCast(params));
 
                     var func_ret_t: cy.TypeId = undefined;
-                    if (lambda.sig_t != .let and lambda.ret == null) {
+                    if (lambda.ret == null) {
                         // Infer return type.
                         const expr_res = try c.semaExpr(@ptrCast(@constCast(@alignCast(lambda.stmts.ptr))), .{});
                         func_ret_t = expr_res.type.id;

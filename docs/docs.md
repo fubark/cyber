@@ -3305,7 +3305,6 @@ The main execution context is a fiber as well. Once the main fiber has finished,
 
 * [Dynamic variables.](#dynamic-variables)
 * [Runtime type checking.](#runtime-type-checking)
-* [Dynamic functions.](#dynamic-functions)
 * [Dynamic tables.](#dynamic-tables)
 * [Custom tables.](#custom-tables)
 * [Dynamic inference.](#dynamic-inference)
@@ -3359,34 +3358,6 @@ if a > 20:
 
 print a(1, 2, 3)
 --> panic: Expected a function.
-```
-
-## Dynamic functions.
-Functions declared with `let` do not allow typed parameters or a return specifier.
-All parameters are implicitly given the `dyn` type.
-
-The return specifier is also implicitly `!dyn` which indicates that the function can throw an error. This is only relevant when typed code calls a dynamic function:
-```cy
-let foo(a, b, c):
-    return a + b() + a[c]
-```
-
-The function `foo` is a static function. It can't be reassigned like a variable after its declaration.
-
-However, function values (lambdas) assigned to variables allow reassignment. Lambdas can also capture variables from the parent scope:
-```cy
-let count = 123
-let f = (a, b):
-    return a + b(10) + count
-
--- Reassign `f`.
-f = (a, b):
-    return count * 2 - b(a)
-```
-
-Lambdas that simply return an expression can be written as:
-```cy
-f = (a, b) => a + b(10)
 ```
 
 ## Dynamic tables.

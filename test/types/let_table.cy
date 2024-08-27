@@ -2,7 +2,7 @@ use test
 
 -- With methods.
 let Counter{ count }:
-    let inc(self):
+    func inc(self):
         self.count += 1
         
 let c = Counter{count=0}

@@ -3386,36 +3386,7 @@ pub const Parser = struct {
             return self.reportError("Expected local name identifier.", &.{});
         };
 
-        if (self.peek().tag() == .left_paren) {
-            self.advance();
-            
-            // Parse as untyped function.
-            const params = try self.parseFuncParams(&.{}, false);
-            if (self.peek().tag() != .colon) {
-                return self.reportError("Expected colon.", &.{});
-            }
-            self.advance();
-
-            try self.pushBlock();
-            const stmts = try self.parseSingleOrIndentedBodyStmts();
-            _ = self.popBlock();
-
-            const func = try self.ast.newNode(.funcDecl, .{
-                .ret = null,
-                .name = name,
-                .params = params,
-                .attrs = attrs,
-                .stmts = stmts,
-                .sig_t = .let,
-                .hidden = hidden,
-                .pos = self.tokenSrcPos(start),
-            });
-
-            if (self.cur_indent == 0) {
-                try self.staticDecls.append(self.alloc, @ptrCast(func));
-            }
-            return @ptrCast(func);
-        } else if (self.peek().tag() == .left_brace) {
+        if (self.peek().tag() == .left_brace) {
             self.advance();
 
             // Parse as custom table declaration.

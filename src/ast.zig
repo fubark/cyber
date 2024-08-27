@@ -598,7 +598,6 @@ pub const StringTemplate = struct {
 
 const FuncSigType = enum(u8) {
     func,
-    let,
     infer,
 };
 

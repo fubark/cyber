@@ -754,6 +754,7 @@ pub const Parser = struct {
                 decl = @ptrCast(try self.parseTraitDecl(start, name, config));
             },
             // `object` is optional.
+            .left_paren,
             .object_k,
             .new_line,
             .colon => {
@@ -1138,6 +1139,20 @@ pub const Parser = struct {
         token = self.peek();
         if (token.tag() == .colon) {
             self.advance();
+        } else if (token.tag() == .left_paren) {
+            self.advance();
+            const fields = try self.parseTupleFields();
+            if (token.tag() != .colon) {
+                try self.consumeNewLineOrEnd();
+                return self.newObjectDecl(start, .objectDecl, name, config, &.{}, fields, &.{}, true);
+            }
+
+            const req_indent = try self.parseFirstChildIndent(self.cur_indent);
+            const prev_indent = self.pushIndent(req_indent);
+            defer self.cur_indent = prev_indent;
+
+            const funcs = try self.parseTypeFuncs(req_indent);
+            return self.newObjectDecl(start, .objectDecl, name, config, &.{}, fields, funcs, true);
         } else {
             // Only declaration. No members.
             return self.newObjectDecl(start, .objectDecl, name, config, &.{}, &.{}, &.{}, false);

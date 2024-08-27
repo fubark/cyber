@@ -69,6 +69,7 @@ pub const Type = extern struct {
         object: extern struct {
             numFields: u16,
             has_boxed_fields: bool,
+            tuple: bool,
 
             /// Each entry indicates whether the corresponding field is boxed.
             fields: [*]bool,

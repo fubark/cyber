@@ -1563,6 +1563,7 @@ pub const ChunkExt = struct {
                 .numFields = cy.NullU16,
                 .has_boxed_fields = false,
                 .fields = undefined,
+                .tuple = false,
             }},
             .info = .{},
         };

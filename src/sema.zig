@@ -1798,12 +1798,13 @@ pub fn reserveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, opt_head
 
     switch (template.kind) {
         .object_t => {
-            const object_t = try c.createObjectType(@ptrCast(c.sym), name, @ptrCast(template.decl.child_decl));
+            const decl = template.decl.child_decl.cast(.objectDecl);
+            const object_t = try c.createObjectType(@ptrCast(c.sym), name, @ptrCast(decl));
             object_t.variant = variant;
 
             const header_decl = opt_header_decl orelse template.decl.child_decl;
             const type_id = try resolveTypeIdFromDecl(c, @ptrCast(object_t), header_decl.cast(.objectDecl).attrs, header_decl);
-            try resolveObjectTypeId(c, object_t, type_id);
+            try resolveObjectTypeId(c, object_t, decl.is_tuple, type_id);
 
             return @ptrCast(object_t);
         },
@@ -1994,7 +1995,7 @@ pub fn reserveObjectType(c: *cy.Chunk, decl: *ast.ObjectDecl) !*cy.sym.ObjectTyp
     const name = c.ast.nodeString(decl.name.?);
     const sym = try c.reserveObjectType(@ptrCast(c.sym), name, @ptrCast(decl));
     const type_id = try resolveTypeIdFromDecl(c, @ptrCast(sym), decl.attrs, @ptrCast(decl));
-    try resolveObjectTypeId(c, sym, type_id);
+    try resolveObjectTypeId(c, sym, decl.is_tuple, type_id);
     return sym;
 }
 
@@ -2021,7 +2022,7 @@ pub fn resolveTraitTypeId(c: *cy.Chunk, trait_t: *cy.sym.TraitType, type_id: cy.
     };
 }
 
-pub fn resolveObjectTypeId(c: *cy.Chunk, object_t: *cy.sym.ObjectType, type_id: cy.TypeId) !void {
+pub fn resolveObjectTypeId(c: *cy.Chunk, object_t: *cy.sym.ObjectType, tuple: bool, type_id: cy.TypeId) !void {
     object_t.type = type_id;
     c.compiler.sema.types.items[type_id] = .{
         .sym = @ptrCast(object_t),
@@ -2029,6 +2030,7 @@ pub fn resolveObjectTypeId(c: *cy.Chunk, object_t: *cy.sym.ObjectType, type_id: 
         .data = .{ .object = .{
             .numFields = cy.NullU16,
             .has_boxed_fields = false,
+            .tuple = tuple,
             .fields = undefined,
         }},
         .info = .{},
@@ -2081,7 +2083,7 @@ pub fn resolveDistinctType(c: *cy.Chunk, distinct_t: *cy.sym.DistinctType) !*cy.
         .object_t => {
             const object_t = target_sym.cast(.object_t);
             const new = try c.createObjectType(distinct_t.head.parent.?, name, object_t.decl);
-            try resolveObjectTypeId(c, new, distinct_t.type);
+            try resolveObjectTypeId(c, new, object_t.decl.?.cast(.objectDecl).is_tuple, distinct_t.type);
             new.getMod().* = distinct_t.getMod().*;
             new.getMod().updateParentRefs(@ptrCast(new));
 
@@ -2261,11 +2263,10 @@ pub fn resolveObjectFields(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Object
                     rt_fields[i] = !c.sema.isUnboxedType(field.type);
                 }
             }
-            c.sema.types.items[obj.type].data.object = .{
-                .numFields = @intCast(obj.numFields),
-                .has_boxed_fields = has_boxed_fields,
-                .fields = rt_fields.ptr,
-            };
+            const data = &c.sema.types.items[obj.type].data.object;
+            data.numFields = @intCast(obj.numFields);
+            data.has_boxed_fields = has_boxed_fields;
+            data.fields = rt_fields.ptr;
         },
         .struct_t => {
             var rt_fields: []bool = &.{};
@@ -4793,6 +4794,14 @@ pub const ChunkExt = struct {
             },
             .object_t => {
                 const obj = sym.cast(.object_t);
+                if (node.init.array_like) {
+                    const type_e = c.sema.getType(obj.type);
+                    if (type_e.data.object.tuple) {
+                        return c.semaTupleInit(obj.type, obj.getFields(), node.init);
+                    } else {
+                        return c.reportError("Expected record initializer.", @ptrCast(node.init));
+                    }
+                }
                 return c.semaObjectInit2(obj, node.init);
             },
             .type => {
@@ -5705,8 +5714,16 @@ pub const ChunkExt = struct {
 
                 if (c.sema.isUserObjectType(expr.target_t)) {
                     // Infer user object type.
-                    const obj = c.sema.getTypeSym(expr.target_t).cast(.object_t);
-                    return c.semaObjectInit2(obj, init_lit);
+                    const type_e = c.sema.getType(expr.target_t);
+                    if (init_lit.array_like) {
+                        const sym = type_e.sym.cast(.object_t);
+                        if (type_e.data.object.tuple) {
+                            return c.semaTupleInit(sym.type, sym.getFields(), init_lit);
+                        } else {
+                            return c.reportError("Expected record initializer.", @ptrCast(init_lit));
+                        }
+                    }
+                    return c.semaObjectInit2(type_e.sym.cast(.object_t), init_lit);
                 } else if (c.sema.isStructType(expr.target_t)) {
                     const type_e = c.sema.getType(expr.target_t);
                     if (init_lit.array_like) {

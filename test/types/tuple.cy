@@ -1,21 +1,39 @@
 use test
 
-type Foo struct(a int, b String)
+type S struct(a int, b String)
 
-var f = Foo{123, 'abc'}
-test.eq(f.a, 123)
-test.eq(f.b, 'abc')
+var s = S{123, 'abc'}
+test.eq(s.a, 123)
+test.eq(s.b, 'abc')
 
-f = .{234, 'xyz'}
-test.eq(f.a, 234)
-test.eq(f.b, 'xyz')
+s = .{234, 'xyz'}
+test.eq(s.a, 234)
+test.eq(s.b, 'xyz')
 
-f = Foo{a=123, b='abc'}
-test.eq(f.a, 123)
-test.eq(f.b, 'abc')
+s = S{a=123, b='abc'}
+test.eq(s.a, 123)
+test.eq(s.b, 'abc')
 
-f = .{a=234, b='xyz'}
-test.eq(f.a, 234)
-test.eq(f.b, 'xyz')
+s = .{a=234, b='xyz'}
+test.eq(s.a, 234)
+test.eq(s.b, 'xyz')
+
+type O(a int, b String)
+
+var o = O{123, 'abc'}
+test.eq(o.a, 123)
+test.eq(o.b, 'abc')
+
+o = .{234, 'xyz'}
+test.eq(o.a, 234)
+test.eq(o.b, 'xyz')
+
+o = O{a=123, b='abc'}
+test.eq(o.a, 123)
+test.eq(o.b, 'abc')
+
+o = .{a=234, b='xyz'}
+test.eq(o.a, 234)
+test.eq(o.b, 'xyz')
 
 --cytest: pass

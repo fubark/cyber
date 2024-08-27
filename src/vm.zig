@@ -984,7 +984,7 @@ pub const VM = struct {
         }
         const sym = c.createObjectType(parent, name, null) catch return error.Unexpected;
         const type_id = try self.sema.pushType();
-        try sema.resolveObjectTypeId(c, sym, type_id);
+        try sema.resolveObjectTypeId(c, sym, false, type_id);
         sym.head.setNameOwned(true);
 
         const infos = try c.alloc.alloc(cy.sym.FieldInfo, fields.len);
@@ -1003,6 +1003,7 @@ pub const VM = struct {
         c.sema.types.items[sym.type].data.object = .{
             .numFields = @intCast(sym.numFields),
             .has_boxed_fields = true,
+            .tuple = false,
             .fields = rt_fields.ptr,
         };
 

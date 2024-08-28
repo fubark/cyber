@@ -8,7 +8,10 @@ func bitcast(#D type, val #S) D:
 @host -func bitcast_(#D type, dst_t int, val #S, src_t int) D
 
 --| Copies a primitive value or creates a shallow copy of an object value.
-@host func copy(val any) any
+func copy(val #T) T:
+    return copy(typeid[T], val)
+
+@host -func copy(type_id int, val #T) T
 
 --| Dumps a detailed description of a value.
 @host func dump(val any) void
@@ -286,9 +289,9 @@ type float #float64_t:
 --| Creates a list with initial capacity of `n` and values set to `val`.
 --| If the value is an object, it is shallow copied `n` times.
 func List.fill(val #T, n int) List[T]:
-    return List.fill(typeid[List[T]], val, n)
+    return List.fill(typeid[List[T]], typeid[T], val, n)
 
-@host -func List.fill(type_id int, val #T, n int) List[T]
+@host -func List.fill(list_t int, val_t int, val #T, n int) List[T]
 
 @host type ListIterator[T type] _:
     func next(self) ?T:

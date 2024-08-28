@@ -562,8 +562,9 @@ fn traceReleases(vm: *cy.VM) Value {
 }
 
 pub fn listFill(vm: *cy.VM) Value {
-    const type_id: cy.TypeId = @intCast(vm.getInt(0));
-    return vm.allocListFill(type_id, vm.getValue(1), @intCast(vm.getInt(2))) catch cy.fatal();
+    const list_t: cy.TypeId = @intCast(vm.getInt(0));
+    const val_t: cy.TypeId = @intCast(vm.getInt(1));
+    return vm.allocListFill(list_t, val_t, vm.getValue(2), @intCast(vm.getInt(3))) catch cy.fatal();
 }
 
 pub fn refcast(vm: *cy.VM) anyerror!Value {
@@ -587,8 +588,9 @@ pub fn bitcast(vm: *cy.VM) anyerror!Value {
 }
 
 pub fn copy(vm: *cy.VM) anyerror!Value {
-    const val = vm.getValue(0);
-    return cy.value.shallowCopy(vm, val);
+    const type_id: cy.TypeId = @intCast(vm.getInt(0));
+    const val = vm.getValue(1);
+    return cy.value.shallowCopy(vm, type_id, val);
 }
 
 pub fn errorReport(vm: *cy.VM) anyerror!Value {

@@ -463,75 +463,71 @@ pub fn isHostFunc(vm: *cy.VM, val: Value) bool {
     }
 }
 
-pub fn shallowCopy(vm: *cy.VM, val: Value) anyerror!Value {
-    if (val.isPointer()) {
-        const obj = val.asHeapObject();
-        switch (obj.getTypeId()) {
-            bt.ListDyn => {
-                const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
-                const new = try cy.heap.allocListDyn(vm, list.items());
-                for (list.items()) |item| {
-                    vm.retain(item);
-                }
-                return new;
-            },
-            bt.Map => {
-                const new = try cy.heap.allocEmptyMap(vm);
-                const newMap = cy.ptrAlignCast(*cy.MapInner, &(new.asHeapObject()).map.inner);
-
-                const map = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-                var iter = map.iterator();
-                while (iter.next()) |entry| {
-                    cy.arc.retain(vm, entry.key);
-                    cy.arc.retain(vm, entry.value);
-                    try newMap.put(vm.alloc, entry.key, entry.value);
-                }
-                return new;
-            },
-            bt.Integer => {
-                return vm.allocInt(obj.integer.val);
-            },
-            bt.String => {
-                cy.arc.retainObject(vm, obj);
-                return val;
-            },
-            bt.Fiber => {
-                fmt.panic("Unsupported copy fiber.", &.{});
-            },
-            bt.TccState => {
-                fmt.panic("Unsupported copy tcc state.", &.{});
-            },
-            else => {
-                const entry = &@as(*const cy.VM, @ptrCast(vm)).c.types[obj.getTypeId()];
-                switch (entry.kind) {
-                    .int => {
-                        return vm.allocInt(obj.integer.val);
-                    },
-                    .object => {
-                        const numFields = entry.data.object.numFields;
-                        const fields = obj.object.getValuesConstPtr()[0..numFields];
-                        var new: Value = undefined;
-                        if (numFields <= 4) {
-                            new = try cy.heap.allocObjectSmall(vm, obj.getTypeId(), fields);
-                        } else {
-                            new = try cy.heap.allocObject(vm, obj.getTypeId(), fields);
-                        }
-                        const rt_fields = entry.data.object.fields[0..numFields];
-                        for (fields, 0..) |field, i| {
-                            if (rt_fields[i]) {
-                                cy.arc.retain(vm, field);
-                            }
-                        }
-                        return new;
-                    },
-                    else => {
-                        fmt.panic("Unsupported copy host object. {}", &.{fmt.v(entry.kind)});
-                    },
-                }
-            },
-        }
-    } else {
+pub fn shallowCopy(vm: *cy.VM, type_id: cy.TypeId, val: Value) anyerror!Value {
+    if (vm.sema.isUnboxedType(type_id)) {
         return val;
+    }
+    const obj = val.asHeapObject();
+    switch (obj.getTypeId()) {
+        bt.ListDyn => {
+            const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
+            const new = try cy.heap.allocListDyn(vm, list.items());
+            for (list.items()) |item| {
+                vm.retain(item);
+            }
+            return new;
+        },
+        bt.Map => {
+            const new = try cy.heap.allocEmptyMap(vm);
+            const newMap = cy.ptrAlignCast(*cy.MapInner, &(new.asHeapObject()).map.inner);
+
+            const map = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
+            var iter = map.iterator();
+            while (iter.next()) |entry| {
+                cy.arc.retain(vm, entry.key);
+                cy.arc.retain(vm, entry.value);
+                try newMap.put(vm.alloc, entry.key, entry.value);
+            }
+            return new;
+        },
+        bt.String => {
+            cy.arc.retainObject(vm, obj);
+            return val;
+        },
+        bt.Fiber => {
+            fmt.panic("Unsupported copy fiber.", &.{});
+        },
+        bt.TccState => {
+            fmt.panic("Unsupported copy tcc state.", &.{});
+        },
+        else => {
+            const entry = &@as(*const cy.VM, @ptrCast(vm)).c.types[obj.getTypeId()];
+            switch (entry.kind) {
+                .int => {
+                    return vm.allocInt(obj.integer.val);
+                },
+                .object => {
+                    const numFields = entry.data.object.numFields;
+                    const fields = obj.object.getValuesConstPtr()[0..numFields];
+                    var new: Value = undefined;
+                    if (numFields <= 4) {
+                        new = try cy.heap.allocObjectSmall(vm, obj.getTypeId(), fields);
+                    } else {
+                        new = try cy.heap.allocObject(vm, obj.getTypeId(), fields);
+                    }
+                    const rt_fields = entry.data.object.fields[0..numFields];
+                    for (fields, 0..) |field, i| {
+                        if (rt_fields[i]) {
+                            cy.arc.retain(vm, field);
+                        }
+                    }
+                    return new;
+                },
+                else => {
+                    fmt.panic("Unsupported copy host object. {}", &.{fmt.v(entry.kind)});
+                },
+            }
+        },
     }
 }
 

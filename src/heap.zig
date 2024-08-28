@@ -1035,10 +1035,10 @@ pub fn allocOwnedList(self: *cy.VM, elems: []Value) !Value {
     return Value.initCycPtr(obj);
 }
 
-pub fn allocListFill(self: *cy.VM, val: Value, n: u32) !Value {
+pub fn allocListFill(self: *cy.VM, list_t: cy.TypeId, val_t: cy.TypeId, val: Value, n: u32) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
-        .typeId = bt.ListDyn | vmc.CYC_TYPE_MASK,
+        .typeId = list_t | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .list = .{
             .ptr = undefined,
@@ -1055,7 +1055,7 @@ pub fn allocListFill(self: *cy.VM, val: Value, n: u32) !Value {
     } else {
         var i: u32 = 0;
         while (i < n) : (i += 1) {
-            list.buf[i] = try cy.value.shallowCopy(self, val);
+            list.buf[i] = try cy.value.shallowCopy(self, val_t, val);
         }
     }
     return Value.initCycPtr(obj);

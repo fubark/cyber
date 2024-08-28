@@ -6502,7 +6502,7 @@ pub const ChunkExt = struct {
             .bitwiseXor,
             .bitwiseLeftShift,
             .bitwiseRightShift => {
-                const left = try c.semaExprTarget(leftId, expr.target_t);
+                const left = try c.semaExprHint(leftId, expr.target_t);
 
                 if (left.type.isDynAny()) {
                     const right = try c.semaExprTarget(rightId, bt.Dyn);

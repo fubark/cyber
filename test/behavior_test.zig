@@ -156,6 +156,7 @@ if (!cy.isWasm) {
     run.case("memory/release_expr_stmt_return.cy");
     run.case("memory/release_scope_end.cy");
 
+    run.case("types/any.cy");
     run.case("types/cast.cy");
     run.case("types/cast_error.cy");
     run.case("types/cast_narrow_panic.cy");

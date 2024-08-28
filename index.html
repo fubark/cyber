@@ -990,7 +990,7 @@ table tbody tr:nth-child(even) {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 381-2eee654</div>
+    <div class="sub-title">v0.4-dev 395-9c98ad7</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -1022,7 +1022,7 @@ table tbody tr:nth-child(even) {
 <p>Cyber is a fast, efficient, and concurrent scripting language. The landing page is at <a href="https://cyberscript.dev" title="">cyberscript.dev</a> and contains performance metrics and release notes.</p>
 <p>These docs provide a reference manual for the language. You can read it in order or jump around using the navigation. You may come across features that are marked <code>Incomplete</code> or <code>Planned</code>. This is because the docs are written as if all features have been completed already.</p>
 <h2 id="type-system">Type System. <a href="#type-system">#</a></h2>
-<p>Cyber is a statically typed language so the documentation will provide examples using typed syntax. However, dynamic typing is also supported with a less restrictive syntax. If you're coming from a language such as Python, JavaScript, or Lua, it can be easier to get started with <a href="#dynamic-typing" title="">Dynamic Typing</a>.</p>
+<p>Cyber is a statically typed language. However, dynamic typing is also supported. If you're coming from a language such as Python, JavaScript, or Lua, it can be easier to get started with <a href="#dynamic-typing" title="">Dynamic Typing</a>.</p>
 <a href="#introduction">^topic</a>
 <h2 id="hello-world">Hello World. <a href="#hello-world">#</a></h2>
 <pre><code class="language-cy">use math
@@ -1171,8 +1171,8 @@ func foo():
     print a     --> 123
 </code></pre>
 <p>The <code>.</code> prefix is used to reference the current module's namespace.</p>
-<p>Unlike local variables, static variables do not currently infer the type from the right hand side so a specific type must be specified or it will default to the <code>any</code> type:</p>
-<pre><code class="language-cy">var .my_map Map = Map{}
+<p>A type specifier can be provided after the variable name, otherwise, it's inferred from the initializer:</p>
+<pre><code class="language-cy">var .my_map any = Map{}
 </code></pre>
 <p>Since static variables are initialized outside of a fiber's execution flow, they can not reference any local variables:</p>
 <pre><code class="language-cy">var .b = a   --> Compile error, initializer can not reference a local variable.
@@ -1274,7 +1274,7 @@ print a    --> panic: `a` is not defined in `$global`.
 <li><a href="#type-embedding" title="">Type embedding</a>: <code>use</code></li>
 <li><a href="#error-handling" title="">Error Handling</a>: <code>try</code> <code>catch</code> <code>throw</code></li>
 <li><a href="#modules" title="">Modules</a>: <code>use</code> <code>mod</code></li>
-<li><a href="#dynamic-typing" title="">Dynamic Typing</a>: <code>let</code></li>
+<li><a href="#dynamic-typing" title="">Dynamic Typing</a>: <code>dyn</code></li>
 </ul>
 <a href="#syntax">^topic</a>
 <h3 id="contextual-keywords">Contextual keywords. <a href="#contextual-keywords">#</a></h3>
@@ -3169,11 +3169,11 @@ print typeof('my str').id()
 <p><a href="#modules" title="">^topic</a></p>
 <!-- core.start -->
 <blockquote><p><code>func bitcast(D type, val S) D</code></p>
-</blockquote><blockquote><p><code>func copy(val any) any</code></p>
+</blockquote><blockquote><p><code>func copy(val T) T</code></p>
 <p>Copies a primitive value or creates a shallow copy of an object value.</p>
-</blockquote><blockquote><p><code>func dump(val any) <void></code></p>
+</blockquote><blockquote><p><code>func dump(val any) void</code></p>
 <p>Dumps a detailed description of a value.</p>
-</blockquote><blockquote><p><code>func eprint(str any) <void></code></p>
+</blockquote><blockquote><p><code>func eprint(str any) void</code></p>
 <p>Prints a value to the error stream. The host determines how it is printed.</p>
 </blockquote><blockquote><p><code>func errorReport() String</code></p>
 </blockquote><blockquote><p><code>func getObjectRc(val any) int</code></p>
@@ -3193,9 +3193,9 @@ print typeof('my str').id()
 </blockquote><blockquote><p><code>func performGC() Map</code></p>
 <p>Runs the garbage collector once to detect reference cycles and abandoned objects.  Returns the statistics of the run in a map value.</p>
 </blockquote><blockquote><p><code>func ptrcast(D type, val S) *D</code></p>
-</blockquote><blockquote><p><code>func print(str any) <void></code></p>
+</blockquote><blockquote><p><code>func print(str any) void</code></p>
 <p>Prints a value. The host determines how it is printed.</p>
-</blockquote><blockquote><p><code>func queueTask(fn <func_type>) <void></code></p>
+</blockquote><blockquote><p><code>func queueTask(fn <func_type>) void</code></p>
 <p>Queues a callback function as an async task.</p>
 </blockquote><blockquote><p><code>func refcast(T type, ptr *T) <ref></code></p>
 </blockquote><blockquote><p><code>func runestr(val int) String</code></p>
@@ -3302,12 +3302,12 @@ print typeof('my str').id()
 <h3 id="type-list"><code>type List</code> <a href="#type-list">#</a></h3>
 <blockquote><p><code>func $index(self, idx int) T</code></p>
 </blockquote><blockquote><p><code>func $index(self, range Range) List[T]</code></p>
-</blockquote><blockquote><p><code>func $setIndex(self, idx int, val T) <void></code></p>
-</blockquote><blockquote><p><code>func append(self, val T) <void></code></p>
+</blockquote><blockquote><p><code>func $setIndex(self, idx int, val T) void</code></p>
+</blockquote><blockquote><p><code>func append(self, val T) void</code></p>
 <p>Appends a value to the end of the list.</p>
-</blockquote><blockquote><p><code>func appendAll(self, list List[T]) <void></code></p>
+</blockquote><blockquote><p><code>func appendAll(self, list List[T]) void</code></p>
 <p>Appends the elements of another list to the end of this list.</p>
-</blockquote><blockquote><p><code>func insert(self, idx int, val T) <void></code></p>
+</blockquote><blockquote><p><code>func insert(self, idx int, val T) void</code></p>
 <p>Inserts a value at index <code>idx</code>.</p>
 </blockquote><blockquote><p><code>func iterator(self) ListIterator[T]</code></p>
 <p>Returns a new iterator over the list elements.</p>
@@ -3315,12 +3315,12 @@ print typeof('my str').id()
 <p>Returns a new string that joins the elements with <code>separator</code>.</p>
 </blockquote><blockquote><p><code>func len(self) int</code></p>
 <p>Returns the number of elements in the list.</p>
-</blockquote><blockquote><p><code>func remove(self, idx int) <void></code></p>
+</blockquote><blockquote><p><code>func remove(self, idx int) void</code></p>
 <p>Removes an element at index <code>idx</code>.</p>
-</blockquote><blockquote><p><code>func resize(self, size int) <void></code></p>
+</blockquote><blockquote><p><code>func resize(self, size int) void</code></p>
 <p>Resizes the list to <code>len</code> elements. If the new size is bigger, <code>none</code> values  are appended to the list. If the new size is smaller, elements at the end of the list are removed.</p>
-</blockquote><blockquote><p><code>func resize_(self, elem_t int, size int) <void></code></p>
-</blockquote><blockquote><p><code>func sort(self, lessFn <func_type>) <void></code></p>
+</blockquote><blockquote><p><code>func resize_(self, elem_t int, size int) void</code></p>
+</blockquote><blockquote><p><code>func sort(self, lessFn <func_type>) void</code></p>
 <p>Sorts the list with the given <code>less</code> function.  If element <code>a</code> should be ordered before <code>b</code>, the function should return <code>true</code> otherwise <code>false</code>.</p>
 </blockquote><blockquote><p><code>func List.fill(val T, n int) List[T]</code></p>
 <p>Creates a list with initial capacity of <code>n</code> and values set to <code>val</code>.  If the value is an object, it is shallow copied <code>n</code> times.</p>
@@ -3343,16 +3343,16 @@ print typeof('my str').id()
 <h3 id="type-funcsym_t"><code>type funcsym_t</code> <a href="#type-funcsym_t">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-table"><code>type Table</code> <a href="#type-table">#</a></h3>
-<blockquote><p><code>func $initPair(self, key String, value any) <void></code></p>
+<blockquote><p><code>func $initPair(self, key String, value any) void</code></p>
 </blockquote><blockquote><p><code>func $get(self, name String) dyn</code></p>
 </blockquote><blockquote><p><code>func $set(self, name String, value any) </code></p>
 </blockquote><blockquote><p><code>func $index(self, key any) dyn</code></p>
-</blockquote><blockquote><p><code>func $setIndex(self, key any, value any) <void></code></p>
+</blockquote><blockquote><p><code>func $setIndex(self, key any, value any) void</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-map"><code>type Map</code> <a href="#type-map">#</a></h3>
-<blockquote><p><code>func $initPair(self, key any, value any) <void></code></p>
+<blockquote><p><code>func $initPair(self, key any, value any) void</code></p>
 </blockquote><blockquote><p><code>func $index(self, key any) dyn</code></p>
-</blockquote><blockquote><p><code>func $setIndex(self, key any, val any) <void></code></p>
+</blockquote><blockquote><p><code>func $setIndex(self, key any, val any) void</code></p>
 </blockquote><blockquote><p><code>func contains(self, key any) bool</code></p>
 <p>Returns whether there is a value mapped to <code>key</code>.</p>
 </blockquote><blockquote><p><code>func get(self, key any) ?any</code></p>
@@ -3441,7 +3441,7 @@ print typeof('my str').id()
 <h3 id="type-pointer"><code>type pointer</code> <a href="#type-pointer">#</a></h3>
 <blockquote><p><code>func $index(self, idx int) *T</code></p>
 </blockquote><blockquote><p><code>func $index(self, range Range) [*]T</code></p>
-</blockquote><blockquote><p><code>func $setIndex(self, idx int, val T) <void></code></p>
+</blockquote><blockquote><p><code>func $setIndex(self, idx int, val T) void</code></p>
 </blockquote><blockquote><p><code>func addr(self) int</code></p>
 <p>When pointer runtime safety is enabled, this returns the raw pointer address as an <code>int64</code>.   Otherwise, the pointer itself is bitcasted to an <code>int64</code>.</p>
 </blockquote><blockquote><p><code>func asObject(self) any</code></p>
@@ -3452,7 +3452,7 @@ print typeof('my str').id()
 <p>Dereferences the pointer at a byte offset and returns the C value converted to Cyber.</p>
 </blockquote><blockquote><p><code>func getString(self, offset int, len int) String</code></p>
 <p>Returns a <code>String</code> with a copy of the byte data starting from an offset to the specified length.</p>
-</blockquote><blockquote><p><code>func set(self, offset int, ctype symbol, val any) <void></code></p>
+</blockquote><blockquote><p><code>func set(self, offset int, ctype symbol, val any) void</code></p>
 <p>Converts the value to a compatible C value and writes it to a byte offset from this pointer.</p>
 </blockquote><blockquote><p><code>func pointer.$call(T type, addr int) *T</code></p>
 <p>Converts an <code>int</code> to a <code>pointer</code> value.</p>
@@ -3460,7 +3460,7 @@ print typeof('my str').id()
 <h3 id="type-externfunc"><code>type ExternFunc</code> <a href="#type-externfunc">#</a></h3>
 <blockquote><p><code>func addr(self) int</code></p>
 <p>Returns the memory address as an <code>int</code>. The value may be negative since it's  bitcasted from an unsigned 48-bit integer but it retains the original pointer bits.</p>
-</blockquote><blockquote><p><code>func ptr(self) *<void></code></p>
+</blockquote><blockquote><p><code>func ptr(self) *void</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-fiber"><code>type Fiber</code> <a href="#type-fiber">#</a></h3>
 <blockquote><p><code>func status(self) symbol</code></p>
@@ -3475,7 +3475,7 @@ print typeof('my str').id()
 </blockquote><blockquote><p><code>func Future.new(T type) Future[T]</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-futureresolver"><code>type FutureResolver</code> <a href="#type-futureresolver">#</a></h3>
-<blockquote><p><code>func complete(self, val T) <void></code></p>
+<blockquote><p><code>func complete(self, val T) void</code></p>
 </blockquote><blockquote><p><code>func future(self) Future[T]</code></p>
 </blockquote><blockquote><p><code>func FutureResolver.new(T type) FutureResolver[T]</code></p>
 </blockquote><a href="#modules">^topic</a>
@@ -3484,7 +3484,7 @@ print typeof('my str').id()
 <h3 id="type-refslice"><code>type RefSlice</code> <a href="#type-refslice">#</a></h3>
 <blockquote><p><code>func $index(self, idx int) <ref></code></p>
 </blockquote><blockquote><p><code>func $index(self, range Range) <ref_slice></code></p>
-</blockquote><blockquote><p><code>func $setIndex(self, idx int, val T) <void></code></p>
+</blockquote><blockquote><p><code>func $setIndex(self, idx int, val T) void</code></p>
 </blockquote><blockquote><p><code>func iterator(self) RefSliceIterator[T]</code></p>
 </blockquote><blockquote><p><code>func len(self) int</code></p>
 </blockquote><a href="#modules">^topic</a>
@@ -3494,7 +3494,7 @@ print typeof('my str').id()
 <h3 id="type-ptrslice"><code>type PtrSlice</code> <a href="#type-ptrslice">#</a></h3>
 <blockquote><p><code>func $index(self, idx int) *T</code></p>
 </blockquote><blockquote><p><code>func $index(self, range Range) [*]T</code></p>
-</blockquote><blockquote><p><code>func $setIndex(self, idx int, val T) <void></code></p>
+</blockquote><blockquote><p><code>func $setIndex(self, idx int, val T) void</code></p>
 </blockquote><blockquote><p><code>func endsWith(self, suffix [*]T) bool</code></p>
 <p>Returns whether the array ends with <code>suffix</code>.</p>
 </blockquote><blockquote><p><code>func findScalar(self, needle T) ?int</code></p>
@@ -3509,7 +3509,7 @@ print typeof('my str').id()
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-imemory-trait"><code>type IMemory trait</code> <a href="#type-imemory-trait">#</a></h3>
 <blockquote><p><code>func alloc(self, len int) [*]byte</code></p>
-</blockquote><blockquote><p><code>func free(self, buf [*]byte) <void></code></p>
+</blockquote><blockquote><p><code>func free(self, buf [*]byte) void</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-memory"><code>type Memory</code> <a href="#type-memory">#</a></h3>
 <blockquote><p><code>func new(self, T type) *T</code></p>
@@ -3519,7 +3519,7 @@ print typeof('my str').id()
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-defaultmemory"><code>type DefaultMemory</code> <a href="#type-defaultmemory">#</a></h3>
 <blockquote><p><code>func alloc(self, len int) [*]byte</code></p>
-</blockquote><blockquote><p><code>func free(self, buf [*]byte) <void></code></p>
+</blockquote><blockquote><p><code>func free(self, buf [*]byte) void</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-exprtype"><code>type ExprType</code> <a href="#type-exprtype">#</a></h3>
 <blockquote><p><code>func getType(self) type</code></p>
@@ -3544,7 +3544,7 @@ print cy.toCyon([1, 2, 3])
 <p>Parses Cyber source string into a structured map object.  Currently, only metadata about static declarations is made available but this will be extended to include an AST.</p>
 </blockquote><blockquote><p><code>func parseCyon(src String) any</code></p>
 <p>Parses a CYON string into a value.</p>
-</blockquote><blockquote><p><code>func repl(read_line any) <void></code></p>
+</blockquote><blockquote><p><code>func repl(read_line any) void</code></p>
 <p>Starts an isolated REPL session.  The callback <code>read_line(prefix String) String</code> is responsible for obtaining the input.</p>
 </blockquote><blockquote><p><code>func toCyon(val any) String</code></p>
 <p>Encodes a value to CYON string.</p>
@@ -3569,7 +3569,7 @@ print cy.toCyon([1, 2, 3])
 <h3 id="type-repl"><code>type REPL</code> <a href="#type-repl">#</a></h3>
 <blockquote><p><code>func printIntro(self) </code></p>
 </blockquote><blockquote><p><code>func read(self, read_line dyn) ?String</code></p>
-</blockquote><blockquote><p><code>func evalPrint(self, code String) <void></code></p>
+</blockquote><blockquote><p><code>func evalPrint(self, code String) void</code></p>
 </blockquote><blockquote><p><code>func getPrefix(self) String</code></p>
 </blockquote><blockquote><p><code>func REPL.new() REPL</code></p>
 </blockquote><!-- cy.end -->
@@ -3704,7 +3704,7 @@ cli.repl()
 </code></pre>
 <p><a href="#modules" title="">^topic</a></p>
 <!-- cli.start -->
-<blockquote><p><code>func repl() <void></code></p>
+<blockquote><p><code>func repl() void</code></p>
 <p>Starts an isolated REPL session.  Invokes <code>cy.repl(replReadLine)</code>.</p>
 </blockquote><blockquote><p><code>func replReadLine(prefix String) String</code></p>
 <p>Default implementation to read a line from the CLI for a REPL.</p>
@@ -3735,19 +3735,19 @@ for map -> {k, v}:
 <p>The current operating system's tag name.</p>
 </blockquote><blockquote><p><code>var vecBitSize int</code></p>
 <p>Default SIMD vector bit size.</p>
-</blockquote><blockquote><p><code>func access(path String, mode symbol) <void></code></p>
+</blockquote><blockquote><p><code>func access(path String, mode symbol) void</code></p>
 <p>Attempts to access a file at the given <code>path</code> with the <code>.read</code>, <code>.write</code>, or <code>.readWrite</code> mode.  Throws an error if unsuccessful.</p>
 </blockquote><blockquote><p><code>func args() List[String]</code></p>
 <p>Returns the command line arguments in a <code>List[String]</code>.</p>
 </blockquote><blockquote><p><code>func cacheUrl(url String) String</code></p>
 <p>Returns the path of a locally cached file of <code>url</code>.  If no such file exists locally, it's fetched from <code>url</code>.</p>
-</blockquote><blockquote><p><code>func copyFile(srcPath String, dstPath String) <void></code></p>
+</blockquote><blockquote><p><code>func copyFile(srcPath String, dstPath String) void</code></p>
 <p>Copies a file to a destination path.</p>
-</blockquote><blockquote><p><code>func createDir(path String) <void></code></p>
+</blockquote><blockquote><p><code>func createDir(path String) void</code></p>
 <p>Creates the directory at <code>path</code>. Returns <code>true</code> if successful.</p>
 </blockquote><blockquote><p><code>func createFile(path String, truncate bool) File</code></p>
 <p>Creates and opens the file at <code>path</code>. If <code>truncate</code> is true, an existing file will be truncated.</p>
-</blockquote><blockquote><p><code>func cstr(s String) *<void></code></p>
+</blockquote><blockquote><p><code>func cstr(s String) *void</code></p>
 <p>Returns a null terminated C string.</p>
 </blockquote><blockquote><p><code>func cwd() String</code></p>
 <p>Returns the current working directory.</p>
@@ -3757,17 +3757,17 @@ for map -> {k, v}:
 <p>Runs a shell command and returns the stdout/stderr.</p>
 </blockquote><blockquote><p><code>func exePath() String</code></p>
 <p>Returns the current executable's path.</p>
-</blockquote><blockquote><p><code>func exit(status int) <void></code></p>
+</blockquote><blockquote><p><code>func exit(status int) void</code></p>
 <p>Exits the program with a status code.</p>
 </blockquote><blockquote><p><code>func fetchUrl(url String) String</code></p>
 <p>Fetches the contents at <code>url</code> using the HTTP GET request method.</p>
-</blockquote><blockquote><p><code>func free(ptr *<void>) <void></code></p>
+</blockquote><blockquote><p><code>func free(ptr *void) void</code></p>
 <p>Frees the memory located at <code>ptr</code>.</p>
 </blockquote><blockquote><p><code>func getEnv(key String) ?String</code></p>
 <p>Returns an environment variable by key.</p>
 </blockquote><blockquote><p><code>func getEnvAll() Map</code></p>
 <p>Returns all environment variables as a <code>Map</code>.</p>
-</blockquote><blockquote><p><code>func malloc(size int) *<void></code></p>
+</blockquote><blockquote><p><code>func malloc(size int) *void</code></p>
 <p>Allocates <code>size</code> bytes of memory and returns a pointer.</p>
 </blockquote><blockquote><p><code>func milliTime() float</code></p>
 <p>Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01.  For an high resolution timestamp, use <code>now()</code>.</p>
@@ -3791,21 +3791,21 @@ for map -> {k, v}:
 <p>Reads stdin until a new line as a <code>String</code>. This is intended to read user input from the command line.  For bulk reads from stdin, use <code>stdin</code>.</p>
 </blockquote><blockquote><p><code>func realPath(path String) String</code></p>
 <p>Returns the absolute path of the given path.</p>
-</blockquote><blockquote><p><code>func removeDir(path String) <void></code></p>
+</blockquote><blockquote><p><code>func removeDir(path String) void</code></p>
 <p>Removes an empty directory at <code>path</code>. Returns <code>true</code> if successful.</p>
-</blockquote><blockquote><p><code>func removeFile(path String) <void></code></p>
+</blockquote><blockquote><p><code>func removeFile(path String) void</code></p>
 <p>Removes the file at <code>path</code>. Returns <code>true</code> if successful.</p>
-</blockquote><blockquote><p><code>func setEnv(key String, val String) <void></code></p>
+</blockquote><blockquote><p><code>func setEnv(key String, val String) void</code></p>
 <p>Sets an environment variable by key.</p>
-</blockquote><blockquote><p><code>func sleep(ms float) <void></code></p>
+</blockquote><blockquote><p><code>func sleep(ms float) void</code></p>
 <p>Pauses the current thread for given milliseconds.</p>
-</blockquote><blockquote><p><code>func unsetEnv(key String) <void></code></p>
+</blockquote><blockquote><p><code>func unsetEnv(key String) void</code></p>
 <p>Removes an environment variable by key.</p>
-</blockquote><blockquote><p><code>func writeFile(path String, contents String) <void></code></p>
+</blockquote><blockquote><p><code>func writeFile(path String, contents String) void</code></p>
 <p>Writes <code>contents</code> as a string or bytes to a file.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-file"><code>type File</code> <a href="#type-file">#</a></h3>
-<blockquote><p><code>func close(self) <void></code></p>
+<blockquote><p><code>func close(self) void</code></p>
 <p>Closes the file handle. File ops invoked afterwards will return <code>error.Closed</code>.</p>
 </blockquote><blockquote><p><code>func iterator(self) File</code></p>
 </blockquote><blockquote><p><code>func next(self) String</code></p>
@@ -3813,11 +3813,11 @@ for map -> {k, v}:
 <p>Reads at most <code>n</code> bytes as an <code>Array</code>. <code>n</code> must be at least 1.  A result with length 0 indicates the end of file was reached.</p>
 </blockquote><blockquote><p><code>func readAll(self) String</code></p>
 <p>Reads to the end of the file and returns the content as an <code>Array</code>.</p>
-</blockquote><blockquote><p><code>func seek(self, n int) <void></code></p>
+</blockquote><blockquote><p><code>func seek(self, n int) void</code></p>
 <p>Seeks the read/write position to <code>pos</code> bytes from the start. Negative <code>pos</code> is invalid.</p>
-</blockquote><blockquote><p><code>func seekFromCur(self, n int) <void></code></p>
+</blockquote><blockquote><p><code>func seekFromCur(self, n int) void</code></p>
 <p>Seeks the read/write position by <code>pos</code> bytes from the current position.</p>
-</blockquote><blockquote><p><code>func seekFromEnd(self, n int) <void></code></p>
+</blockquote><blockquote><p><code>func seekFromEnd(self, n int) void</code></p>
 <p>Seeks the read/write position by <code>pos</code> bytes from the end. Positive <code>pos</code> is invalid.</p>
 </blockquote><blockquote><p><code>func stat(self) Map</code></p>
 <p>Returns info about the file as a <code>Map</code>.</p>
@@ -3846,15 +3846,15 @@ for map -> {k, v}:
 <p>Calls <code>bindLib(path, [:])</code>.</p>
 </blockquote><blockquote><p><code>func bindLib(self, path ?String, config Table) any</code></p>
 <p>Creates a handle to a dynamic library and functions declared from <code>cfunc</code>.  By default, an anonymous object is returned with the C-functions binded as the object's methods.  If <code>config</code> contains <code>gen_table: true</code>, a <code>Table</code> is returned instead with C-functions  binded as function values.</p>
-</blockquote><blockquote><p><code>func bindObjPtr(self, obj any) *<void></code></p>
+</blockquote><blockquote><p><code>func bindObjPtr(self, obj any) *void</code></p>
 <p>Returns a Cyber object's pointer. Operations on the pointer is unsafe,  but it can be useful when passing it to C as an opaque pointer.  The object is also retained and managed by the FFI context.</p>
-</blockquote><blockquote><p><code>func cbind(self, mt type, fields List[dyn]) <void></code></p>
+</blockquote><blockquote><p><code>func cbind(self, mt type, fields List[dyn]) void</code></p>
 <p>Binds a Cyber type to a C struct.</p>
-</blockquote><blockquote><p><code>func cfunc(self, name String, params List[dyn], ret any) <void></code></p>
+</blockquote><blockquote><p><code>func cfunc(self, name String, params List[dyn], ret any) void</code></p>
 <p>Declares a C function which will get binded to the library handle created from <code>bindLib</code>.</p>
-</blockquote><blockquote><p><code>func new(self, ctype symbol) *<void></code></p>
+</blockquote><blockquote><p><code>func new(self, ctype symbol) *void</code></p>
 <p>Allocates memory for a C struct or primitive with the given C type specifier.  A <code>pointer</code> to the allocated memory is returned.  Eventually this will return a <code>cpointer</code> instead which will be more idiomatic to use.</p>
-</blockquote><blockquote><p><code>func unbindObjPtr(self, obj any) <void></code></p>
+</blockquote><blockquote><p><code>func unbindObjPtr(self, obj any) void</code></p>
 <p>Releases the object from the FFI context.  External code should no longer use the object's pointer since it's not guaranteed to exist  or point to the correct object.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-carray"><code>type CArray</code> <a href="#type-carray">#</a></h3>
@@ -3878,7 +3878,7 @@ t.eq(a, 444)
 </code></pre>
 <p><a href="#modules" title="">^topic</a></p>
 <!-- test.start -->
-<blockquote><p><code>func assert(pred bool) <void></code></p>
+<blockquote><p><code>func assert(pred bool) void</code></p>
 <p>Panics if <code>pred</code> is <code>false</code>.</p>
 </blockquote><blockquote><p><code>func eq(a T, b T) bool</code></p>
 <p>Returns whether two values are equal.  Panics with <code>error.AssertError</code> if types or values do not match up.</p>
@@ -3934,10 +3934,10 @@ The second argument contains the function's parameter types and finally the last
 <a href="#ffi">^topic</a>
 <h2 id="bind-library">Bind library. <a href="#bind-library">#</a></h2>
 <p><code>bindLib</code> accepts the path to the library and returns a object which can be used to invoke the functions declared from <code>cfunc</code>:</p>
-<pre><code class="language-cy">let lib = ffi.bindLib('./mylib.so')
+<pre><code class="language-cy">dyn lib = ffi.bindLib('./mylib.so')
 lib.add(123, 321)
 </code></pre>
-<p>Note that <code>let</code> is used to allow <code>lib</code> to be used dynamically since the type is unknown at compile-time.</p>
+<p>Note that <code>dyn</code> is used to allow <code>lib</code> to be used dynamically since the type is unknown at compile-time.</p>
 <a href="#ffi">^topic</a>
 <h3 id="search-path">Search path. <a href="#search-path">#</a></h3>
 <p>If the path argument to <code>bindLib</code> is just a filename, the search steps for the library is specific to the operating system. Provide an absolute (eg. '/foo/mylib.so') or relative (eg. './mylib.so') path to load from a direct location instead. When the path argument is <code>none</code>, it loads the currently running executable as a library allowing you to bind exported functions from the Cyber CLI or your own application/runtime.</p>
@@ -3968,7 +3968,7 @@ type MyObject:
 
 ffi.cbind(MyObject, {.float, .voidPtr, .bool})
 ffi.cfunc('foo', {MyObject}, MyObject)
-let lib = ffi.bindLib('./mylib.so')
+dyn lib = ffi.bindLib('./mylib.so')
 
 var res = lib.foo(MyObject{a=123.0, b=os.cstr('foo'), c=true})
 </code></pre>
@@ -3985,7 +3985,7 @@ MyObject foo(MyObject o) {
 </code></pre>
 <p><code>cbind</code> also generates <code>ptrTo[Type]</code> as a helper function to dereference an opaque ptr to a new Cyber object:</p>
 <pre><code class="language-cy">ffi.cfunc('foo', {MyObject}, .voidPtr)
-let lib = ffi.bindLib('./mylib.so')
+dyn lib = ffi.bindLib('./mylib.so')
 
 var ptr = lib.foo(MyObject{a=123, b=os.cstr('foo'), c=true})
 var res = lib.ptrToMyObject(ptr)
@@ -4485,20 +4485,18 @@ print task.status()   -- '.done'
 <ul>
 <li><a href="#dynamic-variables" title="">Dynamic variables.</a></li>
 <li><a href="#runtime-type-checking" title="">Runtime type checking.</a></li>
-<li><a href="#dynamic-functions" title="">Dynamic functions.</a></li>
 <li><a href="#dynamic-tables" title="">Dynamic tables.</a></li>
-<li><a href="#custom-tables" title="">Custom tables.</a></li>
 <li><a href="#dynamic-inference" title="">Dynamic inference.</a></li>
 </ul>
 <p><a href="#table-of-contents" title="">^top</a></p>
 <p>Dynamic typing is supported with a less restrictive syntax. This can reduce the amount of friction when writing code, but it can also result in more runtime errors.</p>
-<p>In Cyber, the <code>let</code> keyword is used exclusively for dynamic declarations.</p>
+<p>In Cyber, the <code>dyn</code> keyword is used exclusively for dynamic declarations.</p>
 <h2 id="dynamic-variables">Dynamic variables. <a href="#dynamic-variables">#</a></h2>
-<p>Variables declared with <code>let</code> are implicitly given the <code>dyn</code> type:</p>
-<pre><code class="language-cy">let a = 123
+<p>Variables declared with <code>dyn</code> are implicitly given the <code>dyn</code> type:</p>
+<pre><code class="language-cy">dyn a = 123
 </code></pre>
 <p>Typically a dynamic variable defers type checking to runtime, but if the compiler determines that an operation will always fail at runtime, a compile error is reported instead:</p>
-<pre><code class="language-cy">let a = '100'
+<pre><code class="language-cy">dyn a = '100'
 
 print a / 2
 --> CompileError: Can not find the symbol `$infix/` in `String`
@@ -4513,13 +4511,13 @@ print a / 2
 <p>If the type of a dynamic variable can not be determined at compile-time, type checking is deferred to runtime.</p>
 <p>In this example, the type for <code>a</code> is unknown after assigning the return of a dynamic call to <code>erase</code>.
 Any operation on <code>a</code> would defer type checking to runtime:</p>
-<pre><code class="language-cy">let a = erase(123)
+<pre><code class="language-cy">dyn a = erase(123)
 
 print a(1, 2, 3)
 --> panic: Expected a function.
 </code></pre>
 <p>If a dynamic variable's <strong>recent type</strong> differs between two branches of execution, the type is considered unknown after the branches are merged. Any operations on the variable afterwards will defer type checking to runtime:</p>
-<pre><code class="language-cy">let a = 123
+<pre><code class="language-cy">dyn a = 123
 if a > 20:
     a = 'hello'
 
@@ -4529,54 +4527,14 @@ print a(1, 2, 3)
 --> panic: Expected a function.
 </code></pre>
 <a href="#dynamic-typing">^topic</a>
-<h2 id="dynamic-functions">Dynamic functions. <a href="#dynamic-functions">#</a></h2>
-<p>Functions declared with <code>let</code> do not allow typed parameters or a return specifier.
-All parameters are implicitly given the <code>dyn</code> type.</p>
-<p>The return specifier is also implicitly <code>!dyn</code> which indicates that the function can throw an error. This is only relevant when typed code calls a dynamic function:</p>
-<pre><code class="language-cy">let foo(a, b, c):
-    return a + b() + a[c]
-</code></pre>
-<p>The function <code>foo</code> is a static function. It can't be reassigned like a variable after its declaration.</p>
-<p>However, function values (lambdas) assigned to variables allow reassignment. Lambdas can also capture variables from the parent scope:</p>
-<pre><code class="language-cy">let count = 123
-let f = (a, b):
-    return a + b(10) + count
-
--- Reassign `f`.
-f = (a, b):
-    return count * 2 - b(a)
-</code></pre>
-<p>Lambdas that simply return an expression can be written as:</p>
-<pre><code class="language-cy">f = (a, b) => a + b(10)
-</code></pre>
-<a href="#dynamic-typing">^topic</a>
 <h2 id="dynamic-tables">Dynamic tables. <a href="#dynamic-tables">#</a></h2>
 <p>The builtin <code>Table</code> type is used to create dynamic objects.
 Tables are initialized with the record literal:</p>
-<pre><code class="language-cy">let a = {}
+<pre><code class="language-cy">dyn a = {}
 a.name = 'Nova'
 print a.name     --> Nova
 </code></pre>
 <p>Read more about how to use <a href="#tables" title="">Tables</a>.</p>
-<a href="#dynamic-typing">^topic</a>
-<h2 id="custom-tables">Custom tables. <a href="#custom-tables">#</a></h2>
-<p>Custom tables allow declaring fields and methods.</p>
-<pre><code class="language-cy">let Counter{ count }:
-    let inc():
-        count += 1
-        
-let c = Counter{count=0}
-c.inc()
-print c.count       --> 1
-</code></pre>
-<p>Fields are declared inside the braces and separated with commas.
-Unlike typed declarations, the fields declared only serve as a subset constraint.
-Additional fields can still be initialized and used.</p>
-<p>Tables can be declared without any methods:</p>
-<pre><code class="language-cy">let Vec3{x, y, z}
-
-let v = Vec3{x=1, y=2, z=3}
-</code></pre>
 <a href="#dynamic-typing">^topic</a>
 <h2 id="dynamic-inference">Dynamic inference. <a href="#dynamic-inference">#</a></h2>
 <p>When the inference tag is used in a dynamic context, it will attempt to resolve its value at runtime.

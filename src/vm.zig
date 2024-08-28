@@ -373,8 +373,27 @@ pub const VM = struct {
 
         logger.tracev("release varSyms", .{});
         for (self.c.getVarSyms().items(), 0..) |vsym, i| {
-            logger.tracevIf(build_options.log_mem, "release varSym: {s}", .{self.varSymExtras.buf[i].name()});
-            release(self, vsym.value);
+            var do_release = false;
+            const sym = self.varSymExtras.buf[i];
+            switch (sym.type) {
+                .userVar => {
+                    const user_var = sym.cast(.userVar);
+                    if (!self.sema.isUnboxedType(user_var.type)) {
+                        do_release = true;
+                    }
+                },
+                .hostVar => {
+                    const host_var = sym.cast(.hostVar);
+                    if (!self.sema.isUnboxedType(host_var.type)) {
+                        do_release = true;
+                    }
+                },
+                else => std.debug.panic("Unexpected: {}", .{sym.type}),
+            }
+            if (do_release) {
+                logger.tracevIf(build_options.log_mem, "release varSym: {s}", .{self.varSymExtras.buf[i].name()});
+                release(self, vsym.value);
+            }
         }
         self.c.getVarSyms().clearRetainingCapacity();
 

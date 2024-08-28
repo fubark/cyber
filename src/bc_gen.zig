@@ -361,6 +361,7 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
         .forRangeStmt       => try forRangeStmt(c, idx, node),
         .funcBlock          => try funcBlock(c, idx, node),
         .ifStmt             => try genIfStmt(c, idx, node),
+        .init_var_sym       => try initVarSym(c, idx, node),
         .loopStmt           => try loopStmt(c, idx, node),
         .mainBlock          => try mainBlock(c, idx, node),
         .block              => try genBlock(c, idx, node),
@@ -374,7 +375,7 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
         .setLocal           => try irSetLocal(c, idx, node),
         .set_field          => try setField(c, idx, node),
         .set_deref          => try genSetDeref(c, idx, node),
-        .setVarSym          => try setVarSym(c, idx, node),
+        .set_var_sym        => try setVarSym(c, idx, node),
         .switchStmt         => try genSwitchStmt(c, idx, node),
         .tryStmt            => try genTryStmt(c, idx, node),
         .verbose            => try verbose(c, idx, node),
@@ -1944,7 +1945,7 @@ fn genVarSym(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
 
     const varId = c.compiler.genSymMap.get(data.sym).?.varSym.id;
 
-    const inst = try bc.selectForNoErrNoDepInst(c, cstr, ret_t, true, node);
+    const inst = try bc.selectForNoErrNoDepInst(c, cstr, ret_t, false, node);
     if (inst.requiresPreRelease) {
         try pushRelease(c, inst.dst, node);
     }
@@ -1953,12 +1954,15 @@ fn genVarSym(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     const pc = c.buf.len();
     try c.buf.pushOp3(.staticVar, 0, 0, inst.dst);
     c.buf.setOpArgU16(pc + 1, @intCast(varId));
-
     if (inst.own_dst) {
         try initSlot(c, inst.dst, true, node);
     }
 
-    return finishNoErrNoDepInst(c, inst, true);
+    const boxed = !c.sema.isUnboxedType(ret_t);
+    if (boxed) {
+        try c.pushCode(.retain, &.{ inst.dst }, node);
+    }
+    return finishNoErrNoDepInst(c, inst, boxed);
 }
 
 fn genFuncPtr(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
@@ -2091,13 +2095,25 @@ fn reserveFuncSlots(c: *Chunk, maxIrLocals: u8, numParamCopies: u8, params: []al
     nextReg += numParamCopies;
 }
 
+fn initVarSym(c: *Chunk, idx: usize, node: *ast.Node) !void {
+    _ = node;
+    const data = c.ir.getStmtData(idx, .init_var_sym);
+
+    const ir_save = c.ir;
+    defer c.ir = ir_save;
+
+    c.ir = data.src_ir;
+    const id = c.compiler.genSymMap.get(data.sym).?.varSym.id;
+    _ = try genExpr(c, data.expr, Cstr.toVarSym(id, false));
+}
+
 fn setVarSym(c: *Chunk, idx: usize, node: *ast.Node) !void {
     _ = node;
-    const data = c.ir.getStmtData(idx, .setVarSym).generic;
-    const varSym = c.ir.getExprData(data.left, .varSym);
-
-    const id = c.compiler.genSymMap.get(varSym.sym).?.varSym.id;
-    _ = try genExpr(c, data.right, Cstr.toVarSym(id));
+    const data = c.ir.getStmtData(idx, .set_var_sym);
+    const id = c.compiler.genSymMap.get(data.sym).?.varSym.id;
+    const expr_t = c.ir.getExprType(data.expr).id;
+    const boxed = !c.sema.isUnboxedType(expr_t);
+    _ = try genExpr(c, data.expr, Cstr.toVarSym(id, boxed));
 }
 
 fn declareLocalInit(c: *Chunk, idx: u32, node: *ast.Node) !SlotId {
@@ -2673,13 +2689,15 @@ fn genToExactDesc(c: *Chunk, src: GenValue, dst: Cstr, node: *ast.Node, extraIdx
         },
         .varSym => {
             const src_s = getSlot(c, src.reg);
-            if (src_s.boxed and src_s.type == .local) {
+            const from_boxed_local = src_s.boxed and src_s.type == .local;
+            const retain_to_dst = !src_s.boxed_retains and dst.data.varSym.retain;
+            if (from_boxed_local or retain_to_dst) {
                 try c.pushCode(.retain, &.{ src.reg }, node);
             }
 
             const pc = c.buf.len();
-            try c.pushCodeExt(.setStaticVar, &.{ 0, 0, src.reg }, node, extraIdx);
-            c.buf.setOpArgU16(pc + 1, @intCast(dst.data.varSym));
+            try c.pushCodeExt(.setStaticVar, &.{ 0, 0, src.reg, @intFromBool(src_s.boxed) }, node, extraIdx);
+            c.buf.setOpArgU16(pc + 1, @intCast(dst.data.varSym.id));
 
             // Ownership was moved from temp.
             try consumeTempValue(c, src, node);
@@ -4207,7 +4225,10 @@ pub const Cstr = struct {
             releaseDst: bool,
         },
         // Runtime id.
-        varSym: u32,
+        varSym: struct {
+            id: u32,
+            retain: bool,
+        },
         liftedLocal: struct {
             reg: SlotId,
             /// This shouldn't change after initialization.
@@ -4251,9 +4272,12 @@ pub const Cstr = struct {
         }}};
     }
 
-    pub fn toVarSym(id: u32) Cstr {
+    pub fn toVarSym(id: u32, retain: bool) Cstr {
         return .{ .type = .varSym, .data = .{
-            .varSym = id
+            .varSym = .{
+                .id = id,
+                .retain = retain,
+            },
         }};
     }
 

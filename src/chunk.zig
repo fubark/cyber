@@ -50,7 +50,7 @@ pub const Chunk = struct {
     curNode: ?*ast.Node,
 
     ///
-    /// Sema pass
+    /// Sema pass.
     ///
     semaProcs: std.ArrayListUnmanaged(sema.Proc),
     semaBlocks: std.ArrayListUnmanaged(sema.Block),
@@ -66,7 +66,9 @@ pub const Chunk = struct {
 
     valueStack: std.ArrayListUnmanaged(cy.Value),
 
-    ir: cy.ir.Buffer,
+    /// IR buffer can be swapped in, this will go away when migrating to `Worker`.
+    ir: *cy.ir.Buffer,
+    own_ir: cy.ir.Buffer,
 
     /// Maps a IR local to a VM local.
     genIrLocalMapStack: std.ArrayListUnmanaged(u8),
@@ -80,22 +82,11 @@ pub const Chunk = struct {
     /// The slots in the front are reserved for the call convention and params.
     slot_stack: std.ArrayListUnmanaged(bc.Slot),
 
-    /// Record other chunks that this chunk's static initializer depends on.
-    symInitChunkDeps: std.AutoHashMapUnmanaged(*cy.Chunk, void),
-
     /// Local vars.
     varStack: std.ArrayListUnmanaged(sema.LocalVar),
     varShadowStack: std.ArrayListUnmanaged(cy.sema.VarShadow),
     preLoopVarSaveStack: std.ArrayListUnmanaged(cy.sema.PreLoopVarSave),
     assignedVarStack: std.ArrayListUnmanaged(sema.LocalVarId),
-
-    /// Which sema sym var is currently being analyzed for an assignment initializer.
-    curInitingSym: ?*cy.Sym,
-    curInitingSymDeps: std.AutoHashMapUnmanaged(*cy.Sym, void),
-
-    /// Currently used to store lists of static var dependencies.
-    symInitDeps: std.ArrayListUnmanaged(SymInitDep),
-    symInitInfos: std.AutoHashMapUnmanaged(*cy.Sym, SymInitInfo),
 
     /// Main sema block id.
     mainSemaProcId: sema.ProcId,
@@ -173,8 +164,6 @@ pub const Chunk = struct {
     curHostVarIdx: u32,
 
     hasStaticInit: bool,
-    initializerVisiting: bool,
-    initializerVisited: bool,
 
     encoder: cy.ast.Encoder,
 
@@ -223,7 +212,8 @@ pub const Chunk = struct {
             .preLoopVarSaveStack = .{},
             .typeStack = .{},
             .valueStack = .{},
-            .ir = cy.ir.Buffer.init(),
+            .ir = undefined,
+            .own_ir = cy.ir.Buffer.init(),
             .slot_stack = .{},
             .genIrLocalMapStack = .{},
             .dataStack = .{},
@@ -237,11 +227,6 @@ pub const Chunk = struct {
             .jitBuf = undefined,
             .x64Enc = undefined,
             .curNode = null,
-            .symInitDeps = .{},
-            .symInitInfos = .{},
-            .curInitingSym = null,
-            .curInitingSymDeps = .{},
-            .symInitChunkDeps = .{},
             .tempBufU8 = .{},
             .srcOwned = true,
             .mainSemaProcId = cy.NullId,
@@ -258,8 +243,6 @@ pub const Chunk = struct {
             .typeDeps = .{},
             .typeDepsMap = .{},
             .hasStaticInit = false,
-            .initializerVisited = false,
-            .initializerVisiting = false,
             .encoder = undefined,
             .nextUnnamedId = 1,
             .indent = 0,
@@ -271,6 +254,7 @@ pub const Chunk = struct {
             .host_types = .{},
             .host_funcs = .{},
         };
+        self.ir = &self.own_ir;
         try self.parser.init(c.alloc);
 
         if (cy.hasJIT) {
@@ -312,13 +296,9 @@ pub const Chunk = struct {
         self.unwind_stack.deinit(self.alloc);
         self.capVarDescs.deinit(self.alloc);
 
-        self.symInitDeps.deinit(self.alloc);
-        self.symInitInfos.deinit(self.alloc);
-        self.curInitingSymDeps.deinit(self.alloc);
-
         self.typeStack.deinit(self.alloc);
         self.valueStack.deinit(self.alloc);
-        self.ir.deinit(self.alloc);
+        self.own_ir.deinit(self.alloc);
         self.dataStack.deinit(self.alloc);
         self.dataU8Stack.deinit(self.alloc);
         self.listDataStack.deinit(self.alloc);
@@ -416,7 +396,7 @@ pub const Chunk = struct {
     }
 
     pub inline fn isInStaticInitializer(self: *Chunk) bool {
-        return self.curInitingSym != null;
+        return self.compiler.svar_init_stack.items.len > 0;
     }
 
     pub inline fn semaBlockDepth(self: *Chunk) u32 {
@@ -691,16 +671,19 @@ pub const Chunk = struct {
 
     /// An instruction that can fail (can throw or panic).
     pub fn pushFCode(c: *Chunk, code: cy.OpCode, args: []const u8, node: *ast.Node) !void {
+        log.tracev("pushFCode: {s} {}", .{@tagName(code), c.buf.ops.items.len});
         try c.pushFailableDebugSym(node);
         try c.buf.pushOpSliceExt(code, args, null);
     }
 
     pub fn pushCode(c: *Chunk, code: cy.OpCode, args: []const u8, node: *ast.Node) !void {
+        log.tracev("pushCode: {s} {}", .{@tagName(code), c.buf.ops.items.len});
         try c.pushOptionalDebugSym(node);
         try c.buf.pushOpSliceExt(code, args, null);
     }
 
     pub fn pushCodeExt(c: *Chunk, code: cy.OpCode, args: []const u8, node: *ast.Node, desc: ?u32) !void {
+        log.tracev("pushCode: {s} {}", .{@tagName(code), c.buf.ops.items.len});
         try c.pushOptionalDebugSym(node);
         try c.buf.pushOpSliceExt(code, args, desc);
     }
@@ -741,20 +724,6 @@ const ReservedTempLocal = struct {
 };
 
 const LocalId = u8;
-
-pub const SymInitInfo = struct {
-    depStart: u32,
-    depEnd: u32,
-    irStart: u32,
-    irEnd: u32,
-    visiting: bool = false,
-    visited: bool = false,
-};
-
-const SymInitDep = struct {
-    sym: *cy.Sym,
-    refNodeId: *ast.Node,
-};
 
 pub const LLVM_Func = struct {
     typeRef: llvm.TypeRef,

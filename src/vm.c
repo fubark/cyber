@@ -2122,17 +2122,19 @@ beginSwitch:
     CASE(StaticVar): {
         u16 symId = READ_U16(1);
         Value sym = ((StaticVar*)vm->c.varSyms.buf)[symId].value;
-        retain(vm, sym);
         stack[pc[3]] = sym;
         pc += 4;
         NEXT();
     }
     CASE(SetStaticVar): {
         u16 symId = READ_U16(1);
-        Value prev = ((StaticVar*)vm->c.varSyms.buf)[symId].value;
+        bool release_ = pc[4];
+        if (release_) {
+            Value prev = ((StaticVar*)vm->c.varSyms.buf)[symId].value;
+            release(vm, prev);
+        }
         ((StaticVar*)vm->c.varSyms.buf)[symId].value = stack[pc[3]];
-        release(vm, prev);
-        pc += 4;
+        pc += 5;
         NEXT();
     }
     CASE(Context): {

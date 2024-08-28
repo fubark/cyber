@@ -256,7 +256,7 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn resolveUserVar(c: *cy.Chunk, sym: *cy.sym.UserVar, type_id: cy.TypeId) void {
+    pub fn resolveUserVarType(c: *cy.Chunk, sym: *cy.sym.UserVar, type_id: cy.TypeId) void {
         _ = c;
         sym.type = type_id;
     }

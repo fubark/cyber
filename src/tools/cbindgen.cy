@@ -45,7 +45,7 @@ if args['rest'].len() <= 2:
     print 'Missing path to header file.'
     os.exit(1)
 
-dyn headerPath = args['rest'][2]
+var headerPath = args['rest'][2]
 print headerPath
 
 var headerSrc = os.readFile(headerPath)
@@ -124,7 +124,7 @@ os.writeFile(args['o'], out)
 
 var .skipMap = Map{}
 var .macros = {_}
-var .cvisitor = pointer(void, 0)
+dyn .cvisitor = pointer(void, 0)
 -- Build output string.
 var .out = ''
 var .skipChildren = false
@@ -349,7 +349,7 @@ func rootVisitor(cursor dyn, parent dyn, state dyn) dyn:
         print "TODO: var $(name)"
 
     else:
-        print "visitor invoked $(cursor.kind) $(name)"
+        print "visitor invoked kind=$(cursor.kind) name=$(name)"
         throw error.Unsupported
 
     return clang.CXChildVisit_Continue

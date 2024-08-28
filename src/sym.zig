@@ -162,7 +162,9 @@ pub const Sym = extern struct {
                 alloc.destroy(self.cast(.context_var));
             },
             .userVar => {
-                alloc.destroy(self.cast(.userVar));
+                const user_var = self.cast(.userVar);
+                user_var.deinit(alloc);
+                alloc.destroy(user_var);
             },
             .hostVar => {
                 alloc.destroy(self.cast(.hostVar));
@@ -481,13 +483,29 @@ pub const ContextVar = extern struct {
     }
 };
 
-pub const UserVar = extern struct {
+pub const UserVar = struct {
     head: Sym,
     decl: ?*ast.StaticVarDecl,
     type: cy.TypeId,
 
+    /// Holds the initializer expression.
+    ir: u32,
+
+    /// Whether init statement was emitted.
+    emitted: bool,
+
+    /// Owned.
+    deps: []*UserVar,
+
+    /// Used to detect circular reference while resolving `ir`.
+    resolving_init: bool,
+
     pub fn isResolved(self: *UserVar) bool {
-        return self.type != cy.NullId;
+        return self.ir != cy.NullId;
+    }
+
+    pub fn deinit(self: *UserVar, alloc: std.mem.Allocator) void {
+        alloc.free(self.deps);
     }
 };
 
@@ -1397,6 +1415,10 @@ pub const ChunkExt = struct {
             .head = Sym.init(.userVar, parent, name),
             .decl = decl,
             .type = cy.NullId,
+            .ir = cy.NullId,
+            .emitted = false,
+            .deps = &.{},
+            .resolving_init = false,
         });
         try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;

@@ -828,7 +828,8 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
         .setStaticVar => {
             const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
             const src = pc[3].val;
-            len += try fmt.printCount(w, "vars[{}] = %{}", &.{v(symId), v(src)});
+            const release = pc[4].val == 1;
+            len += try fmt.printCount(w, "vars[{}] = %{}, release={}", &.{v(symId), v(src), v(release)});
         },
         .catch_op => {
             const endOffset = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
@@ -1019,7 +1020,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .constOp,
         .constRetain,
         .staticVar,
-        .setStaticVar,
         .setField,
         .jumpCond,
         .compare,
@@ -1034,6 +1034,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numExprs = pc[2].val;
             return 4 + numExprs + 1;
         },
+        .setStaticVar,
         .func_union,
         .typeCheck,
         .field,

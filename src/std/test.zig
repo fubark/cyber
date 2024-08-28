@@ -198,7 +198,11 @@ fn eq2(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) bool {
                 if (std.meta.eql(actv, expv)) {
                     return true;
                 } else {
-                    rt.errFmt(c, "actual: {} != {}\n", &.{v(actv.type), v(expv.type)});
+                    const act_name = c.sema.allocTypeName(actv.type) catch @panic("");
+                    defer c.alloc.free(act_name);
+                    const exp_name = c.sema.allocTypeName(expv.type) catch @panic("");
+                    defer c.alloc.free(exp_name);
+                    rt.errFmt(c, "actual: {} != {}\n", &.{v(act_name), v(exp_name)});
                     return false;
                 }
             },

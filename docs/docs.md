@@ -194,9 +194,9 @@ func foo():
 ```
 The `.` prefix is used to reference the current module's namespace.
 
-Unlike local variables, static variables do not currently infer the type from the right hand side so a specific type must be specified or it will default to the `any` type:
+A type specifier can be provided after the variable name, otherwise, it's inferred from the initializer:
 ```cy
-var .my_map Map = Map{}
+var .my_map any = Map{}
 ```
 
 Since static variables are initialized outside of a fiber's execution flow, they can not reference any local variables:

@@ -130,8 +130,8 @@ test "ARC for static variable declarations." {
         _ = try res.getValue();
         c.deinit(run.vm);
         const trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 7);
-        try t.eq(trace.numRetains, 6);
+        try t.eq(trace.numRetainAttempts, 6);
+        try t.eq(trace.numRetains, 5);
     }}.func);
 }
 

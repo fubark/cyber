@@ -58,8 +58,11 @@ pub const StmtCode = enum(u8) {
     set_field_dyn,
     set_field,
     setIndex,
-    setVarSym,
+    set_var_sym,
     set_deref,
+
+    /// Like `set_var_sym` but allows referencing IR from a different chunk.
+    init_var_sym,
 
     pushDebugLabel,
     dumpBytecode,
@@ -483,6 +486,17 @@ pub const Context = struct {
     sym: *cy.sym.ContextVar,
 };
 
+pub const InitVarSym = struct {
+    src_ir: *cy.ir.Buffer,
+    sym: *cy.Sym,
+    expr: Loc,
+};
+
+pub const SetVarSym = struct {
+    sym: *cy.Sym,
+    expr: Loc,
+};
+
 pub const VarSym = struct {
     sym: *cy.Sym,
 };
@@ -639,8 +653,9 @@ pub fn StmtData(comptime code: StmtCode) type {
         .set_field_dyn,
         .setCaptured,
         .set_field,
-        .setVarSym,
         .set => Set,
+        .set_var_sym => SetVarSym,
+        .init_var_sym => InitVarSym,
         .set_deref => SetDeref,
         .opSet => OpSet,
         .pushDebugLabel => PushDebugLabel,

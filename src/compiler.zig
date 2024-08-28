@@ -99,6 +99,9 @@ pub const Compiler = struct {
     chunk_start: u32,
     type_start: u32,
 
+    /// TODO: Move the following into the `Worker`.
+    svar_init_stack: std.ArrayListUnmanaged(StaticVarInit),
+
     pub fn init(self: *Compiler, vm: *cy.VM) !void {
         self.* = .{
             .alloc = vm.alloc,
@@ -125,6 +128,7 @@ pub const Compiler = struct {
             .chunk_start = 0,
             .type_start = 0,
             .context_vars = .{},
+            .svar_init_stack = .{},
         };
         try self.reinitPerRun();    
     }
@@ -174,6 +178,9 @@ pub const Compiler = struct {
             chunk.deinit();
             self.alloc.destroy(chunk);
         }
+        for (self.svar_init_stack.items) |*svar_init| {
+            svar_init.deps.deinit(self.alloc);
+        }
         if (reset) {
             self.chunks.clearRetainingCapacity();
             self.chunk_map.clearRetainingCapacity();
@@ -181,6 +188,7 @@ pub const Compiler = struct {
             self.gen_vtables.clearRetainingCapacity();
             self.import_tasks.clearRetainingCapacity();
             self.context_vars.clearRetainingCapacity();
+            self.svar_init_stack.clearRetainingCapacity();
         } else {
             self.chunks.deinit(self.alloc);
             self.chunk_map.deinit(self.alloc);
@@ -188,6 +196,7 @@ pub const Compiler = struct {
             self.gen_vtables.deinit(self.alloc);
             self.import_tasks.deinit(self.alloc);
             self.context_vars.deinit(self.alloc);
+            self.svar_init_stack.deinit(self.alloc);
         }
 
         // Chunks depends on modules.
@@ -395,8 +404,6 @@ pub const Compiler = struct {
         log.tracev("Perform init sema.", .{});
         for (self.newChunks()) |chunk| {
             // First stmt is root at index 0.
-            chunk.initializerVisited = false;
-            chunk.initializerVisiting = false;
             if (chunk.hasStaticInit) {
                 try performChunkInitSema(self, chunk);
             }
@@ -616,27 +623,12 @@ fn performChunkInitSema(self: *Compiler, c: *cy.Chunk) !void {
 
     _ = try sema.pushFuncProc(c, func);
 
+    // Emit in correct dependency order.
     for (c.syms.items) |sym| {
         switch (sym.type) {
             .userVar => {
                 const user_var = sym.cast(.userVar);
-                try sema.staticDecl(c, sym, user_var.decl.?);
-            },
-            else => {},
-        }
-    }
-
-    // Pop unordered stmts list.
-    _ = c.ir.popStmtBlock();
-    // Create a new stmt list.
-    try c.ir.pushStmtBlock(c.alloc);
-
-    // Reorder local declarations in DFS order by patching next stmt IR.
-    for (c.syms.items) |sym| {
-        switch (sym.type) {
-            .userVar => {
-                const info = c.symInitInfos.getPtr(sym).?;
-                try appendSymInitIrDFS(c, sym, info, null);
+                try sema.semaUserVarInitDeep(c, user_var);
             },
             else => {},
         }
@@ -644,32 +636,6 @@ fn performChunkInitSema(self: *Compiler, c: *cy.Chunk) !void {
 
     try sema.popFuncBlock(c);
     func.emitted = true;
-}
-
-fn appendSymInitIrDFS(c: *cy.Chunk, sym: *cy.Sym, info: *cy.chunk.SymInitInfo, refNode: ?*ast.Node) !void {
-    if (info.visited) {
-        return;
-    }
-    if (info.visiting) {
-        return c.reportErrorFmt("Referencing `{}` creates a circular dependency in the module.", &.{v(sym.name())}, refNode);
-    }
-    info.visiting = true;
-
-    const deps = c.symInitDeps.items[info.depStart..info.depEnd];
-    if (deps.len > 0) {
-        for (deps) |dep| {
-            if (c.symInitInfos.getPtr(dep.sym)) |depInfo| {
-                try appendSymInitIrDFS(c, dep.sym, depInfo, dep.refNodeId);
-            }
-        }
-    }
-
-    // Append stmt in the correct order.
-    c.ir.appendToParent(info.irStart);
-    // Reset this stmt's next or it can end up creating a cycle list.
-    c.ir.setStmtNext(info.irStart, cy.NullId);
-
-    info.visited = true;
 }
 
 fn completeImportTask(self: *Compiler, task: ImportTask, res: *cy.Chunk) !void {
@@ -1063,7 +1029,8 @@ fn resolveSyms(self: *Compiler) !void {
                     try sema.resolveContextVar(chunk, @ptrCast(sym));
                 },
                 .userVar => {
-                    try sema.resolveUserVar(chunk, @ptrCast(sym));
+                    // Delay resolving user vars since they are typically only
+                    // referenced when resolving runtime code.
                 },
                 .hostVar => {
                     try sema.resolveHostVar(chunk, @ptrCast(sym));
@@ -1274,3 +1241,7 @@ const ContextVar = struct {
 
 test "vm compiler internals." {
 }
+
+const StaticVarInit = struct {
+    deps: std.ArrayListUnmanaged(*cy.sym.UserVar) = .{},
+};

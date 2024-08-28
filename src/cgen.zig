@@ -513,7 +513,7 @@ pub fn gen(self: *cy.Compiler) !cy.compiler.AotCompileResult {
     for (self.chunks.items, 0..) |chunk, i| {
         chunks[i] = .{
             .alloc = self.alloc,
-            .ir = chunk.ir,
+            .ir = chunk.own_ir,
             .encoder = chunk.encoder,
             .out = .{},
             .outw = undefined,

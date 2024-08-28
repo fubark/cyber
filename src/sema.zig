@@ -973,19 +973,25 @@ fn assignStmt(c: *cy.Chunk, node: *ast.Node, left_n: *ast.Node, right: *ast.Node
                 right_res = try c.semaExprOrOpAssignBinExpr(rightExpr, opts.rhsOpAssignBinExpr);
             }
 
-            const irStart = try c.ir.pushEmptyStmt(c.alloc, .set, node);
-            c.ir.setStmtData(irStart, .set, .{ .generic = .{
-                .left_t = leftT,
-                .right_t = right_res.type,
-                .left = leftRes.irIdx,
-                .right = right_res.irIdx,
-            }});
             switch (leftRes.resType) {
-                .varSym         => c.ir.setStmtCode(irStart, .setVarSym),
+                .varSym         => {
+                    const left_ir = c.ir.getExprData(leftRes.irIdx, .varSym);
+                    return try c.ir.pushStmt(c.alloc, .set_var_sym, node, .{
+                        .sym = left_ir.sym,
+                        .expr = right_res.irIdx,
+                    });
+                },
                 .func           => {
                     return c.reportErrorFmt("Can not reassign to a namespace function.", &.{}, node);
                 },
                 .local          => {
+                    const irStart = try c.ir.pushEmptyStmt(c.alloc, .set, node);
+                    c.ir.setStmtData(irStart, .set, .{ .generic = .{
+                        .left_t = leftT,
+                        .right_t = right_res.type,
+                        .left = leftRes.irIdx,
+                        .right = right_res.irIdx,
+                    }});
                     c.ir.setStmtCode(irStart, .setLocal);
                     c.varStack.items[leftRes.data.local].vtype = right_res.type;
                     const info = c.varStack.items[leftRes.data.local].inner.local;
@@ -993,14 +999,24 @@ fn assignStmt(c: *cy.Chunk, node: *ast.Node, left_n: *ast.Node, right: *ast.Node
                         .id = info.id,
                         .right = right_res.irIdx,
                     }});
+                    return irStart;
                 },
-                .capturedLocal  => c.ir.setStmtCode(irStart, .setCaptured),
+                .capturedLocal  => {
+                    const irStart = try c.ir.pushEmptyStmt(c.alloc, .set, node);
+                    c.ir.setStmtData(irStart, .set, .{ .generic = .{
+                        .left_t = leftT,
+                        .right_t = right_res.type,
+                        .left = leftRes.irIdx,
+                        .right = right_res.irIdx,
+                    }});
+                    c.ir.setStmtCode(irStart, .setCaptured);
+                    return irStart;
+                },
                 else => {
                     log.tracev("leftRes {s} {}", .{@tagName(leftRes.resType), leftRes.type});
                     return c.reportErrorFmt("Assignment to the left `{}` is unsupported.", &.{v(left_n.type())}, node);
                 }
             }
-            return irStart;
         },
         else => {
             return c.reportErrorFmt("Assignment to the left `{}` is unsupported.", &.{v(left_n.type())}, node);
@@ -1484,7 +1500,12 @@ pub fn declareUseImport(c: *cy.Chunk, node: *ast.ImportStmt) !void {
         c.use_global = true;
         if (c.compiler.global_sym == null) {
             const global = try c.reserveUserVar(@ptrCast(c.compiler.main_chunk.sym), "$global", null);
-            c.resolveUserVar(global, bt.Map);
+            c.resolveUserVarType(global, bt.Map);
+
+            // Mark as resolved and emitted.
+            global.ir = 0;
+            global.emitted = true;
+
             c.compiler.global_sym = global;
 
             const func = try c.reserveHostFunc(@ptrCast(c.compiler.main_chunk.sym), "$getGlobal", null, false, false);
@@ -2663,20 +2684,69 @@ pub fn resolveContextVar(c: *cy.Chunk, sym: *cy.sym.ContextVar) !void {
     c.resolveContextVar(sym, exp_var.type, exp_var.idx);
 }
 
-pub fn resolveUserVar(c: *cy.Chunk, sym: *cy.sym.UserVar) !void {
+pub fn ensureUserVarResolved(c: *cy.Chunk, sym: *cy.sym.UserVar) !void {
     if (sym.isResolved()) {
         return;
     }
+    try resolveUserVar(c, sym);
+}
 
+/// Resolves the variable's type and initializer.
+/// If type spec is not provided, the initializer is resolved to obtain the type.
+pub fn resolveUserVar(c: *cy.Chunk, sym: *cy.sym.UserVar) !void {
     try pushResolveContext(c);
     defer popResolveContext(c);
 
-    if (sym.decl.?.typed) {
-        const typeId = try resolveTypeSpecNode(c, sym.decl.?.typeSpec);
-        c.resolveUserVar(sym, typeId);
+    const node = sym.decl.?;
+
+    try c.compiler.svar_init_stack.append(c.alloc, .{});
+    sym.resolving_init = true;
+
+    var type_id: cy.TypeId = undefined;
+    var res: ExprResult = undefined;
+    if (node.typed) {
+        if (node.typeSpec) |type_spec| {
+            type_id = try resolveTypeSpecNode(c, type_spec);
+            res = try c.semaExprCstr(node.right.?, type_id);
+        } else {
+            // Infer type from initializer.
+            res = try c.semaExpr(node.right.?, .{});
+            type_id = res.type.toDeclType();
+        }
     } else {
-        c.resolveUserVar(sym, bt.Dyn);
+        type_id = bt.Dyn;
+        res = try c.semaExprCstr(node.right.?, type_id);
     }
+    c.resolveUserVarType(sym, type_id);
+    sym.ir = res.irIdx;
+    sym.resolving_init = false;
+
+    var svar_init = c.compiler.svar_init_stack.pop();
+    sym.deps = try svar_init.deps.toOwnedSlice(c.alloc);
+}
+
+pub fn semaUserVarInitDeep(c: *cy.Chunk, sym: *cy.sym.UserVar) !void {
+    if (sym.emitted) {
+        return;
+    }
+
+    // Ensure initializer IR.
+    const src_chunk = sym.head.parent.?.getMod().?.chunk;
+    try ensureUserVarResolved(src_chunk, sym);
+
+    // Emit deps first.
+    for (sym.deps) |dep| {
+        try semaUserVarInitDeep(c, dep);
+    }
+
+    const node = sym.decl.?;
+
+    _ = try c.ir.pushStmt(c.alloc, .init_var_sym, @ptrCast(node), .{
+        .src_ir = &src_chunk.own_ir,
+        .sym = @ptrCast(sym),
+        .expr = sym.ir,
+    });
+    sym.emitted = true;
 }
 
 pub fn resolveHostVar(c: *cy.Chunk, sym: *cy.sym.HostVar) !void {
@@ -2911,34 +2981,6 @@ fn localDecl(c: *cy.Chunk, node: *ast.VarDecl) !void {
     try c.assignedVarStack.append(c.alloc, varId);
 }
 
-pub fn staticDecl(c: *cy.Chunk, sym: *Sym, node: *ast.StaticVarDecl) !void {
-    try sema.pushResolveContext(c);
-    defer sema.popResolveContext(c);
-
-    c.curInitingSym = sym;
-    c.curInitingSymDeps.clearRetainingCapacity();
-    defer c.curInitingSym = null;
-    const depStart = c.symInitDeps.items.len;
-
-    const irIdx = try c.ir.pushEmptyStmt(c.alloc, .setVarSym, @ptrCast(node));
-    const recLoc = try c.ir.pushExpr(.varSym, c.alloc, bt.Void, @ptrCast(node), .{ .sym = sym });
-    const symType = CompactType.init((try c.getSymValueType(sym)).?);
-    const right = try semaExprCType(c, node.right.?, symType);
-    c.ir.setStmtData(irIdx, .setVarSym, .{ .generic = .{
-        .left_t = symType,
-        .right_t = right.type,
-        .left = recLoc,
-        .right = right.irIdx,
-    }});
-
-    try c.symInitInfos.put(c.alloc, sym, .{
-        .depStart = @intCast(depStart),
-        .depEnd = @intCast(c.symInitDeps.items.len),
-        .irStart = @intCast(irIdx),
-        .irEnd = @intCast(c.ir.buf.items.len),
-    });
-}
-
 const SemaExprOptions = struct {
     target_t: TypeId = cy.NullId,
     req_target_t: bool = false,
@@ -2946,15 +2988,6 @@ const SemaExprOptions = struct {
     fit_target_unbox_dyn: bool = false,
     prefer_addressable: bool = false,
 };
-
-fn semaExprCType(c: *cy.Chunk, node: *ast.Node, ctype: CompactType) !ExprResult {
-    return try c.semaExpr(node, .{
-        .target_t = ctype.id,
-        .req_target_t = true,
-        .fit_target = true,
-        .fit_target_unbox_dyn = !ctype.dynamic,
-    });
-}
 
 const ExprResultType = enum(u8) {
     value,
@@ -3170,11 +3203,17 @@ pub fn symbol(c: *cy.Chunk, sym: *Sym, expr: Expr, prefer_ct_sym: bool) !ExprRes
             const loc = try c.ir.pushExpr(.context, c.alloc, typeId, node, .{ .sym = @ptrCast(sym) });
             return ExprResult.init(loc, ctype);
         },
-        .userVar,
+        .userVar => {
+            const user_var = sym.cast(.userVar);
+            const src_chunk = user_var.head.parent.?.getMod().?.chunk;
+            try ensureUserVarResolved(src_chunk, user_var);
+            const loc = try c.ir.pushExpr(.varSym, c.alloc, user_var.type, node, .{ .sym = sym });
+            return ExprResult.initCustom(loc, .varSym, CompactType.init(user_var.type), .{ .varSym = sym });
+        },
         .hostVar => {
-            const typeId = (try c.getSymValueType(sym)) orelse return error.Unexpected;
-            const ctype = CompactType.init(typeId);
-            const loc = try c.ir.pushExpr(.varSym, c.alloc, typeId, node, .{ .sym = sym });
+            const host_var = sym.cast(.hostVar);
+            const ctype = CompactType.init(host_var.type);
+            const loc = try c.ir.pushExpr(.varSym, c.alloc, host_var.type, node, .{ .sym = sym });
             return ExprResult.initCustom(loc, .varSym, ctype, .{ .varSym = sym });
         },
         .func => {
@@ -3748,23 +3787,26 @@ pub fn semaMainBlock(compiler: *cy.Compiler, mainc: *cy.Chunk) !u32 {
 
     if (!compiler.cont) {
         if (compiler.global_sym) |global| {
-            const set = try mainc.ir.pushEmptyStmt(compiler.alloc, .setVarSym, mainc.ast.null_node);
-            const sym = try mainc.ir.pushExpr(.varSym, compiler.alloc, bt.Map, mainc.ast.null_node, .{ .sym = @as(*cy.Sym, @ptrCast(global)) });
             const map = try mainc.semaMap(mainc.ast.null_node);
-            mainc.ir.setStmtData(set, .setVarSym, .{ .generic = .{
-                .left_t = CompactType.initStatic(bt.Map),
-                .right_t = CompactType.initStatic(bt.Map),
-                .left = sym,
-                .right = map.irIdx,
-            }});
+            _ = try mainc.ir.pushStmt(compiler.alloc, .set_var_sym, mainc.ast.null_node, .{
+                .sym = @as(*cy.Sym, @ptrCast(global)),
+                .expr = map.irIdx,
+            });
         }
     }
 
-    // Emit IR for initializers. DFS order. Stop at circular dependency.
-    // TODO: Allow circular dependency between chunks but not symbols.
+    // Emit IR to invoke each chunks `$init` which has already has the correct dependency ordering. 
+    // TODO: Should operate per worker not chunk.
     for (compiler.newChunks()) |c| {
-        if (c.hasStaticInit and !c.initializerVisited) {
-            try visitChunkInit(compiler, c);
+        if (c.hasStaticInit) {
+            const func = c.sym.getMod().getSym("$init").?.cast(.func).first;
+            const exprLoc = try compiler.main_chunk.ir.pushExpr(.call_sym, c.alloc, bt.Void, c.ast.null_node, .{ 
+                .func = func, .numArgs = 0, .args = 0,
+            });
+            _ = try compiler.main_chunk.ir.pushStmt(c.alloc, .exprStmt, c.ast.null_node, .{
+                .expr = exprLoc,
+                .isBlockResult = false,
+            });
         }
     }
 
@@ -3782,35 +3824,6 @@ pub fn semaMainBlock(compiler: *cy.Compiler, mainc: *cy.Chunk) !u32 {
         .bodyHead = stmtBlock.first,
     });
     return loc;
-}
-
-fn visitChunkInit(self: *cy.Compiler, c: *cy.Chunk) !void {
-    c.initializerVisiting = true;
-    var iter = c.symInitChunkDeps.keyIterator();
-
-    while (iter.next()) |key| {
-        const depChunk = key.*;
-        if (depChunk.initializerVisited) {
-            continue;
-        }
-        if (depChunk.initializerVisiting) {
-            return c.reportErrorFmt("Referencing `{}` created a circular module dependency.", &.{v(c.srcUri)}, null);
-        }
-        try visitChunkInit(self, depChunk);
-    }
-
-    // Once all deps are visited, emit IR.
-    const func = c.sym.getMod().getSym("$init").?.cast(.func).first;
-    const exprLoc = try self.main_chunk.ir.pushExpr(.call_sym, c.alloc, bt.Void, c.ast.null_node, .{ 
-        .func = func, .numArgs = 0, .args = 0,
-    });
-    _ = try self.main_chunk.ir.pushStmt(c.alloc, .exprStmt, c.ast.null_node, .{
-        .expr = exprLoc,
-        .isBlockResult = false,
-    });
-
-    c.initializerVisiting = false;
-    c.initializerVisited = true;
 }
 
 pub fn pushProc(self: *cy.Chunk, func: ?*cy.Func) !ProcId {
@@ -4074,11 +4087,6 @@ fn referenceSym(c: *cy.Chunk, sym: *Sym, node: *ast.Node) !void {
         return;
     }
 
-    if (c.curInitingSym == sym) {
-        const name = c.ast.nodeString(node);
-        return c.reportErrorFmt("Reference to `{}` creates a circular dependency.", &.{v(name)}, node);
-    }
-
     // Determine the chunk the symbol belongs to.
     // Skip host symbols.
     var chunk: *cy.Chunk = undefined;
@@ -4087,17 +4095,15 @@ fn referenceSym(c: *cy.Chunk, sym: *Sym, node: *ast.Node) !void {
     }
     chunk = sym.parent.?.getMod().?.chunk;
 
-    if (chunk == c) {
-        // Internal sym dep.
-        if (c.curInitingSymDeps.contains(sym)) {
-            return;
+    if (c.compiler.svar_init_stack.items.len > 0) {
+        const user_var = sym.cast(.userVar);
+        if (user_var.resolving_init) {
+            return c.reportErrorFmt("Referencing `{}` creates a circular dependency.", &.{v(sym.name())}, node);
         }
-        try c.curInitingSymDeps.put(c.alloc, sym, {});
-        try c.symInitDeps.append(c.alloc, .{ .sym = sym, .refNodeId = node });
-    } else {
-        // Module dep.
-        // Record this symbol's chunk as a dependency.
-        try c.symInitChunkDeps.put(c.alloc, chunk, {});
+        const cur_svar = &c.compiler.svar_init_stack.items[c.compiler.svar_init_stack.items.len-1];
+        if (std.mem.indexOfScalar(*cy.sym.UserVar, cur_svar.deps.items, user_var) == null) {
+            try cur_svar.deps.append(c.alloc, user_var);
+        }
     }
 }
 

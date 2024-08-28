@@ -8,6 +8,9 @@ var .a = 123
 -- Reading from a static variable.
 t.eq(a, 123)
 
+-- Type is inferred from initializer.
+t.eq(typeof(a), int)
+
 -- Invoke as function.
 var .a1 = func() int:
     return 123

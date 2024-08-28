@@ -4379,7 +4379,8 @@ fn semaSwitchExpr(c: *cy.Chunk, block: *ast.SwitchBlock, target: SemaExprOptions
         const blockExprLoc = try c.ir.pushExpr(.blockExpr, c.alloc, bt.Any, @ptrCast(block), .{ .bodyHead = stmtBlock.first });
         return ExprResult.initStatic(blockExprLoc, bt.Any);
     } else {
-        return ExprResult.initStatic(irIdx, info.target.target_t);
+        const type_id = c.ir.getExprType(irIdx).id;
+        return ExprResult.initStatic(irIdx, type_id);
     }
 }
 
@@ -4405,12 +4406,9 @@ fn semaSwitchChoicePrologue(c: *cy.Chunk, info: *SwitchInfo, expr: ExprResult, e
     return exprLoc;
 }
 
-fn semaSwitchBody(c: *cy.Chunk, info: SwitchInfo, block: *ast.SwitchBlock, exprLoc: u32) !u32 {
-    var ret_t = bt.Any;
-    if (info.target.fit_target) {
-        ret_t = info.target.target_t;
-    }
-    const irIdx = try c.ir.pushExpr(.switchExpr, c.alloc, ret_t, @ptrCast(block), .{
+fn semaSwitchBody(c: *cy.Chunk, info_: SwitchInfo, block: *ast.SwitchBlock, exprLoc: u32) !u32 {
+    var info = info_;
+    const irIdx = try c.ir.pushExpr(.switchExpr, c.alloc, undefined, @ptrCast(block), .{
         .numCases = @intCast(block.cases.len),
         .expr = exprLoc,
         .is_expr = info.is_expr,
@@ -4422,11 +4420,19 @@ fn semaSwitchBody(c: *cy.Chunk, info: SwitchInfo, block: *ast.SwitchBlock, exprL
     var has_else = false;
     for (block.cases, 0..) |case, i| {
         const irCaseIdx = try semaSwitchCase(c, info, @ptrCast(case));
+        if (i == 0) {
+            if (info.target.target_t != bt.Dyn and info.target.target_t != bt.Any) {
+                const case_t = c.ir.getExprType(irCaseIdx).id;
+                info.target.target_t = case_t;
+            }
+        }
         c.ir.setArrayItem(irCasesIdx, u32, i, irCaseIdx);
         if (case.conds.len == 0) {
             has_else = true;
         }
     }
+
+    c.ir.setExprType(irIdx, info.target.target_t);
 
     if (!exhaustive and !has_else and info.is_expr) {
         return c.reportErrorFmt("Expected `else` case since switch is not exhaustive.", &.{}, @ptrCast(block));
@@ -4453,6 +4459,7 @@ fn semaSwitchElseCase(c: *cy.Chunk, info: SwitchInfo, case: *ast.CaseBlock) !u32
         const stmtBlock = try popBlock(c);
         const blockExpr = c.ir.getExprDataPtr(bodyHead, .blockExpr);
         blockExpr.bodyHead = stmtBlock.first;
+        c.ir.setExprType(irIdx, expr.type.id);
     } else {
         try pushBlock(c, @ptrCast(case));
 
@@ -4463,6 +4470,7 @@ fn semaSwitchElseCase(c: *cy.Chunk, info: SwitchInfo, case: *ast.CaseBlock) !u32
         try semaStmts(c, case.stmts);
         const stmtBlock = try popBlock(c);
         bodyHead = stmtBlock.first;
+        c.ir.setExprType(irIdx, bt.Void);
     }
 
     c.ir.setExprData(irIdx, .switchCase, .{
@@ -4533,6 +4541,7 @@ fn semaSwitchCase(c: *cy.Chunk, info: SwitchInfo, case: *ast.CaseBlock) !u32 {
         const stmtBlock = try popBlock(c);
         const blockExpr = c.ir.getExprDataPtr(bodyHead, .blockExpr);
         blockExpr.bodyHead = stmtBlock.first;
+        c.ir.setExprType(irIdx, expr.type.id);
     } else {
         if (info.is_expr) {
             return c.reportErrorFmt("Assign switch statement requires a return case: `case {cond} => {expr}`", &.{}, @ptrCast(case));
@@ -4541,6 +4550,7 @@ fn semaSwitchCase(c: *cy.Chunk, info: SwitchInfo, case: *ast.CaseBlock) !u32 {
         try semaStmts(c, case.stmts);
         const stmtBlock = try popBlock(c);
         bodyHead = stmtBlock.first;
+        c.ir.setExprType(irIdx, bt.Void);
     }
 
     c.ir.setExprData(irIdx, .switchCase, .{
@@ -4574,7 +4584,7 @@ fn semaCaseCond(c: *cy.Chunk, info: SwitchInfo, conds_loc: u32, cond: *ast.Node,
     }
 
     // General case.
-    const condRes = try c.semaExpr(cond, .{});
+    const condRes = try c.semaExprTarget(cond, info.exprType.id);
     c.ir.setArrayItem(conds_loc, u32, cond_idx, condRes.irIdx);
     return null;
 }

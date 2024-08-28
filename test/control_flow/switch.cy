@@ -26,7 +26,7 @@ case 10 : res = 2
 else    : res = -1
 t.eq(res, -1)
 
--- Switch mulitple conds.
+-- Switch multiple conds.
 a = 123
 res = 0
 switch a

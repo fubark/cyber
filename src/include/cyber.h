@@ -466,7 +466,7 @@ void clDeclareDynVar(CLSym mod, const char* name, CLType type, CLValue val);
 void clDeclareVar(CLSym mod, const char* name, CLType type, CLValue val);
 
 // Expand type template for given arguments.
-bool clExpandTemplateType(CLSym type_t, const CLValue* args, uint32_t nargs, CLType* res);
+bool clExpandTemplateType(CLVM* vm, CLSym type_t, const CLValue* args, size_t nargs, CLType* res);
 
 // Find and return the type from an absolute path.
 // Returns `CL_TYPE_NULL` if the symbol could not be found or the symbol is not a type.
@@ -556,7 +556,7 @@ CLValue clNewList(CLVM* vm, CLType type_id, const CLValue* vals, size_t len);
 
 CLValue clNewEmptyMap(CLVM* vm);
 CLValue clNewFuncDyn(CLVM* vm, uint32_t numParams, CLFuncFn func);
-CLValue clNewFunc(CLVM* vm, const CLType* params, uint32_t numParams, CLType retType, CLFuncFn func);
+CLValue clNewFunc(CLVM* vm, const CLType* params, size_t numParams, CLType retType, CLFuncFn func);
 CLValue clNewPointerVoid(CLVM* vm, void* ptr);
 CLValue clNewType(CLVM* vm, CLType type_id);
 

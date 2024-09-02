@@ -430,68 +430,69 @@ pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
 
 fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
     log.tracev("builtins: on load", .{});
-    const vm: *cy.VM = @ptrCast(@alignCast(vm_));
+    const ivm: *cy.VM = @ptrCast(@alignCast(vm_));
+    const vm: *C.ZVM = @ptrCast(vm_);
     const chunk_sym = cy.Sym.fromC(mod).cast(.chunk);
-    const b = bindings.ModuleBuilder.init(vm.compiler, @ptrCast(chunk_sym));
+    const b = bindings.ModuleBuilder.init(ivm.compiler, @ptrCast(chunk_sym));
     if (cy.Trace) {
         b.declareFuncSig("traceRetains", &.{}, bt.Integer, traceRetains) catch cy.fatal();
         b.declareFuncSig("traceReleases", &.{}, bt.Integer, traceRetains) catch cy.fatal();
     }
 
-    const data = vm.getData(*BuiltinsData, "builtins");
+    const data = ivm.getData(*BuiltinsData, "builtins");
 
     const option_tmpl = chunk_sym.getMod().getSym("Option").?.toC();
 
     const assert = std.debug.assert;
 
-    const int_t = C.newType(vm_, bt.Integer);
-    defer C.release(vm_, int_t);
-    assert(C.expandTemplateType(option_tmpl, &int_t, 1, &data.OptionInt));
+    const int_t = vm.newType(bt.Integer);
+    defer vm.release(int_t);
+    assert(vm.expandTemplateType(option_tmpl, &.{int_t}, &data.OptionInt));
 
-    const any_t = C.newType(vm_, bt.Any);
-    defer C.release(vm_, any_t);
-    assert(C.expandTemplateType(option_tmpl, &any_t, 1, &data.OptionAny));
+    const any_t = vm.newType(bt.Any);
+    defer vm.release(any_t);
+    assert(vm.expandTemplateType(option_tmpl, &.{any_t}, &data.OptionAny));
 
-    const tuple_t = C.newType(vm_, bt.Tuple);
-    defer C.release(vm_, tuple_t);
-    assert(C.expandTemplateType(option_tmpl, &tuple_t, 1, &data.OptionTuple));
+    const tuple_t = vm.newType(bt.Tuple);
+    defer vm.release(tuple_t);
+    assert(vm.expandTemplateType(option_tmpl, &.{tuple_t}, &data.OptionTuple));
 
-    const map_t = C.newType(vm_, bt.Map);
-    defer C.release(vm_, map_t);
-    assert(C.expandTemplateType(option_tmpl, &map_t, 1, &data.OptionMap));
+    const map_t = vm.newType(bt.Map);
+    defer vm.release(map_t);
+    assert(vm.expandTemplateType(option_tmpl, &.{map_t}, &data.OptionMap));
 
-    const string_t = C.newType(vm_, bt.String);
-    defer C.release(vm_, string_t);
-    assert(C.expandTemplateType(option_tmpl, &string_t, 1, &data.OptionString));
+    const string_t = vm.newType(bt.String);
+    defer vm.release(string_t);
+    assert(vm.expandTemplateType(option_tmpl, &.{string_t}, &data.OptionString));
 
     const pointer_tmpl = chunk_sym.getMod().getSym("pointer").?.toC();
 
-    const void_t = C.newType(vm_, bt.Void);
-    defer C.release(vm_, void_t);
-    assert(C.expandTemplateType(pointer_tmpl, &void_t, 1, &data.PtrVoid));
+    const void_t = vm.newType(bt.Void);
+    defer vm.release(void_t);
+    assert(vm.expandTemplateType(pointer_tmpl, &.{void_t}, &data.PtrVoid));
 
     const list_tmpl = chunk_sym.getMod().getSym("List").?.toC();
 
-    const dynamic_t = C.newType(vm_, bt.Dyn);
-    defer C.release(vm_, dynamic_t);
+    const dynamic_t = vm.newType(bt.Dyn);
+    defer vm.release(dynamic_t);
     var temp: cy.TypeId = undefined;
-    assert(C.expandTemplateType(list_tmpl, &dynamic_t, 1, &temp));
+    assert(vm.expandTemplateType(list_tmpl, &.{dynamic_t}, &temp));
 
     const list_iter_tmpl = chunk_sym.getMod().getSym("ListIterator").?.toC();
-    assert(C.expandTemplateType(list_iter_tmpl, &dynamic_t, 1, &temp));
+    assert(vm.expandTemplateType(list_iter_tmpl, &.{dynamic_t}, &temp));
 
     const ptr_slice_tmpl = chunk_sym.getMod().getSym("PtrSlice").?.toC();
-    const byte_t = C.newType(vm_, bt.Byte);
-    defer C.release(vm_, byte_t);
-    assert(C.expandTemplateType(ptr_slice_tmpl, &byte_t, 1, &data.PtrSliceByte));
+    const byte_t = vm.newType(bt.Byte);
+    defer vm.release(byte_t);
+    assert(vm.expandTemplateType(ptr_slice_tmpl, &.{byte_t}, &data.PtrSliceByte));
 
     // Verify all core types have been initialized.
     if (cy.Trace) {
-        if (vm.sema.types.items[0].kind != .null) {
+        if (ivm.sema.types.items[0].kind != .null) {
             cy.panicFmt("Expected null type.", .{});
         }
         for (1..cy.types.BuiltinEnd) |i| {
-            const type_e = vm.sema.types.items[i];
+            const type_e = ivm.sema.types.items[i];
             if (type_e.kind == .null) {
                 cy.panicFmt("Type {} is uninited.", .{i});
             }

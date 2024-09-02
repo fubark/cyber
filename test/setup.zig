@@ -70,7 +70,7 @@ extern fn clInitCLI(vm: *c.VM) void;
 extern fn clDeinitCLI(vm: *c.VM) void;
 
 pub const VMrunner = struct {
-    vm: *c.VM,
+    vm: *c.ZVM,
     ctx: ?*anyopaque = null,
 
     pub fn init() VMrunner {
@@ -82,9 +82,9 @@ pub const VMrunner = struct {
     }
 
     pub fn deinit(self: *VMrunner) void {
-        clDeinitCLI(self.vm);
-        c.deinit(self.vm);
-        c.destroy(self.vm);
+        clDeinitCLI(@ptrCast(self.vm));
+        self.vm.deinit();
+        self.vm.destroy();
     }
 
     pub fn internal(self: *VMrunner) *cy.VM {
@@ -110,10 +110,10 @@ pub const VMrunner = struct {
     pub fn expectErrorReport(self: *VMrunner, res: EvalResult, expErr: c.ResultCode, expReport: []const u8) !void {
         var errorMismatch = false;
         if (res.code == c.Success) {
-            const val_dump = c.newValueDump(self.vm, res.value);
-            defer c.free(self.vm, val_dump);
+            const val_dump = self.vm.newValueDump(res.value);
+            defer self.vm.free(val_dump);
             std.debug.print("expected error.{s}, found: {s}\n", .{
-                c.fromStr(c.resultName(expErr)), c.fromStr(val_dump),
+                c.fromStr(c.resultName(expErr)), val_dump,
             });
             return error.TestUnexpectedError;
         } else {
@@ -124,8 +124,8 @@ pub const VMrunner = struct {
             }
         }
         const report = try self.getErrorSummary(res.code);
-        defer c.free(self.vm, report);
-        try eqUserError(t.alloc, c.fromStr(report), expReport);
+        defer self.vm.free(report);
+        try eqUserError(t.alloc, report, expReport);
 
         if (errorMismatch) {
             return error.TestUnexpectedError;
@@ -135,26 +135,26 @@ pub const VMrunner = struct {
     pub fn expectErrorReport2(self: *VMrunner, res: EvalResult, expReport: []const u8) !void {
         const errorMismatch = false;
         if (res.code == c.Success) {
-            const val_dump = c.newValueDump(self.vm, res.value);
-            defer c.free(self.vm, val_dump);
-            std.debug.print("expected error, found: {s}\n", .{ c.fromStr(val_dump) });
+            const val_dump = self.vm.newValueDump(res.value);
+            defer self.vm.free(val_dump);
+            std.debug.print("expected error, found: {s}\n", .{ val_dump });
             return error.TestUnexpectedError;
         }
         // Continue to compare report.
         const report = try self.getErrorSummary(res.code);
-        defer c.free(self.vm, report);
-        try eqUserError(t.alloc, c.fromStr(report), expReport);
+        defer self.vm.free(report);
+        try eqUserError(t.alloc, report, expReport);
 
         if (errorMismatch) {
             return error.TestUnexpectedError;
         }
     }
 
-    fn getErrorSummary(self: *VMrunner, code: c.ResultCode) !c.Str {
+    fn getErrorSummary(self: *VMrunner, code: c.ResultCode) ![]const u8 {
         if (code == c.ErrorCompile) {
-            return c.newErrorReportSummary(self.vm);
+            return self.vm.newErrorReportSummary();
         } else if (code == c.ErrorPanic) {
-            return c.newPanicSummary(self.vm);
+            return self.vm.newPanicSummary();
         }
         return error.Unsupported;
     }
@@ -201,10 +201,10 @@ pub const VMrunner = struct {
 
         var r_uri = config.uri;
         if (config.enableFileModules) {
-            r_uri = c.fromStr(c.resolve(vm, c.toStr(config.uri)));
+            r_uri = vm.resolve(config.uri);
         }
         defer if (config.enableFileModules) {
-            c.free(vm, c.toStr(r_uri));
+            vm.free(r_uri);
         };
 
         var resv: c.Value = undefined;
@@ -216,8 +216,8 @@ pub const VMrunner = struct {
             .spawn_exe = false,
             .reload = config.reload,
         };
-        c.reset(vm);
-        const res_code = c.evalExt(vm, c.toStr(r_uri), c.toStr(src), c_config, @ptrCast(&resv));
+        vm.reset();
+        const res_code = vm.evalExt(r_uri, src, c_config, @ptrCast(&resv));
 
         if (optCb) |cb| {
             const res = EvalResult{
@@ -231,12 +231,12 @@ pub const VMrunner = struct {
                 return err;
             };
         } else {
-            c.release(vm, resv);
+            vm.release(resv);
             if (res_code == c.Await) {
                 // Consume all ready tasks.
                 var cont_code = res_code;
                 while (cont_code == c.Await) {
-                    cont_code = c.runReadyTasks(vm);
+                    cont_code = vm.runReadyTasks();
                 }
                 if (cont_code != c.Success) {
                     errReport(vm, cont_code);
@@ -251,25 +251,25 @@ pub const VMrunner = struct {
         }
 
         // Deinit, so global objects from builtins are released.
-        c.deinit(vm);
+        vm.deinit();
 
         // Run GC after runtime syms are released.
         if (config.cleanupGC) {
-            _ = c.performGC(vm);
+            _ = vm.performGC();
         }
 
         if (config.checkGlobalRc) {
-            const grc = c.getGlobalRC(vm);
+            const grc = vm.getGlobalRC();
             if (grc != 0) {
-                c.traceDumpLiveObjects(vm);
+                vm.traceDumpLiveObjects();
                 cy.panicFmt("unreleased refcount: {}", .{grc});
             }
         }
 
         if (config.check_object_count) {
-            const count = c.countObjects(vm);
+            const count = vm.countObjects();
             if (count != 0) {
-                c.traceDumpLiveObjects(vm);
+                vm.traceDumpLiveObjects();
                 cy.panicFmt("unfreed objects: {}", .{count});
             }
         }
@@ -352,7 +352,7 @@ pub fn compile(config: Config, src: []const u8) !void {
     // .genAllDebugSyms = config.debug,
     compile_c.backend = cy.fromTestBackend(build_options.testBackend);
 
-    const res_code = c.compile(run.vm, c.toStr(config.uri), c.toStr(src), compile_c);
+    const res_code = run.vm.compile(config.uri, src, compile_c);
     if (res_code != c.Success) {
         errReport(run.vm, res_code);
         return error.CompileError;
@@ -384,20 +384,20 @@ pub fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, EvalR
     try run.eval(config, src, optCb);
 }
 
-pub fn errReport(vm: *c.VM, code: c.ResultCode) void {
+pub fn errReport(vm: *c.ZVM, code: c.ResultCode) void {
     if (c.silent()) {
         return;
     }
     switch (code) {
         c.ErrorPanic => {
-            const summary = c.newPanicSummary(vm);
-            defer c.free(vm, summary);
-            std.debug.print("{s}", .{c.fromStr(summary)});
+            const summary = vm.newPanicSummary();
+            defer vm.free(summary);
+            std.debug.print("{s}", .{summary});
         },
         c.ErrorCompile => {
-            const summary = c.newErrorReportSummary(vm);
-            defer c.free(vm, summary);
-            std.debug.print("{s}", .{c.fromStr(summary)});
+            const summary = vm.newErrorReportSummary();
+            defer vm.free(summary);
+            std.debug.print("{s}", .{summary});
         },
         c.ErrorUnknown => {
             std.debug.print("Unknown error.\n", .{});

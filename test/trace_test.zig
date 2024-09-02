@@ -128,7 +128,7 @@ test "ARC for static variable declarations." {
         \\t.eq(a[0], 123)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
-        c.deinit(run.vm);
+        run.vm.deinit();
         const trace = run.getTrace();
         try t.eq(trace.numRetainAttempts, 6);
         try t.eq(trace.numRetains, 5);
@@ -414,8 +414,8 @@ test "Multiple evals persisting state." {
     var run = VMrunner.init();
     defer run.deinit();
 
-    var global = c.newEmptyMap(run.vm);
-    defer c.release(run.vm, global);
+    var global = run.vm.newEmptyMap();
+    defer run.vm.release(global);
     c.setUserData(@ptrCast(run.vm), &global);
 
     c.setResolver(@ptrCast(run.vm), cy.compiler.defaultModuleResolver);
@@ -467,7 +467,7 @@ test "os constants" {
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         const val = try res.getValue();
         try t.eqStr(try run.assertValueString(val), @tagName(builtin.os.tag));
-        c.release(run.vm, val.toC());
+        run.vm.release(val.toC());
     }}.func);
 
     try eval(.{},
@@ -476,7 +476,7 @@ test "os constants" {
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         const val = try res.getValue();
         try t.eqStr(try run.assertValueString(val), @tagName(builtin.cpu.arch));
-        c.release(run.vm, val.toC());
+        run.vm.release(val.toC());
     }}.func);
 
     try eval(.{},
@@ -489,7 +489,7 @@ test "os constants" {
         } else {
             try t.eq(val.asSymbolId(), @intFromEnum(bindings.Symbol.big));
         }
-        c.release(run.vm, val.toC());
+        run.vm.release(val.toC());
     }}.func);
 }
 

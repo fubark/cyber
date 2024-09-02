@@ -70,25 +70,28 @@ pub fn UserVM_new(vm: *cy.VM) anyerror!cy.Value {
 
 pub fn UserVM_getErrorSummary(vm: *cy.VM) anyerror!cy.Value {
     const uvm = vm.getValue(0).castHostObject(*UserVM);
-    const summary = C.newErrorReportSummary(@ptrCast(uvm.vm));
-    defer C.free(@ptrCast(uvm.vm), summary);
-    return vm.allocString(C.fromStr(summary));
+    const cvm: *C.ZVM = @ptrCast(uvm.vm);
+    const summary = cvm.newErrorReportSummary();
+    defer cvm.free(summary);
+    return vm.allocString(summary);
 }
 
 pub fn UserVM_getPanicSummary(vm: *cy.VM) anyerror!cy.Value {
     const uvm = vm.getValue(0).castHostObject(*UserVM);
-    const summary = C.newPanicSummary(@ptrCast(uvm.vm));
-    defer C.free(@ptrCast(uvm.vm), summary);
-    return vm.allocString(C.fromStr(summary));
+    const cvm: *C.ZVM = @ptrCast(uvm.vm);
+    const summary = cvm.newPanicSummary();
+    defer cvm.free(summary);
+    return vm.allocString(summary);
 }
 
 pub fn UserValue_dump(vm: *cy.VM) anyerror!cy.Value {
     const uval = vm.getValue(0).castHostObject(*UserValue);
     const uvm = uval.vm.castHostObject(*UserVM);
+    const cvm: *C.ZVM = @ptrCast(uvm.vm);
 
-    const str = C.newValueDump(@ptrCast(uvm.vm), uval.val);
-    defer C.free(@ptrCast(uvm.vm), str);
-    return vm.allocString(C.fromStr(str));
+    const str = cvm.newValueDump(uval.val);
+    defer cvm.free(str);
+    return vm.allocString(str);
 }
 
 pub fn UserValue_getTypeId(vm: *cy.VM) anyerror!cy.Value {
@@ -177,7 +180,7 @@ pub fn UserVM_evalExt(vm: *cy.VM) anyerror!cy.Value {
 
 pub fn UserVM_finalizer(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) void {
     const uvm: *UserVM = @ptrCast(@alignCast(obj));
-    C.destroy(@ptrCast(uvm.vm));
+    @as(*C.ZVM, @ptrCast(uvm.vm)).destroy();
 }
 
 const UserValue = extern struct {

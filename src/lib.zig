@@ -288,15 +288,15 @@ export fn clValidate(vm: *cy.VM, src: c.Str) c.ResultCode {
 
 test "clValidate()" {
     const vm = c.create();
-    defer c.destroy(vm);
+    defer vm.destroy();
 
     c.setSilent(true);
     defer c.setSilent(false);
 
-    var res = c.validate(vm, c.toStr("1 + 2"));
+    var res = vm.validate("1 + 2");
     try t.eq(res, c.Success);
 
-    res = c.validate(vm, c.toStr("1 +"));
+    res = vm.validate("1 +");
     try t.eq(res, c.ErrorCompile);
 }
 
@@ -484,7 +484,8 @@ test "clFindType()" {
     try t.eq(c.findType(vm, c.toStr("int")), c.TypeInteger);
 }
 
-export fn clExpandTemplateType(ctemplate: c.Sym, args_ptr: [*]const cy.Value, nargs: u32, res: *c.Type) bool {
+export fn clExpandTemplateType(vm: *cy.VM, ctemplate: c.Sym, args_ptr: [*]const cy.Value, nargs: usize, res: *c.Type) bool {
+    _ = vm;
     const template = cy.Sym.fromC(ctemplate).cast(.template);
     const args = args_ptr[0..nargs];
     const type_id = clExpandTemplateType2(template, args) catch |err| {
@@ -608,17 +609,17 @@ export fn clNewFuncDyn(vm: *cy.VM, numParams: u32, func: c.FuncFn) Value {
     return vm.allocHostFuncUnion(bt.Func, @ptrCast(func), numParams, funcSigId, null, false) catch fatal();
 }
 
-export fn clNewFunc(vm: *cy.VM, params: [*]const cy.TypeId, numParams: u32, retType: cy.TypeId, func: c.FuncFn) Value {
+export fn clNewFunc(vm: *cy.VM, params: [*]const cy.TypeId, numParams: usize, retType: cy.TypeId, func: c.FuncFn) Value {
     const funcSigId = vm.sema.ensureFuncSig(@ptrCast(params[0..numParams]), retType) catch fatal();
     const funcSig = vm.sema.funcSigs.items[funcSigId];
     return vm.allocHostFuncUnion(bt.Func, @ptrCast(func), numParams, funcSigId, null, funcSig.info.reqCallTypeCheck) catch fatal();
 }
 
 test "clNewFunc()" {
-    const vm: *cy.VM = @ptrCast(@alignCast(c.create()));
-    defer c.destroy(@ptrCast(vm));
+    const vm = c.create();
+    defer vm.destroy();
 
-    const val = c.newFunc(@ptrCast(vm), &[_]cy.TypeId{}, 0, bt.Dyn, @ptrFromInt(8));
+    const val = vm.newFunc(&.{}, bt.Dyn, @ptrFromInt(8));
     try t.eq(c.getType(val), bt.Func);
 }
 
@@ -694,9 +695,9 @@ export fn clNewType(vm: *cy.VM, type_id: cy.TypeId) Value {
 
 test "clNewPointer()" {
     const vm = c.create();
-    defer c.destroy(vm);
+    defer vm.destroy();
 
-    const val = c.newPointerVoid(vm, @ptrFromInt(123));
+    const val = vm.newPointerVoid(@ptrFromInt(123));
     const obj = (Value{.val = val}).asHeapObject();
     try t.eq(@intFromPtr(obj.pointer.ptr), 123);
 }
@@ -715,14 +716,14 @@ export fn clToBool(val: Value) bool {
 
 test "clToBool()" {
     const vm = c.create();
-    defer c.destroy(vm);
+    defer vm.destroy();
 
     try t.eq(c.toBool(c.float(0)), false);
     try t.eq(c.toBool(c.float(123.0)), true);
 
-    var i = c.newInt(vm, 0);
+    var i = vm.newInt(0);
     try t.eq(c.toBool(i), false);
-    i = c.newInt(vm, 1);
+    i = vm.newInt(1);
     try t.eq(c.toBool(i), true);
 
     try t.eq(c.toBool(c.clTrue()), true);
@@ -744,9 +745,9 @@ export fn clAsBoxInt(val: Value) i64 {
 
 test "clAsBoxInt()" {
     const vm = c.create();
-    defer c.destroy(vm);
+    defer vm.destroy();
 
-    const val = c.newInt(vm, 123);
+    const val = vm.newInt(123);
     try t.eq(c.asBoxInt(val), 123);
 }
 
@@ -756,18 +757,15 @@ export fn clAsSymbolId(val: Value) u32 {
 
 test "clAsSymbolId()" {
     const vm = c.create();
-    defer c.destroy(vm);
+    defer vm.destroy();
 
-    var str = c.toStr("foo");
-    var val = c.symbol(vm, str);
+    var val = c.symbol(vm, "foo");
     try t.eq(c.asSymbolId(val), 49);
 
-    str = c.toStr("bar");
-    val = c.symbol(vm, str);
+    val = c.symbol(vm, "bar");
     try t.eq(c.asSymbolId(val), 50);
 
-    str = c.toStr("foo");
-    val = c.symbol(vm, str);
+    val = c.symbol(vm, "foo");
     try t.eq(c.asSymbolId(val), 49);
 }
 
@@ -855,15 +853,15 @@ export fn clListAppend(vm: *cy.VM, list: Value, val: Value) void {
 
 test "List ops." {
     const vm = c.create();
-    defer c.destroy(vm);
+    defer vm.destroy();
 
     var list: c.Value = undefined;
-    const eval_res = c.eval(vm, c.toStr("{1, 2, 3}"), &list);
+    const eval_res = vm.eval("{1, 2, 3}", &list);
     if (eval_res != c.Success) {
-        const summary = c.fromStr(c.newLastErrorSummary(vm));
+        const summary = vm.newLastErrorSummary();
         std.debug.panic("{s}", .{summary});
     }
-    defer c.release(vm, list);
+    defer vm.release(list);
 
     // Initial cap.
     try t.eq(c.listLen(list), 3);

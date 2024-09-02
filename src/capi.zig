@@ -348,6 +348,10 @@ pub const ZVM = struct {
         return fromStr(c.clNewValueDump(@ptrCast(self), val));
     }
 
+    pub fn newInstance(self: *ZVM, type_id: Type, fields: []const FieldInit) Value {
+        return c.clNewInstance(@ptrCast(self), type_id, fields.ptr, fields.len);
+    }
+
     pub fn findType(self: *ZVM, path: []const u8) Type {
         return c.clFindType(@ptrCast(self), toStr(path));
     }
@@ -367,6 +371,10 @@ pub const ZVM = struct {
 
 pub const Sym = c.CLSym;
 pub const GCResult = c.CLGCResult;
+pub const FieldInit = c.CLFieldInit;
+pub fn toFieldInit(name: []const u8, val: Value) FieldInit {
+    return .{ .name = toStr(name), .value = val };
+}
 
 pub const GetChildrenFn = c.CLGetChildrenFn;
 pub const FinalizerFn = c.CLFinalizerFn;

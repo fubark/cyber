@@ -552,9 +552,10 @@ test "asF64" {
 test "value internals." {
     try t.eq(@sizeOf(Value), 8);
     try t.eq(@alignOf(Value), 8);
-    try t.eq(VoidMask, 0x7FFC000100000000);
-    try t.eq(TrueMask, 0x7FFC000200000001);
-    try t.eq(FalseMask, 0x7FFC000200000000);
+    try t.eq(Value.Void.val, 0x7FFC000100000000);
+    try t.eq(Value.True.val, 0x7FFC000200000001);
+    try t.eq(Value.False.val, 0x7FFC000200000000);
+    try t.eq(Value.Interrupt.val, 0x7ffc00030000ffff);
     try t.eq(vmc.POINTER_MASK, 0xFFFE000000000000);
     try t.eq(Value.initInt(0).val, 0);
 

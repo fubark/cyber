@@ -22,6 +22,8 @@ typedef struct CLResolverParams CLResolverParams;
 typedef struct CLModule CLModule;
 
 #define CL_NULLID UINT32_MAX
+#define CL_VOID 0x7FFC000100000000
+#define CL_INTERRUPT 0x7ffc00030000ffff
 
 typedef int CLResultCode;
 
@@ -350,6 +352,11 @@ typedef struct CLAllocator {
     const void* vtable;
 } CLAllocator;
 
+typedef struct CLFieldInit {
+    CLStr name;
+    CLValue value;
+} CLFieldInit;
+
 // -----------------------------------
 // [ Top level ]
 // -----------------------------------
@@ -569,8 +576,10 @@ CLValue clNewHostObject(CLVM* vm, CLType typeId, size_t n);
 // Like `clNewHostObject` but returns the object's pointer. Wrap it into a value with `clHostObject`.
 void* clNewHostObjectPtr(CLVM* vm, CLType typeId, size_t n);
 
-// Instantiates a standard object type.
-CLValue clNewVmObject(CLVM* vm, CLType typeId);
+// Returns a new instance of `type` with a list of field initializers.
+// If the instance could not be created, the VM panics and `CL_INTERRUPT` is returned.
+// This assumes that the field initializers are the correct type.
+CLValue clNewInstance(CLVM* vm, CLType type, const CLFieldInit* fields, size_t nfields);
 
 // Returns the type of boxed value.
 CLType clGetType(CLValue val);

@@ -466,6 +466,16 @@ export fn clFindType(vm: *cy.VM, c_path: c.Str) cy.TypeId {
     if (vm.compiler.chunks.items.len == 0) {
         return bt.Null;
     }
+
+    // Look in main first.
+    const main_mod = vm.compiler.main_chunk.sym.getMod();
+    if (main_mod.getSym(path)) |sym| {
+        if (sym.getStaticType()) |type_id| {
+            return type_id;
+        }
+    }
+
+    // Look in builtins.
     const b_mod = vm.compiler.chunks.items[0].sym.getMod();
     const sym = b_mod.getSym(path) orelse {
         return bt.Null;
@@ -477,11 +487,21 @@ export fn clFindType(vm: *cy.VM, c_path: c.Str) cy.TypeId {
 
 test "clFindType()" {
     const vm = c.create();
-    defer c.destroy(vm);
+    defer vm.destroy();
 
-    try t.eq(c.findType(vm, c.toStr("int")), c.TypeNull);
-    _ = c.compile(vm, c.toStr("main"), c.toStr(""), c.defaultCompileConfig());
-    try t.eq(c.findType(vm, c.toStr("int")), c.TypeInteger);
+    // Before types are loaded.
+    try t.eq(vm.findType("int"), c.TypeNull);
+
+    // Load builtin type.
+    _ = vm.compile("main", "", c.defaultCompileConfig());
+    try t.eq(vm.findType("int"), c.TypeInteger);
+
+    // Load type declared from main.
+    _ = vm.compile("main",
+        \\type Foo:
+        \\    a int
+    , c.defaultCompileConfig());
+    try t.expect(vm.findType("Foo") != c.TypeNull);
 }
 
 export fn clExpandTemplateType(vm: *cy.VM, ctemplate: c.Sym, args_ptr: [*]const cy.Value, nargs: usize, res: *c.Type) bool {
@@ -664,19 +684,57 @@ export fn clNewHostObjectPtr(vm: *cy.VM, typeId: cy.TypeId, size: usize) *anyopa
     return cy.heap.allocHostCycObject(vm, typeId, size) catch cy.fatal();
 }
 
-export fn clNewVmObject(vm: *cy.VM, typeId: cy.TypeId, argsPtr: [*]const Value, numArgs: usize) Value {
-    const entry = &vm.c.types[typeId];
-    std.debug.assert(entry.kind == .object);
-    std.debug.assert(numArgs == entry.data.object.numFields);
-    const args = argsPtr[0..numArgs];
-    for (args) |arg| {
-        cy.arc.retain(vm, arg);
+export fn clNewInstance(vm: *cy.VM, type_id: cy.TypeId, fields: [*]const c.FieldInit, nfields: usize) cy.Value {
+    const type_e = vm.c.types[type_id];
+    if (type_e.kind != .object and type_e.kind != .struct_t) {
+        return vm.prepPanic("Expected object or struct type.");
     }
-    if (numArgs <= 4) {
-        return cy.heap.allocObjectSmall(vm, typeId, args) catch cy.fatal();
+
+    const start = vm.compiler.main_chunk.valueStack.items.len;
+    defer vm.compiler.main_chunk.valueStack.items.len = start;
+    const total_fields = if (type_e.kind == .object) type_e.data.object.numFields else type_e.data.struct_t.nfields;
+    vm.compiler.main_chunk.valueStack.resize(vm.alloc, start + total_fields) catch cy.fatal();
+    const args = vm.compiler.main_chunk.valueStack.items[start..];
+    @memset(args, Value.Void);
+
+    const mod = type_e.sym.getMod().?;
+    for (fields[0..nfields]) |field| {
+        const name = c.fromStr(field.name);
+        const sym = mod.getSym(name) orelse {
+            return vm.prepPanic("No such field.");
+        };
+        if (sym.type != .field) {
+            return vm.prepPanic("Not a field.");
+        }
+        args[sym.cast(.field).idx] = @bitCast(field.value);
+    }
+
+    if (args.len <= 4) {
+        return cy.heap.allocObjectSmall(vm, type_id, args) catch cy.fatal();
     } else {
-        return cy.heap.allocObject(vm, typeId, args) catch cy.fatal();
+        return cy.heap.allocObject(vm, type_id, args) catch cy.fatal();
     }
+}
+
+test "clNewInstance()" {
+    const vm = c.create();
+    defer vm.destroy();
+
+    var res: c.Value = undefined;
+    _ = vm.eval( 
+        \\type Foo:
+        \\    a int
+        \\    b String
+    , &res);
+    const foo_t = vm.findType("Foo");
+    const val = vm.newInstance(foo_t, &.{
+        c.toFieldInit("a", c.int(123)),
+        c.toFieldInit("b", vm.newString("abc")),
+    });
+    try t.eq(c.getType(val), foo_t);
+
+    try t.eq(vm.getField(val, "a"), 123);
+    try t.eqStr(c.asString(vm.getField(val, "b")), "abc");
 }
 
 export fn clSymbol(vm: *cy.VM, str: c.Str) Value {

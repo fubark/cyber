@@ -214,6 +214,7 @@ pub const SemaExt = struct {
 
     pub fn isUnboxedType(s: *cy.Sema, id: cy.TypeId) bool {
         switch (id) {
+            bt.Void,
             bt.Byte,
             bt.Integer => return true,
             bt.Symbol,

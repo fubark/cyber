@@ -2926,6 +2926,10 @@ pub const Parser = struct {
                     return @ptrCast(try self.newSpanNode(.ident, start));
                 }
             },
+            .underscore => {
+                self.advance();
+                return try self.ast.newNodeErase(.void_lit, .{ .pos = self.tokenSrcPos(start) });
+            },
             .true_k => {
                 self.advance();
                 return try self.ast.newNodeErase(.trueLit, .{ .pos = self.tokenSrcPos(start) });

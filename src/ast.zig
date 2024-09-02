@@ -109,6 +109,7 @@ pub const NodeType = enum(u7) {
     unwrap_choice,
     unwrap_or,
     use_alias,
+    void_lit,
     whileCondStmt,
     whileInfStmt,
     whileOptStmt,
@@ -700,6 +701,7 @@ fn NodeData(comptime node_t: NodeType) type {
         .unwrap_choice  => UnwrapChoice,
         .unwrap_or      => UnwrapOr,
         .use_alias      => UseAlias,
+        .void_lit       => Token,
         .whileCondStmt  => WhileCondStmt,
         .whileInfStmt   => WhileInfStmt,
         .whileOptStmt   => WhileOptStmt,
@@ -838,6 +840,7 @@ pub const Node = struct {
             .unwrap_choice  => self.cast(.unwrap_choice).left.pos(),
             .unwrap_or      => self.cast(.unwrap_or).opt.pos(),
             .use_alias      => self.cast(.use_alias).pos,
+            .void_lit       => self.cast(.void_lit).pos,
             .whileInfStmt   => self.cast(.whileInfStmt).pos,
             .whileCondStmt  => self.cast(.whileCondStmt).pos,
             .whileOptStmt   => self.cast(.whileOptStmt).pos,
@@ -913,7 +916,7 @@ pub const UnaryOp = enum(u8) {
 };
 
 test "ast internals." {
-    try t.eq(std.enums.values(NodeType).len, 100);
+    try t.eq(std.enums.values(NodeType).len, 101);
     try t.eq(@sizeOf(NodeHeader), 1);
 }
 

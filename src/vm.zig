@@ -2058,6 +2058,9 @@ fn box(vm: *VM, val: Value, type_id: cy.TypeId) !cy.Value {
             @panic("Unsupported.");
         }
     }
+    if (type_id == bt.Void) {
+        return cy.Value.Void;
+    }
     return vm.allocBoxValue(type_id, val.val);
 }
 
@@ -2066,6 +2069,9 @@ pub fn unbox(vm: *VM, val: Value, type_id: cy.TypeId) cy.Value {
         if (!vm.sema.isUnboxedType(type_id)) {
             @panic("Unsupported.");
         }
+    }
+    if (type_id == bt.Void) {
+        return cy.Value.initRaw(0);
     }
     return val.asHeapObject().object.firstValue;
 }

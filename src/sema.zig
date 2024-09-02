@@ -5482,6 +5482,9 @@ pub const ChunkExt = struct {
                 }
                 return c.reportErrorFmt("Can not infer dot literal.", &.{}, node);
             },
+            .void_lit => {
+                return c.semaVoid(node);
+            },
             .trueLit => {
                 return c.semaTrue(node);
             },
@@ -6319,6 +6322,11 @@ pub const ChunkExt = struct {
     pub fn semaByte(c: *cy.Chunk, val: u8, node: *ast.Node) !ExprResult {
         const irIdx = try c.ir.pushExpr(.byte, c.alloc, bt.Byte, node, .{ .val = val });
         return ExprResult.initStatic(irIdx, bt.Byte);
+    }
+
+    pub fn semaVoid(c: *cy.Chunk, node: *ast.Node) !ExprResult {
+        const loc = try c.ir.pushExpr(.voidv, c.alloc, bt.Void, node, {});
+        return ExprResult.initStatic(loc, bt.Void);
     }
 
     pub fn semaTrue(c: *cy.Chunk, node: *ast.Node) !ExprResult {

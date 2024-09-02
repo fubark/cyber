@@ -126,6 +126,9 @@ fn eq2(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) bool {
         }
     } else {
         switch (type_id) {
+            bt.Void => {
+                return true;
+            },
             bt.Byte => {
                 if (act.asByte() == exp.asByte()) {
                     return true;

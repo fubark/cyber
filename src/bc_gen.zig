@@ -499,6 +499,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .unwrapChoice       => genUnwrapChoice(c, idx, cstr, node),
         .unwrap_or          => genUnwrapOr(c, idx, cstr, node),
         .varSym             => genVarSym(c, idx, cstr, node),
+        .voidv              => genVoid(c, cstr, node),
         .blockExpr          => genBlockExpr(c, idx, cstr, node),
         else => {
             rt.errZFmt(c.vm, "{}\n", .{code});
@@ -1235,6 +1236,18 @@ fn genUnwrapChoice(c: *Chunk, loc: usize, cstr: Cstr, node: *ast.Node) !GenValue
         try initSlot(c, inst.dst, retain, node);
     }
     return finishDstInst(c, inst, retain);
+}
+
+fn genVoid(c: *Chunk, cstr: Cstr, node: *ast.Node) !GenValue {
+    const inst = try bc.selectForNoErrNoDepInst(c, cstr, bt.Void, false, node);
+    if (inst.requiresPreRelease) {
+        try pushRelease(c, inst.dst, node);
+    }
+    // Does not generate inst.
+    if (inst.own_dst) {
+        try initSlot(c, inst.dst, false, node);
+    }
+    return finishNoErrNoDepInst(c, inst, false);
 }
 
 fn genTrue(c: *Chunk, cstr: Cstr, node: *ast.Node) !GenValue {

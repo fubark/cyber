@@ -88,6 +88,7 @@ pub const ExprCode = enum(u8) {
     list,
     map,
 
+    voidv,
     truev,
     falsev,
     errorv,

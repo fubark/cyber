@@ -2073,7 +2073,7 @@ pub fn unbox(vm: *VM, val: Value, type_id: cy.TypeId) cy.Value {
 fn canInferArg(vm: *VM, arg: Value, target_t: cy.TypeId) bool {
     if (arg.getTypeId() == bt.TagLit) {
         const type_e = vm.c.types[target_t];
-        if (type_e.kind == .@"enum") {
+        if (type_e.kind == .enum_t) {
             const name = vm.syms.buf[arg.asSymbolId()].name;
             if (type_e.sym.cast(.enum_t).getMemberTag(name)) |value| {
                 _ = value;
@@ -2090,7 +2090,7 @@ fn canInferArg(vm: *VM, arg: Value, target_t: cy.TypeId) bool {
 fn inferArg(vm: *VM, arg: Value, target_t: cy.TypeId) ?Value {
     if (arg.getTypeId() == bt.TagLit) {
         const type_e = vm.c.types[target_t];
-        if (type_e.kind == .@"enum") {
+        if (type_e.kind == .enum_t) {
             const name = vm.syms.buf[arg.asSymbolId()].name;
             if (type_e.sym.cast(.enum_t).getMemberTag(name)) |value| {
                 return Value.initEnum(target_t, @intCast(value));

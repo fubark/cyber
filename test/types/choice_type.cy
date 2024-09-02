@@ -92,4 +92,12 @@ var rect = Rectangle{width=123, height=234}
 s = Shape.rectangle(rect)
 test.assert(s.!rectangle == rect)
 
+-- Builtin choicetag.
+s = Shape.line(123)
+test.eq(choicetag(s), .line)
+
+-- Choice type also generates a enum `Tag` type.
+var tag = Shape.Tag.rectangle
+test.eq(tag, .rectangle)
+
 --cytest: pass

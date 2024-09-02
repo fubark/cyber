@@ -32,6 +32,7 @@ const funcs = [_]C.HostFuncEntry{
     // Utils.
     func("bitcast_",       zErrFunc(bitcast)),
     func("copy_",          zErrFunc(copy)),
+    func("choicetag_",     zErrFunc(choicetag)),
     func("dump",           zErrFunc(dump)),
     func("eprint",         eprint),
     func("errorReport",    zErrFunc(errorReport)),
@@ -594,6 +595,16 @@ pub fn copy(vm: *cy.VM) anyerror!Value {
     const type_id: cy.TypeId = @intCast(vm.getInt(0));
     const val = vm.getValue(1);
     return cy.value.shallowCopy(vm, type_id, val);
+}
+
+pub fn choicetag(vm: *cy.VM) anyerror!Value {
+    const tag_t: cy.TypeId = @intCast(vm.getInt(0));
+    const type_e = vm.sema.getType(tag_t);
+    if (type_e.kind != .enum_t) {
+        return error.InvalidArgument;
+    }
+    const choice_tag = vm.getValue(1).castHeapObject(*cy.heap.Object).getValue(0).asInt();
+    return cy.Value.initEnum(@intCast(tag_t), @intCast(choice_tag));
 }
 
 pub fn errorReport(vm: *cy.VM) anyerror!Value {

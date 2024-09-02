@@ -1727,7 +1727,7 @@ pub const ChunkExt = struct {
         @as(*cy.Module, @ptrCast(&sym.mod)).* = cy.Module.init(c);
         c.compiler.sema.types.items[typeId] = .{
             .sym = @ptrCast(sym),
-            .kind = if (isChoiceType) .choice else .@"enum",
+            .kind = if (isChoiceType) .choice else .enum_t,
             .info = .{},
             .data = undefined,
         };

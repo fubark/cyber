@@ -20,7 +20,7 @@ pub const TypeKind = enum(u8) {
     float,
     object,
     host_object,
-    @"enum",
+    enum_t,
     choice,
     struct_t,
     option,
@@ -335,7 +335,7 @@ pub const SemaExt = struct {
         if (typeId < PrimitiveEnd) {
             return false;
         }
-        return s.types.items[typeId].kind == .@"enum";
+        return s.types.items[typeId].kind == .enum_t;
     }
 
     pub fn isChoiceType(s: *cy.Sema, typeId: TypeId) bool {

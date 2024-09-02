@@ -1654,7 +1654,11 @@ pub fn declareModuleAlias(c: *cy.Chunk, node: *ast.ImportStmt) !void {
 
 pub fn reserveEnum(c: *cy.Chunk, node: *ast.EnumDecl) !*cy.sym.EnumType {
     const name = c.ast.nodeString(node.name);
-    return c.reserveEnumType(@ptrCast(c.sym), name, node.isChoiceType, node);
+    const sym = try c.reserveEnumType(@ptrCast(c.sym), name, node.isChoiceType, node);
+    if (node.isChoiceType) {
+        _ = try c.reserveEnumType(@ptrCast(sym), "Tag", false, node);
+    }
+    return sym;
 }
 
 pub fn resolveEnumType(c: *cy.Chunk, sym: *cy.sym.EnumType, decl: *ast.EnumDecl) !void {
@@ -1666,6 +1670,11 @@ pub fn resolveEnumType(c: *cy.Chunk, sym: *cy.sym.EnumType, decl: *ast.EnumDecl)
     defer popResolveContext(c);
 
     try declareEnumMembers(c, sym, decl);
+
+    if (sym.isChoiceType) {
+        const tag_sym = sym.getMod().getSym("Tag").?.cast(.enum_t);
+        try declareEnumMembers(c, tag_sym, decl);
+    }
 }
 
 /// Explicit `decl` node for distinct type declarations. Must belong to `c`.
@@ -1677,7 +1686,7 @@ pub fn declareEnumMembers(c: *cy.Chunk, sym: *cy.sym.EnumType, decl: *ast.EnumDe
     for (decl.members, 0..) |member, i| {
         const mName = c.ast.nodeString(member.name);
         var payloadType: cy.TypeId = cy.NullId;
-        if (member.typeSpec != null) {
+        if (sym.isChoiceType and member.typeSpec != null) {
             payloadType = try resolveTypeSpecNode(c, member.typeSpec);
         }
         const modSymId = try c.declareEnumMember(@ptrCast(sym), mName, sym.type, sym.isChoiceType, @intCast(i), payloadType, member);
@@ -1947,6 +1956,9 @@ pub fn reserveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, opt_head
             sym.variant = variant;
             if (template == c.sema.option_tmpl) {
                 c.compiler.sema.types.items[sym.type].kind = .option;
+            }
+            if (decl.isChoiceType) {
+                _ = try c.reserveEnumType(@ptrCast(sym), "Tag", false, decl);
             }
             return @ptrCast(sym);
         },

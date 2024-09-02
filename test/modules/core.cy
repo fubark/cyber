@@ -31,6 +31,8 @@ foo()
 
 -- bool(), see truthy_test.cy
 
+-- choicetag(), see choice_type.cy
+
 -- copy()
 t.eq(copy(123), 123)
 type S:

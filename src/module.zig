@@ -311,19 +311,19 @@ pub const ChunkExt = struct {
 
     pub fn reserveEnumType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, isChoiceType: bool, decl: *ast.EnumDecl) !*cy.sym.EnumType {
         const sym = try c.createEnumType(parent, name, isChoiceType, decl);
-        _ = try addUniqueSym(c, c.sym.getMod(), name, @ptrCast(sym), @ptrCast(decl));
+        _ = try addUniqueSym(c, parent.getMod().?, name, @ptrCast(sym), @ptrCast(decl));
         return sym;
     }
 
     pub fn reserveTraitType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *ast.TraitDecl) !*cy.sym.TraitType {
         const sym = try c.createTraitType(parent, name, decl);
-        _ = try addUniqueSym(c, c.sym.getMod(), name, @ptrCast(sym), @ptrCast(decl));
+        _ = try addUniqueSym(c, parent.getMod().?, name, @ptrCast(sym), @ptrCast(decl));
         return sym;
     }
 
     pub fn reserveObjectType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *ast.Node) !*cy.sym.ObjectType {
         const sym = try c.createObjectType(parent, name, decl);
-        _ = try addUniqueSym(c, c.sym.getMod(), name, @ptrCast(sym), decl);
+        _ = try addUniqueSym(c, parent.getMod().?, name, @ptrCast(sym), decl);
         return sym;
     }
 

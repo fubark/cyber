@@ -13,6 +13,13 @@ func copy[T](val T) T:
 
 @host -func copy_[T](type_id int, val T) T
 
+--| Returns the tag of a choice.
+--| TODO: This will be moved to `T.tag()`.
+func choicetag[T](choice T) T.Tag:
+    return choicetag_(typeid[T.Tag], choice)
+
+@host -func choicetag_[T](tag_t int, choice T) T.Tag
+
 --| Dumps a detailed description of a value.
 @host func dump(val any) void
 

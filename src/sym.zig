@@ -144,7 +144,7 @@ pub const Sym = extern struct {
             .enum_t => {
                 const enumType = self.cast(.enum_t);
                 enumType.deinit(alloc);
-                alloc.free(enumType.members[0..enumType.numMembers]);
+                alloc.free(enumType.members());
                 alloc.destroy(enumType);
             },
             .func_template => {
@@ -1019,8 +1019,8 @@ pub const EnumType = extern struct {
     head: Sym,
     decl: *ast.EnumDecl,
     type: cy.TypeId,
-    members: [*]*EnumMember,
-    numMembers: u32,
+    member_ptr: [*]*EnumMember,
+    member_len: u32,
     mod: vmc.Module,
 
     variant: ?*Variant,
@@ -1029,17 +1029,17 @@ pub const EnumType = extern struct {
 
     pub fn deinit(self: *EnumType, alloc: std.mem.Allocator) void {
         self.getMod().deinit(alloc);
-        for (self.members[0..self.numMembers]) |m| {
+        for (self.members()) |m| {
             alloc.destroy(m);
         }
     }
 
     pub fn isResolved(self: *EnumType) bool {
-        return self.numMembers != 0;
+        return self.member_len != 0;
     }
 
     pub fn getValueSym(self: *EnumType, val: u16) *EnumMember {
-        return self.members[val];
+        return self.member_ptr[val];
     }
 
     pub fn getMod(self: *EnumType) *cy.Module {
@@ -1047,7 +1047,11 @@ pub const EnumType = extern struct {
     }
 
     pub fn getMemberByIdx(self: *EnumType, idx: u32) *EnumMember {
-        return self.members[idx];
+        return self.member_ptr[idx];
+    }
+
+    pub fn members(self: *EnumType) []*EnumMember {
+        return self.member_ptr[0..self.member_len];
     }
 
     pub fn getMember(self: *EnumType, name: []const u8) ?*EnumMember {
@@ -1718,8 +1722,8 @@ pub const ChunkExt = struct {
             .head = Sym.init(.enum_t, parent, name),
             .type = typeId,
             .decl = decl,
-            .members = undefined,
-            .numMembers = 0,
+            .member_ptr = undefined,
+            .member_len = 0,
             .isChoiceType = isChoiceType,
             .variant = null,
             .mod = undefined,

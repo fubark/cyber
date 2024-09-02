@@ -138,4 +138,6 @@ type Foo:
 var foo = Foo{a=123}
 t.eq(typeOf(foo), Foo)
 
+-- typeInfo(), see type.cy
+
 --cytest: pass

@@ -2,6 +2,9 @@
 --| Functions.
 --|
 
+--| Returns all the current registered types when this function is invoked.
+@host func allTypes() List[type]
+
 func bitcast[D, S](D type, val S) D:
     return bitcast_(D, typeid[D], val, typeid[S])
 
@@ -78,6 +81,9 @@ func sizeof[T](T type) int:
 --| Returns the type of an expression. 
 func typeOf(t ExprType) type:
     return t.getType()
+
+--| Returns info about a type.
+@host func typeInfo(T type) TypeInfo
 
 --|
 --| Value templates.
@@ -207,7 +213,99 @@ type float #float64_t:
 @host type any _
 
 @host type type _:
+    --| Returns a unique ID for this type.
     @host func id(self) int
+
+type TypeInfo enum:
+    case int_t     IntInfo
+    case array_t   ArrayInfo
+    case bool_t    void
+    case choice_t  ChoiceInfo
+    case enum_t    EnumInfo
+    case error_t   void
+    case float_t   FloatInfo
+    case func_t    FuncInfo
+    case object_t  ObjectInfo
+    case hostobj_t HostObjectInfo
+    case opt_t     OptionInfo
+    case ptr_t     PointerInfo
+    case struct_t  StructInfo
+    case trait_t   TraitInfo
+    case type_t    void
+    case void_t    void
+
+type IntInfo struct:
+    sign bool
+    bits int
+
+type FloatInfo struct:
+    bits int
+
+type HostObjectInfo struct:
+    name   String
+    -- getchildren
+    -- finalizer
+
+type ObjectInfo struct:
+    name   ?String
+    fields List[ObjectField]
+    -- funcs  List[funcsym_t]
+
+type ObjectField struct:
+    name   String
+    type   type
+
+type EnumInfo struct:
+    name  ?String
+    cases List[EnumCase]
+
+type EnumCase struct:
+    name String
+
+type ChoiceInfo struct:
+    name  ?String
+    cases List[ChoiceCase]
+
+type ChoiceCase struct:
+    name String
+    type type
+
+type FuncKind enum:
+    case ptr
+    case union
+    case sym
+
+type FuncInfo struct:
+    kind   FuncKind
+    params List[FuncParam]
+    ret    type
+
+type FuncParam struct:
+    type type
+
+type ArrayInfo struct:
+    len  int
+    elem type
+
+type StructInfo struct:
+    name   ?String
+    fields List[StructField]
+    -- funcs  List[funcsym_t]
+
+type StructField struct:
+    name   String
+    type   type
+    offset int
+
+type TraitInfo struct:
+    name String
+    -- funcs List[funcsym_t]
+
+type PointerInfo struct:
+    elem type
+
+type OptionInfo struct:
+    elem type
 
 --| Return the type of a value.
 --| See `typeof` to obtain the type of an expression at compile-time.
@@ -730,6 +828,7 @@ func Memory.alloc[T](self, T type, n int) [*]T:
 func Memory.free[T](self, ptr *T):
     self.iface.free(ptrcast(byte, ptr)[0..sizeof(T)])
 
+-- TODO: Should be merged with Memory.free.
 func Memory.free_[T](self, slice [*]T):
     var bytes = ptrcast(byte, slice.ptr)[0..sizeof(T)*slice.len()]
     self.iface.free(bytes)

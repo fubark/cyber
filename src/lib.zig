@@ -620,6 +620,14 @@ export fn clNewListDyn(vm: *cy.VM, ptr: [*]const Value, len: usize) Value {
     return cy.heap.allocListDyn(vm, elems) catch fatal();
 }
 
+export fn clNewList(vm: *cy.VM, list_t: cy.TypeId, ptr: [*]const Value, len: usize) Value {
+    const elems = ptr[0..len];
+    for (elems) |elem| {
+        cy.arc.retain(vm, elem);
+    }
+    return cy.heap.allocList(vm, list_t, elems) catch fatal();
+}
+
 export fn clNewEmptyMap(vm: *cy.VM) Value {
     return cy.heap.allocEmptyMap(vm) catch fatal();
 }

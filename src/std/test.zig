@@ -198,7 +198,7 @@ fn eq2(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) bool {
             bt.Type => {
                 const actv = act.asHeapObject().type;
                 const expv = exp.asHeapObject().type;
-                if (std.meta.eql(actv, expv)) {
+                if (actv.type == expv.type) {
                     return true;
                 } else {
                     const act_name = c.sema.allocTypeName(actv.type) catch @panic("");

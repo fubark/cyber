@@ -366,6 +366,14 @@ pub const ZVM = struct {
         return c.clNewChoice(@ptrCast(self), choice_t, toStr(name), val);
     }
 
+    pub fn newList(self: *ZVM, list_t: Type, vals: []const Value) Value {
+        return c.clNewList(@ptrCast(self), list_t, vals.ptr, vals.len);
+    }
+
+    pub fn listAppend(self: *ZVM, list: Value, val: Value) void {
+        c.clListAppend(@ptrCast(self), list, val);
+    }
+
     pub fn findType(self: *ZVM, path: []const u8) Type {
         return c.clFindType(@ptrCast(self), toStr(path));
     }

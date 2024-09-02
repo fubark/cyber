@@ -1685,15 +1685,15 @@ pub fn declareEnumMembers(c: *cy.Chunk, sym: *cy.sym.EnumType, decl: *ast.EnumDe
     const members = try c.alloc.alloc(*cy.sym.EnumMember, decl.members.len);
     for (decl.members, 0..) |member, i| {
         const mName = c.ast.nodeString(member.name);
-        var payloadType: cy.TypeId = cy.NullId;
+        var payloadType: cy.TypeId = bt.Void;
         if (sym.isChoiceType and member.typeSpec != null) {
             payloadType = try resolveTypeSpecNode(c, member.typeSpec);
         }
         const modSymId = try c.declareEnumMember(@ptrCast(sym), mName, sym.type, sym.isChoiceType, @intCast(i), payloadType, member);
         members[i] = modSymId;
     }
-    sym.members = members.ptr;
-    sym.numMembers = @intCast(members.len);
+    sym.member_ptr = members.ptr;
+    sym.member_len = @intCast(members.len);
 }
 
 /// Only allows binding a predefined host type id (BIND_TYPE_DECL).
@@ -3286,6 +3286,7 @@ pub fn symbol(c: *cy.Chunk, sym: *Sym, expr: Expr, prefer_ct_sym: bool) !ExprRes
         },
         .type,
         .enum_t,
+        .trait_t,
         .hostobj_t,
         .object_t,
         .struct_t => {
@@ -3302,12 +3303,8 @@ pub fn symbol(c: *cy.Chunk, sym: *Sym, expr: Expr, prefer_ct_sym: bool) !ExprRes
             if (member.is_choice_type) {
                 return semaInitChoiceNoPayload(c, member, node);
             } else {
-                var typeId = member.payloadType;
-                if (typeId == cy.NullId) {
-                    typeId = member.type;
-                }
-                const ctype = CompactType.init(typeId);
-                const irIdx = try c.ir.pushExpr(.enumMemberSym, c.alloc, typeId, node, .{
+                const ctype = CompactType.init(member.type);
+                const irIdx = try c.ir.pushExpr(.enumMemberSym, c.alloc, member.type, node, .{
                     .type = member.type,
                     .val = @as(u8, @intCast(member.val)),
                 });

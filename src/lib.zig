@@ -738,6 +738,42 @@ test "clNewInstance()" {
     try t.eqStr(c.asString(vm.getField(val, "b")), "abc");
 }
 
+export fn clNewChoice(vm: *cy.VM, choice_t: cy.TypeId, name: c.Str, val: cy.Value) cy.Value {
+    const type_e = vm.c.types[choice_t];
+    if (type_e.kind != .choice) {
+        return cy.panicFmt("Expected choice type. Found `{}`.", .{type_e.kind});
+    }
+
+    const zname = c.fromStr(name);
+    const sym = type_e.sym.getMod().?.getSym(zname) orelse {
+        return cy.panicFmt("Can not find case `{s}`.", .{zname});
+    };
+    if (sym.type != .enumMember) {
+        return cy.panicFmt("`{s}` is not choice case.", .{zname});
+    }
+    const case = sym.cast(.enumMember);
+    return cy.heap.allocObjectSmall(vm, choice_t, &.{
+        @bitCast(c.int(@intCast(case.val))),
+        val,
+    }) catch cy.fatal();
+}
+
+test "clNewChoice()" {
+    const vm = c.create();
+    defer vm.destroy();
+
+    var res: c.Value = undefined;
+    vm.evalMust( 
+        \\type Foo enum:
+        \\    case a int
+        \\    case b String
+    , &res);
+    const foo_t = vm.findType("Foo");
+    const val = vm.newChoice(foo_t, "a", c.int(123));
+    try t.eq(c.getType(val), foo_t);
+    try t.eq(vm.unwrapChoice(val, "a"), 123);
+}
+
 export fn clSymbol(vm: *cy.VM, str: c.Str) Value {
     const id = vm.ensureSymbolExt(c.fromStr(str), true) catch fatal();
     return Value.initSymbol(@intCast(id));

@@ -360,6 +360,10 @@ pub const ZVM = struct {
         return c.clNewInstance(@ptrCast(self), type_id, fields.ptr, fields.len);
     }
 
+    pub fn newChoice(self: *ZVM, choice_t: Type, name: []const u8, val: Value) Value {
+        return c.clNewChoice(@ptrCast(self), choice_t, toStr(name), val);
+    }
+
     pub fn findType(self: *ZVM, path: []const u8) Type {
         return c.clFindType(@ptrCast(self), toStr(path));
     }

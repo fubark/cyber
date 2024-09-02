@@ -579,6 +579,9 @@ void* clNewHostObjectPtr(CLVM* vm, CLType typeId, size_t n);
 // Returns a new instance of `type` with a list of field initializers.
 CLValue clNewInstance(CLVM* vm, CLType type, const CLFieldInit* fields, size_t nfields);
 
+// Returns a new choice of a given case name and value.
+CLValue clNewChoice(CLVM* vm, CLType choice_t, CLStr name, CLValue val);
+
 // Returns the type of boxed value.
 CLType clGetType(CLValue val);
 

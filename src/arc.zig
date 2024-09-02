@@ -469,11 +469,12 @@ pub fn countObjects(vm: *cy.VM) usize {
     return count;
 }
 
-pub fn checkGlobalRC(vm: *cy.VM) !void {
-    const rc = getGlobalRC(vm);
+pub fn checkGlobalRC(ivm: *cy.VM) !void {
+    const vm: *c.ZVM = @ptrCast(ivm);
+    const rc = getGlobalRC(ivm);
     if (rc != 0) {
         std.debug.print("unreleased refcount: {}\n", .{rc});
-        c.traceDumpLiveObjects(@ptrCast(vm));
+        vm.traceDumpLiveObjects();
 
         // var iter = cy.vm.traceObjRetains.iterator();
         // while (iter.next()) |e| {

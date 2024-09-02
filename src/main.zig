@@ -26,7 +26,7 @@ const CP_UTF8 = 65001;
 var prevWinConsoleOutputCP: u32 = undefined;
 
 // Default VM.
-var vm: cy.VM = undefined;
+var ivm: cy.VM = undefined;
 
 pub fn main() !void {
     if (builtin.os.tag == .windows) {
@@ -154,11 +154,12 @@ const Command = enum {
 fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     c.setVerbose(verbose);
 
-    try vm.init(alloc);
-    cli.clInitCLI(@ptrCast(&vm));
+    const vm: *c.ZVM = @ptrCast(&ivm);
+    try ivm.init(alloc);
+    cli.clInitCLI(&ivm);
     defer {
-        cli.clDeinitCLI(@ptrCast(&vm));
-        vm.deinit(false);
+        cli.clDeinitCLI(&ivm);
+        ivm.deinit(false);
     }
 
     var config = c.defaultCompileConfig();
@@ -166,28 +167,30 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     config.file_modules = true;
     config.gen_debug_func_markers = true;
     config.backend = backend;
-    _ = vm.compile(path, null, config) catch |err| {
+    _ = ivm.compile(path, null, config) catch |err| {
         if (err == error.CompileError) {
             if (!c.silent()) {
-                const report = c.newErrorReportSummary(@ptrCast(&vm));
-                defer c.free(@ptrCast(&vm), report);
-                cy.rt.writeStderr(c.fromStr(report));
+                const report = vm.newErrorReportSummary();
+                defer vm.free(report);
+                cy.rt.writeStderr(report);
             }
             exit(1);
         } else {
             fmt.panic("unexpected {}\n", &.{fmt.v(err)});
         }
     };
-    try cy.debug.dumpBytecode(&vm, .{ .pcContext = pc });
+    try cy.debug.dumpBytecode(&ivm, .{ .pcContext = pc });
 }
 
 fn repl(alloc: std.mem.Allocator) !void {
     c.setVerbose(verbose);
-    try vm.init(alloc);
-    cli.clInitCLI(@ptrCast(&vm));
+
+    const vm: *c.ZVM = @ptrCast(&ivm);
+    try ivm.init(alloc);
+    cli.clInitCLI(&ivm);
     defer {
-        cli.clDeinitCLI(@ptrCast(&vm));
-        vm.deinit(false);
+        cli.clDeinitCLI(&ivm);
+        ivm.deinit(false);
     }
 
     var config = c.defaultEvalConfig();
@@ -203,20 +206,20 @@ fn repl(alloc: std.mem.Allocator) !void {
         \\cli.repl()
         \\
         ;
-    _ = vm.eval("main", src, config) catch |err| {
+    _ = ivm.eval("main", src, config) catch |err| {
         switch (err) {
             error.Panic => {
                 if (!c.silent()) {
-                    const report = c.newPanicSummary(@ptrCast(&vm));
-                    defer c.free(@ptrCast(&vm), report);
-                    try std.io.getStdErr().writeAll(c.fromStr(report));
+                    const report = vm.newPanicSummary();
+                    defer vm.free(report);
+                    try std.io.getStdErr().writeAll(report);
                 }
             },
             error.CompileError => {
                 if (!c.silent()) {
-                    const report = c.newErrorReportSummary(@ptrCast(&vm));
-                    defer c.free(@ptrCast(&vm), report);
-                    try std.io.getStdErr().writeAll(c.fromStr(report));
+                    const report = vm.newErrorReportSummary();
+                    defer vm.free(report);
+                    try std.io.getStdErr().writeAll(report);
                 }
             },
             else => {
@@ -234,26 +237,27 @@ fn repl(alloc: std.mem.Allocator) !void {
 
     if (verbose) {
         std.debug.print("\n==VM Info==\n", .{});
-        try vm.dumpInfo();
+        try ivm.dumpInfo();
     }
     if (cy.Trace and dumpStats) {
-        vm.dumpStats();
+        ivm.dumpStats();
     }
     if (cy.TrackGlobalRC) {
-        vm.deinitRtObjects();
-        vm.compiler.deinitValues();
-        try cy.arc.checkGlobalRC(&vm);
+        ivm.deinitRtObjects();
+        ivm.compiler.deinitValues();
+        try cy.arc.checkGlobalRC(&ivm);
     }
 }
 
 fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
     c.setVerbose(verbose);
 
-    try vm.init(alloc);
-    cli.clInitCLI(@ptrCast(&vm));
+    const vm: *c.ZVM = @ptrCast(&ivm);
+    try ivm.init(alloc);
+    cli.clInitCLI(&ivm);
     defer {
-        cli.clDeinitCLI(@ptrCast(&vm));
-        vm.deinit(false);
+        cli.clDeinitCLI(&ivm);
+        ivm.deinit(false);
     }
 
     var config = c.defaultEvalConfig();
@@ -262,20 +266,20 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
     config.reload = reload;
     config.backend = backend;
     config.spawn_exe = true;
-    _ = vm.eval(path, null, config) catch |err| {
+    _ = ivm.eval(path, null, config) catch |err| {
         switch (err) {
             error.Panic => {
                 if (!c.silent()) {
-                    const report = c.newPanicSummary(@ptrCast(&vm));
-                    defer c.free(@ptrCast(&vm), report);
-                    try std.io.getStdErr().writeAll(c.fromStr(report));
+                    const report = vm.newPanicSummary();
+                    defer vm.free(report);
+                    try std.io.getStdErr().writeAll(report);
                 }
             },
             error.CompileError => {
                 if (!c.silent()) {
-                    const report = c.newErrorReportSummary(@ptrCast(&vm));
-                    defer c.free(@ptrCast(&vm), report);
-                    try std.io.getStdErr().writeAll(c.fromStr(report));
+                    const report = vm.newErrorReportSummary();
+                    defer vm.free(report);
+                    try std.io.getStdErr().writeAll(report);
                 }
             },
             else => {
@@ -292,15 +296,15 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
     };
     if (verbose) {
         std.debug.print("\n==VM Info==\n", .{});
-        try vm.dumpInfo();
+        try ivm.dumpInfo();
     }
     if (cy.Trace and dumpStats) {
-        vm.dumpStats();
+        ivm.dumpStats();
     }
     if (cy.TrackGlobalRC) {
-        vm.deinitRtObjects();
-        vm.compiler.deinitValues();
-        try cy.arc.checkGlobalRC(&vm);
+        ivm.deinitRtObjects();
+        ivm.compiler.deinitValues();
+        try cy.arc.checkGlobalRC(&ivm);
     }
 }
 

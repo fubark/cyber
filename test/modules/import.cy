@@ -21,7 +21,7 @@ t.eq(a.varMap['c'], 3)
 t.eq(a.varFunc(), 345)
 t.eq(a.varFunc1(10), 11)
 t.eq(a.varFunc2(10, 20), 30)
-t.eq(typeof(a.fn), func() int)
+t.eq(typeOf(a.fn), func() int)
 t.eq(a.fn(), 234)
 t.eq(a.fn1(10), 11)
 t.eq(a.fn2(10, 20), 30)
@@ -49,7 +49,7 @@ type Vec2:
 -- Same name, different object types.
 var v1 = Vec2{x=1, y=2}
 var v2 = a.Vec2{x=3, y=4}
-t.eq(typeof(v1) != typeof(v2), true)
+t.eq(typeOf(v1) != typeOf(v2), true)
 t.eq(v1.x, 1.0)
 t.eq(v1.y, 2.0)
 t.eq(v2.x, 3.0)

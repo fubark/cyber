@@ -76,7 +76,7 @@ func sizeof[T](T type) int:
 @host func sizeof_(type_id int) int
 
 --| Returns the type of an expression. 
-func typeof(t ExprType) type:
+func typeOf(t ExprType) type:
     return t.getType()
 
 --|

@@ -9,7 +9,7 @@ t.eq(a.len(), 2)
 
 -- Explicit list type.
 var ta = List[int]{1, 2, 3}
-t.eq(typeof(ta), List[int])
+t.eq(typeOf(ta), List[int])
 t.eq(ta.len(), 3)
 t.eq(ta[0], 1)
 

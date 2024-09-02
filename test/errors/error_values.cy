@@ -1,7 +1,7 @@
 use t 'test'
 
 var err = error.FileNotFound
-t.eq(typeof(err), error)
+t.eq(typeOf(err), error)
 t.eq(err, error.FileNotFound)
 
 -- error.value()

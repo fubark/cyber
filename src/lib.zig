@@ -839,7 +839,7 @@ export fn clUnwrapChoice(vm: *cy.VM, choice: cy.Value, name: c.Str) cy.Value {
 // To enable logging for tests:
 // c.setVerbose(true);
 // c.setLog(printLogger);
-pub fn printLogger(str: c.Str) callconv(.C) void {
+fn printLogger(str: c.Str) callconv(.C) void {
     std.debug.print("{s}\n", .{ c.fromStr(str) });
 }
 

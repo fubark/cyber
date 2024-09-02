@@ -94,17 +94,18 @@ export fn clWebGetFuture(vm: *cy.VM, id: u32) cy.Value {
     return futurev;
 }
 
-export fn clWebNewFuture(vm: *cy.VM) u32 {
-    const ctx = vm.getData(*WebContext, "web");
+export fn clWebNewFuture(ivm: *cy.VM) u32 {
+    const vm: *C.ZVM = @ptrCast(ivm);
+    const ctx = ivm.getData(*WebContext, "web");
 
-    const any_t = C.newType(@ptrCast(vm), cy.types.BuiltinTypes.Any);
-    defer C.release(@ptrCast(vm), any_t);
+    const any_t = vm.newType(cy.types.BuiltinTypes.Any);
+    defer vm.release(any_t);
     var FutureAnyT: cy.TypeId = undefined;
-    std.debug.assert(C.expandTemplateType(vm.sema.future_tmpl.head.toC(), &any_t, 1, &FutureAnyT));
-    const future = vm.allocFuture(FutureAnyT) catch @panic("error");
+    std.debug.assert(vm.expandTemplateType(ivm.sema.future_tmpl.head.toC(), &.{any_t}, &FutureAnyT));
+    const future = ivm.allocFuture(FutureAnyT) catch @panic("error");
 
     const id = ctx.next_id;
-    ctx.futures.put(vm.alloc, id, future) catch @panic("error");
+    ctx.futures.put(ivm.alloc, id, future) catch @panic("error");
     ctx.next_id += 1;
     return id;
 }

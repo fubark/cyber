@@ -4901,14 +4901,18 @@ pub const ChunkExt = struct {
                 if (member.payloadType == cy.NullId) {
                     return c.reportErrorFmt("Expected enum member with a payload type.", &.{}, node.left);
                 } else {
-                    if (!c.sema.isUserObjectType(member.payloadType)) {
+                    if (c.sema.isUserObjectType(member.payloadType)) {
+                        const obj = c.sema.getTypeSym(member.payloadType).cast(.object_t);
+                        const payload = try c.semaObjectInit2(obj, node.init);
+                        return semaInitChoice(c, member, payload, expr.node);
+                    } else if (c.sema.isStructType(member.payloadType)) {
+                        const struct_t = c.sema.getTypeSym(member.payloadType).cast(.struct_t);
+                        const payload = try c.semaObjectInit2(struct_t, node.init);
+                        return semaInitChoice(c, member, payload, expr.node);
+                    } else {
                         const payloadTypeName = c.sema.getTypeBaseName(member.payloadType);
                         return c.reportErrorFmt("The payload type `{}` can not be initialized with key value pairs.", &.{v(payloadTypeName)}, node.left);
                     }
-
-                    const obj = c.sema.getTypeSym(member.payloadType).cast(.object_t);
-                    const payload = try c.semaObjectInit2(obj, node.init);
-                    return semaInitChoice(c, member, payload, expr.node);
                 }
             },
             .template => {

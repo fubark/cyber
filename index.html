@@ -990,7 +990,7 @@ table tbody tr:nth-child(even) {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 395-22b6b9d</div>
+    <div class="sub-title">v0.4-dev 414-5b8dd64</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -1919,7 +1919,7 @@ print square(a)           --> CompileError. Expected `int`, got `any`.
 <li><a href="#choices" title="">Choices.</a><ul>
 <li><a href="#initialize-choice" title="">Initialize choice.</a></li>
 <li><a href="#choice-switch" title="">Choice <code>switch</code>.</a></li>
-<li><a href="#access-choice" title="">Access choice.</a></li>
+<li><a href="#unwrap-choice" title="">Unwrap choice.</a></li>
 </ul>
 </li>
 <li><a href="#type-aliases" title="">Type aliases.</a></li>
@@ -2123,6 +2123,9 @@ print v.x    -- Prints '100'
 <p>Tuples can be declared using parentheses to wrap member fields:</p>
 <pre><code class="language-cy">type Vec2 struct(x float, y float)
 </code></pre>
+<p>If the fields share the same type, they can be declared in a field group:</p>
+<pre><code class="language-cy">type Vec3 struct(x, y, z float)
+</code></pre>
 <p>Function declarations can still be declared under the type:</p>
 <pre><code class="language-cy">type Vec2 struct(x float, y float):
     func scale(self, s float):
@@ -2207,8 +2210,8 @@ else:
     print "Unsupported."
 </code></pre>
 <a href="#type-declarations">^topic</a>
-<h3 id="access-choice">Access choice. <a href="#access-choice">#</a></h3>
-<p>A choice can be accessed by specifying the access operator <code>.!</code> before the tagged member name. This will either return the payload or panic at runtime: <em>Planned Feature</em></p>
+<h3 id="unwrap-choice">Unwrap choice. <a href="#unwrap-choice">#</a></h3>
+<p>A choice can be accessed by specifying the unwrap operator <code>.!</code> before the tagged member name. This will either return the payload or panic at runtime:</p>
 <pre><code class="language-cy">var s = Shape{line=20}
 print s.!line     --> 20
 </code></pre>
@@ -2309,7 +2312,7 @@ print a.get()      -- Prints 'abc'
 <a href="#type-declarations">^topic</a>
 <h3 id="type-specialization">Type specialization. <a href="#type-specialization">#</a></h3>
 <p><a href="#value-templates" title="">Value templates</a> can be used to specialize type templates:</p>
-<pre><code class="language-cy">func List[T type] type:
+<pre><code class="language-cy">def List[T type] type:
     if T == dyn:
         return DynList
     else:
@@ -2693,7 +2696,7 @@ case 0..5:
 <li><a href="#closures" title="">Closures.</a></li>
 <li><a href="#function-types" title="">Function types.</a></li>
 <li><a href="#extern-functions" title=""><code>extern</code> functions.</a></li>
-<li><a href="#multiple-parameters" title="">Multiple parameters.</a></li>
+<li><a href="#parameter-groups" title="">Parameter groups.</a></li>
 <li><a href="#named-parameters" title="">Named parameters.</a></li>
 <li><a href="#variadic-parameters" title="">Variadic parameters.</a></li>
 </ul>
@@ -2712,7 +2715,6 @@ case 0..5:
 <li><a href="#infer-param-type" title="">Infer param type.</a></li>
 </ul>
 </li>
-<li><a href="#value-templates" title="">Value templates.</a></li>
 </ul>
 </td>
 </tr></table>
@@ -2854,9 +2856,8 @@ func my_str_hash(s String) int:
 var m = IntMap[String, my_str_hash]{}
 </code></pre>
 <a href="#functions">^topic</a>
-<h2 id="multiple-parameters">Multiple parameters. <a href="#multiple-parameters">#</a></h2>
-<blockquote><p><em>Planned Feature</em></p>
-</blockquote><p>When multiple parameters share the same type they can be declared together in a sequence:</p>
+<h2 id="parameter-groups">Parameter groups. <a href="#parameter-groups">#</a></h2>
+<p>When multiple parameters share the same type they can be declared together in a sequence:</p>
 <pre><code class="language-cy">func sum(a, b, c int) int
     return a + b + c
 </code></pre>
@@ -2924,28 +2925,28 @@ The call arguments must be compile-time compatible values.</p>
 <a href="#functions">^topic</a>
 <h2 id="function-templates">Function templates. <a href="#function-templates">#</a></h2>
 <p>Function declarations can include template parameters to create a function template:</p>
-<pre><code class="language-cy">func add(#T type, a T, b T) T:
+<pre><code class="language-cy">func add[T](T type, a T, b T) T:
     return a + b
 </code></pre>
-<p>Template parameters are prefixed with <code>#</code>.
-Unlike type templates, function templates allow template parameters to be declared alongside runtime parameters.</p>
+<p>Only the template parameter names are declared.
+Their types are then inferred from the function signature.</p>
 <a href="#functions">^topic</a>
 <h3 id="explicit-template-call">Explicit template call. <a href="#explicit-template-call">#</a></h3>
-<p>When the function is invoked with template argument(s), a special version of the function is generated and used:</p>
+<p>When the function is invoked with template argument(s), a new runtime function is generated and used:</p>
 <pre><code class="language-cy">print add(int, 1, 2)    --> 3
 print add(float, 1, 2)  --> 3.0
 </code></pre>
-<p>Note that invoking the function again with the same argument(s) uses the same generated function. In other words, the generated function is always memoized from the template arguments.</p>
+<p>Note that invoking the function again with the same template argument(s) uses the same generated function. In other words, the generated function is always memoized from the template arguments.</p>
 <a href="#functions">^topic</a>
 <h3 id="expand-function">Expand function. <a href="#expand-function">#</a></h3>
-<p>Since functions may contain template and runtime parameters, the index operator is used to expand the function with just template arguments and return the generated function:</p>
+<p>The function template can be explicitly expanded to a runtime function:</p>
 <pre><code class="language-cy">var addInt = add[int]
 print addInt(1, 2)      --> 3
 </code></pre>
 <a href="#functions">^topic</a>
 <h3 id="infer-param-type">Infer param type. <a href="#infer-param-type">#</a></h3>
-<p>When a template parameter is declared in the type specifier, it's inferred from the argument's type:</p>
-<pre><code class="language-cy">func add(a #T, b T) T:
+<p>When a template parameter is first encountered in a function parameter's type specifier, it's inferred from the argument's type:</p>
+<pre><code class="language-cy">func add[T](a T, b T) T:
     return a + b
 
 print add(1, 2)         --> 3
@@ -2953,28 +2954,9 @@ print add(1.0, 2.0)     --> 3.0
 </code></pre>
 <p>In the above example, <code>add[int]</code> and <code>add[float]</code> were inferred from the function calls:</p>
 <p>Nested template parameters can also be inferred:</p>
-<pre><code class="language-cy">func set(m Map[#K, #V], key K, val V):
+<pre><code class="language-cy">func set[K, V](m Map[K, V], key K, val V):
     m.set(key, val)
 </code></pre>
-<a href="#functions">^topic</a>
-<h2 id="value-templates">Value templates. <a href="#value-templates">#</a></h2>
-<p>A value template returns a memoized value after being invoked with template arguments just once. It's declared with <code>func</code> but the template parameters are delimited with brackets.</p>
-<p>This is different from a function template which generates multiple runtime functions based on its template parameters. A value template does not generate a runtime function and instead expands to a value at compile-time:</p>
-<pre><code class="language-cy">func GetType[ID String] type:
-    if ID == 'bool':
-        return bool
-    else ID == 'int':
-        return int
-    else ID == 'String':
-        return String
-    else
-        throw error.Unsupported
-
-var a GetType['int'] = 123
-print a         --> 123
-</code></pre>
-<p>This can be useful to evaluate compile-time logic to create new types or specialize other templates.
-Any compile-time compatible type can also be returned.</p>
 <a href="#functions">^topic</a>
 <h1 id="modules">Modules. <a href="#modules">#</a></h1>
 <table><tr>
@@ -3168,9 +3150,12 @@ print typeof('my str').id()
 </code></pre>
 <p><a href="#modules" title="">^topic</a></p>
 <!-- core.start -->
-<blockquote><p><code>func bitcast(D type, val S) D</code></p>
+<blockquote><p><code>func allTypes() List[type]</code></p>
+</blockquote><blockquote><p><code>func bitcast(D type, val S) D</code></p>
 </blockquote><blockquote><p><code>func copy(val T) T</code></p>
 <p>Copies a primitive value or creates a shallow copy of an object value.</p>
+</blockquote><blockquote><p><code>func choicetag(choice T) T.Tag</code></p>
+<p>Returns the tag of a choice.  TODO: This will be moved to <code>T.tag()</code>.</p>
 </blockquote><blockquote><p><code>func dump(val any) void</code></p>
 <p>Dumps a detailed description of a value.</p>
 </blockquote><blockquote><p><code>func eprint(str any) void</code></p>
@@ -3202,8 +3187,10 @@ print typeof('my str').id()
 <p>Converts a rune to a string.</p>
 </blockquote><blockquote><p><code>func sizeof(T type) int</code></p>
 </blockquote><blockquote><p><code>func sizeof_(type_id int) int</code></p>
-</blockquote><blockquote><p><code>func typeof(t ExprType) type</code></p>
+</blockquote><blockquote><p><code>func typeOf(t ExprType) type</code></p>
 <p>Returns the type of an expression.</p>
+</blockquote><blockquote><p><code>func typeInfo(T type) TypeInfo</code></p>
+<p>Returns info about a type.</p>
 </blockquote><blockquote><p><code>func typeid(T type) int</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-void"><code>type void</code> <a href="#type-void">#</a></h3>
@@ -3282,8 +3269,6 @@ print typeof('my str').id()
 </blockquote><blockquote><p><code>func float.$call(val any) float</code></p>
 <p>Converts the value to a <code>float</code>. Panics if type conversion fails.</p>
 </blockquote><a href="#modules">^topic</a>
-<h3 id="type-placeholder1"><code>type placeholder1</code> <a href="#type-placeholder1">#</a></h3>
-<a href="#modules">^topic</a>
 <h3 id="type-placeholder2"><code>type placeholder2</code> <a href="#type-placeholder2">#</a></h3>
 <a href="#modules">^topic</a>
 <h3 id="type-placeholder3"><code>type placeholder3</code> <a href="#type-placeholder3">#</a></h3>
@@ -3296,7 +3281,42 @@ print typeof('my str').id()
 <a href="#modules">^topic</a>
 <h3 id="type-type"><code>type type</code> <a href="#type-type">#</a></h3>
 <blockquote><p><code>func id(self) int</code></p>
-</blockquote><blockquote><p><code>func type.$call(val any) type</code></p>
+<p>Returns a unique ID for this type.</p>
+</blockquote><a href="#modules">^topic</a>
+<h3 id="type-intinfo"><code>type IntInfo</code> <a href="#type-intinfo">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-floatinfo"><code>type FloatInfo</code> <a href="#type-floatinfo">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-hostobjectinfo"><code>type HostObjectInfo</code> <a href="#type-hostobjectinfo">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-objectinfo"><code>type ObjectInfo</code> <a href="#type-objectinfo">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-objectfield"><code>type ObjectField</code> <a href="#type-objectfield">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-enuminfo"><code>type EnumInfo</code> <a href="#type-enuminfo">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-enumcase"><code>type EnumCase</code> <a href="#type-enumcase">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-choiceinfo"><code>type ChoiceInfo</code> <a href="#type-choiceinfo">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-choicecase"><code>type ChoiceCase</code> <a href="#type-choicecase">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-funcinfo"><code>type FuncInfo</code> <a href="#type-funcinfo">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-funcparam"><code>type FuncParam</code> <a href="#type-funcparam">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-arrayinfo"><code>type ArrayInfo</code> <a href="#type-arrayinfo">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-structinfo"><code>type StructInfo</code> <a href="#type-structinfo">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-structfield"><code>type StructField</code> <a href="#type-structfield">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-traitinfo"><code>type TraitInfo</code> <a href="#type-traitinfo">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-pointerinfo"><code>type PointerInfo</code> <a href="#type-pointerinfo">#</a></h3>
+<a href="#modules">^topic</a>
+<h3 id="type-optioninfo"><code>type OptionInfo</code> <a href="#type-optioninfo">#</a></h3>
+<blockquote><p><code>func type.$call(val any) type</code></p>
 <p>Return the type of a value.  See <code>typeof</code> to obtain the type of an expression at compile-time.</p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-list"><code>type List</code> <a href="#type-list">#</a></h3>
@@ -3512,10 +3532,10 @@ print typeof('my str').id()
 </blockquote><blockquote><p><code>func free(self, buf [*]byte) void</code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-memory"><code>type Memory</code> <a href="#type-memory">#</a></h3>
-<blockquote><p><code>func new(self, T type) *T</code></p>
-</blockquote><blockquote><p><code>func alloc(self, T type, n int) [*]T</code></p>
-</blockquote><blockquote><p><code>func free(self, ptr *T) </code></p>
-</blockquote><blockquote><p><code>func free(self, slice [*]T) </code></p>
+<blockquote><p><code>func Memory.new(self, T type) *T</code></p>
+</blockquote><blockquote><p><code>func Memory.alloc(self, T type, n int) [*]T</code></p>
+</blockquote><blockquote><p><code>func Memory.free(self, ptr *T) </code></p>
+</blockquote><blockquote><p><code>func Memory.free_(self, slice [*]T) </code></p>
 </blockquote><a href="#modules">^topic</a>
 <h3 id="type-defaultmemory"><code>type DefaultMemory</code> <a href="#type-defaultmemory">#</a></h3>
 <blockquote><p><code>func alloc(self, len int) [*]byte</code></p>
@@ -4566,7 +4586,10 @@ In this example, the dynamic value <code>a</code> resolves to a <code>String</co
 <ul>
 <li><a href="#reflection" title="">Reflection.</a></li>
 <li><a href="#attributes" title="">Attributes.</a></li>
-<li><a href="#templates" title="">Templates.</a></li>
+<li><a href="#templates" title="">Templates.</a><ul>
+<li><a href="#value-templates" title="">Value templates.</a></li>
+</ul>
+</li>
 <li><a href="#macros" title="">Macros.</a></li>
 <li><a href="#compile-time-execution" title="">Compile-time execution.</a><ul>
 <li><a href="#builtin-types" title="">Builtin types.</a></li>
@@ -4702,6 +4725,24 @@ print bool          -- 'type: bool'
 <h2 id="templates">Templates. <a href="#templates">#</a></h2>
 <p>Templates enables parametric polymorphism for types and functions. Template arguments are passed to templates to generate specialized code. This facilitates developing container types and algorithms that operate on different types.</p>
 <p>See <a href="#type-templates" title="">Type Declarations / Type templates</a> and <a href="#function-templates" title="">Functions / Function templates</a>.</p>
+<a href="#metaprogramming">^topic</a>
+<h3 id="value-templates">Value templates. <a href="#value-templates">#</a></h3>
+<p>A value template returns a memoized value after being invoked with template arguments at compile-time. It's declared with <code>def</code>:</p>
+<pre><code class="language-cy">def StrType[ID String] type:
+    if ID == 'bool':
+        return bool
+    else ID == 'int':
+        return int
+    else ID == 'String':
+        return String
+    else
+        throw error.Unsupported
+
+var a StrType['int'] = 123
+print a         --> 123
+</code></pre>
+<p>This can be useful to evaluate compile-time logic to create new types or specialize other templates.
+Any compile-time compatible type can also be returned.</p>
 <a href="#metaprogramming">^topic</a>
 <h2 id="macros">Macros. <a href="#macros">#</a></h2>
 <blockquote><p><em>Planned Feature</em></p>

@@ -74,6 +74,9 @@ pub fn symbol(vm: *ZVM, str: []const u8) Value {
     return c.clSymbol(@ptrCast(vm), toStr(str));
 }
 pub const asSymbolId = c.clAsSymbolId;
+pub fn asString(val: Value) []const u8 {
+    return fromStr(c.clAsString(val));
+}
 pub const clTrue = c.clTrue;
 pub const clFalse = c.clFalse;
 pub const asBoxInt = c.clAsBoxInt;

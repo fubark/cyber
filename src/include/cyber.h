@@ -582,6 +582,7 @@ CLStr clNewValueDump(CLVM* vm, CLValue val);
 double clAsFloat(CLValue val);
 bool clToBool(CLValue val);
 bool clAsBool(CLValue val);
+CLStr clAsString(CLValue val);
 int64_t clAsBoxInt(CLValue val);
 uint32_t clAsSymbolId(CLValue val);
 CLStr clToTempString(CLVM* vm, CLValue val);

@@ -751,6 +751,10 @@ test "clAsBoxInt()" {
     try t.eq(c.asBoxInt(val), 123);
 }
 
+export fn clAsString(val: cy.Value) c.Str {
+    return c.toStr(val.asString());
+}
+
 export fn clAsSymbolId(val: Value) u32 {
     return val.asSymbolId();
 }

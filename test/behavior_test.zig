@@ -181,6 +181,7 @@ if (!cy.isWasm) {
     run.case("types/choice_access_error.cy");
     run.case("types/choice_access_panic.cy");
     run.case("types/choice_type.cy");
+    run.case("types/choice_unwrap_panic.cy");
     run.case("types/cstructs.cy");
     run.case("types/distinct.cy");
 }

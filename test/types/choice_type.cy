@@ -87,4 +87,9 @@ res = switch s:
     else => 234
 test.eq(res, 234)
 
+-- Unwrapping payload.
+var rect = Rectangle{width=123, height=234}
+s = Shape.rectangle(rect)
+test.assert(s.!rectangle == rect)
+
 --cytest: pass

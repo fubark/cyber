@@ -2620,9 +2620,19 @@ pub const Parser = struct {
 
                     // Access expr.
                     const right = (try self.parseOptName()) orelse {
-                        return self.reportError("Expected ident", &.{});
+                        return self.reportError("Expected ident.", &.{});
                     };
                     left = try self.ast.newNodeErase(.accessExpr, .{
+                        .left = left,
+                        .right = right,
+                    });
+                },
+                .dot_bang => {
+                    self.advance();
+                    const right = (try self.parseOptName()) orelse {
+                        return self.reportError("Expected ident.", &.{});
+                    };
+                    left = try self.ast.newNodeErase(.unwrap_choice, .{
                         .left = left,
                         .right = right,
                     });
@@ -3713,7 +3723,7 @@ fn toBinExprOp(op: cy.tokenizer.TokenType) ?cy.ast.BinaryExprOp {
         .as_k, .at, .await_k,
         .bang, .bin, .break_k,
         .minus_right_angle, .case_k, .catch_k, .coinit_k, .colon, .comma, .context_k, .continue_k, .coresume_k, .coyield_k, .cstruct_k,
-        .dec, .dot, .dot_question, .dot_dot, .dot_star,
+        .dec, .dot, .dot_bang, .dot_question, .dot_dot, .dot_star,
         .else_k, .enum_k, .err, .error_k, .equal, .equal_right_angle,
         .false_k, .float, .for_k, .func_k, .Func_k,
         .hex, .ident, .if_k, .mod_k, .indent,

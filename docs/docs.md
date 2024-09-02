@@ -1105,7 +1105,7 @@ The dynamic type defers type checking to runtime. However, it also tracks its ow
 * [Choices.](#choices)
   * [Initialize choice.](#initialize-choice)
   * [Choice `switch`.](#choice-switch)
-  * [Access choice.](#access-choice)
+  * [Unwrap choice.](#unwrap-choice)
 * [Type aliases.](#type-aliases)
 * [Distinct types.](#distinct-types)
 * [Traits.](#traits)
@@ -1441,8 +1441,8 @@ else:
     print "Unsupported."
 ```
 
-### Access choice.
-A choice can be accessed by specifying the access operator `.!` before the tagged member name. This will either return the payload or panic at runtime: *Planned Feature*
+### Unwrap choice.
+A choice can be accessed by specifying the unwrap operator `.!` before the tagged member name. This will either return the payload or panic at runtime:
 ```cy
 var s = Shape{line=20}
 print s.!line     --> 20

@@ -351,9 +351,15 @@ pub const Sym = extern struct {
 
     pub fn getFields(self: *Sym) ?[]const FieldInfo {
         switch (self.type) {
-            .enum_t          => return &[_]FieldInfo{
-                .{ .sym = undefined, .type = bt.Integer, .offset = 0 },
-                .{ .sym = undefined, .type = bt.Any, .offset = 0 },
+            .enum_t          => {
+                const enum_t = self.cast(.enum_t);
+                if (enum_t.isChoiceType) {
+                    return &[_]FieldInfo{
+                        .{ .sym = undefined, .type = bt.Integer, .offset = 0 },
+                        .{ .sym = undefined, .type = bt.Any, .offset = 0 }
+                    };
+                }
+                return null;
             },
             .struct_t        => return self.cast(.struct_t).getFields(),
             .object_t        => return self.cast(.object_t).getFields(),

@@ -106,6 +106,7 @@ pub const NodeType = enum(u7) {
     template,
     unary_expr,
     unwrap,
+    unwrap_choice,
     unwrap_or,
     use_alias,
     whileCondStmt,
@@ -291,6 +292,11 @@ const AwaitExpr = struct {
 };
 
 const AccessExpr = struct {
+    left: *Node align(8),
+    right: *Node,
+};
+
+const UnwrapChoice = struct {
     left: *Node align(8),
     right: *Node,
 };
@@ -687,6 +693,7 @@ fn NodeData(comptime node_t: NodeType) type {
         .template       => TemplateDecl,
         .unary_expr     => Unary,
         .unwrap         => Unwrap,
+        .unwrap_choice  => UnwrapChoice,
         .unwrap_or      => UnwrapOr,
         .use_alias      => UseAlias,
         .whileCondStmt  => WhileCondStmt,
@@ -827,6 +834,7 @@ pub const Node = struct {
             .typeAliasDecl  => self.cast(.typeAliasDecl).pos,
             .unary_expr     => self.cast(.unary_expr).child.pos()-1,
             .unwrap         => self.cast(.unwrap).opt.pos(),
+            .unwrap_choice  => self.cast(.unwrap_choice).left.pos(),
             .unwrap_or      => self.cast(.unwrap_or).opt.pos(),
             .use_alias      => self.cast(.use_alias).pos,
             .whileInfStmt   => self.cast(.whileInfStmt).pos,
@@ -904,7 +912,7 @@ pub const UnaryOp = enum(u8) {
 };
 
 test "ast internals." {
-    try t.eq(std.enums.values(NodeType).len, 99);
+    try t.eq(std.enums.values(NodeType).len, 100);
     try t.eq(@sizeOf(NodeHeader), 1);
 }
 

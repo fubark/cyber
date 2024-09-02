@@ -5624,6 +5624,26 @@ pub const ChunkExt = struct {
             .accessExpr => {
                 return try c.semaAccessExpr(expr, false);
             },
+            .unwrap_choice => {
+                const unwrap = node.cast(.unwrap_choice);
+                const choice = try c.semaExpr(unwrap.left, .{});
+                const type_e = c.sema.getType(choice.type.id);
+                if (type_e.kind != .choice) {
+                    return c.reportError("Expected choice type.", unwrap.left);
+                }
+
+                const enum_t = type_e.sym.cast(.enum_t);
+                const name = c.ast.nodeString(unwrap.right);
+                const member = enum_t.getMember(name) orelse {
+                    return c.reportErrorFmt("Choice case `{}` does not exist.", &.{v(name)}, unwrap.right);
+                };
+                const loc = try c.ir.pushExpr(.unwrapChoice, c.alloc, member.payloadType, node, .{
+                    .choice = choice.irIdx,
+                    .tag = @intCast(member.val),
+                    .fieldIdx = 1,
+                });
+                return ExprResult.initStatic(loc, member.payloadType);
+            },
             .unwrap => {
                 const opt = try c.semaOptionExpr(node.cast(.unwrap).opt);
                 const payload_t = if (opt.type.id == bt.Any) bt.Any else b: {
@@ -6617,8 +6637,13 @@ pub const ChunkExt = struct {
 
                 if (left.type.id == right.type.id) {
                     const left_te = c.sema.types.items[left.type.id];
-                    if (left_te.kind == .option or left_te.kind == .struct_t) {
-                        return semaStructCompare(c, left, leftId, op, right, rightId, left.type.id, node);
+                    switch (left_te.kind) {
+                        .option,
+                        .choice,
+                        .struct_t => {
+                            return semaStructCompare(c, left, leftId, op, right, rightId, left.type.id, node);
+                        },
+                        else => {},
                     }
                 }
 

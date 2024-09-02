@@ -73,9 +73,10 @@ pub const TokenType = enum(u8) {
     cstruct_k,
     dec,
     dot,
-    dot_question,
+    dot_bang,
     dot_dot,
     dot_star,
+    dot_question,
     double_left_angle,
     double_right_angle,
     double_vert_bar,
@@ -319,6 +320,10 @@ pub const Tokenizer = struct {
             ',' => try t.pushToken(.comma, start),
             '.' => {
                 switch (peek(t)) {
+                    '!' => {
+                        advance(t);
+                        try t.pushToken(.dot_bang, start);
+                    },
                     '.' => {
                         advance(t);
                         try t.pushToken(.dot_dot, start);

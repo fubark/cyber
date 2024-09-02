@@ -577,16 +577,16 @@ CLValue clNewHostObject(CLVM* vm, CLType typeId, size_t n);
 void* clNewHostObjectPtr(CLVM* vm, CLType typeId, size_t n);
 
 // Returns a new instance of `type` with a list of field initializers.
-// If the instance could not be created, the VM panics and `CL_INTERRUPT` is returned.
-// This assumes that the field initializers are the correct type.
 CLValue clNewInstance(CLVM* vm, CLType type, const CLFieldInit* fields, size_t nfields);
 
 // Returns the type of boxed value.
 CLType clGetType(CLValue val);
 
 // Returns the field value of the receiver object `rec`.
-// If the field can not be retrieved, the VM panics and `CL_INTERRUPT` is returned.
 CLValue clGetField(CLVM* vm, CLValue rec, CLStr name);
+
+// Returns the unwrapped value of a choice.
+CLValue clUnwrapChoice(CLVM* vm, CLValue choice, CLStr name);
 
 bool clIsFuture(CLVM* vm, CLValue val);
 CLStr clNewValueDump(CLVM* vm, CLValue val);

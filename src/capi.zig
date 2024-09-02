@@ -260,6 +260,14 @@ pub const ZVM = struct {
         c.clReset(@ptrCast(self));
     }
 
+    pub fn evalMust(self: *ZVM, src: []const u8, out: *Value) void {
+        const res = self.eval(src, out);
+        if (res != Success) {
+            const summary = self.newLastErrorSummary();
+            std.debug.panic("{s}", .{summary});
+        }
+    }
+
     pub fn eval(self: *ZVM, src: []const u8, out: *Value) ResultCode {
         return c.clEval(@ptrCast(self), toStr(src), out);
     }
@@ -358,6 +366,10 @@ pub const ZVM = struct {
 
     pub fn getField(self: *ZVM, rec: Value, name: []const u8) Value {
         return c.clGetField(@ptrCast(self), rec, toStr(name));
+    }
+
+    pub fn unwrapChoice(self: *ZVM, choice: Value, name: []const u8) Value {
+        return c.clUnwrapChoice(@ptrCast(self), choice, toStr(name));
     }
 
     pub fn expandTemplateType(self: *ZVM, template: Sym, args: []const Value, res: *Type) bool {

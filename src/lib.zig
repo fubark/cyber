@@ -687,7 +687,7 @@ export fn clNewHostObjectPtr(vm: *cy.VM, typeId: cy.TypeId, size: usize) *anyopa
 export fn clNewInstance(vm: *cy.VM, type_id: cy.TypeId, fields: [*]const c.FieldInit, nfields: usize) cy.Value {
     const type_e = vm.c.types[type_id];
     if (type_e.kind != .object and type_e.kind != .struct_t) {
-        return vm.prepPanic("Expected object or struct type.");
+        cy.panicFmt("Expected object or struct type. Found `{}`.", .{type_e.kind});
     }
 
     const start = vm.compiler.main_chunk.valueStack.items.len;
@@ -701,9 +701,10 @@ export fn clNewInstance(vm: *cy.VM, type_id: cy.TypeId, fields: [*]const c.Field
     for (fields[0..nfields]) |field| {
         const name = c.fromStr(field.name);
         const sym = mod.getSym(name) orelse {
-            return vm.prepPanic("No such field.");
+            cy.panicFmt("No such field `{s}`.", .{name});
         };
         if (sym.type != .field) {
+            cy.panicFmt("`{s}` is not a field.", .{name});
             return vm.prepPanic("Not a field.");
         }
         args[sym.cast(.field).idx] = @bitCast(field.value);
@@ -721,7 +722,7 @@ test "clNewInstance()" {
     defer vm.destroy();
 
     var res: c.Value = undefined;
-    _ = vm.eval( 
+    vm.evalMust( 
         \\type Foo:
         \\    a int
         \\    b String
@@ -744,7 +745,7 @@ export fn clSymbol(vm: *cy.VM, str: c.Str) Value {
 
 export fn clGetField(vm: *cy.VM, val: cy.Value, name: c.Str) cy.Value {
     return vm.getFieldName(val, c.fromStr(name)) catch {
-        return vm.prepPanic("Can not access field.");
+        return cy.panicFmt("Can not access field: `{s}`", .{c.fromStr(name)});
     };
 }
 
@@ -753,7 +754,7 @@ test "clGetField()" {
     defer vm.destroy();
 
     var res: c.Value = undefined;
-    _ = vm.eval( 
+    vm.evalMust( 
         \\type Foo:
         \\    a int
         \\    b String
@@ -762,6 +763,55 @@ test "clGetField()" {
     defer vm.release(res);
     try t.eq(vm.getField(res, "a"), 123);
     try t.eqStr(c.asString(vm.getField(res, "b")), "abc");
+}
+
+export fn clUnwrapChoice(vm: *cy.VM, choice: cy.Value, name: c.Str) cy.Value {
+    const type_e = vm.sema.getType(choice.getTypeId());
+    if (type_e.kind != .choice) {
+        return cy.panicFmt("Expected a choice type. Found `{}`", .{type_e.kind});
+    }
+
+    const zname = c.fromStr(name);
+    const sym = type_e.sym.getMod().?.getSym(zname) orelse {
+        return cy.panicFmt("Can not find case `{s}`.", .{zname});
+    };
+    if (sym.type != .enumMember) {
+        return cy.panicFmt("`{s}` is not choice case.", .{zname});
+    }
+    const case = sym.cast(.enumMember);
+
+    const active_tag = choice.asHeapObject().object.getValue(0).asInt();
+    if (active_tag != case.val) {
+        return cy.panicFmt("Expected active tag `{}` for `{s}`. Found `{}`.", .{case.val, zname, active_tag});
+    }
+
+    const payload = choice.asHeapObject().object.getValue(1);
+    if (!vm.sema.isUnboxedType(case.payloadType)) {
+        vm.retain(payload);
+    }
+    return payload;
+}
+
+// To enable logging for tests:
+// c.setVerbose(true);
+// c.setLog(printLogger);
+pub fn printLogger(str: c.Str) callconv(.C) void {
+    std.debug.print("{s}\n", .{ c.fromStr(str) });
+}
+
+test "clUnwrapChoice()" {
+    const vm = c.create();
+    defer vm.destroy();
+
+    var res: c.Value = undefined;
+    vm.evalMust( 
+        \\type Foo enum:
+        \\    case a int
+        \\    case b String
+        \\Foo.a(123)
+    , &res);
+    defer vm.release(res);
+    try t.eq(vm.unwrapChoice(res, "a"), 123);
 }
 
 export fn clNewPointerVoid(vm: *cy.VM, ptr: ?*anyopaque) Value {
@@ -940,11 +990,7 @@ test "List ops." {
     defer vm.destroy();
 
     var list: c.Value = undefined;
-    const eval_res = vm.eval("{1, 2, 3}", &list);
-    if (eval_res != c.Success) {
-        const summary = vm.newLastErrorSummary();
-        std.debug.panic("{s}", .{summary});
-    }
+    vm.evalMust("{1, 2, 3}", &list);
     defer vm.release(list);
 
     // Initial cap.

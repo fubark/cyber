@@ -3643,6 +3643,15 @@ pub fn resolveFuncType(c: *cy.Chunk, func_type: *ast.FuncType) !FuncSigId {
     return c.sema.ensureFuncSig(@ptrCast(c.typeStack.items[start..]), ret_t);
 }
 
+fn indexOfTypedParam(params: []const *ast.FuncParam, start: usize) ?usize {
+    for (params[start..], start..) |param, i| {
+        if (param.type != null) {
+            return i;
+        }
+    }
+    return null;
+}
+
 /// `skip_ct_params` is used when expanding a template.
 fn resolveFuncSig(c: *cy.Chunk, func: *cy.Func, skip_ct_params: bool) !FuncSigId {
     const func_n = func.decl.?.cast(.funcDecl);
@@ -3656,23 +3665,27 @@ fn resolveFuncSig(c: *cy.Chunk, func: *cy.Func, skip_ct_params: bool) !FuncSigId
         return error.Unexpected;
     }
 
-    for (func_n.params) |param| {
+    var param_group_t: cy.TypeId = cy.NullId;
+    var param_group_end: usize = undefined;
+    for (func_n.params, 0..) |param, i| {
         const paramName = c.ast.nodeString(param.name_type);
         if (std.mem.eql(u8, paramName, "self")) {
             const self_t = func.parent.parent.?.getStaticType().?;
             try c.typeStack.append(c.alloc, self_t);
         } else {
-            if (sig_t == .func) {
-                if (param.type == null) {
-                    return c.reportError("Expected parameter type.", @ptrCast(param));
+            var type_id: cy.TypeId = undefined;
+            if (param.type == null) {
+                if (param_group_t == cy.NullId or i > param_group_end) {
+                    // Attempt to find group type.
+                    param_group_end = indexOfTypedParam(func_n.params, i + 1) orelse {
+                        return c.reportError("Expected parameter type.", @ptrCast(param));
+                    };
+                    param_group_t = try resolveTypeSpecNode(c, func_n.params[param_group_end].type);
                 }
+                type_id = param_group_t;
             } else {
-                if (param.type) |type_spec| {
-                    return c.reportError("Type specifier not allowed in `let` declaration. Declare typed functions with `func`.", type_spec);
-                }
+                type_id = try resolveTypeSpecNode(c, param.type);
             }
-
-            const type_id = try resolveTypeSpecNode(c, param.type);
 
             if (param.template) {
                 if (skip_ct_params) {
@@ -3695,19 +3708,28 @@ fn resolveFuncSig(c: *cy.Chunk, func: *cy.Func, skip_ct_params: bool) !FuncSigId
 }
 
 fn pushLambdaFuncParams(c: *cy.Chunk, n: *ast.LambdaExpr) !void {
-    for (n.params) |param| {
+    var param_group_t: cy.TypeId = cy.NullId;
+    var param_group_end: usize = undefined;
+    if (n.sig_t == .infer) {
+        return error.Unexpected;
+    }
+    for (n.params, 0..) |param, i| {
         const paramName = c.ast.nodeString(param.name_type);
         if (std.mem.eql(u8, paramName, "self")) {
             return c.reportError("`self` is a reserved parameter for methods.", @ptrCast(param));
         }
-        if (n.sig_t == .func) {
-            if (param.type == null) {
-                return c.reportError("Expected type specifier.", @ptrCast(param));
+        var type_id: cy.TypeId = undefined;
+        if (param.type == null) {
+            if (param_group_t == cy.NullId or i > param_group_end) {
+                // Attempt to find group type.
+                param_group_end = indexOfTypedParam(n.params, i + 1) orelse {
+                    return c.reportError("Expected parameter type.", @ptrCast(param));
+                };
+                param_group_t = try resolveTypeSpecNode(c, n.params[param_group_end].type);
             }
+            type_id = param_group_t;
         } else {
-            if (param.type != null) {
-                return c.reportError("Type specifier not allowed. Declare typed lambdas with `func`.", @ptrCast(param));
-            }
+            type_id = try resolveTypeSpecNode(c, param.type);
         }
         const typeId = try resolveTypeSpecNode(c, param.type);
         try c.typeStack.append(c.alloc, typeId);

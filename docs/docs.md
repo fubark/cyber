@@ -2005,7 +2005,7 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
 * [Closures.](#closures)
 * [Function types.](#function-types)
 * [`extern` functions.](#extern-functions)
-* [Multiple parameters.](#multiple-parameters)
+* [Parameter groups.](#parameter-groups)
 * [Named parameters.](#named-parameters)
 * [Variadic parameters.](#variadic-parameters)
 </td><td valign="top">
@@ -2189,9 +2189,7 @@ func my_str_hash(s String) int:
 var m = IntMap[String, my_str_hash]{}
 ```
 
-## Multiple parameters.
-> _Planned Feature_
-
+## Parameter groups.
 When multiple parameters share the same type they can be declared together in a sequence:
 ```cy
 func sum(a, b, c int) int

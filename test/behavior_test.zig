@@ -58,6 +58,7 @@ test "Tests." {
     run.case("syntax/comment_multiple.cy");
     run.case("syntax/compact_block_error.cy");
     run.case("syntax/func_missing_param_type_error.cy");
+    run.case("syntax/func_param_group.cy");
 if (!aot) {
     run.case("syntax/indentation.cy");
 }

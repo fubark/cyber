@@ -180,7 +180,7 @@ type State:
     type StateType
     data dyn
 
-func visitor(cursor dyn, parent dyn, client_data dyn) dyn:
+func visitor(cursor, parent, client_data dyn) dyn:
     var state State = client_data.asObject()
     switch state.type
     case StateType.root:
@@ -198,7 +198,7 @@ func visitor(cursor dyn, parent dyn, client_data dyn) dyn:
     else:
         throw error.Unsupported
 
-func rootVisitor(cursor dyn, parent dyn, state dyn) dyn:
+func rootVisitor(cursor, parent, state dyn) dyn:
     var cxName = clang.lib.clang_getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
 
@@ -354,7 +354,7 @@ func rootVisitor(cursor dyn, parent dyn, state dyn) dyn:
 
     return clang.CXChildVisit_Continue
 
-func structVisitor(cursor dyn, parent dyn, state dyn) dyn:
+func structVisitor(cursor, parent, state dyn) dyn:
     var cxName = clang.lib.clang_getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
 
@@ -374,7 +374,7 @@ func structVisitor(cursor dyn, parent dyn, state dyn) dyn:
         print "unsupported $(cursor.kind) $(name)"
     return clang.CXChildVisit_Continue
 
-func enumVisitor(cursor dyn, parent dyn, state dyn) dyn:
+func enumVisitor(cursor, parent, state dyn) dyn:
     var cxName = clang.lib.clang_getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
     var val = clang.lib.clang_getEnumConstantDeclValue(cursor)
@@ -405,7 +405,7 @@ func genMacros(headerPath String):
     var cstate = clang.ffi.bindObjPtr(state)
     clang.lib.clang_visitChildren(cursor, cvisitor.ptr(), cstate)
 
-func initListExpr(cursor dyn, parent dyn, state dyn) dyn:
+func initListExpr(cursor, parent, state dyn) dyn:
     switch cursor.kind
     case clang.CXCursor_IntegerLiteral:
         var eval = clang.lib.clang_Cursor_Evaluate(cursor)
@@ -417,7 +417,7 @@ func initListExpr(cursor dyn, parent dyn, state dyn) dyn:
 
     return clang.CXChildVisit_Continue
 
-func initVarVisitor(cursor dyn, parent dyn, state dyn) dyn:
+func initVarVisitor(cursor, parent, state dyn) dyn:
     var cxName = clang.lib.clang_getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
 
@@ -437,7 +437,7 @@ func initVarVisitor(cursor dyn, parent dyn, state dyn) dyn:
 
     return clang.CXChildVisit_Continue
 
-func macrosRootVisitor(cursor dyn, parent dyn, state dyn) dyn:
+func macrosRootVisitor(cursor, parent, state dyn) dyn:
     var cxName = clang.lib.clang_getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
 
@@ -520,7 +520,7 @@ func fromCXString(cxStr any) String:
     dyn cname = clang.lib.clang_getCString(cxStr)
     return cname.fromCstr(0)
 
-func toCyType(nameOrSym dyn, forRet dyn) dyn:
+func toCyType(nameOrSym, forRet dyn) dyn:
     if type(nameOrSym) == symbol:
         switch nameOrSym
         case symbol.voidPtr   : return '*void'

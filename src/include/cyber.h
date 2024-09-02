@@ -575,6 +575,10 @@ CLValue clNewVmObject(CLVM* vm, CLType typeId);
 // Returns the type of boxed value.
 CLType clGetType(CLValue val);
 
+// Returns the field value of the receiver object `rec`.
+// If the field can not be retrieved, the VM panics and `CL_INTERRUPT` is returned.
+CLValue clGetField(CLVM* vm, CLValue rec, CLStr name);
+
 bool clIsFuture(CLVM* vm, CLValue val);
 CLStr clNewValueDump(CLVM* vm, CLValue val);
 

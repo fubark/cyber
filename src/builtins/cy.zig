@@ -151,15 +151,15 @@ pub fn UserVM_evalExt(vm: *cy.VM) anyerror!cy.Value {
     const uvm = vm.getValue(0).castHostObject(*UserVM);
     const uri = vm.getString(1);
     const src = vm.getString(2);
-    const config = &vm.getValue(3).asHeapObject().object;
+    const config = vm.getValue(3);
 
     const config_c = C.EvalConfig{
-        .single_run = (try vm.getObjectField(config, "single_run")).asBool(),
-        .file_modules = (try vm.getObjectField(config, "file_modules")).asBool(),
-        .gen_all_debug_syms = (try vm.getObjectField(config, "gen_all_debug_syms")).asBool(),
-        .backend = (try vm.getObjectField(config, "backend")).getEnumValue(),
-        .reload = (try vm.getObjectField(config, "reload")).asBool(),
-        .spawn_exe = (try vm.getObjectField(config, "spawn_exe")).asBool(),
+        .single_run = (try vm.getFieldName(config, "single_run")).asBool(),
+        .file_modules = (try vm.getFieldName(config, "file_modules")).asBool(),
+        .gen_all_debug_syms = (try vm.getFieldName(config, "gen_all_debug_syms")).asBool(),
+        .backend = (try vm.getFieldName(config, "backend")).getEnumValue(),
+        .reload = (try vm.getFieldName(config, "reload")).asBool(),
+        .spawn_exe = (try vm.getFieldName(config, "spawn_exe")).asBool(),
     };
 
     var res: C.Value = @bitCast(cy.Value.Void);

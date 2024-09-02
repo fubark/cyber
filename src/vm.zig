@@ -1259,14 +1259,18 @@ pub const VM = struct {
     }
 
     /// Does not invoke `getFieldFallback`.
-    pub fn getObjectField(self: *VM, obj: *cy.heap.Object, field: []const u8) !Value {
+    pub fn getFieldName(self: *VM, rec: cy.Value, field: []const u8) !Value {
         const field_id = try self.ensureField(field);
-        const base: *cy.heap.HeapObject = @ptrCast(obj);
-        const res = self.getTypeField(base.getTypeId(), field_id);
+        const obj = rec.asHeapObject();
+        const res = self.getTypeField(obj.getTypeId(), field_id);
         if (res.offset == cy.NullU16) {
             return error.MissingField;
         }
-        return obj.getValue(res.offset);
+        const val = obj.object.getValue(res.offset);
+        if (res.boxed) {
+            self.retain(val);
+        }
+        return val;
     }
 
     fn setFieldFallback(self: *VM, obj: *HeapObject, nameId: vmc.NameId, val: cy.Value) !void {

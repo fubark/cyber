@@ -352,6 +352,10 @@ pub const ZVM = struct {
         return c.clFindType(@ptrCast(self), toStr(path));
     }
 
+    pub fn getField(self: *ZVM, rec: Value, name: []const u8) Value {
+        return c.clGetField(@ptrCast(self), rec, toStr(name));
+    }
+
     pub fn expandTemplateType(self: *ZVM, template: Sym, args: []const Value, res: *Type) bool {
         return c.clExpandTemplateType(@ptrCast(self), template, args.ptr, args.len, res);
     }

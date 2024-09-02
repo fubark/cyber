@@ -684,6 +684,28 @@ export fn clSymbol(vm: *cy.VM, str: c.Str) Value {
     return Value.initSymbol(@intCast(id));
 }
 
+export fn clGetField(vm: *cy.VM, val: cy.Value, name: c.Str) cy.Value {
+    return vm.getFieldName(val, c.fromStr(name)) catch {
+        return vm.prepPanic("Can not access field.");
+    };
+}
+
+test "clGetField()" {
+    const vm = c.create();
+    defer vm.destroy();
+
+    var res: c.Value = undefined;
+    _ = vm.eval( 
+        \\type Foo:
+        \\    a int
+        \\    b String
+        \\Foo{a=123, b='abc'}
+    , &res);
+    defer vm.release(res);
+    try t.eq(vm.getField(res, "a"), 123);
+    try t.eqStr(c.asString(vm.getField(res, "b")), "abc");
+}
+
 export fn clNewPointerVoid(vm: *cy.VM, ptr: ?*anyopaque) Value {
     const bt_data = vm.getData(*cy.builtins.BuiltinsData, "builtins");
     return cy.heap.allocPointer(vm, bt_data.PtrVoid, ptr) catch fatal();

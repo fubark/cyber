@@ -33,7 +33,7 @@ enum {
     CL_ERROR_UNKNOWN,
 };
 
-typedef enum {
+enum {
     CL_TYPE_NULL = 0,
     CL_TYPE_VOID,
     CL_TYPE_BOOLEAN,
@@ -64,8 +64,8 @@ typedef enum {
     CL_TYPE_RANGE,
     CL_TYPE_TABLE,
     CL_TYPE_MEMORY,
-} CLType;
-typedef uint32_t CLTypeId;
+};
+typedef uint32_t CLType;
 
 typedef uint32_t CLFuncSigId;
 
@@ -221,7 +221,7 @@ typedef struct CLHostType {
     union {
         struct {
             // The reserved `typeId` is used for the new type.
-            CLTypeId type_id;
+            CLType type_id;
             // Pointer to callback or null.
             CLGetChildrenFn get_children;
             // Pointer to callback or null.
@@ -232,7 +232,7 @@ typedef struct CLHostType {
             // If not null, the created runtime type id will be written to `outTypeId`.
             // This typeId is then used to allocate a new instance of the object.
             // Defaults to null.
-            CLTypeId* out_type_id;
+            CLType* out_type_id;
             // If `true`, invokes finalizer before visiting children.
             bool pre;
             // Pointer to callback or null.
@@ -242,8 +242,8 @@ typedef struct CLHostType {
         } hostobj;
         struct {
             // If `CL_NULLID`, a new type id is generated and written to a non-null `out_type_id`.
-            CLTypeId type_id;
-            CLTypeId* out_type_id;
+            CLType type_id;
+            CLType* out_type_id;
         } decl;
         struct {
             // Pointer to callback.
@@ -459,14 +459,18 @@ void clSetModuleConfig(CLVM* vm, CLModule mod, CLModuleConfig* config);
 
 // Declares a function in a module.
 void clDeclareFuncDyn(CLSym mod, const char* name, uint32_t numParams, CLFuncFn fn);
-void clDeclareFunc(CLSym mod, const char* name, const CLTypeId* params, size_t numParams, CLTypeId retType, CLFuncFn fn);
+void clDeclareFunc(CLSym mod, const char* name, const CLType* params, size_t numParams, CLType retType, CLFuncFn fn);
 
 // Declares a variable in a module.
-void clDeclareDynVar(CLSym mod, const char* name, CLTypeId type, CLValue val);
-void clDeclareVar(CLSym mod, const char* name, CLTypeId type, CLValue val);
+void clDeclareDynVar(CLSym mod, const char* name, CLType type, CLValue val);
+void clDeclareVar(CLSym mod, const char* name, CLType type, CLValue val);
 
 // Expand type template for given arguments.
-bool clExpandTemplateType(CLSym type_t, const CLValue* args, uint32_t nargs, CLTypeId* res);
+bool clExpandTemplateType(CLSym type_t, const CLValue* args, uint32_t nargs, CLType* res);
+
+// Find and return the type from an absolute path.
+// Returns `CL_TYPE_NULL` if the symbol could not be found or the symbol is not a type.
+CLType clFindType(CLVM* vm, CLStr path);
 
 // -----------------------------------
 // [ Memory ]
@@ -547,29 +551,30 @@ CLValue clNewEmptyListDyn(CLVM* vm);
 CLValue clNewListDyn(CLVM* vm, const CLValue* vals, size_t len);
 
 // List[T], `type_id` should be obtained from `clExpandTemplateType`.
-CLValue clNewEmptyList(CLVM* vm, CLTypeId type_id);
-CLValue clNewList(CLVM* vm, CLTypeId type_id, const CLValue* vals, size_t len);
+CLValue clNewEmptyList(CLVM* vm, CLType type_id);
+CLValue clNewList(CLVM* vm, CLType type_id, const CLValue* vals, size_t len);
 
 CLValue clNewEmptyMap(CLVM* vm);
 CLValue clNewFuncDyn(CLVM* vm, uint32_t numParams, CLFuncFn func);
-CLValue clNewFunc(CLVM* vm, const CLTypeId* params, uint32_t numParams, CLTypeId retType, CLFuncFn func);
+CLValue clNewFunc(CLVM* vm, const CLType* params, uint32_t numParams, CLType retType, CLFuncFn func);
 CLValue clNewPointerVoid(CLVM* vm, void* ptr);
-CLValue clNewType(CLVM* vm, CLTypeId type_id);
+CLValue clNewType(CLVM* vm, CLType type_id);
 
 // Instantiating a `@host type` requires the `typeId` obtained from `CLTypeLoader` and
 // the number of bytes the object will occupy. Objects of the same type can have different sizes.
 // A `CLValue` which contains the object pointer is returned. Call `clAsHostObject` to obtain the pointer
 // or use `clNewHostObjectPtr` to instantiate instead.
-CLValue clNewHostObject(CLVM* vm, CLTypeId typeId, size_t n);
+CLValue clNewHostObject(CLVM* vm, CLType typeId, size_t n);
 
 // Like `clNewHostObject` but returns the object's pointer. Wrap it into a value with `clHostObject`.
-void* clNewHostObjectPtr(CLVM* vm, CLTypeId typeId, size_t n);
+void* clNewHostObjectPtr(CLVM* vm, CLType typeId, size_t n);
 
 // Instantiates a standard object type.
-CLValue clNewVmObject(CLVM* vm, CLTypeId typeId);
+CLValue clNewVmObject(CLVM* vm, CLType typeId);
 
-// Values.
-CLTypeId clGetTypeId(CLValue val);
+// Returns the type of boxed value.
+CLType clGetType(CLValue val);
+
 bool clIsFuture(CLVM* vm, CLValue val);
 CLStr clNewValueDump(CLVM* vm, CLValue val);
 

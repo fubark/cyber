@@ -193,6 +193,7 @@ pub const BuiltinTypes = struct {
     pub const Map: TypeId = vmc.TYPE_MAP;
     pub const MapIter: TypeId = vmc.TYPE_MAP_ITER;
     pub const Void: TypeId = vmc.TYPE_VOID;
+    pub const Null: TypeId = vmc.TYPE_NULL;
     pub const Error: TypeId = vmc.TYPE_ERROR;
     pub const Fiber: TypeId = vmc.TYPE_FIBER;
     pub const Type: TypeId = vmc.TYPE_TYPE;

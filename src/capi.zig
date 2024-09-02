@@ -47,6 +47,7 @@ pub const defaultEvalConfig = c.clDefaultEvalConfig;
 pub const reset = c.clReset;
 pub const eval = c.clEval;
 pub const evalExt = c.clEvalExt;
+pub const findType = c.clFindType;
 pub const runReadyTasks = c.clRunReadyTasks;
 pub const defaultCompileConfig = c.clDefaultCompileConfig;
 pub const compile = c.clCompile;
@@ -59,7 +60,7 @@ pub const listSet = c.clListSet;
 pub const listInsert = c.clListInsert;
 pub const asFloat = c.clAsFloat;
 pub const float = c.clFloat;
-pub const getTypeId = c.clGetTypeId;
+pub const getType = c.clGetType;
 pub const isFuture = c.clIsFuture;
 pub const newValueDump = c.clNewValueDump;
 pub const newFunc = c.clNewFunc;
@@ -103,7 +104,7 @@ pub const performGC = c.clPerformGC;
 pub const traceDumpLiveObjects = c.clTraceDumpLiveObjects;
 pub const resultName = c.clResultName;
 pub const STR = c.CL_STR;
-pub inline fn CORE_TYPE(type_id: TypeId) HostType {
+pub inline fn CORE_TYPE(type_id: Type) HostType {
     return HostType{
         .type = c.CL_BIND_TYPE_CORE_CUSTOM,
         .data = .{ .core_custom = .{
@@ -113,7 +114,7 @@ pub inline fn CORE_TYPE(type_id: TypeId) HostType {
         }},
     };
 }
-pub inline fn CORE_TYPE_EXT(type_id: TypeId, get_children: GetChildrenFn, finalizer: FinalizerFn, load_all_methods: bool) HostType {
+pub inline fn CORE_TYPE_EXT(type_id: Type, get_children: GetChildrenFn, finalizer: FinalizerFn, load_all_methods: bool) HostType {
     return HostType{
         .type = c.CL_BIND_TYPE_CORE_CUSTOM,
         .data = .{ .core_custom = .{
@@ -124,7 +125,7 @@ pub inline fn CORE_TYPE_EXT(type_id: TypeId, get_children: GetChildrenFn, finali
         }},
     };
 }
-pub inline fn DECL_TYPE(type_id: TypeId) HostType {
+pub inline fn DECL_TYPE(type_id: Type) HostType {
     return HostType{
         .type = c.CL_BIND_TYPE_DECL,
         .data = .{ .decl = .{
@@ -133,7 +134,7 @@ pub inline fn DECL_TYPE(type_id: TypeId) HostType {
         }},
     };
 }
-pub inline fn DECL_TYPE_GET(out_type_id: *TypeId) HostType {
+pub inline fn DECL_TYPE_GET(out_type_id: *Type) HostType {
     return HostType{
         .type = c.CL_BIND_TYPE_DECL,
         .data = .{ .decl = .{
@@ -150,7 +151,7 @@ pub inline fn CREATE_TYPE(create_fn: CreateTypeFn) HostType {
         }},
     };
 }
-pub inline fn HOST_OBJECT(out_type_id: ?*TypeId, get_children: GetChildrenFn, finalizer: FinalizerFn) HostType {
+pub inline fn HOST_OBJECT(out_type_id: ?*Type, get_children: GetChildrenFn, finalizer: FinalizerFn) HostType {
     return HostType{
         .type = c.CL_BIND_TYPE_HOSTOBJ,
         .data = .{ .hostobj = .{
@@ -161,7 +162,7 @@ pub inline fn HOST_OBJECT(out_type_id: ?*TypeId, get_children: GetChildrenFn, fi
         }},
     };
 }
-pub inline fn HOST_OBJECT_PRE(out_type_id: ?*TypeId, get_children: GetChildrenFn, finalizer: FinalizerFn) HostType {
+pub inline fn HOST_OBJECT_PRE(out_type_id: ?*Type, get_children: GetChildrenFn, finalizer: FinalizerFn) HostType {
     return HostType{
         .type = c.CL_BIND_TYPE_HOSTOBJ,
         .data = .{ .hostobj = .{
@@ -272,7 +273,8 @@ pub const BackendTCC = c.CL_TCC;
 pub const BackendCC = c.CL_CC;
 pub const BackendLLVM = c.CL_LLVM;
 
-pub const TypeId = c.CLTypeId;
+pub const Type = c.CLType;
+pub const TypeNull = c.CL_TYPE_NULL;
 pub const TypeVoid = c.CL_TYPE_VOID;
 pub const TypeBoolean = c.CL_TYPE_BOOLEAN;
 pub const TypeError = c.CL_TYPE_ERROR;

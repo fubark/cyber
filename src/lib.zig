@@ -461,7 +461,30 @@ export fn clDeclareVar(mod: c.Sym, name: [*:0]const u8, typeId: cy.TypeId, val: 
     }
 }
 
-export fn clExpandTemplateType(ctemplate: c.Sym, args_ptr: [*]const cy.Value, nargs: u32, res: *c.TypeId) bool {
+export fn clFindType(vm: *cy.VM, c_path: c.Str) cy.TypeId {
+    const path = c.fromStr(c_path);
+    if (vm.compiler.chunks.items.len == 0) {
+        return bt.Null;
+    }
+    const b_mod = vm.compiler.chunks.items[0].sym.getMod();
+    const sym = b_mod.getSym(path) orelse {
+        return bt.Null;
+    };
+    return sym.getStaticType() orelse {
+        return bt.Null;
+    };
+}
+
+test "clFindType()" {
+    const vm = c.create();
+    defer c.destroy(vm);
+
+    try t.eq(c.findType(vm, c.toStr("int")), c.TypeNull);
+    _ = c.compile(vm, c.toStr("main"), c.toStr(""), c.defaultCompileConfig());
+    try t.eq(c.findType(vm, c.toStr("int")), c.TypeInteger);
+}
+
+export fn clExpandTemplateType(ctemplate: c.Sym, args_ptr: [*]const cy.Value, nargs: u32, res: *c.Type) bool {
     const template = cy.Sym.fromC(ctemplate).cast(.template);
     const args = args_ptr[0..nargs];
     const type_id = clExpandTemplateType2(template, args) catch |err| {
@@ -596,7 +619,7 @@ test "clNewFunc()" {
     defer c.destroy(@ptrCast(vm));
 
     const val = c.newFunc(@ptrCast(vm), &[_]cy.TypeId{}, 0, bt.Dyn, @ptrFromInt(8));
-    try t.eq(c.getTypeId(val), bt.Func);
+    try t.eq(c.getType(val), bt.Func);
 }
 
 export fn clCreateModule(vm: *cy.VM, r_uri: c.Str, src: c.Str) c.Module {
@@ -779,12 +802,12 @@ export fn clAsHostObject(val: Value) *anyopaque {
     return val.castHostObject(*anyopaque);
 }
 
-export fn clGetTypeId(val: Value) c.TypeId {
+export fn clGetType(val: Value) c.Type {
     return val.getTypeId();
 }
 
 test "clGetTypeId()" {
-    try t.eq(c.getTypeId(c.float(123)), bt.Float);
+    try t.eq(c.getType(c.float(123)), bt.Float);
 }
 
 export fn clIsFuture(vm: *cy.VM, val: Value) bool {

@@ -34,10 +34,10 @@ enum {
 };
 
 typedef enum {
-    CL_TYPE_VOID = 0,
+    CL_TYPE_NULL = 0,
+    CL_TYPE_VOID,
     CL_TYPE_BOOLEAN,
     CL_TYPE_ERROR,
-    CL_TYPE_PLACEHOLDER1,
     CL_TYPE_BYTE,
     CL_TYPE_TAGLIT,
     CL_TYPE_SYMBOL,

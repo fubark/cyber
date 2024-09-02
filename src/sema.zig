@@ -7072,8 +7072,8 @@ pub const Sema = struct {
     func_union_tmpl: *cy.sym.Template,
     func_sym_tmpl: *cy.sym.Template,
 
-    pub fn init(alloc: std.mem.Allocator, compiler: *cy.Compiler) Sema {
-        return .{
+    pub fn init(alloc: std.mem.Allocator, compiler: *cy.Compiler) !Sema {
+        var new = Sema{
             .alloc = alloc,
             .compiler = compiler,
             .future_tmpl = undefined,
@@ -7095,6 +7095,9 @@ pub const Sema = struct {
             .ct_ref_types = .{},
             .ct_infer_types = .{},
         };
+        // Reserve the null type.
+        _ = try new.pushType();
+        return new;
     }
 
     pub fn deinit(self: *Sema, alloc: std.mem.Allocator, comptime reset: bool) void {
@@ -7126,7 +7129,7 @@ pub const Sema = struct {
         if (reset) {
             self.ct_ref_types.clearRetainingCapacity();
             self.ct_infer_types.clearRetainingCapacity();
-            self.types.clearRetainingCapacity();
+            self.types.items.len = 1;
             self.funcSigs.clearRetainingCapacity();
             self.funcSigMap.clearRetainingCapacity();
             self.func_ptr_types.clearRetainingCapacity();

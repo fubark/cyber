@@ -109,7 +109,7 @@ pub const Compiler = struct {
             .buf = try cy.ByteCodeBuffer.init(vm.alloc, vm),
             .jitBuf = jitgen.CodeBuffer.init(),
             .reports = .{},
-            .sema = sema.Sema.init(vm.alloc, self),
+            .sema = try sema.Sema.init(vm.alloc, self),
             .moduleLoader = defaultModuleLoader,
             .moduleResolver = defaultModuleResolver,
             .chunks = .{},
@@ -913,7 +913,6 @@ fn reserveCoreTypes(self: *Compiler) !void {
         // Primitives.
         bt.Boolean,
         bt.Error,
-        bt.Placeholder1,
         bt.Byte,
         bt.TagLit,
         bt.Symbol,

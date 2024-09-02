@@ -191,7 +191,6 @@ type float #float64_t:
 --| Converts the value to a `float`. Panics if type conversion fails.
 @host func float.$call(val any) float
 
-@host type placeholder1 _
 @host type placeholder2 _
 @host type placeholder3 _
 @host type taglit _

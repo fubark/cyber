@@ -264,7 +264,6 @@ const vm_types = [_]C.HostTypeEntry{
     htype("error",          C.DECL_TYPE(bt.Error)),
     htype("int",            C.DECL_TYPE(bt.Integer)),
     htype("float",          C.DECL_TYPE(bt.Float)), 
-    htype("placeholder1",   C.CORE_TYPE(bt.Placeholder1)), 
     htype("placeholder2",   C.CORE_TYPE(bt.Placeholder2)), 
     htype("placeholder3",   C.CORE_TYPE(bt.Placeholder3)), 
     htype("byte",           C.DECL_TYPE(bt.Byte)), 
@@ -488,7 +487,10 @@ fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
 
     // Verify all core types have been initialized.
     if (cy.Trace) {
-        for (0..cy.types.BuiltinEnd) |i| {
+        if (vm.sema.types.items[0].kind != .null) {
+            cy.panicFmt("Expected null type.", .{});
+        }
+        for (1..cy.types.BuiltinEnd) |i| {
             const type_e = vm.sema.types.items[i];
             if (type_e.kind == .null) {
                 cy.panicFmt("Type {} is uninited.", .{i});

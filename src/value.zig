@@ -35,10 +35,9 @@ const BeforeTagMask: u32 = 0x7fff << 3;
 
 /// The tag id is also the primitive type id.
 const TagId = u3;
-pub const TagVoid: TagId = 0;
-pub const TagBoolean: TagId = 1;
-pub const TagError: TagId = 2;
-// pub const TagEnum: TagId = 5;
+pub const TagVoid: TagId = 1;
+pub const TagBoolean: TagId = 2;
+pub const TagError: TagId = 3;
 pub const TagSymbol: TagId = 6;
 pub const TagInteger: TagId = 7;
 
@@ -553,9 +552,9 @@ test "asF64" {
 test "value internals." {
     try t.eq(@sizeOf(Value), 8);
     try t.eq(@alignOf(Value), 8);
-    try t.eq(VoidMask, 0x7FFC000000000000);
-    try t.eq(TrueMask, 0x7FFC000100000001);
-    try t.eq(FalseMask, 0x7FFC000100000000);
+    try t.eq(VoidMask, 0x7FFC000100000000);
+    try t.eq(TrueMask, 0x7FFC000200000001);
+    try t.eq(FalseMask, 0x7FFC000200000000);
     try t.eq(vmc.POINTER_MASK, 0xFFFE000000000000);
     try t.eq(Value.initInt(0).val, 0);
 

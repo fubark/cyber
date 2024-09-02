@@ -181,7 +181,6 @@ const bt = BuiltinTypes;
 pub const BuiltinTypes = struct {
     pub const Any: TypeId = vmc.TYPE_ANY;
     pub const Boolean: TypeId = vmc.TYPE_BOOLEAN;
-    pub const Placeholder1: TypeId = vmc.TYPE_PLACEHOLDER1;
     pub const Byte: TypeId = vmc.TYPE_BYTE;
     pub const TagLit: TypeId = vmc.TYPE_TAGLIT;
     pub const Float: TypeId = vmc.TYPE_FLOAT;

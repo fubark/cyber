@@ -78,9 +78,9 @@ typedef struct IndexSlice {
 #define BOOLEAN_MASK (TAGGED_VALUE_MASK | ((u64)TAG_BOOLEAN << 32))
 
 #define TAG_MASK (((uint32_t)1 << 3) - 1)
-#define TAG_VOID ((uint8_t)0)
-#define TAG_BOOLEAN ((uint8_t)1)
-#define TAG_ERROR ((uint8_t)2)
+#define TAG_VOID ((uint8_t)1)
+#define TAG_BOOLEAN ((uint8_t)2)
+#define TAG_ERROR ((uint8_t)3)
 #define TAG_TAGLIT ((uint8_t)5)
 #define TAG_SYMBOL ((uint8_t)6)
 #define FALSE_MASK BOOLEAN_MASK
@@ -369,10 +369,10 @@ typedef enum {
 typedef uint32_t TypeId;
 enum {
     // The order of the first 9 primitive types are required for the VM.
-    TYPE_VOID = 0,
-    TYPE_BOOLEAN = 1,
-    TYPE_ERROR = 2,
-    TYPE_PLACEHOLDER1 = 3,
+    TYPE_NULL = 0,
+    TYPE_VOID = 1,
+    TYPE_BOOLEAN = 2,
+    TYPE_ERROR = 3,
     TYPE_BYTE = 4,
     TYPE_TAGLIT = 5,
     TYPE_SYMBOL = 6,

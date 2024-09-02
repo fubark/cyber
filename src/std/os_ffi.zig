@@ -598,7 +598,7 @@ fn writeToCValue(w: anytype, val: []const u8, ctype: CType, unbox: bool) !void {
 fn writeToCValueForSym(w: anytype, val: []const u8, sym: Symbol, unbox: bool) !void {
     switch (sym) {
         .bool => {
-            try w.print("({s} == 0x7FFC000100000001)?1:0", .{val});
+            try w.print("({s} == 0x7FFC000200000001)?1:0", .{val});
         },
         .char => {
             try w.print("(int8_t)({s} & 0xFFFFFFFFFFFF)", .{val});
@@ -724,10 +724,10 @@ fn writeToCyValueForSym(w: anytype, cval: []const u8, ctype: Symbol, must_box: b
             }
         },
         .void => {
-            try w.print("0x7FFC000000000000", .{});
+            try w.print("0x7FFC000100000000", .{});
         },
         .bool => {
-            try w.print("({s} == 1) ? 0x7FFC000100000001 : 0x7FFC000100000000", .{cval});
+            try w.print("({s} == 1) ? 0x7FFC000200000001 : 0x7FFC000200000000", .{cval});
         },
         else => {
             cy.panicFmt("Unsupported arg type: {s}", .{ @tagName(ctype) });

@@ -316,6 +316,7 @@ pub const VM = struct {
             .ready_tasks = std.fifo.LinearFifo(cy.heap.AsyncTask, .Dynamic).init(alloc),
             .vtables = .{},
         };
+        self.c.mainFiber.typeId = bt.Fiber | vmc.CYC_TYPE_MASK;
         self.c.mainFiber.rc = 1;
         self.c.mainFiber.panicType = vmc.PANIC_NONE;
         self.c.curFiber = &self.c.mainFiber;

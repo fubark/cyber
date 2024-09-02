@@ -684,10 +684,7 @@ pub const Parser = struct {
             return null;
         };
 
-        const typeSpec = try self.parseOptTypeSpec(true) orelse {
-            return self.reportError("Expected field type specifier.", &.{});
-        };
-
+        const typeSpec = try self.parseOptTypeSpec(true);
         return self.ast.newNode(.objectField, .{
             .name = name,
             .typeSpec = typeSpec,

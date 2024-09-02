@@ -1336,6 +1336,11 @@ Tuples can be declared using parentheses to wrap member fields:
 type Vec2 struct(x float, y float)
 ```
 
+If the fields share the same type, they can be declared in a field group:
+```cy
+type Vec3 struct(x, y, z float)
+```
+
 Function declarations can still be declared under the type:
 ```cy
 type Vec2 struct(x float, y float):

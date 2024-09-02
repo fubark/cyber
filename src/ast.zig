@@ -438,7 +438,7 @@ pub const DistinctDecl = struct {
 
 pub const Field = struct {
     name: *Node align(8),
-    typeSpec: *Node,
+    typeSpec: ?*Node,
     hidden: bool,
 };
 

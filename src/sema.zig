@@ -2207,6 +2207,15 @@ pub fn resolveObjectLikeType(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Obje
     }
 }
 
+fn indexOfTypedField(fields: []const *ast.Field, start: usize) ?usize {
+    for (fields[start..], start..) |field, i| {
+        if (field.typeSpec != null) {
+            return i;
+        }
+    }
+    return null;
+}
+
 /// Explicit `decl` node for distinct type declarations. Must belong to `c`.
 pub fn resolveObjectFields(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.ObjectDecl) !void {
     var obj: *cy.sym.ObjectType = undefined;
@@ -2234,24 +2243,39 @@ pub fn resolveObjectFields(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Object
     const fields = try c.alloc.alloc(cy.sym.FieldInfo, decl.fields.len);
     errdefer c.alloc.free(fields);
 
+    var field_group_t: cy.TypeId = cy.NullId;
+    var field_group_end: usize = undefined;
     var has_boxed_fields = false;
     for (decl.fields, 0..) |field, i| {
         const fieldName = c.ast.nodeString(field.name);
-        const fieldType = try resolveTypeSpecNode(c, field.typeSpec);
-        try ensureCompleteType(c, fieldType, @ptrCast(field.typeSpec));
+        var field_t: cy.TypeId = undefined;
+        if (field.typeSpec == null) {
+            if (field_group_t == cy.NullId or i > field_group_end) {
+                // Attempt to find group type.
+                field_group_end = indexOfTypedField(decl.fields, i + 1) orelse {
+                    return c.reportError("Expected field type.", @ptrCast(field));
+                };
+                field_group_t = try resolveTypeSpecNode(c, decl.fields[field_group_end].typeSpec);
+                try ensureCompleteType(c, field_group_t, @ptrCast(decl.fields[field_group_end].typeSpec));
+            }
+            field_t = field_group_t;
+        } else {
+            field_t = try resolveTypeSpecNode(c, field.typeSpec);
+            try ensureCompleteType(c, field_t, @ptrCast(field.typeSpec));
+        }
 
-        const sym = try c.declareField(@ptrCast(obj), fieldName, i, fieldType, @ptrCast(field));
+        const sym = try c.declareField(@ptrCast(obj), fieldName, i, field_t, @ptrCast(field));
         fields[i] = .{
             .sym = @ptrCast(sym),
-            .type = fieldType,
+            .type = field_t,
             .offset = num_total_fields,
         };
 
         if (object_like.type != .struct_t) {
-            has_boxed_fields = has_boxed_fields or !c.sema.isUnboxedType(fieldType);
+            has_boxed_fields = has_boxed_fields or !c.sema.isUnboxedType(field_t);
         }
 
-        const field_te = c.sema.types.items[fieldType];
+        const field_te = c.sema.types.items[field_t];
         if (field_te.kind == .struct_t) {
             num_total_fields += field_te.data.struct_t.nfields;
 
@@ -2267,7 +2291,7 @@ pub fn resolveObjectFields(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Object
         } else {
             num_total_fields += 1;
             if (object_like.type == .struct_t) {
-                const boxed = !c.sema.isUnboxedType(fieldType);
+                const boxed = !c.sema.isUnboxedType(field_t);
                 try c.dataU8Stack.append(c.alloc, .{ .boxed=boxed });
                 has_boxed_fields = has_boxed_fields or boxed;
             }

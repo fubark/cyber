@@ -892,8 +892,8 @@ test "clToBool()" {
     i = vm.newInt(1);
     try t.eq(c.toBool(i), true);
 
-    try t.eq(c.toBool(c.clTrue()), true);
-    try t.eq(c.toBool(c.clFalse()), false);
+    try t.eq(c.toBool(c.True), true);
+    try t.eq(c.toBool(c.False), false);
 }
 
 export fn clAsBool(val: Value) bool {
@@ -901,8 +901,8 @@ export fn clAsBool(val: Value) bool {
 }
 
 test "clAsBool()" {
-    try t.eq(c.asBool(c.clTrue()), true);
-    try t.eq(c.asBool(c.clFalse()), false);
+    try t.eq(c.asBool(c.True), true);
+    try t.eq(c.asBool(c.False), false);
 }
 
 export fn clAsBoxInt(val: Value) i64 {

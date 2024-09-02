@@ -23,6 +23,8 @@ typedef struct CLModule CLModule;
 
 #define CL_NULLID UINT32_MAX
 #define CL_VOID 0x7FFC000100000000
+#define CL_TRUE 0x7FFC000200000001
+#define CL_FALSE 0x7FFC000200000000
 #define CL_INTERRUPT 0x7ffc00030000ffff
 
 typedef int CLResultCode;
@@ -532,8 +534,6 @@ CLAllocator clGetAllocator(CLVM* vm);
 // -----------------------------------
 
 // Create values.
-CLValue clTrue(void);
-CLValue clFalse(void);
 CLValue clBool(bool b);
 
 CLValue clInt(int64_t n);   // Unboxed.

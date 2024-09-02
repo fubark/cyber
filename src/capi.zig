@@ -77,8 +77,10 @@ pub const asSymbolId = c.clAsSymbolId;
 pub fn asString(val: Value) []const u8 {
     return fromStr(c.clAsString(val));
 }
-pub const clTrue = c.clTrue;
-pub const clFalse = c.clFalse;
+pub const Void = c.CL_VOID;
+pub const True = c.CL_TRUE;
+pub const False = c.CL_FALSE;
+pub const bool_ = c.clBool;
 pub const asBoxInt = c.clAsBoxInt;
 pub const int = c.clInt;
 pub const asBool = c.clAsBool;

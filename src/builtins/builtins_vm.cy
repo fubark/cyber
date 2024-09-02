@@ -2,16 +2,16 @@
 --| Functions.
 --|
 
-func bitcast(#D type, val #S) D:
+func bitcast[D, S](D type, val S) D:
     return bitcast_(D, typeid[D], val, typeid[S])
 
-@host -func bitcast_(#D type, dst_t int, val #S, src_t int) D
+@host -func bitcast_[D, S](D type, dst_t int, val S, src_t int) D
 
 --| Copies a primitive value or creates a shallow copy of an object value.
-func copy(val #T) T:
-    return copy(typeid[T], val)
+func copy[T](val T) T:
+    return copy_(typeid[T], val)
 
-@host -func copy(type_id int, val #T) T
+@host -func copy_[T](type_id int, val T) T
 
 --| Dumps a detailed description of a value.
 @host func dump(val any) void
@@ -47,10 +47,10 @@ func copy(val #T) T:
 --| Returns the statistics of the run in a map value.
 @host func performGC() Map
 
-func ptrcast(#D type, val #S) *D:
+func ptrcast[D, S](D type, val S) *D:
     return ptrcast_(D, typeid[S], val)
 
-@host -func ptrcast_(#D type, src_t int, val #S) *D
+@host -func ptrcast_[D, S](D type, src_t int, val S) *D
 
 --| Prints a value. The host determines how it is printed.
 @host func print(str any) void
@@ -58,12 +58,12 @@ func ptrcast(#D type, val #S) *D:
 --| Queues a callback function as an async task.
 @host func queueTask(fn Func() void) void
 
-@host func refcast(#T type, ptr *T) &T
+@host func refcast[T](T type, ptr *T) &T
 
 --| Converts a rune to a string.
 @host func runestr(val int) String
 
-func sizeof(#T type) int:
+func sizeof[T](T type) int:
     return sizeof_(typeid[T])
 
 @host func sizeof_(type_id int) int
@@ -77,7 +77,7 @@ func typeof(t ExprType) type:
 --|
 
 --| Returns the type ID of a type.
-func typeid[T type] int:
+def typeid[T type] int: 
     return (T).id()
 
 --|
@@ -287,10 +287,10 @@ type float #float64_t:
 
 --| Creates a list with initial capacity of `n` and values set to `val`.
 --| If the value is an object, it is shallow copied `n` times.
-func List.fill(val #T, n int) List[T]:
-    return List.fill(typeid[List[T]], typeid[T], val, n)
+func List.fill[T](val T, n int) List[T]:
+    return List.fill_(typeid[List[T]], typeid[T], val, n)
 
-@host -func List.fill(list_t int, val_t int, val #T, n int) List[T]
+@host -func List.fill_[T](list_t int, val_t int, val T, n int) List[T]
 
 @host type ListIterator[T type] _:
     func next(self) ?T:
@@ -534,7 +534,7 @@ type pointer[T type] #int64_t:
     @host func set(self, offset int, ctype symbol, val any) void
 
 --| Converts an `int` to a `pointer` value.
-@host func pointer.$call(#T type, addr int) *T
+@host func pointer.$call[T](T type, addr int) *T
 
 @host
 type ExternFunc _:
@@ -562,24 +562,24 @@ type Option[T type] enum:
 @host type Future[T type] _
 
 --| Returns a `Future[T]` that has a completed value.
-func Future.complete(val #T) Future[T]:
+func Future.complete[T](val T) Future[T]:
     return Future.complete_(val, typeid[Future[T]])
     
-@host -func Future.complete_(val #T, ret_type int) Future[T]
+@host -func Future.complete_[T](val T, ret_type int) Future[T]
 
-func Future.new(#T type) Future[T]:
+func Future.new[T](T type) Future[T]:
     return Future.new_(T, typeid[Future[T]])
 
-@host -func Future.new_(#T type, ret_type int) Future[T]
+@host -func Future.new_[T](T type, ret_type int) Future[T]
 
 @host type FutureResolver[T type] _:
     @host func complete(self, val T) void
     @host func future(self) Future[T]
 
-func FutureResolver.new(#T type) FutureResolver[T]:
+func FutureResolver.new[T](T type) FutureResolver[T]:
     return FutureResolver.new_(T, typeid[Future[T]], typeid[FutureResolver[T]])
 
-@host -func FutureResolver.new_(#T type, future_t int, ret_t int) FutureResolver[T]
+@host -func FutureResolver.new_[T](T type, future_t int, ret_t int) FutureResolver[T]
 
 type Ref[T type] #int64_t
 
@@ -710,20 +710,22 @@ type IMemory trait:
 type Memory:
     iface IMemory
 
-    func new(self, #T type) *T:
-        var bytes = self.iface.alloc(sizeof(T))
-        return ptrcast(T, bytes.ptr)
+func Memory.new[T](self, T type) *T:
+    var bytes = self.iface.alloc(sizeof(T))
+    var ptr = ptrcast(T, bytes.ptr)
+    return ptr
 
-    func alloc(self, #T type, n int) [*]T:
-        var bytes = self.iface.alloc(sizeof(T) * n)
-        return ptrcast(T, bytes.ptr)[0..n]
+func Memory.alloc[T](self, T type, n int) [*]T:
+    var bytes = self.iface.alloc(sizeof(T) * n)
+    var slice = ptrcast(T, bytes.ptr)[0..n]
+    return slice
 
-    func free(self, ptr *#T):
-        self.iface.free(ptrcast(byte, ptr)[0..sizeof(T)])
+func Memory.free[T](self, ptr *T):
+    self.iface.free(ptrcast(byte, ptr)[0..sizeof(T)])
 
-    func free(self, slice [*]#T):
-        var bytes = ptrcast(byte, slice.ptr)[0..sizeof(T)*slice.len()]
-        self.iface.free(bytes)
+func Memory.free_[T](self, slice [*]T):
+    var bytes = ptrcast(byte, slice.ptr)[0..sizeof(T)*slice.len()]
+    self.iface.free(bytes)
 
 type DefaultMemory:
     with IMemory

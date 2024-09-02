@@ -1,6 +1,6 @@
 use test
 
-func GetType[ID String] type:
+def GetType[ID String] type:
     if ID == 'bool':
         return bool
     else ID == 'int':
@@ -23,7 +23,7 @@ test.eq(c, 'xyz')
 type GenFoo[T type]:
     a T
 
-func Foo[T type] type:
+def Foo[T type] type:
     if T == int:
         return int
     else:

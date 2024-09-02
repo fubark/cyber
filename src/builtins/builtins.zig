@@ -31,7 +31,7 @@ const func = cy.hostFuncEntry;
 const funcs = [_]C.HostFuncEntry{
     // Utils.
     func("bitcast_",       zErrFunc(bitcast)),
-    func("copy",           zErrFunc(copy)),
+    func("copy_",          zErrFunc(copy)),
     func("dump",           zErrFunc(dump)),
     func("eprint",         eprint),
     func("errorReport",    zErrFunc(errorReport)),
@@ -129,7 +129,7 @@ const funcs = [_]C.HostFuncEntry{
     func("List.remove",      bindings.listRemove),
     func("List.resize_",     zErrFunc(bindings.listResize)),
     // .{"sort", bindings.listSort, .standard},
-    func("List.fill",        listFill),
+    func("List.fill_",       listFill),
 
     // ListIterator
     func("ListIterator.next_", zErrFunc(bindings.listIteratorNext)),

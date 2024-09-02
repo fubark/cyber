@@ -2348,7 +2348,7 @@ fn panicIncompatibleLambdaSig(vm: *cy.VM, args: []const Value, cstrFuncSigId: se
     defer vm.alloc.free(argsSigStr);
 
     return vm.panicFmt(
-        \\Incompatible call arguments `{}`
+        \\Incompatible call arguments `({})`
         \\to the lambda `func {}`.
         , &.{
             v(argsSigStr), v(cstrFuncSigStr),
@@ -2375,7 +2375,7 @@ fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Va
     var msg: std.ArrayListUnmanaged(u8) = .{}; 
     defer msg.deinit(vm.alloc);
     const w = msg.writer(vm.alloc);
-    try w.print("Can not find compatible function for call: `{s}{s}`.", .{name, call_args_str});
+    try w.print("Can not find compatible function for call: `{s}({s})`.", .{name, call_args_str});
     // if (num_ret == 1) {
     //     try w.writeAll(" Expects non-void return.");
     // }
@@ -2423,7 +2423,7 @@ fn panicIncompatibleMethodSig(
     const call_args_str = vm.compiler.sema.allocTypesStr(typeIds[1..], null) catch return error.OutOfMemory;
     defer vm.alloc.free(call_args_str);
 
-    try w.print("Can not find compatible method for call: `({s}) {s}{s}`.", .{typeName, name, call_args_str});
+    try w.print("Can not find compatible method for call: `({s}) {s}({s})`.", .{typeName, name, call_args_str});
     try w.writeAll("\n");
     try w.print("Methods named `{s}`:\n", .{name});
 

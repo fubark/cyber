@@ -3,14 +3,14 @@
 
 --| Returns whether two values are equal.
 --| Panics with `error.AssertError` if types or values do not match up.
-func eq(a #T, b T) bool:
+func eq[T](a T, b T) bool:
     return eq_(typeid[T], a, b)
 
-@host -func eq_(t int, a #T, b T) bool
+@host -func eq_[T](t int, a T, b T) bool
 
 --| Returns `true` if two lists have the same size and the elements are equal
 --| as if `eq` was called on those corresponding elements.
-func eqList(a List[#T], b List[T]) bool:
+func eqList[T](a List[T], b List[T]) bool:
     if a.len() != b.len():
         eprint("Length mismatch: $(a.len()) != $(b.len())")
         return false
@@ -21,7 +21,7 @@ func eqList(a List[#T], b List[T]) bool:
 
 --| Returns `true` if two slices have the same size and the elements are equal
 --| as if `eq` was called on those corresponding elements.
-func eqSlice(a []#T, b []T) bool:
+func eqSlice[T](a []T, b []T) bool:
     if a.len() != b.len():
         eprint("Length mismatch: $(a.len()) != $(b.len())")
         return false
@@ -31,7 +31,7 @@ func eqSlice(a []#T, b []T) bool:
     return true
 
 --| Returns `true` if two numbers are near each other within epsilon 1e-5.
-@host func eqNear(a #T, b T) bool
+@host func eqNear[T](a T, b T) bool
 
 func fail():
     throw error.AssertError

@@ -409,7 +409,10 @@ pub const FuncDecl = struct {
 pub const FuncParam = struct {
     name_type: *Node align(8),
     type: ?*Node,
-    template: bool,
+
+    // Used by sema to indicate that the parameter's type is inferred.
+    sema_infer_tparam: bool = false,
+    sema_tparam: bool = false,
 };
 
 pub const UseAlias = struct {
@@ -592,9 +595,10 @@ pub const StringTemplate = struct {
     parts: []*Node align(8),
 };
 
-const FuncSigType = enum(u8) {
+pub const FuncSigType = enum(u8) {
     func,
     infer,
+    template,
 };
 
 fn NodeData(comptime node_t: NodeType) type {
@@ -778,10 +782,7 @@ pub const Node = struct {
             .forIterStmt    => self.cast(.forIterStmt).pos,
             .forRangeStmt   => self.cast(.forRangeStmt).pos,
             .funcDecl       => self.cast(.funcDecl).pos,
-            .func_param     => {
-                const param = self.cast(.func_param);
-                return param.name_type.pos() - @intFromBool(param.template);
-            },
+            .func_param     => self.cast(.func_param).name_type.pos(),
             .func_type      => self.cast(.func_type).pos,
             .group          => self.cast(.group).pos,
             .hexLit         => self.cast(.hexLit).pos,
@@ -1137,6 +1138,9 @@ pub const AstView = struct {
 
     pub fn isMethodDecl(self: AstView, decl: *FuncDecl) bool {
         if (decl.params.len == 0) {
+            return false;
+        }
+        if (decl.params[0].name_type.type() != .ident) {
             return false;
         }
         const param_name = self.nodeString(decl.params[0].name_type);

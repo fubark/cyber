@@ -37,7 +37,7 @@ pub fn genAll(c: *cy.Compiler) !void {
         log.tracev("prep type: {s}", .{stype.sym.name()});
         const sym = stype.sym;
 
-        if (stype.info.ct_infer or stype.info.ct_ref) {
+        if (stype.info.ct_ref) {
             continue;
         }
 
@@ -210,6 +210,7 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
         },
         .context_var,
         .template,
+        .func_template,
         .hostobj_t,
         .type,
         .chunk,
@@ -233,7 +234,6 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
 
 pub fn prepareFunc(c: *cy.Compiler, opt_group: ?rt.FuncGroupId, func: *cy.Func) !void {
     switch (func.type) {
-        .template,
         .trait => return,
         .userLambda => {
             if (cy.Trace) {

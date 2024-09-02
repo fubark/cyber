@@ -207,6 +207,13 @@ pub const ChunkExt = struct {
         return sym;
     }
 
+    pub fn reserveFuncTemplate(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, tparams: []cy.sym.FuncTemplateParam, decl: *ast.TemplateDecl) !*cy.sym.FuncTemplate {
+        const sym = try c.createFuncTemplate(parent, name, tparams, decl);
+        const mod = parent.getMod().?;
+        try addUniqueSym(c, mod, name, @ptrCast(sym), @ptrCast(decl));
+        return sym;
+    }
+
     pub fn reserveTemplate(c: *cy.Chunk, parent: *cy.Sym, name: []const u8,
         kind: cy.sym.TemplateType, decl: *ast.TemplateDecl) !*cy.sym.Template {
 
@@ -353,22 +360,6 @@ pub const ChunkExt = struct {
         func.retType = func_sig.getRetType();
         func.reqCallTypeCheck = func_sig.info.reqCallTypeCheck;
         func.numParams = @intCast(func_sig.params_len);
-    }
-
-    pub fn reserveTemplateFunc(
-        c: *cy.Chunk, parent: *cy.Sym, name: []const u8, node: ?*ast.FuncDecl, is_method: bool,
-    ) !*cy.Func {
-        const mod = parent.getMod().?;
-        const sym = try prepareFuncSym(c, parent, mod, name, node);
-        const func = try c.createFunc(.template, sym, @ptrCast(node), is_method);
-        try c.funcs.append(c.alloc, func);
-        sym.addFunc(func);
-        return func;
-    }
-
-    pub fn resolveTemplateFunc(c: *cy.Chunk, func: *cy.Func, func_sig: sema.FuncSigId, template: *cy.sym.FuncTemplate) !void {
-        func.data = .{ .template = template };
-        try resolveFunc(c, func, func_sig);
     }
 
     pub fn reserveHostFunc(
@@ -531,6 +522,7 @@ pub const ChunkExt = struct {
             .enum_t,
             .chunk,
             .distinct_t,
+            .func_template,
             .template,
             .placeholder,
             .dummy_t,
@@ -609,6 +601,7 @@ pub const ChunkExt = struct {
             .enum_t,
             .chunk,
             .distinct_t,
+            .func_template,
             .template,
             .placeholder,
             .use_alias,

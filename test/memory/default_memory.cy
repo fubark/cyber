@@ -30,7 +30,7 @@ ints[0] = 123
 ints[1] = 234
 test.eq(ints[0], 123)
 test.eq(ints[1], 234)
-mem.free(ints)
+mem.free_(ints)
 
 -- Memory.alloc cstruct
 var foos = mem.alloc(Foo, 2)
@@ -45,6 +45,6 @@ foos[0].a = 234
 foos[0].b = 2.34
 test.eq(foos[0].a, 234)
 test.eq(foos[0].b, 2.34)
-mem.free(foos)
+mem.free_(foos)
 
 --cytest: pass

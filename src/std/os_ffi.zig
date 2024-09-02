@@ -888,12 +888,12 @@ pub fn ffiBindLib(vm: *cy.VM, config: BindLibConfig) !Value {
         tempTypes.len = 0;
         if (!config.gen_table) {
             // Self param.
-            const param_t = sema.FuncParam.initRt(bt.Any);
+            const param_t = sema.FuncParam.init(bt.Any);
             try tempTypes.append(param_t);
         }
         for (cfunc.params) |param| {
             const typeId = try toCyType(vm, param);
-            const param_t = sema.FuncParam.initRt(typeId);
+            const param_t = sema.FuncParam.init(typeId);
             try tempTypes.append(param_t);
         }
 

@@ -500,69 +500,48 @@ pub const Parser = struct {
             return self.reportError("Expected open parenthesis.", &.{});
         }
         self.advance();
-        return self.parseFuncParams(&.{}, false);
+        return self.parseFuncParams(&.{});
     }
 
     fn genDynFuncParam(self: *Parser, ident: *ast.Node) !*ast.FuncParam {
         return self.ast.newNode(.func_param, .{
             .name_type = ident,
             .type = null,
-            .template = false,
         });
     }
 
     fn parseFuncParam(self: *Parser) anyerror!*ast.FuncParam {
-        var template_param = false;
         var name_type: *ast.Node = undefined;
-        if (self.peek().tag() == .pound) {
-            self.advance();
-            if (self.peek().tag() != .ident) {
-                return self.reportError("Expected param name.", &.{});
-            }
-            name_type = @ptrCast(try self.newSpanNode(.ident, self.next_pos));
-            self.advance();
-            template_param = true;
-        } else {
-            const next = self.peek();
-            if (next.tag() == .ident) {
-                // Check for space between ident and next token otherwise it could be a type.
-                const next2 = self.peekAhead(1);
-                if (next2.pos() >= next.data.end_pos + 1) {
-                    name_type = @ptrCast(try self.newSpanNode(.ident, self.next_pos));
-                    self.advance();
-                } else {
-                    name_type = (try self.parseTermExpr(.{})) orelse {
-                        return self.reportError("Expected param.", &.{});
-                    };
-                }
+        const next = self.peek();
+        if (next.tag() == .ident) {
+            // Check for space between ident and next token otherwise it could be a type.
+            const next2 = self.peekAhead(1);
+            if (next2.pos() >= next.data.end_pos + 1) {
+                name_type = @ptrCast(try self.newSpanNode(.ident, self.next_pos));
+                self.advance();
             } else {
                 name_type = (try self.parseTermExpr(.{})) orelse {
                     return self.reportError("Expected param.", &.{});
                 };
             }
+        } else {
+            name_type = (try self.parseTermExpr(.{})) orelse {
+                return self.reportError("Expected param.", &.{});
+            };
         }
 
         const type_spec = try self.parseOptTypeSpec(false);
         return self.ast.newNode(.func_param, .{
             .name_type = name_type,
             .type = type_spec,
-            .template = template_param,
         });
     }
 
-    /// Assumes token at first param ident or right paren.
-    /// Let sema check whether param types are required since it depends on the context.
-    fn parseFuncParams(self: *Parser, pre_params: []const *ast.FuncParam, comptime template: bool) ![]*ast.FuncParam {
-        const CloseDelim: cy.TokenType = if (template) .right_bracket else .right_paren;
-
+    fn parseTemplateParams(self: *Parser) ![]*ast.FuncParam {
         const param_start = self.node_stack.items.len;
         defer self.node_stack.items.len = param_start;
 
-        if (pre_params.len > 0) {
-            try self.node_stack.appendSlice(self.alloc, @ptrCast(pre_params));
-        }
-
-        if (self.peek().tag() == CloseDelim) {
+        if (self.peek().tag() == .right_bracket) {
             self.advance();
             return &.{};
         }
@@ -576,7 +555,44 @@ pub const Parser = struct {
                 .comma => {
                     self.advance();
                 },
-                CloseDelim => {
+                .right_bracket => {
+                    self.advance();
+                    break;
+                },
+                else => return self.reportError("Expected `,`.", &.{}),
+            }
+            param = try self.parseFuncParam();
+            try self.pushNode(@ptrCast(param));
+        }
+        const params = self.node_stack.items[param_start..];
+        return @ptrCast(try self.ast.dupeNodes(params));
+    }
+
+    /// Assumes token at first param ident or right paren.
+    /// Let sema check whether param types are required since it depends on the context.
+    fn parseFuncParams(self: *Parser, pre_params: []const *ast.FuncParam) ![]*ast.FuncParam {
+        const param_start = self.node_stack.items.len;
+        defer self.node_stack.items.len = param_start;
+
+        if (pre_params.len > 0) {
+            try self.node_stack.appendSlice(self.alloc, @ptrCast(pre_params));
+        }
+
+        if (self.peek().tag() == .right_paren) {
+            self.advance();
+            return &.{};
+        }
+
+        // Parse params.
+        var param = try self.parseFuncParam();
+        try self.pushNode(@ptrCast(param));
+
+        while (true) {
+            switch (self.peek().tag()) {
+                .comma => {
+                    self.advance();
+                },
+                .right_paren => {
                     self.advance();
                     break;
                 },
@@ -707,7 +723,7 @@ pub const Parser = struct {
             return error.TODO;
         } else {
             self.advance();
-            const params = try self.parseFuncParams(&.{}, true);
+            const params = try self.parseTemplateParams();
             return self.ast.newNodeErase(.template, .{
                 .params = params,
                 .child_decl = undefined,
@@ -1179,6 +1195,62 @@ pub const Parser = struct {
         allow_decl: bool,
     };
 
+    fn parseDefDecl(self: *Parser, config: FuncDeclConfig) !*ast.Node {
+        if (!config.allow_decl) {
+            return self.reportError("Static declarations are not allowed here.", &.{});
+        }
+        const start = self.next_pos;
+        // Assumes first token is the `const` keyword.
+        self.advance();
+
+        // Parse const name.
+        const name = (try self.parseOptNamePath()) orelse {
+            return self.reportError("Expected name identifier.", &.{});
+        };
+
+        var template: *ast.TemplateDecl = undefined;
+        var params: []*ast.FuncParam = undefined;
+        if (self.peek().tag() != .left_bracket) {
+            return self.reportError("Expected left bracket.", &.{});
+        }
+
+        self.advance();
+        params = try self.parseTemplateParams();
+        template = try self.ast.newNode(.template, .{
+            .params = params,
+            .child_decl = undefined,
+        });
+        try self.staticDecls.append(self.alloc, @ptrCast(template));
+        self.consumeWhitespaceTokens();
+
+        const ret = try self.parseFuncReturn();
+
+        var token = self.peek();
+        if (token.tag() != .colon) {
+            return self.reportError("Expected colon.", &.{});
+        }
+
+        self.advance();
+
+        try self.pushBlock();
+        const stmts = try self.parseSingleOrIndentedBodyStmts();
+        _ = self.popBlock();
+
+        const decl = try self.ast.newNode(.funcDecl, .{
+            .name = name,
+            .attrs = config.attrs,
+            .params = params,
+            .ret = ret,
+            .stmts = stmts,
+            .sig_t = .func,
+            .hidden = config.hidden,
+            .pos = self.tokenSrcPos(start),
+        });
+
+        template.child_decl = @ptrCast(decl);
+        return @ptrCast(template);
+    }
+
     fn parseFuncDecl(self: *Parser, config: FuncDeclConfig) !*ast.Node {
         if (!config.allow_decl) {
             return self.reportError("`func` declarations are not allowed here.", &.{});
@@ -1192,19 +1264,27 @@ pub const Parser = struct {
             return self.reportError("Expected function name identifier.", &.{});
         };
 
+        var sig_t = ast.FuncSigType.func;
         var opt_template: ?*ast.TemplateDecl = null;
         var params: []*ast.FuncParam = undefined;
         if (self.peek().tag() == .left_bracket) {
             self.advance();
-            params = try self.parseFuncParams(&.{}, true);
+            params = try self.parseTemplateParams();
             opt_template = try self.ast.newNode(.template, .{
                 .params = params,
                 .child_decl = undefined,
             });
             try self.staticDecls.append(self.alloc, @ptrCast(opt_template));
             self.consumeWhitespaceTokens();
-        } else {
+        }
+
+        if (self.peek().tag() == .left_paren) {
             params = try self.parseParenAndFuncParams();
+            if (opt_template != null) {
+                sig_t = .template;
+            }
+        } else {
+            return self.reportError("Expected function parameter list.", &.{});
         }
         const ret = try self.parseFuncReturn();
 
@@ -1227,7 +1307,7 @@ pub const Parser = struct {
                 .params = params,
                 .ret = ret,
                 .stmts = stmts,
-                .sig_t = .func,
+                .sig_t = sig_t,
                 .hidden = config.hidden,
                 .pos = self.tokenSrcPos(start),
             });
@@ -1239,7 +1319,7 @@ pub const Parser = struct {
                 .name = name,
                 .params = params,
                 .stmts = &.{},
-                .sig_t = .func,
+                .sig_t = sig_t,
                 .hidden = config.hidden,
                 .pos = self.tokenSrcPos(start),
             });
@@ -1247,12 +1327,13 @@ pub const Parser = struct {
 
         if (opt_template) |template| {
             template.child_decl = @ptrCast(decl);
+            return @ptrCast(template);
         } else {
             if (self.cur_indent == 0) {
                 try self.staticDecls.append(self.alloc, @ptrCast(decl));
             }
+            return @ptrCast(decl);
         }
-        return @ptrCast(decl);
     }
 
     fn parseElseStmts(self: *Parser) ![]*ast.ElseBlock {
@@ -1834,11 +1915,18 @@ pub const Parser = struct {
             .at => {
                 return self.parseAtDecl(config.allow_decls);
             },
+            .def_k => {
+                return self.parseDefDecl(.{ .attrs = &.{}, .hidden = false, .allow_decl = config.allow_decls});
+            },
             .pound => {
                 self.advance();
                 if (self.peek().tag() != .ident) {
                     return self.reportError("Unsupported compile-time statement.", &.{});
                 }
+                const token = self.peek();
+                const name = self.ast.src[token.pos()..token.data.end_pos];
+                _ = name;
+
                 const ident = try self.newSpanNode(.ident, self.next_pos);
                 self.advance();
 
@@ -2042,6 +2130,8 @@ pub const Parser = struct {
         const attrs: []*ast.Attribute = @ptrCast(try self.ast.dupeNodes(&.{attr}));
         if (self.peek().tag() == .func_k) {
             return self.parseFuncDecl(.{ .hidden = hidden, .attrs = attrs, .allow_decl = allow_decls });
+        } else if (self.peek().tag() == .def_k) {
+            return self.parseDefDecl(.{ .attrs = attrs, .hidden = hidden, .allow_decl = allow_decls});
         } else if (self.peek().tag() == .var_k) {
             return try self.parseVarDecl(.{ .hidden = hidden, .attrs = attrs, .typed = true, .allow_static = allow_decls });
         } else if (self.peek().tag() == .dyn_k) {
@@ -2929,7 +3019,7 @@ pub const Parser = struct {
                 } else if (tag == .comma) {
                     self.advance();
                     const param = try self.genDynFuncParam(expr);
-                    const params = try self.parseFuncParams(&.{param}, false);
+                    const params = try self.parseFuncParams(&.{param});
                     return @ptrCast(try self.parseInferLambda(params));
                 } else {
                     return self.reportError("Expected right parenthesis.", &.{});
@@ -3191,7 +3281,7 @@ pub const Parser = struct {
                 } else if (self.peek().tag() == .comma) {
                     self.advance();
                     const param = try self.genDynFuncParam(expr);
-                    const params = try self.parseFuncParams(&.{ param }, false);
+                    const params = try self.parseFuncParams(&.{ param });
                     if (self.peek().tag() == .equal_right_angle) {
                         return @ptrCast(try self.parseInferLambda(params));
                     } else if (self.peek().tag() == .colon) {
@@ -3723,7 +3813,7 @@ fn toBinExprOp(op: cy.tokenizer.TokenType) ?cy.ast.BinaryExprOp {
         .as_k, .at, .await_k,
         .bang, .bin, .break_k,
         .minus_right_angle, .case_k, .catch_k, .coinit_k, .colon, .comma, .context_k, .continue_k, .coresume_k, .coyield_k, .cstruct_k,
-        .dec, .dot, .dot_bang, .dot_question, .dot_dot, .dot_star,
+        .dec, .def_k, .dot, .dot_bang, .dot_question, .dot_dot, .dot_star,
         .else_k, .enum_k, .err, .error_k, .equal, .equal_right_angle,
         .false_k, .float, .for_k, .func_k, .Func_k,
         .hex, .ident, .if_k, .mod_k, .indent,

@@ -138,9 +138,6 @@ pub const Compiler = struct {
             for (chunk.syms.items) |sym| {
                 sym.deinitValues(self.vm);
             }
-            for (chunk.funcs.items) |func| {
-                func.deinitValues(self.vm);
-            }
         }
     }
 
@@ -804,7 +801,11 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                     },
                     .template => {
                         const decl = node.cast(.template);
-                        _ = try sema.reserveTemplate(chunk, decl);
+                        if (decl.child_decl.type() == .funcDecl and decl.child_decl.cast(.funcDecl).sig_t == .template) {
+                            _ = try sema.reserveFuncTemplate(chunk, decl);
+                        } else {
+                            _ = try sema.reserveTemplate(chunk, decl);
+                        }
                     },
                     .staticDecl => {
                         const sym = try sema.reserveVar(chunk, node.cast(.staticDecl));
@@ -964,11 +965,6 @@ pub var UpValueType = cy.sym.DummyType{
     .type = bt.UpValue,
 };
 
-pub var CTInferType = cy.sym.DummyType{
-    .head = cy.Sym.init(.dummy_t, null, "compt-infer"),
-    .type = bt.CTInfer,
-};
-
 fn createDynMethodIds(self: *Compiler) !void {
     self.indexMID = try self.vm.ensureMethod("$index");
     self.setIndexMID = try self.vm.ensureMethod("$setIndex");
@@ -1064,6 +1060,9 @@ fn resolveSyms(self: *Compiler) !void {
                 },
                 .template => {
                     try sema.ensureResolvedTemplate(chunk, @ptrCast(sym));
+                },
+                .func_template => {
+                    try sema.ensureResolvedFuncTemplate(chunk, @ptrCast(sym));
                 },
                 .trait_t => {},
                 else => {},

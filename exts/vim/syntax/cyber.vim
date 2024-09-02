@@ -2,7 +2,7 @@
 syntax keyword cyberKeyword
     \ if else switch while for each break continue pass
     \ or and not is
-    \ var as dyn
+    \ var as dyn def
     \ func return
     \ coinit coyield coresume
     \ type object enum true false none

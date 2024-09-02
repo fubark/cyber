@@ -1,6 +1,6 @@
 use test
 
-func GetType[ID String] type:
+def GetType[ID String] type:
     if ID == 'bool':
         return bool
     else ID == 'int':

@@ -322,7 +322,6 @@ pub const Chunk = struct {
         self.use_alls.deinit(self.alloc);
 
         for (self.funcs.items) |func| {
-            func.deinit(self.alloc);
             self.alloc.destroy(func);
         }
         self.funcs.deinit(self.alloc);
@@ -334,7 +333,6 @@ pub const Chunk = struct {
         self.syms.deinit(self.alloc);
 
         for (self.deferred_funcs.items) |func| {
-            func.deinit(self.alloc);
             self.alloc.destroy(func);
         }
         self.deferred_funcs.deinit(self.alloc);

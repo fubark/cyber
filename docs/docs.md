@@ -1561,7 +1561,7 @@ Note that invoking the template again with the same argument(s) returns the same
 ### Type specialization.
 [Value templates](#value-templates) can be used to specialize type templates:
 ```cy
-func List[T type] type:
+def List[T type] type:
     if T == dyn:
         return DynList
     else:
@@ -2024,7 +2024,6 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
   * [Explicit template call.](#explicit-template-call)
   * [Expand function.](#expand-function)
   * [Infer param type.](#infer-param-type)
-* [Value templates.](#value-templates)
 </td>
 </tr></table>
 
@@ -2274,31 +2273,31 @@ There is no need for `#` if the caller is already in a compile-time context: *Co
 ## Function templates.
 Function declarations can include template parameters to create a function template:
 ```cy
-func add(#T type, a T, b T) T:
+func add[T](T type, a T, b T) T:
     return a + b
 ```
-Template parameters are prefixed with `#`.
-Unlike type templates, function templates allow template parameters to be declared alongside runtime parameters.
+Only the template parameter names are declared.
+Their types are then inferred from the function signature.
 
 ### Explicit template call.
-When the function is invoked with template argument(s), a special version of the function is generated and used:
+When the function is invoked with template argument(s), a new runtime function is generated and used:
 ```cy
 print add(int, 1, 2)    --> 3
 print add(float, 1, 2)  --> 3.0
 ```
-Note that invoking the function again with the same argument(s) uses the same generated function. In other words, the generated function is always memoized from the template arguments.
+Note that invoking the function again with the same template argument(s) uses the same generated function. In other words, the generated function is always memoized from the template arguments.
 
 ### Expand function.
-Since functions may contain template and runtime parameters, the index operator is used to expand the function with just template arguments and return the generated function:
+The function template can be explicitly expanded to a runtime function:
 ```cy
 var addInt = add[int]
 print addInt(1, 2)      --> 3
 ```
 
 ### Infer param type.
-When a template parameter is declared in the type specifier, it's inferred from the argument's type:
+When a template parameter is first encountered in a function parameter's type specifier, it's inferred from the argument's type:
 ```cy
-func add(a #T, b T) T:
+func add[T](a T, b T) T:
     return a + b
 
 print add(1, 2)         --> 3
@@ -2308,30 +2307,9 @@ In the above example, `add[int]` and `add[float]` were inferred from the functio
 
 Nested template parameters can also be inferred:
 ```cy
-func set(m Map[#K, #V], key K, val V):
+func set[K, V](m Map[K, V], key K, val V):
     m.set(key, val)
 ```
-
-## Value templates.
-A value template returns a memoized value after being invoked with template arguments just once. It's declared with `func` but the template parameters are delimited with brackets.
-
-This is different from a function template which generates multiple runtime functions based on its template parameters. A value template does not generate a runtime function and instead expands to a value at compile-time:
-```cy
-func GetType[ID String] type:
-    if ID == 'bool':
-        return bool
-    else ID == 'int':
-        return int
-    else ID == 'String':
-        return String
-    else
-        throw error.Unsupported
-
-var a GetType['int'] = 123
-print a         --> 123
-```
-This can be useful to evaluate compile-time logic to create new types or specialize other templates.
-Any compile-time compatible type can also be returned.
 
 # Modules.
 <table><tr>
@@ -3400,6 +3378,7 @@ print str.trim(.left, ' ')
 * [Reflection.](#reflection)
 * [Attributes.](#attributes)
 * [Templates.](#templates)
+  * [Value templates.](#value-templates)
 * [Macros.](#macros)
 * [Compile-time execution.](#compile-time-execution)
   * [Builtin types.](#builtin-types)
@@ -3569,6 +3548,25 @@ Attributes start with `@`. They are used as declaration modifiers.
 Templates enables parametric polymorphism for types and functions. Template arguments are passed to templates to generate specialized code. This facilitates developing container types and algorithms that operate on different types.
 
 See [Type Declarations / Type templates](#type-templates) and [Functions / Function templates](#function-templates).
+
+### Value templates.
+A value template returns a memoized value after being invoked with template arguments at compile-time. It's declared with `def`:
+```cy
+def StrType[ID String] type:
+    if ID == 'bool':
+        return bool
+    else ID == 'int':
+        return int
+    else ID == 'String':
+        return String
+    else
+        throw error.Unsupported
+
+var a StrType['int'] = 123
+print a         --> 123
+```
+This can be useful to evaluate compile-time logic to create new types or specialize other templates.
+Any compile-time compatible type can also be returned.
 
 ## Macros.
 > _Planned Feature_

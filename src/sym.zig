@@ -32,6 +32,7 @@ pub const SymType = enum(u8) {
     /// Unresolved distinct type.
     distinct_t,
 
+    func_template,
     template,
     field,
 
@@ -91,6 +92,18 @@ pub const Sym = extern struct {
                     deinitVariantValues(vm, variant);
                 }
             },
+            .func_template => {
+                const template = self.cast(.func_template);
+                var iter = template.variant_cache.iterator();
+                while (iter.next()) |e| {
+                    const variant = e.value_ptr.*;
+                    for (variant.args) |arg| {
+                        vm.release(arg);
+                    }
+                    vm.alloc.free(variant.args);
+                    variant.args = &.{};
+                }
+            },
             else => {},
         }
     }
@@ -133,6 +146,11 @@ pub const Sym = extern struct {
                 enumType.deinit(alloc);
                 alloc.free(enumType.members[0..enumType.numMembers]);
                 alloc.destroy(enumType);
+            },
+            .func_template => {
+                const template = self.cast(.func_template);
+                deinitFuncTemplate(vm, template);
+                alloc.destroy(template);
             },
             .template => {
                 const template = self.cast(.template);
@@ -249,6 +267,7 @@ pub const Sym = extern struct {
             .hostVar,
             .module_alias,
             .func,
+            .func_template,
             .template,
             .distinct_t,
             .field,
@@ -290,6 +309,7 @@ pub const Sym = extern struct {
             .distinct_t      => return @ptrCast(&self.cast(.distinct_t).mod),
             .typeAlias       => return @ptrCast(&self.cast(.typeAlias).mod),
             .template        => return @ptrCast(&self.cast(.template).mod),
+            .func_template   => return @ptrCast(&self.cast(.func_template).mod),
             .trait_t         => return @ptrCast(&self.cast(.trait_t).mod),
             .use_alias,
             .module_alias,
@@ -338,6 +358,7 @@ pub const Sym = extern struct {
             .placeholder,
             .null,
             .field,
+            .func_template,
             .template,
             .enumMember,
             .func,
@@ -371,6 +392,7 @@ pub const Sym = extern struct {
             .hostobj_t,
             .null,
             .field,
+            .func_template,
             .template,
             .enumMember,
             .func,
@@ -444,6 +466,7 @@ fn SymChild(comptime symT: SymType) type {
         .typeAlias => TypeAlias,
         .distinct_t => DistinctType,
         .template => Template,
+        .func_template => FuncTemplate,
         .field => Field,
         .use_alias => UseAlias,
         .module_alias => ModuleAlias,
@@ -575,6 +598,70 @@ pub const ValueType = extern struct {
     head: Sym,
 };
 
+pub const FuncTemplateParam = struct {
+    name: []const u8,
+    // Func parameter index where it is declared.
+    decl_idx: u32,
+    infer: bool,
+};
+
+pub const FuncTemplate = struct {
+    head: Sym,
+    decl: *ast.TemplateDecl,
+    func_params: []const *ast.FuncParam,
+    func_ret: ?*ast.Node,
+    params: []FuncTemplateParam,
+    resolved: bool,
+
+    /// Template args to variant. Keys are not owned.
+    variant_cache: std.HashMapUnmanaged([]const cy.Value, *Variant, VariantKeyContext, 80),
+    variants: std.ArrayListUnmanaged(*Variant),
+
+    mod: vmc.Module,
+
+    pub fn deinit(self: *FuncTemplate, alloc: std.mem.Allocator) void {
+        for (self.variants.items) |variant| {
+            alloc.destroy(variant);
+        }
+        self.variants.deinit(alloc);
+        self.variant_cache.deinit(alloc);
+
+        alloc.free(self.params);
+    }
+
+    pub fn isResolved(self: *FuncTemplate) bool {
+        return self.resolved;
+    }
+
+    pub fn getMod(self: *FuncTemplate) *cy.Module {
+        return @ptrCast(&self.mod);
+    }
+
+    pub fn indexOfParam(self: *FuncTemplate, name: []const u8) ?usize {
+        for (self.params, 0..) |param, i| {
+            if (std.mem.eql(u8, param.name, name)) {
+                return i;
+            }
+        }
+        return null;
+    }
+
+    pub fn chunk(self: *const FuncTemplate) *cy.Chunk {
+        return self.head.parent.?.getMod().?.chunk;
+    }
+};
+
+fn deinitFuncTemplate(vm: *cy.VM, template: *FuncTemplate) void {
+    template.getMod().deinit(vm.alloc);
+
+    for (template.variants.items) |variant| {
+        vm.alloc.destroy(variant);
+    }
+    template.variants.deinit(vm.alloc);
+    template.variant_cache.deinit(vm.alloc);
+    vm.alloc.free(template.params);
+}
+
 /// This is similar to SymType but has custom_t.
 pub const TemplateType = enum {
     object_t,
@@ -582,7 +669,7 @@ pub const TemplateType = enum {
     enum_t,
     distinct_t,
     custom_t,
-    ct_func,
+    value,
 };
 
 /// TODO: Consider splitting into Template and FuncTemplate.
@@ -1016,35 +1103,11 @@ pub const Chunk = extern struct {
     }
 };
 
-pub const FuncTemplate = struct {
-    sig: cy.sema.FuncSigId,
-
-    params: []const FuncTemplateParam,
-
-    /// Template args to variant. Keys are not owned.
-    variant_cache: std.HashMapUnmanaged([]const cy.Value, *Variant, VariantKeyContext, 80),
-    variants: std.ArrayListUnmanaged(*Variant),
-
-    pub fn deinit(self: *FuncTemplate, alloc: std.mem.Allocator) void {
-        for (self.variants.items) |variant| {
-            alloc.destroy(variant);
-        }
-        self.variants.deinit(alloc);
-        self.variant_cache.deinit(alloc);
-        alloc.free(self.params);
-    }
-};
-
-pub const FuncTemplateParam = struct {
-    name: []const u8,
-};
-
 pub const FuncKind = enum {
     hostFunc,
     userFunc,
     userLambda,
     trait,
-    template,
 };
 
 pub const Func = struct {
@@ -1069,7 +1132,6 @@ pub const Func = struct {
         trait: struct {
             vtable_idx: u32,
         },
-        template: *FuncTemplate,
         userFunc: struct {
             /// Currently used to invalidate the IR func block when removing temporary functions.
             /// See `cte.expandValueTemplate`.
@@ -1092,33 +1154,6 @@ pub const Func = struct {
     /// Whether this func's static dependencies have also been resolved and emitted.
     /// This is useful for comptime evaluation to check whether it needs to compile deps.
     emitted_deps: bool = false,
-
-    pub fn deinit(self: *Func, alloc: std.mem.Allocator) void {
-        if (self.type == .template and self.isResolved()) {
-            self.data.template.deinit(alloc);
-            alloc.destroy(self.data.template);
-        }
-    }
-
-    pub fn deinitValues(self: *Func, vm: *cy.VM) void {
-        if (self.type != .template) {
-            return;
-        }
-
-        if (self.isResolved()) {
-            const template = self.data.template;
-
-            var iter = template.variant_cache.iterator();
-            while (iter.next()) |e| {
-                const variant = e.value_ptr.*;
-                for (variant.args) |arg| {
-                    vm.release(arg);
-                }
-                vm.alloc.free(variant.args);
-                variant.args = &.{};
-            }
-        }
-    }
 
     pub fn isResolved(self: Func) bool {
         return self.funcSigId != cy.NullId;
@@ -1184,6 +1219,7 @@ pub const ChunkExt = struct {
             .null,
             .module_alias,
             .distinct_t,
+            .func_template,
             .template,
             .chunk => return null,
         }
@@ -1438,6 +1474,24 @@ pub const ChunkExt = struct {
             .decl = decl,
             .type = cy.NullId,
         });
+        try c.syms.append(c.alloc, @ptrCast(sym));
+        return sym;
+    }
+
+    pub fn createFuncTemplate(c: *cy.Chunk, parent: *Sym, name: []const u8, tparams: []FuncTemplateParam, decl: *ast.TemplateDecl) !*FuncTemplate {
+        const func_decl = decl.child_decl.cast(.funcDecl);
+        const sym = try createSym(c.alloc, .func_template, .{
+            .head = Sym.init(.func_template, parent, name),
+            .func_params = func_decl.params,
+            .func_ret = func_decl.ret,
+            .params = tparams,
+            .resolved = false,
+            .decl = decl,
+            .variant_cache = .{},
+            .variants = .{},
+            .mod = undefined,
+        });
+        sym.getMod().* = cy.Module.init(c);
         try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
     }

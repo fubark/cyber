@@ -27,7 +27,6 @@ pub const TypeKind = enum(u8) {
     trait,
     bare,
     ct_ref,
-    ct_infer,
     distinct,
     array,
     func_ptr,
@@ -41,15 +40,12 @@ pub const TypeInfo = packed struct {
     /// If `true`, invoke finalizer before releasing children.
     custom_pre: bool = false,
 
-    /// Whether this type or a child parameter contains a ct_infer.
-    ct_infer: bool = false,
-
     /// Whether this type or a child parameter contains a ct_ref.
     ct_ref: bool = false,
 
     load_all_methods: bool = false,
 
-    padding: u3 = undefined,
+    padding: u4 = undefined,
 };
 
 pub const Type = extern struct {
@@ -92,9 +88,6 @@ pub const Type = extern struct {
             fields: [*]bool,
         },
         ct_ref: extern struct {
-            ct_param_idx: u32,
-        },
-        ct_infer: extern struct {
             ct_param_idx: u32,
         },
         array: extern struct {

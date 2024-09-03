@@ -216,6 +216,10 @@ type float #float64_t:
     --| Returns a unique ID for this type.
     @host func id(self) int
 
+--| Return the type of a value.
+--| See `typeof` to obtain the type of an expression at compile-time.
+@host func type.$call(val any) type
+
 type TypeInfo enum:
     case int_t     IntInfo
     case array_t   ArrayInfo
@@ -306,10 +310,6 @@ type PointerInfo struct:
 
 type OptionInfo struct:
     elem type
-
---| Return the type of a value.
---| See `typeof` to obtain the type of an expression at compile-time.
-@host func type.$call(val any) type
 
 -- @host type ListValue[T type] struct:
 --     @host func $index(self, idx int) &T

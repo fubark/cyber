@@ -533,45 +533,55 @@ CLAllocator clGetAllocator(CLVM* vm);
 // automatically retain +1 refcount.
 // -----------------------------------
 
-// Create values.
+CLStr clNewValueDump(CLVM* vm, CLValue val);
+
+// Booleans.
 CLValue clBool(bool b);
+bool clAsBool(CLValue val); // Assumes boolean.
+bool clToBool(CLValue val); // Performs a naive conversion.
 
-CLValue clInt(int64_t n);   // Unboxed.
-CLValue clInt32(int32_t n); // Unboxed.
+// 64-bit integer.
+CLValue clInt(int64_t n);               // Unboxed.
+CLValue clNewInt(CLVM* vm, int64_t n);  // Boxed.
+int64_t clAsBoxInt(CLValue val);        // From boxed.
+
+// CLValue clInt32(int32_t n); // Unboxed.
+
+// 64-bit float.
 CLValue clFloat(double f);
-CLValue clHostObject(void* ptr);
-CLValue clVmObject(void* ptr);
+double clAsFloat(CLValue val);
+
+// Symbols.
 CLValue clSymbol(CLVM* vm, CLStr str);
+uint32_t clAsSymbolId(CLValue val);
 
-CLValue clNewInt(CLVM* vm, int64_t n);
-
-// `clNewString` is the recommended way to create a new string. Use `Astring` or `Ustring` if you know it
-// will be ASCII or UTF-8 respectively.
+// `clNewString` is the recommended way to create a new string.
+// Use `Astring` or `Ustring` if you know it will be ASCII or UTF-8 respectively.
 CLValue clNewString(CLVM* vm, CLStr str);
 CLValue clNewAstring(CLVM* vm, CLStr str);
 CLValue clNewUstring(CLVM* vm, CLStr str, uint32_t charLen);
+CLStr clAsString(CLValue val);
+CLStr clToTempString(CLVM* vm, CLValue val);  // Conversion from value to a basic string description.
 
 CLValue clNewTuple(CLVM* vm, const CLValue* vals, size_t len);
 
-// List[dyn], this is equivalent to a List initialized from the array literal `[...]`.
-CLValue clNewEmptyListDyn(CLVM* vm);
-CLValue clNewListDyn(CLVM* vm, const CLValue* vals, size_t len);
-
-// List[T], `type_id` should be obtained from `clExpandTemplateType`.
-CLValue clNewEmptyList(CLVM* vm, CLType type_id);
-CLValue clNewList(CLVM* vm, CLType type_id, const CLValue* vals, size_t len);
-
-CLValue clNewEmptyMap(CLVM* vm);
+// Functions.
 CLValue clNewFuncDyn(CLVM* vm, uint32_t numParams, CLFuncFn func);
 CLValue clNewFunc(CLVM* vm, const CLType* params, size_t numParams, CLType retType, CLFuncFn func);
+
+// Pointers.
 CLValue clNewPointerVoid(CLVM* vm, void* ptr);
+
+// Types.
 CLValue clNewType(CLVM* vm, CLType type_id);
+CLType clGetType(CLValue val);
 
 // Instantiating a `@host type` requires the `typeId` obtained from `CLTypeLoader` and
 // the number of bytes the object will occupy. Objects of the same type can have different sizes.
 // A `CLValue` which contains the object pointer is returned. Call `clAsHostObject` to obtain the pointer
 // or use `clNewHostObjectPtr` to instantiate instead.
 CLValue clNewHostObject(CLVM* vm, CLType typeId, size_t n);
+void* clAsHostObject(CLValue val);
 
 // Like `clNewHostObject` but returns the object's pointer. Wrap it into a value with `clHostObject`.
 void* clNewHostObjectPtr(CLVM* vm, CLType typeId, size_t n);
@@ -579,32 +589,31 @@ void* clNewHostObjectPtr(CLVM* vm, CLType typeId, size_t n);
 // Returns a new instance of `type` with a list of field initializers.
 CLValue clNewInstance(CLVM* vm, CLType type, const CLFieldInit* fields, size_t nfields);
 
-// Returns a new choice of a given case name and value.
-CLValue clNewChoice(CLVM* vm, CLType choice_t, CLStr name, CLValue val);
-
-// Returns the type of boxed value.
-CLType clGetType(CLValue val);
-
 // Returns the field value of the receiver object `rec`.
 CLValue clGetField(CLVM* vm, CLValue rec, CLStr name);
+
+// Re-encode pointer into a boxed heap object.
+CLValue clHostObject(void* ptr);
+CLValue clVmObject(void* ptr);
+
+// Returns a new choice of a given case name and value.
+CLValue clNewChoice(CLVM* vm, CLType choice_t, CLStr name, CLValue val);
 
 // Returns the unwrapped value of a choice.
 CLValue clUnwrapChoice(CLVM* vm, CLValue choice, CLStr name);
 
 bool clIsFuture(CLVM* vm, CLValue val);
-CLStr clNewValueDump(CLVM* vm, CLValue val);
 
-// Values to C.
-double clAsFloat(CLValue val);
-bool clToBool(CLValue val);
-bool clAsBool(CLValue val);
-CLStr clAsString(CLValue val);
-int64_t clAsBoxInt(CLValue val);
-uint32_t clAsSymbolId(CLValue val);
-CLStr clToTempString(CLVM* vm, CLValue val);
-void* clAsHostObject(CLValue val);
+// This is equivalent to a List[dyn] initialized from the array literal `{_}`.
+CLValue clNewEmptyListDyn(CLVM* vm);
+// This is equivalent to a List[dyn] initialized from the array literal `{a, ...}`.
+CLValue clNewListDyn(CLVM* vm, const CLValue* vals, size_t len);
+// List[T], `list_t` should be obtained from `clExpandTemplateType`.
+// TODO: It should also be possible to obtain `list_t` from `clFindType("List[T]")`.
+CLValue clNewEmptyList(CLVM* vm, CLType list_t);
+CLValue clNewList(CLVM* vm, CLType list_t, const CLValue* vals, size_t len);
 
-// Lists.
+// List ops.
 size_t clListLen(CLValue list);
 size_t clListCap(CLValue list);
 CLValue clListGet(CLVM* vm, CLValue list, size_t idx);
@@ -612,7 +621,9 @@ void clListSet(CLVM* vm, CLValue list, size_t idx, CLValue val);
 void clListAppend(CLVM* vm, CLValue list, CLValue val);
 void clListInsert(CLVM* vm, CLValue list, size_t idx, CLValue val);
 
-// Maps.
+CLValue clNewEmptyMap(CLVM* vm);
+
+// Map ops.
 // size_t clMapSize(CLValue map);
 // bool clMapContains(CLValue map, CLValue key);
 // bool clMapContainsStringKey(CLValue map, CLStr key);

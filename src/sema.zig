@@ -539,6 +539,9 @@ pub fn semaStmt(c: *cy.Chunk, node: *ast.Node) !void {
         .switchStmt => {
             try semaSwitchStmt(c, node.cast(.switchStmt));
         },
+        .ct_if_stmt => {
+            try semaCtIfStmt(c, node.cast(.ct_if_stmt));
+        },
         .if_stmt => {
             try semaIfStmt(c, node.cast(.if_stmt));
         },
@@ -741,6 +744,31 @@ fn semaIfStmt2(c: *cy.Chunk, cond: ExprResult, first_stmt: u32, else_block: u32,
         .body_head = first_stmt,
         .else_block = else_block,
     });
+}
+
+fn semaCtIfStmt(c: *cy.Chunk, if_stmt: *ast.IfStmt) !void {
+    var cond_res = try cte.evalExpr(c, if_stmt.cond, bt.Boolean);
+    if (cond_res.value.asBool()) {
+        try pushBlock(c, @ptrCast(if_stmt));
+        try semaStmts(c, if_stmt.stmts);
+        const block = try popBlock(c);
+        _ = try c.ir.pushStmt(c.alloc, .block, @ptrCast(if_stmt), .{ .bodyHead = block.first });
+        return;
+    } else {
+        for (if_stmt.else_blocks) |else_b| {
+            if (else_b.cond) |cond| {
+                cond_res = try cte.evalExpr(c, cond, bt.Boolean);
+                if (!cond_res.value.asBool()) {
+                    continue;
+                }
+            }
+            try pushBlock(c, @ptrCast(else_b));
+            try semaStmts(c, else_b.stmts);
+            const block = try popBlock(c);
+            _ = try c.ir.pushStmt(c.alloc, .block, @ptrCast(else_b), .{ .bodyHead = block.first });
+            return;
+        }
+    }
 }
 
 fn semaIfStmt(c: *cy.Chunk, block: *ast.IfStmt) !void {

@@ -33,6 +33,8 @@ pub const NodeType = enum(u7) {
     coresume,
     coyield,
     cstruct_decl,
+    ct_if_stmt,
+    ct_else_block,
     custom_decl,
     decLit,
     deref,
@@ -630,6 +632,8 @@ fn NodeData(comptime node_t: NodeType) type {
         .coresume       => Coresume,
         .coyield        => Token,
         .cstruct_decl   => ObjectDecl,
+        .ct_if_stmt     => IfStmt,
+        .ct_else_block  => ElseBlock,
         .custom_decl    => CustomDecl,
         .decLit         => Span,
         .deref          => DerefExpr,
@@ -767,6 +771,8 @@ pub const Node = struct {
             .coresume       => self.cast(.coresume).pos,
             .coyield        => self.cast(.coyield).pos,
             .cstruct_decl   => self.cast(.cstruct_decl).pos,
+            .ct_if_stmt     => self.cast(.ct_if_stmt).pos,
+            .ct_else_block  => self.cast(.ct_else_block).pos,
             .custom_decl    => self.cast(.custom_decl).pos,
             .decLit         => self.cast(.decLit).pos,
             .deref          => self.cast(.deref).left.pos(),
@@ -916,7 +922,7 @@ pub const UnaryOp = enum(u8) {
 };
 
 test "ast internals." {
-    try t.eq(std.enums.values(NodeType).len, 101);
+    try t.eq(std.enums.values(NodeType).len, 103);
     try t.eq(@sizeOf(NodeHeader), 1);
 }
 

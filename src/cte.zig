@@ -226,6 +226,60 @@ pub fn expandFuncTemplate(c: *cy.Chunk, template: *cy.sym.FuncTemplate, args: []
     return variant.data.func.func;
 }
 
+fn compileExprDeep(c: *cy.Chunk, expr: *ast.Node, target_t: ?cy.TypeId, queued: *std.AutoHashMapUnmanaged(*cy.Func, void)) !*cy.Func {
+    // Create temporary function.
+    const func = try c.createFunc(.userFunc, @ptrCast(c.sym), expr, false);
+
+    // Perform sema.
+    const loc = c.ir.buf.items.len;
+    _ = try sema.pushFuncProc(c, func);
+    var ret_t: cy.TypeId = undefined;
+    if (target_t == null) {
+        // Infer return type.
+        const expr_res = try c.semaExpr(expr, .{});
+        ret_t = expr_res.type.id;
+        _ = try c.ir.pushStmt(c.alloc, .retExprStmt, expr, .{
+            .expr = expr_res.irIdx,
+        });
+    } else {
+        const expr_res = try c.semaExprCstr(expr, target_t.?);
+        _ = try c.ir.pushStmt(c.alloc, .retExprStmt, expr, .{
+            .expr = expr_res.irIdx,
+        });
+        ret_t = target_t.?;
+    }
+    const sig = try c.sema.ensureFuncSig(&.{}, ret_t);
+    try c.resolveUserLambda(func, sig);
+    func.emitted = true;
+    try sema.popFuncBlock(c);
+
+    // Perform bc gen.
+    c.buf = &c.compiler.buf;
+    // TODO: defer restore bc state.
+    try bcgen.prepareFunc(c.compiler, null, func);
+    try bcgen.funcBlock(c, loc, expr);
+
+    // Analyze IR for func deps.
+    var visitor = try c.ir.visitStmt(c.alloc, @intCast(loc));
+    defer visitor.deinit();
+    while (try visitor.next()) |entry| {
+        if (entry.is_stmt) {
+            continue;
+        }
+        const code = c.ir.getExprCode(entry.loc);
+        switch (code) {
+            .call_sym => {
+                const data = c.ir.getExprData(entry.loc, .call_sym);
+                try compileFuncDeep(c, data.func, queued);
+            },
+            else => {},
+        }
+    }
+    func.data = .{ .userFunc = .{ .loc = @intCast(loc) }};
+    func.emitted_deps = true;
+    return func;
+}
+
 fn compileFuncDeep(c: *cy.Chunk, func: *cy.Func, queued: *std.AutoHashMapUnmanaged(*cy.Func, void)) !void {
     if (func.emitted_deps) {
         return;
@@ -286,11 +340,14 @@ fn compileFuncDeep(c: *cy.Chunk, func: *cy.Func, queued: *std.AutoHashMapUnmanag
 }
 
 /// Call function with arguments at compile-time.
-pub fn callFunc(c: *cy.Chunk, func: *cy.Func, args: []const cy.Value) !CtValue {
+pub fn compileAndCallFunc(c: *cy.Chunk, func: *cy.Func, args: []const cy.Value) !CtValue {
     var queued: std.AutoHashMapUnmanaged(*cy.Func, void) = .{};
     defer queued.deinit(c.alloc);
     try compileFuncDeep(c, func, &queued);
+    return callFunc(c, func, args);
+}
 
+fn callFunc(c: *cy.Chunk, func: *cy.Func, args: []const cy.Value) !CtValue {
     const rt_id = c.compiler.genSymMap.get(func).?.func.id;
     const rt_func = c.vm.funcSyms.buf[rt_id];
     const func_val = try cy.heap.allocFunc(c.vm, rt_func);
@@ -302,6 +359,20 @@ pub fn callFunc(c: *cy.Chunk, func: *cy.Func, args: []const cy.Value) !CtValue {
         .type = retv.getTypeId(),
         .value = retv,
     };
+}
+
+pub fn evalExpr(c: *cy.Chunk, expr: *ast.Node, target_t: ?cy.TypeId) !CtValue {
+    var queued: std.AutoHashMapUnmanaged(*cy.Func, void) = .{};
+    defer queued.deinit(c.alloc);
+    const func = try compileExprDeep(c, expr, target_t, &queued);
+    defer {
+        // Remove references to the func and invalidate the sema func block.
+        _ = c.compiler.genSymMap.remove(@ptrCast(func));
+        const data = c.ir.getStmtDataPtr(func.data.userFunc.loc, .funcBlock);
+        data.skip = true;
+        c.vm.alloc.destroy(func);
+    }
+    return callFunc(c, func, &.{});
 }
 
 pub fn expandValueTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy.Value) !CtValue {
@@ -359,20 +430,10 @@ pub fn expandValueTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []con
         defer queued.deinit(c.alloc);
         try compileFuncDeep(c, func, &queued);
 
-        const rt_id = c.compiler.genSymMap.get(func).?.func.id;
-        const rt_func = c.vm.funcSyms.buf[rt_id];
-        const func_val = try cy.heap.allocFunc(c.vm, rt_func);
-        defer c.vm.release(func_val);
-
-        try c.vm.prepCtEval(&c.compiler.buf);
-        const retv = try c.vm.callFunc(func_val, &.{}, .{});
-        c.vm.retain(retv);
-        variant.data.ct_val.ct_val = retv;
-
-        return CtValue{
-            .type = retv.getTypeId(),
-            .value = retv,
-        };
+        const call_res = try callFunc(c, func, &.{});
+        c.vm.retain(call_res.value);
+        variant.data.ct_val.ct_val = call_res.value;
+        return call_res;
     } 
 
     const variant = res.value_ptr.*;

@@ -176,7 +176,7 @@ pub fn matchFuncTemplate(c: *cy.Chunk, template: *cy.sym.FuncTemplate,
 
     if (cstr.ct_call) {
         const ct_args = c.valueStack.items[ct_arg_start..];
-        const res = try cte.callFunc(c, func, ct_args);
+        const res = try cte.compileAndCallFunc(c, func, ct_args);
         return .{
             .func = func,
             .data = .{ .ct = res },
@@ -260,7 +260,7 @@ pub fn matchFunc(c: *cy.Chunk, func: *cy.sym.Func, arg_start: usize, nargs: usiz
 
     if (cstr.ct_call) {
         const ct_args = c.valueStack.items[ct_arg_start..];
-        const res = try cte.callFunc(c, func, ct_args);
+        const res = try cte.compileAndCallFunc(c, func, ct_args);
         return .{
             .func = func,
             .data = .{ .ct = res },

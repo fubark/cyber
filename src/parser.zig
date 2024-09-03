@@ -1475,6 +1475,96 @@ pub const Parser = struct {
         });
     }
 
+    fn parseCtIfStatement(self: *Parser) !*ast.Node {
+        const start = self.next_pos;
+        // Assumes first token is the `if` keyword.
+        self.advance();
+
+        const cond = (try self.parseExpr(.{})) orelse {
+            return self.reportError("Expected if condition.", &.{});
+        };
+
+        var token = self.peek();
+        if (token.tag() == .colon) {
+            self.advance();
+            const stmts = try self.parseSingleOrIndentedBodyStmts();
+            const else_blocks = try self.parseCtElseStmts();
+
+            return self.ast.newNodeErase(.ct_if_stmt, .{
+                .cond = cond,
+                .stmts = stmts,
+                .else_blocks = else_blocks,
+                .pos = self.tokenSrcPos(start),
+            });
+        } else {
+            return self.reportError("Expected colon after if condition.", &.{});
+        }
+    }
+
+    fn parseCtElseStmts(self: *Parser) ![]*ast.ElseBlock {
+        var else_stmt: ?*ast.ElseBlock = (try self.parseCtElseStmt()) orelse {
+            return &.{};
+        };
+        const start = self.node_stack.items.len;
+        defer self.node_stack.items.len = start;
+
+        while (else_stmt != null) {
+            try self.pushNode(@ptrCast(else_stmt.?));
+            else_stmt = try self.parseCtElseStmt();
+        }
+
+        return @ptrCast(try self.ast.dupeNodes(self.node_stack.items[start..]));
+    }
+
+    fn parseCtElseStmt(self: *Parser) anyerror!?*ast.ElseBlock {
+        const save = self.next_pos;
+        const indent = try self.consumeFirstIndent();
+        if (indent != self.cur_indent) {
+            self.next_pos = save;
+            return null;
+        }
+
+        var token = self.peek();
+        if (!(token.tag() == .pound and self.peekAhead(1).tag() == .else_k)) {
+            self.next_pos = save;
+            return null;
+        }
+
+        const start = self.next_pos;
+        self.advance();
+        self.advance();
+
+        token = self.peek();
+        if (token.tag() == .colon) {
+            // else block.
+            self.advance();
+
+            const stmts = try self.parseSingleOrIndentedBodyStmts();
+            return self.ast.newNode(.ct_else_block, .{
+                .cond = null,
+                .stmts = stmts,
+                .pos = self.tokenSrcPos(start),
+            });
+        } else {
+            // else if block.
+            const cond = (try self.parseExpr(.{})) orelse {
+                return self.reportError("Expected else if condition.", &.{});
+            };
+            token = self.peek();
+            if (token.tag() == .colon) {
+                self.advance();
+                const stmts = try self.parseSingleOrIndentedBodyStmts();
+                return self.ast.newNode(.ct_else_block, .{
+                    .cond = cond,
+                    .stmts = stmts,
+                    .pos = self.tokenSrcPos(start),
+                });
+            } else {
+                return self.reportError("Expected colon after else if condition.", &.{});
+            }
+        }
+    }
+
     fn parseIfStatement(self: *Parser) !*ast.Node {
         const start = self.next_pos;
         // Assumes first token is the `if` keyword.
@@ -1891,25 +1981,27 @@ pub const Parser = struct {
             },
             .pound => {
                 self.advance();
-                if (self.peek().tag() != .ident) {
+                const token = self.peek();
+                if (token.tag() != .ident and token.tag() != .if_k) {
                     return self.reportError("Unsupported compile-time statement.", &.{});
                 }
-                const token = self.peek();
                 const name = self.ast.src[token.pos()..token.data.end_pos];
-                _ = name;
+                if (std.mem.eql(u8, "if", name)) {
+                    return try self.parseCtIfStatement();
+                } else {
+                    const ident = try self.newSpanNode(.ident, self.next_pos);
+                    self.advance();
 
-                const ident = try self.newSpanNode(.ident, self.next_pos);
-                self.advance();
+                    if (self.peek().tag() != .left_paren) {
+                        return self.reportError("Expected ( after ident.", &.{});
+                    }
 
-                if (self.peek().tag() != .left_paren) {
-                    return self.reportError("Expected ( after ident.", &.{});
+                    const call: *ast.Node = @ptrCast(try self.parseCallExpression(@ptrCast(ident), false));
+                    return self.ast.newNodeErase(.comptimeStmt, .{
+                        .expr = call,
+                        .pos = self.tokenSrcPos(start),
+                    });
                 }
-
-                const call: *ast.Node = @ptrCast(try self.parseCallExpression(@ptrCast(ident), false));
-                return self.ast.newNodeErase(.comptimeStmt, .{
-                    .expr = call,
-                    .pos = self.tokenSrcPos(start),
-                });
             },
             .minus => {
                 const next = self.peekAhead(1).tag();

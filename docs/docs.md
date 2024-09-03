@@ -3381,6 +3381,7 @@ print str.trim(.left, ' ')
   * [Value templates.](#value-templates)
 * [Macros.](#macros)
 * [Compile-time execution.](#compile-time-execution)
+  * [Compile-time `if`](#compile-time-if)
   * [Builtin types.](#builtin-types)
   * [Builtin functions.](#builtin-functions)
   * [Builtin constants.](#builtin-constants)
@@ -3572,7 +3573,15 @@ Any compile-time compatible type can also be returned.
 > _Planned Feature_
 
 ## Compile-time execution.
-> _Planned Feature_
+
+### Compile-time `if`
+The `#if` statement evaluates the condition expression(s) at compile-time and inserts the block of statements that it branches to:
+```cy
+#if experimental:
+    print 'Experimental features enabled.'
+#else:
+    print 'Experimental features disabled.'
+```
 
 ### Builtin types.
 Builtin types are used internally by the compiler to define it's own primitive types such as `bool`, `int`, and `float`.

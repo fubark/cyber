@@ -66,7 +66,7 @@ for list -> it:
 t.eq(count, 0)
 
 -- Dynamic iterable.
-var dyn_list = t.erase({1, 2, 3})
+var dyn_list = {1, 2, 3}
 sum = 0
 for dyn_list -> n:
     -- Dynamic comparison on `n`.

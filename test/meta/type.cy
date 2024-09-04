@@ -2,7 +2,7 @@ use t 'test'
 
 -- Get runtime type.
 t.eq(type(123), int)
-var a = t.erase('abc')
+dyn a = 'abc'
 t.eq(type(a), String)
 
 -- id() for builtin types.

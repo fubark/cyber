@@ -9,14 +9,14 @@ type Number enum:
 type Object:
     func foo(self, a Number) bool:
         return a == .one
-dyn o = test.erase(Object{})
+dyn o = Object{}
 test.eq(o.foo(.one), true)
 test.eq(o.foo(.two), false)
 
 -- Infer tag literal from dyn call.
 func foo(a Number) bool:
     return a == .one
-dyn fn = test.erase(foo)
+dyn fn = foo
 test.eq(fn(.one), true)
 test.eq(fn(.two), false)
 

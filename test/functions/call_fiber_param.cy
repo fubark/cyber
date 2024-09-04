@@ -14,7 +14,7 @@ var f = coinit(start)
 t.eq(foo(f), true)
 
 -- Cast erased type.
-f = t.erase(coinit(start))
-t.eq(foo(f as Fiber), true)
+dyn f2 = coinit(start)
+t.eq(foo(f2 as Fiber), true)
 
 --cytest: pass

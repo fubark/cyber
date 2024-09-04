@@ -496,7 +496,7 @@ test "os constants" {
 test "Stack trace unwinding." {
     try eval(.{ .silent = true },
         \\use test
-        \\dyn a = test.erase(123)
+        \\dyn a = 123
         \\1 + a.foo
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, c.ErrorPanic,
@@ -514,7 +514,7 @@ test "Stack trace unwinding." {
             .chunkId = 1,
             .line = 2,
             .col = 6,
-            .lineStartPos = 33,
+            .lineStartPos = 21,
         });
     }}.func);
 
@@ -522,7 +522,7 @@ test "Stack trace unwinding." {
     try eval(.{ .silent = true },
         \\use test
         \\func foo() int:
-        \\  dyn a = test.erase(123)
+        \\  dyn a = 123
         \\  return 1 + a.foo
         \\foo()
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
@@ -544,14 +544,14 @@ test "Stack trace unwinding." {
             .chunkId = 1,
             .line = 3,
             .col = 15,
-            .lineStartPos = 51,
+            .lineStartPos = 39,
         });
         try eqStackFrame(trace.frames[1], .{
             .name = "main",
             .chunkId = 1,
             .line = 4,
             .col = 0,
-            .lineStartPos = 70,
+            .lineStartPos = 58,
         });
     }}.func);
 

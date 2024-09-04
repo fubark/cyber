@@ -68,7 +68,7 @@ t.eq(newS.bar, rcList)
 
 -- int()
 dyn res = int('100')
-t.eq(typeOf(res), int)
+t.eq(typeOf(res), dyn)
 t.eq(res, 100)
 t.eq(int(100.1), 100)
 t.eq(int('100'), 100)

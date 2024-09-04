@@ -1,7 +1,7 @@
 use t 'test'
 
 -- Cast to exact primitive type.
-dyn a = t.erase(1)
+dyn a = 1
 t.eq(foo1(a as int), true)
 func foo1(a int) bool:
     return true
@@ -27,10 +27,11 @@ func foo5(a any) bool:
     return true
 
 -- Cast for interim dst to local.
-a = t.erase(1) as int
+dyn b = 1
+a = b as int
 
 -- Cast for interim dst to static var.
 var .sa any = 'abc'
-sa = t.erase(1) as int
+sa = b as int
 
 --cytest: pass

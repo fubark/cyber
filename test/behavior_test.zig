@@ -185,7 +185,6 @@ if (!cy.isWasm) {
     run.case("types/cstructs.cy");
     run.case("types/distinct.cy");
 }
-    run.case("types/dyn_recent_type_error.cy");
 if (!aot) {
     run.case("types/enums.cy");
 }

@@ -53,7 +53,7 @@ type Sym:
     code String
 
 -- First pass accumulates the unordered symbols.
-dyn syms = {_}
+var syms = {_}
 var symMap = {}
 while llvm.ObjectFileIsSymbolIteratorAtEnd(llBin, llSymIter) == 0:
     if llvm.GetSectionContainsSymbol(llSectIter, llSymIter) == 0:

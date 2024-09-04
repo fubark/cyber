@@ -237,7 +237,7 @@ fn compileExprDeep(c: *cy.Chunk, expr: *ast.Node, target_t: ?cy.TypeId, queued: 
     if (target_t == null) {
         // Infer return type.
         const expr_res = try c.semaExpr(expr, .{});
-        ret_t = expr_res.type.id;
+        ret_t = expr_res.type;
         _ = try c.ir.pushStmt(c.alloc, .retExprStmt, expr, .{
             .expr = expr_res.irIdx,
         });

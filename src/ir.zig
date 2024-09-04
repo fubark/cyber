@@ -1,7 +1,6 @@
 const std = @import("std");
 const cy = @import("cyber.zig");
 const TypeId = cy.TypeId;
-const CompactType = cy.types.CompactType;
 const sema = cy.sema;
 const log = cy.log.scoped(.ir);
 const ast = cy.ast;
@@ -393,7 +392,7 @@ pub const DeclareLocalInit = struct {
     /// the memory must be zeroed so unwinding doesn't end up using an undefined value.
     zeroMem: bool,
     init: Loc,
-    initType: CompactType,
+    initType: TypeId,
 
     pub fn name(self: DeclareLocalInit) []const u8 {
         return self.namePtr[0..self.nameLen];
@@ -465,8 +464,8 @@ pub const SetCallObjSymTern = struct {
 };
 
 pub const SetGeneric = struct {
-    left_t: CompactType,
-    right_t: CompactType,
+    left_t: TypeId,
+    right_t: TypeId,
     left: Loc,
     right: Loc,
 };

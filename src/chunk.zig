@@ -16,6 +16,7 @@ const bc = @import("bc_gen.zig");
 const jitgen = @import("jit/gen.zig");
 const X64 = @import("jit/x64.zig");
 const ast = cy.ast;
+const bt = cy.types.BuiltinTypes;
 
 pub const ChunkId = u32;
 pub const SymId = u32;
@@ -85,8 +86,6 @@ pub const Chunk = struct {
     /// Local vars.
     varStack: std.ArrayListUnmanaged(sema.LocalVar),
     varShadowStack: std.ArrayListUnmanaged(cy.sema.VarShadow),
-    preLoopVarSaveStack: std.ArrayListUnmanaged(cy.sema.PreLoopVarSave),
-    assignedVarStack: std.ArrayListUnmanaged(sema.LocalVarId),
 
     /// Main sema block id.
     mainSemaProcId: sema.ProcId,
@@ -206,10 +205,8 @@ pub const Chunk = struct {
             .procs = .{},
             .blocks = .{},
             .blockJumpStack = .{},
-            .assignedVarStack = .{},
             .varShadowStack = .{},
             .varStack = .{},
-            .preLoopVarSaveStack = .{},
             .typeStack = .{},
             .valueStack = .{},
             .ir = undefined,
@@ -271,10 +268,6 @@ pub const Chunk = struct {
 
         self.host_funcs.deinit(self.alloc);
         self.host_types.deinit(self.alloc);
-
-        for (self.semaBlocks.items) |*b| {
-            b.deinit(self.alloc);
-        }
         self.semaBlocks.deinit(self.alloc);
 
         for (self.semaProcs.items) |*sproc| {
@@ -287,10 +280,8 @@ pub const Chunk = struct {
         self.blocks.deinit(self.alloc); 
 
         self.blockJumpStack.deinit(self.alloc);
-        self.assignedVarStack.deinit(self.alloc);
         self.varShadowStack.deinit(self.alloc);
         self.varStack.deinit(self.alloc);
-        self.preLoopVarSaveStack.deinit(self.alloc);
         self.regStack.deinit(self.alloc);
         self.operandStack.deinit(self.alloc);
         self.unwind_stack.deinit(self.alloc);
@@ -602,17 +593,15 @@ pub const Chunk = struct {
             rt.print(self.vm, "Locals:\n");
             const params = self.getProcParams(sproc);
             for (params) |svar| {
-                const typeId: types.TypeId = svar.vtype.id;
-                rt.printFmt(self.vm, "{} (param), local: {}, dyn: {}, rtype: {}, lifted: {}\n", &.{
-                    v(svar.name()), v(svar.local), v(svar.vtype.dynamic), v(typeId),
+                rt.printFmt(self.vm, "{} (param), local: {}, dyn: {}, type: {}, lifted: {}\n", &.{
+                    v(svar.name()), v(svar.local), v(svar.decl_t == bt.Dyn), v(svar.decl_t),
                     v(svar.inner.local.lifted),
                 });
             }
             const vars = self.getProcVars(sproc);
             for (vars) |svar| {
-                const typeId: types.TypeId = svar.vtype.id;
-                rt.printFmt(self.vm, "{}, local: {}, dyn: {}, rtype: {}, lifted: {}\n", &.{
-                    v(svar.name()), v(svar.local), v(svar.vtype.dynamic), v(typeId),
+                rt.printFmt(self.vm, "{}, local: {}, dyn: {}, type: {}, lifted: {}\n", &.{
+                    v(svar.name()), v(svar.local), v(svar.decl_t == bt.Dyn), v(svar.decl_t),
                     v(svar.inner.local.lifted),
                 });
             }

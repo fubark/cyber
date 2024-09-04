@@ -4,7 +4,7 @@ type Choice enum:
     case A int
     case B String
 
-dyn c = test.erase(Choice.A(123))
+dyn c = Choice.A(123)
 var a = c.A
 
 --cytest: error

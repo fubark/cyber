@@ -17,12 +17,12 @@ t.eq(staticPrim(123.0), true)
 t.eq(staticPrim(123), true)
 
 -- Call static function with var.
-dyn n = 123.0
+var n = 123.0
 t.eq(staticPrim(n), true)
 
--- Call static function from cast.
-n = t.erase(123.0)
-t.eq(staticPrim(n as float), true)
+-- Call static function from dyn.
+dyn n_dyn = 123.0
+t.eq(staticPrim(n_dyn), true)
 
 -- Call static function with object access.
 var o = PrimType{a=123.0}
@@ -38,32 +38,32 @@ func fooInt(a int) bool:
 t.eq(fooInt(123), true)
         
 -- From var.
-n = 123
-t.eq(fooInt(n), true)
+var i = 123
+t.eq(fooInt(i), true)
 
 -- Cast erased type.
-n = t.erase(123)
-t.eq(fooInt(n as int), true)
+dyn i_dyn = 123
+t.eq(fooInt(i), true)
 
 --|
 --| pointer.
 --|
 func fooPointer(a *void) bool:
-  return a.addr() == 123
+    return a.addr() == 123
 
 -- From var.
 var ptr = pointer(void, 123)
 t.eq(fooPointer(ptr), true)
 
 -- Cast erased type.
-var ptr2 = t.erase(pointer(void, 123))
-t.eq(fooPointer(ptr2), true)
+dyn ptr_dyn = pointer.fromAddr(void, 123)
+t.eq(fooPointer(ptr_dyn), true)
 
 --|
 --| String.
 --|
 func fooString(a String) bool:
-  return a == 'true'
+    return a == 'true'
 
 -- Literal.
 t.eq(fooString('true'), true)
@@ -73,12 +73,12 @@ var str = 'true'
 t.eq(fooString(str), true)
 
 -- Cast erased type.
-str = t.erase('true')
-t.eq(fooString(String(str)), true)
+dyn str_dyn = 'true'
+t.eq(fooString(String(str_dyn)), true)
 
 -- bool.
 func fooBool(a bool) bool:
-  return a
+    return a
 
 -- Literal.
 t.eq(fooBool(true), true)
@@ -88,8 +88,8 @@ var b = true
 t.eq(fooBool(b), true)
 
 -- Cast erased type.
-b = t.erase(true)
-t.eq(fooBool(bool(b)), true)
+dyn b_dyn = true
+t.eq(fooBool(bool(b_dyn)), true)
 
 --|
 --| Map
@@ -105,8 +105,8 @@ var map = Map{a=123}
 t.eq(fooMap(map), true)
 
 -- Cast erased type.
-map = t.erase(Map{a=123})
-t.eq(fooMap(map as Map), true)
+dyn map_dyn = Map{a=123}
+t.eq(fooMap(map_dyn), true)
 
 --|
 --| List
@@ -122,8 +122,8 @@ var list = {123}
 t.eq(fooList(list), true)
 
 -- Cast erased type.
-list = t.erase({123})
-t.eq(fooList(list as List[dyn]), true)
+dyn list_dyn = List[dyn]{123}
+t.eq(fooList(list_dyn), true)
 
 --|
 --| symbol
@@ -139,7 +139,7 @@ var tag = symbol.sometag
 t.eq(fooSymbol(tag), true)
 
 -- Cast erased type.
-tag = t.erase(symbol.sometag)
-t.eq(fooSymbol(tag as symbol), true)
+dyn tag_dyn = symbol.sometag
+t.eq(fooSymbol(tag_dyn), true)
 
 --cytest: pass

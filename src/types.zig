@@ -121,52 +121,6 @@ test "types internals." {
     try t.eq(@offsetOf(Type, "data"), @offsetOf(vmc.TypeEntry, "data"));
 }
 
-pub const CompactType = packed struct {
-    /// Should always be a static typeId.
-    id: u31,
-    dynamic: bool,
-
-    pub fn init(id: TypeId) CompactType {
-        if (id == bt.Dyn) {
-            return CompactType.initDynamic(bt.Any);
-        } else {
-            return CompactType.initStatic(id);
-        }
-    }
-
-    pub fn init2(id: TypeId, dynamic: bool) CompactType {
-        if (id == bt.Dyn) {
-            return CompactType.initDynamic(bt.Any);
-        } else {
-            if (dynamic) {
-                return CompactType.initDynamic(id);
-            } else {
-                return CompactType.initStatic(id);
-            }
-        }
-    }
-
-    pub fn initStatic(id: TypeId) CompactType {
-        return .{ .id = @intCast(id), .dynamic = false };
-    }
-
-    pub fn initDynamic(id: TypeId) CompactType {
-        return .{ .id = @intCast(id), .dynamic = true };
-    }
-
-    pub fn toDeclType(self: CompactType) TypeId {
-        if (self.dynamic) {
-            return bt.Dyn;
-        } else {
-            return self.id;
-        }
-    }
-
-    pub fn isDynAny(self: CompactType) bool {
-        return self.dynamic and self.id == bt.Any;
-    }
-};
-
 pub const PrimitiveEnd: TypeId = vmc.PrimitiveEnd;
 pub const BuiltinEnd: TypeId = vmc.BuiltinEnd;
 
@@ -285,21 +239,6 @@ pub const SemaExt = struct {
         }
         const sym = s.getTypeSym(id);
         try cy.sym.writeSymName(s, w, sym, .{ .from = from });
-    }
-
-    pub fn writeCompactType(s: *cy.Sema, w: anytype, ctype: CompactType, comptime showRecentType: bool) !void {
-        if (showRecentType) {
-            if (ctype.dynamic) {
-                try w.writeAll("dyn ");
-            }
-            try s.writeTypeName(w, ctype.id);
-        } else {
-            if (ctype.dynamic) {
-                try w.writeAll("dynamic");
-            } else {
-                try s.writeTypeName(w, ctype.id);
-            }
-        }
     }
 
     pub fn getTypeSym(s: *cy.Sema, id: TypeId) *cy.Sym {
@@ -430,7 +369,7 @@ pub fn isAnyOrDynamic(id: TypeId) bool {
 }
 
 /// Check type constraints on target func signature.
-pub fn isTypeFuncSigCompat(c: *cy.Compiler, args: []const CompactType, ret_cstr: ReturnCstr, targetId: sema.FuncSigId) bool {
+pub fn isTypeFuncSigCompat(c: *cy.Compiler, args: []const TypeId, ret_cstr: ReturnCstr, targetId: sema.FuncSigId) bool {
     const target = c.sema.getFuncSig(targetId);
     if (cy.Trace) {
         const sigStr = c.sema.formatFuncSig(targetId, &cy.tempBuf, null) catch cy.fatal();
@@ -444,16 +383,16 @@ pub fn isTypeFuncSigCompat(c: *cy.Compiler, args: []const CompactType, ret_cstr:
 
     // Check each param type. Attempt to satisfy constraints.
     for (target.params(), args) |cstrType, argType| {
-        if (isTypeSymCompat(c, argType.id, cstrType.type)) {
+        if (isTypeSymCompat(c, argType, cstrType.type)) {
             continue;
         }
-        if (argType.dynamic) {
-            if (isTypeSymCompat(c, cstrType.type, argType.id)) {
+        if (argType == bt.Dyn) {
+            if (isTypeSymCompat(c, cstrType.type, argType)) {
                 // Only defer to runtime type check if arg type is a parent type of cstrType.
                 continue;
             }
         }
-        log.tracev("`{s}` not compatible with param `{s}`", .{c.sema.getTypeBaseName(argType.id), c.sema.getTypeBaseName(cstrType.type)});
+        log.tracev("`{s}` not compatible with param `{s}`", .{c.sema.getTypeBaseName(argType), c.sema.getTypeBaseName(cstrType.type)});
         return false;
     }
 

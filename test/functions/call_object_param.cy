@@ -14,7 +14,7 @@ var o = Foo{a=123}
 t.eq(foo(o), true)
 
 -- Cast erased type.
-o = t.erase(Foo{a=123})
-t.eq(foo(o as Foo), true)
+dyn o2 = Foo{a=123}
+t.eq(foo(o2 as Foo), true)
 
 --cytest: pass

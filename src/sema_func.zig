@@ -341,7 +341,7 @@ fn matchOverloadedFunc(c: *cy.Chunk, func: *cy.Func, arg_start: usize, nargs: us
 
         if (final_arg.resolve_t == .rt) {
             // Runtime arg.
-            has_dyn_arg = has_dyn_arg or final_arg.res.rt.type.isDynAny();
+            has_dyn_arg = has_dyn_arg or final_arg.res.rt.type == bt.Dyn;
             c.ir.setArrayItem(args_loc, u32, rt_arg_idx, final_arg.res.rt.irIdx);
             rt_arg_idx += 1;
         } else if (final_arg.resolve_t == .incompat) {
@@ -451,22 +451,22 @@ fn matchTemplateArg(c: *cy.Chunk, arg: Argument, template: *cy.sym.FuncTemplate,
     if (param.sema_infer_tparam) {
         // Infer template params.
         try sema.pushSavedResolveContext(template_c, template_ctx.*);
-        try inferCtArgs(c, res.type.id, template, template_c, param.type.?, arg.node);
+        try inferCtArgs(c, res.type, template, template_c, param.type.?, arg.node);
         template_ctx.* = sema.saveResolveContext(template_c);
-        target_t = res.type.id;
+        target_t = res.type;
     }
 
-    const ct_compat = cy.types.isTypeSymCompat(c.compiler, res.type.id, target_t.?);
-    const rt_compat = res.type.isDynAny();
+    const ct_compat = cy.types.isTypeSymCompat(c.compiler, res.type, target_t.?);
+    const rt_compat = res.type == bt.Dyn;
     if (!ct_compat and !rt_compat) {
-        return sema.reportIncompatType(c, target_t.?, res.type.id, arg.node);
+        return sema.reportIncompatType(c, target_t.?, res.type, arg.node);
     }
 
     if (rt_compat and config.single_func) {
         // Insert rt arg type check. 
         const loc = try c.unboxOrCheck(target_t.?, res, arg.node);
         res.irIdx = loc;
-        res.type = cy.types.CompactType.init(target_t.?);
+        res.type = target_t.?;
     }
 
     var resolved_arg = arg;
@@ -509,13 +509,13 @@ fn matchArg(c: *cy.Chunk, arg: Argument, param: sema.FuncParam, config: MatchCon
     const target_t = param.type;
     var res = try resolveRtArg(c, arg, arg.node, target_t, config.single_func);
 
-    const ct_compat = cy.types.isTypeSymCompat(c.compiler, res.type.id, target_t);
-    const rt_compat = res.type.isDynAny();
+    const ct_compat = cy.types.isTypeSymCompat(c.compiler, res.type, target_t);
+    const rt_compat = res.type == bt.Dyn;
     if (!ct_compat and !rt_compat) {
         var new_arg = arg;
         new_arg.resolve_t = .incompat;
         new_arg.res = .{ .incompat = .{
-            .res_t = res.type.id,
+            .res_t = res.type,
             .target_t = param.type,
         }};
         return new_arg;
@@ -525,7 +525,7 @@ fn matchArg(c: *cy.Chunk, arg: Argument, param: sema.FuncParam, config: MatchCon
         // Insert rt arg type check. 
         const loc = try c.unboxOrCheck(target_t, res, arg.node);
         res.irIdx = loc;
-        res.type = cy.types.CompactType.init(target_t);
+        res.type = target_t;
     }
 
     var resolved_arg = arg;
@@ -543,7 +543,7 @@ fn reportIncompatCallFuncSym(c: *cy.Chunk, sym: *cy.sym.FuncSym, arg_start: usiz
         if (arg.resolve_t == .null) {
             try c.typeStack.append(c.alloc, cy.NullId);
         } else if (arg.resolve_t == .rt) {
-            try c.typeStack.append(c.alloc, arg.res.rt.type.id);
+            try c.typeStack.append(c.alloc, arg.res.rt.type);
         } else if (arg.resolve_t == .ct) {
             try c.typeStack.append(c.alloc, arg.res.ct.type);
         } else {
@@ -563,7 +563,7 @@ fn reportIncompatCallFunc(c: *cy.Chunk, func: *cy.Func, arg_start: usize, ret_cs
         if (arg.resolve_t == .null) {
             try c.typeStack.append(c.alloc, cy.NullId);
         } else if (arg.resolve_t == .rt) {
-            try c.typeStack.append(c.alloc, arg.res.rt.type.id);
+            try c.typeStack.append(c.alloc, arg.res.rt.type);
         } else if (arg.resolve_t == .ct) {
             try c.typeStack.append(c.alloc, arg.res.ct.type);
         } else {

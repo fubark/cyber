@@ -1,12 +1,10 @@
-use test
-
 func foo(a int):
     pass
 
 func foo(a bool):
     pass
 
-var arg = test.erase('123')
+dyn arg = '123'
 foo(arg)
 
 --cytest: error
@@ -15,7 +13,7 @@ foo(arg)
 --    func foo(int) void
 --    func foo(bool) void
 --
---main:10:1 main:
+--main:8:1 main:
 --foo(arg)
 --^
 --

@@ -22,9 +22,9 @@ const cFunc = cy.builtins.cFunc;
 
 const func = cy.hostFuncEntry;
 const funcs = [_]C.HostFuncEntry{
-    func("assert", zErrFunc(assert)),
-    func("eq_",  eq),
-    func("eqNear", zErrFunc(eqNear)),
+    func("assert",  zErrFunc(assert)),
+    func("eq_",     eq),
+    func("eqNear_", zErrFunc(eqNear)),
 };
 
 pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
@@ -40,9 +40,7 @@ pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
 fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
     const b = bindings.ModuleBuilder.init(vm.compiler, cy.Sym.fromC(mod));
-
-    // Only available for zig test, until `any` local type specifier is implemented.
-    b.declareFuncSig("erase", &.{bt.Any}, bt.Dyn, erase) catch cy.fatal();
+    _ = b;
 }
 
 /// Simply returns the value so the caller get's an erased `any` type.

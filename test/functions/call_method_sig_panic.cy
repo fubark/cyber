@@ -1,12 +1,10 @@
-use test
-
 type S:
     a any
 
     func foo(self) int:
         return 123
 
-dyn o = test.erase(S{})
+dyn o = S{}
 o.foo(234)
 
 --cytest: error
@@ -14,7 +12,7 @@ o.foo(234)
 --Methods named `foo`:
 --    func foo(S) int
 --
---main:10:1 main:
+--main:8:1 main:
 --o.foo(234)
 --^
 --

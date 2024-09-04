@@ -3301,40 +3301,10 @@ Variables declared with `dyn` are implicitly given the `dyn` type:
 dyn a = 123
 ```
 
-Typically a dynamic variable defers type checking to runtime, but if the compiler determines that an operation will always fail at runtime, a compile error is reported instead:
-```cy
-dyn a = '100'
-
-print a / 2
---> CompileError: Can not find the symbol `$infix/` in `String`
-```
-
-When `a` is assigned a different type of value, its **recent type** is updated so the compiler can continue to surface errors ahead of time:
-```cy
-a = {1, 2, 3}
-print a / 2
---> CompileError: Can not find the symbol `$infix/` in `List`
-```
-
 ## Runtime type checking.
-If the type of a dynamic variable can not be determined at compile-time, type checking is deferred to runtime.
-
-In this example, the type for `a` is unknown after assigning the return of a dynamic call to `erase`.
-Any operation on `a` would defer type checking to runtime:
-```cy
-dyn a = erase(123)
-
-print a(1, 2, 3)
---> panic: Expected a function.
-```
-
-If a dynamic variable's **recent type** differs between two branches of execution, the type is considered unknown after the branches are merged. Any operations on the variable afterwards will defer type checking to runtime:
+Type checking for dynamic types are deferred to runtime:
 ```cy
 dyn a = 123
-if a > 20:
-    a = 'hello'
-
--- Branches are merged. `a` has an unknown type.
 
 print a(1, 2, 3)
 --> panic: Expected a function.

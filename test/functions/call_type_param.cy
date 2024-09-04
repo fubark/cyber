@@ -11,7 +11,7 @@ var mt = float
 t.eq(foo(mt), true)
 
 -- Cast erased type.
-mt = t.erase(float)
-t.eq(foo(mt as type), true)
+dyn mt2 = float
+t.eq(foo(mt2 as type), true)
 
 --cytest: pass

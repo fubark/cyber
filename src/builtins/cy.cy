@@ -89,7 +89,7 @@ type REPL:
     input_buffer String
 
     func printIntro(self):
-        print "$(#build_full_version) REPL"
+        print(#build_full_version + ' REPL')
         print "Commands: .exit"
 
     func read(self, read_line dyn) ?String:

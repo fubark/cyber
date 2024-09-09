@@ -837,12 +837,6 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const dst_retained = pc[4].val;
             len += try fmt.printCount(w, "catch jmp={}, err_slot={}, dst_retained={}", &.{v(endOffset), v(err_slot), v(dst_retained)});
         },
-        .stringTemplate => {
-            const startLocal = pc[1].val;
-            const exprCount = pc[2].val;
-            const dst = pc[3].val;
-            len += try fmt.printCount(w, "startLocal={}, exprCount={}, dst={}", &.{v(startLocal), v(exprCount), v(dst)});
-        },
         else => {},
     }
 
@@ -1029,10 +1023,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .setCaptured,
         .jumpNotCond => {
             return 4;
-        },
-        .stringTemplate => {
-            const numExprs = pc[2].val;
-            return 4 + numExprs + 1;
         },
         .setStaticVar,
         .func_union,
@@ -1232,8 +1222,6 @@ pub const OpCode = enum(u8) {
 
     compareNot = vmc.CodeCompareNot,
 
-    /// [startLocal] [exprCount] [dst] [..string consts]
-    stringTemplate = vmc.CodeStringTemplate,
     negFloat = vmc.CodeNegFloat,
 
     struct_small = vmc.CodeStructSmall,
@@ -1332,7 +1320,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 130);
+    try t.eq(std.enums.values(OpCode).len, 129);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

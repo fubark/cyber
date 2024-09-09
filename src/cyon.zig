@@ -454,15 +454,6 @@ pub const DecodeTableIR = struct {
                 const str = try cy.unescapeString(buf.items, token_s, true);
                 buf.items.len = str.len;
                 return buf.toOwnedSlice();
-            } else if (val.type() == .stringTemplate) {
-                const parts = val.cast(.stringTemplate).parts;
-                if (parts.len == 1) {
-                    const token_s = self.ast.nodeString(parts[0]);
-                    var buf = std.ArrayList(u8).init(self.alloc);
-                    defer buf.deinit();
-                    _ = replaceIntoList(u8, token_s, "\\`", "`", &buf);
-                    return buf.toOwnedSlice();
-                }
             }
             return error.NotAString;
         } else return error.NoSuchEntry;

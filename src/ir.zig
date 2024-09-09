@@ -105,7 +105,6 @@ pub const ExprCode = enum(u8) {
     type,
     enumMemberSym,
     string,
-    stringTemplate,
     lambda,
     closure,
     if_expr,
@@ -602,11 +601,6 @@ pub const String = struct {
     raw: []const u8,
 };
 
-pub const StringTemplate = struct {
-    numExprs: u8,
-    args: u32,
-};
-
 pub const UnOp = struct {
     expr: Loc,
     childT: TypeId,
@@ -701,7 +695,6 @@ pub fn ExprData(comptime code: ExprCode) type {
         .map => Map,
         .array => Array,
         .string => String,
-        .stringTemplate => StringTemplate,
         .object_init => ObjectInit,
         .fieldDyn => FieldDyn,
         .field => Field,

@@ -99,13 +99,13 @@ test "ARC." {
 
     // Map entry access expression retains the entry.
     try eval(.{},
-        \\var a = Map{foo="abc$(123)"}
+        \\var a = Map{foo='abc' + 123}
         \\var b = a['foo']
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 9);
-        try t.eq(trace.numReleases, 9);
+        try t.eq(trace.numRetains, 10);
+        try t.eq(trace.numReleases, 10);
     }}.func);
 
     // Local in if expr false branch is retained.
@@ -230,18 +230,18 @@ test "ARC on temp locals in expressions." {
         \\test.eq(res, 123)
     );
 
-    // The string template literal is released at the end of the arc expression.
+    // The string is released at the end of the arc expression.
     try eval(.{},
         \\var foo = 'World'
-        \\"Hello $(foo) $(123)"
+        \\'Hello ' + foo + ' ' + 123
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         const val = try res.getValue();
         try run.valueIsString(val, "Hello World 123");
         const vm = run.internal();
         vm.release(val);
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 3);
-        try t.eq(trace.numReleases, 3);
+        try t.eq(trace.numRetains, 7);
+        try t.eq(trace.numReleases, 7);
     }}.func);
 }
 
@@ -263,12 +263,12 @@ test "ARC in loops." {
         \\dyn a = 123
         \\for 0..3:
         \\  if true:
-        \\    a = "abc$(123)"    -- copyReleaseDst
+        \\    a = 'abc' + 123    -- copyReleaseDst
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 10);
-        try t.eq(trace.numReleases, 10);
+        try t.eq(trace.numRetains, 13);
+        try t.eq(trace.numReleases, 13);
     }}.func);
 
     // A non-rcCandidate var is reassigned to a rcCandidate var (field access on the right) inside a loop.
@@ -290,13 +290,13 @@ test "ARC in loops." {
     // An rc var first used inside a loop.
     try eval(.{},
         \\for 0..3:
-        \\  var a = "abc$(123)"
+        \\  var a = 'abc' + 123
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 6);
+        try t.eq(trace.numRetains, 9);
         // The inner set inst should be a releaseSet.
-        try t.eq(trace.numReleases, 6);
+        try t.eq(trace.numReleases, 9);
     }}.func);
 
     // For iter initializes the temp value as the `any` type if the iterator has an `any` type,

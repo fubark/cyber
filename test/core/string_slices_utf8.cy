@@ -2,13 +2,12 @@
 
 use t 'test'
 
-var pre = 'abc🦊'
-var str = "$(pre)xyz🐶"
+var str = "abc🦊xyz🐶"
 str = str[0..]  -- Sets up the slice.
 t.eq(str, 'abc🦊xyz🐶')
 
 -- Sets up the slice.
-var upper = "$('abc🦊xyz🐶')"[0..]
+var upper = 'abc🦊xyz🐶'[0..]
 
 -- index operator
 t.eq(str[str.seek(0)], `a`)

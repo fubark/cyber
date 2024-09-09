@@ -1367,59 +1367,6 @@ pub fn allocBcFuncUnion(self: *cy.VM, union_t: cy.TypeId, funcPc: usize, numPara
     return Value.initNoCycPtr(obj);
 }
 
-pub fn allocStringTemplate(self: *cy.VM, strs: []const cy.Inst, vals: []const Value) !Value {
-    const firstStr = Value.initRaw(self.c.consts[strs[0].val].val).asHeapObject();
-    const firstSlice = firstStr.string.getSlice();
-    try self.u8Buf.resize(self.alloc, firstSlice.len);
-    @memcpy(self.u8Buf.items(), firstSlice);
-
-    const writer = self.u8Buf.writer(self.alloc);
-    var is_ascii = true;
-    for (vals, 0..) |val, i| {
-        var out_ascii: bool = undefined;
-        const valstr = try self.getOrBufPrintValueStr2(&cy.tempBuf, val, &out_ascii);
-        is_ascii = is_ascii and out_ascii;
-        _ = try writer.write(valstr);
-
-        const str = Value.initRaw(self.c.consts[strs[i + 1].val].val).asHeapObject();
-        is_ascii = is_ascii and str.string.getType().isAstring();
-        try self.u8Buf.appendSlice(self.alloc, str.string.getSlice());
-    }
-
-    if (is_ascii) {
-        return retainOrAllocUstring(self, self.u8Buf.items());
-    } else {
-        return retainOrAllocAstring(self, self.u8Buf.items());
-    }
-}
-
-pub fn allocStringTemplate2(self: *cy.VM, strs: []const Value, vals: []const Value) !Value {
-    const firstStr = strs[0].asHeapObject();
-    const firstSlice = firstStr.string.getSlice();
-    try self.u8Buf.resize(self.alloc, firstSlice.len);
-    @memcpy(self.u8Buf.items(), firstSlice);
-
-    const writer = self.u8Buf.writer(self.alloc);
-    var is_ascii = true;
-    for (vals, 0..) |val, i| {
-        var out_ascii: bool = undefined;
-        const valstr = try self.getOrBufPrintValueStr2(&cy.tempBuf, val, &out_ascii);
-        is_ascii = is_ascii and out_ascii;
-        _ = try writer.write(valstr);
-
-        const str = strs[i + 1].asHeapObject();
-        is_ascii = is_ascii and str.string.getType().isAstring();
-
-        try self.u8Buf.appendSlice(self.alloc, str.string.getSlice());
-    }
-
-    if (is_ascii) {
-        return retainOrAllocUstring(self, self.u8Buf.items());
-    } else {
-        return retainOrAllocAstring(self, self.u8Buf.items());
-    }
-}
-
 pub fn getOrAllocOwnedAstring(self: *cy.VM, obj: *HeapObject) !Value {
     return getOrAllocOwnedString(self, obj, obj.astring.getSlice());
 }

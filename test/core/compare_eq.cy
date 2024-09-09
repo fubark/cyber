@@ -4,12 +4,6 @@ use t 'test'
 t.eq('foo' == 'bar', false)
 t.eq('foo' == 'foo', true)
 
--- Heap string equals.
-var foo = "$('fo')$('o')"
-t.eq(foo == 'bar', false)
-foo = "$('fo')$('o')"
-t.eq(foo == 'foo', true)
-
 -- Object equals.
 type S:
     value any

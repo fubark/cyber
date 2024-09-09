@@ -2,14 +2,13 @@
 
 use t 'test'
 
-var pre = 'abc'
-var str = "$(pre)xyz"
+var str = 'abcxyz'
 str = str[0..]  -- Sets up the slice.
 t.eq(str, 'abcxyz')
 
 -- Sets up the slice.
-var lstr = "$('aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza')"[0..]
-var upper = "$('ABCXYZ')"[0..]
+var lstr = 'aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza'[0..]
+var upper = 'ABCXYZ'[0..]
 
 -- index operator
 t.eq(str[0], `a`)

@@ -282,9 +282,8 @@ pub fn semaStmt(c: *cy.Chunk, node: *ast.Node) !void {
     c.curNode = node;
     if (cy.Trace) {
         var buf: [1024]u8 = undefined;
-        var fbuf = std.io.fixedBufferStream(&buf);
-        try c.encoder.write(fbuf.writer(), node);
-        log.tracev("stmt.{s}: \"{s}\"", .{@tagName(node.type()), fbuf.getWritten()});
+        const node_str = try c.encoder.formatTrunc(node, &buf);
+        log.tracev("stmt.{s}: \"{s}\"", .{@tagName(node.type()), node_str});
     }
     switch (node.type()) {
         .exprStmt => {
@@ -5308,7 +5307,7 @@ pub const ChunkExt = struct {
     pub fn semaExprNoCheck(c: *cy.Chunk, expr: Expr) anyerror!ExprResult {
         if (cy.Trace) {
             const node = expr.node;
-            const nodeStr = try c.encoder.format(node, &cy.tempBuf);
+            const nodeStr = try c.encoder.formatTrunc(node, &cy.tempBuf);
             log.tracev("expr.{s}: \"{s}\"", .{@tagName(node.type()), nodeStr});
         }
 
@@ -5770,27 +5769,6 @@ pub const ChunkExt = struct {
                     const obj_t = c.sema.getTypeSym(bt.Table).cast(.object_t);
                     return c.semaObjectInit2(obj_t, init_lit);
                 }
-            },
-            .stringTemplate => {
-                const template = node.cast(.stringTemplate);
-                const numExprs = template.parts.len / 2;
-                const irIdx = try c.ir.pushEmptyExpr(.stringTemplate, c.alloc, ir.ExprType.init(bt.String), node);
-                const irStrsIdx = try c.ir.pushEmptyArray(c.alloc, []const u8, numExprs+1);
-                const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, numExprs);
-
-                for (0..numExprs+1) |i| {
-                    const str = template.parts[i*2];
-                    c.ir.setArrayItem(irStrsIdx, []const u8, i, c.ast.nodeString(str));
-                }
-
-                for (0..numExprs) |i| {
-                    const expr_ = template.parts[1 + i*2];
-                    const argRes = try c.semaExprCstr(expr_, bt.Dyn);
-                    c.ir.setArrayItem(irArgsIdx, u32, i, argRes.irIdx);
-                }
-
-                c.ir.setExprData(irIdx, .stringTemplate, .{ .numExprs = @intCast(numExprs), .args = irArgsIdx });
-                return ExprResult.init(irIdx, bt.String);
             },
             .group => {
                 return c.semaExpr(node.cast(.group).child, .{});

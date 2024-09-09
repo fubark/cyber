@@ -26,6 +26,12 @@ t.eq(invalid[0], 0xFFFD)
 -- t.eq(Array('abc').decode().isAscii(), true)
 -- t.eq(try Array('').insertByte(0, 255).decode(), error.Unicode)
 
+-- fmt()
+t.eq('@'.fmt(.{1}), '1')
+t.eq('@, @'.fmt(.{1, 2}), '1, 2')
+t.eq('$PH'.fmt('$PH', .{1}), '1')
+t.eq('$PH, $PH'.fmt('$PH', .{1, 2}), '1, 2')
+
 -- fmtBytes()
 t.eq('z'.fmtBytes(.bin), '01111010')
 t.eq('z'.fmtBytes(.oct), '172')

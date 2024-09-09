@@ -94,7 +94,6 @@ pub const NodeType = enum(u7) {
     seqDestructure,
     staticDecl,
     stringLit,
-    stringTemplate,
     structDecl,
     switchExpr,
     switchStmt,
@@ -593,11 +592,6 @@ const IfExpr = struct {
     pos: u32,
 };
 
-pub const StringTemplate = struct {
-    // Begins with a string lit and alternates between expr and string lits.
-    parts: []*Node align(8),
-};
-
 pub const FuncSigType = enum(u8) {
     func,
     infer,
@@ -688,7 +682,6 @@ fn NodeData(comptime node_t: NodeType) type {
         .seqDestructure => SeqDestructure,
         .staticDecl     => StaticVarDecl,
         .stringLit      => Span,
-        .stringTemplate => StringTemplate,
         .structDecl     => ObjectDecl,
         .switchExpr     => SwitchBlock,
         .switchStmt     => SwitchBlock,
@@ -829,7 +822,6 @@ pub const Node = struct {
             .semaSym        => cy.NullId,
             .staticDecl     => self.cast(.staticDecl).pos,
             .stringLit      => self.cast(.stringLit).pos,
-            .stringTemplate => self.cast(.stringTemplate).parts[0].pos(),
             .structDecl     => self.cast(.structDecl).pos,
             .switchExpr     => self.cast(.switchExpr).pos,
             .switchStmt     => self.cast(.switchStmt).pos,
@@ -922,7 +914,7 @@ pub const UnaryOp = enum(u8) {
 };
 
 test "ast internals." {
-    try t.eq(std.enums.values(NodeType).len, 103);
+    try t.eq(std.enums.values(NodeType).len, 102);
     try t.eq(@sizeOf(NodeHeader), 1);
 }
 
@@ -1277,6 +1269,15 @@ pub const Encoder = struct {
         var fbuf = std.io.fixedBufferStream(buf);
         try self.write(fbuf.writer(), node.?);
         return fbuf.getWritten();
+    }
+
+    pub fn formatTrunc(self: Encoder, node: ?*Node, buf: []u8) ![]const u8 {
+        return self.format(node, buf) catch |err| {
+            if (err != error.NoSpaceLeft) {
+                return err;
+            }
+            return buf;
+        };
     }
 
     pub fn write(self: Encoder, w: anytype, node: *Node) !void {

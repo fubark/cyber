@@ -6,7 +6,7 @@ const fatal = cy.fatal;
 const bindings = @import("bindings.zig");
 const string = cy.string;
 
-pub fn concat(vm: *cy.VM) Value {
+pub fn concat(vm: *cy.VM) !Value {
     const obj = vm.getObject(*cy.heap.String, 0);
     const stype = obj.getType();
     const str = obj.getSlice();
@@ -14,14 +14,34 @@ pub fn concat(vm: *cy.VM) Value {
         const obj2 = vm.getObject(*cy.heap.String, 1);
         const rstr = obj2.getSlice();
         if (obj2.getType().isAstring()) {
-            return vm.allocAstringConcat(str, rstr) catch fatal();
+            return vm.allocAstringConcat(str, rstr);
         } else {
-            return vm.allocUstringConcat(str, rstr) catch fatal();
+            return vm.allocUstringConcat(str, rstr);
         }
     } else {
         const obj2 = vm.getObject(*cy.heap.String, 1);
         const rstr = obj2.getSlice();
-        return vm.allocUstringConcat(str, rstr) catch fatal();
+        return vm.allocUstringConcat(str, rstr);
+    }
+}
+
+pub fn concatAny(vm: *cy.VM) !Value {
+    const obj = vm.getObject(*cy.heap.String, 0);
+    const stype = obj.getType();
+    const str = obj.getSlice();
+
+    const val = vm.getValue(1);
+    var out_ascii: bool = undefined;
+    const val_str = try vm.getOrBufPrintValueStr2(&cy.tempBuf, val, &out_ascii);
+
+    if (stype.isAstring()) {
+        if (out_ascii) {
+            return vm.allocAstringConcat(str, val_str);
+        } else {
+            return vm.allocUstringConcat(str, val_str);
+        }
+    } else {
+        return vm.allocUstringConcat(str, val_str);
     }
 }
 

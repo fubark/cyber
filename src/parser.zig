@@ -2657,53 +2657,6 @@ pub const Parser = struct {
         });
     }
 
-    /// A string template begins and ends with .templateString token.
-    /// Inside the template, two template expressions can be adjacent to each other.
-    fn parseStringTemplate(self: *Parser) !*ast.StringTemplate {
-        const start = self.next_pos;
-
-        if (self.peek().tag() != .templateString) {
-            return self.reportError("Expected template string.", &.{});
-        }
-
-        var part: *ast.Node = @ptrCast(try self.newSpanNode(.stringLit, start));
-        self.advance();
-
-        var lastWasStringPart = true;
-        const part_start = self.node_stack.items.len;
-        defer self.node_stack.items.len = part_start;
-        try self.pushNode(@ptrCast(part));
-
-        while (true) {
-            const tag = self.peek().tag();
-            if (tag == .templateString) {
-                if (lastWasStringPart) {
-                    // End of this template.
-                    break;
-                }
-                part = @ptrCast(try self.newSpanNode(.stringLit, self.next_pos));
-                lastWasStringPart = true;
-            } else if (tag == .templateExprStart) {
-                self.advance();
-                part = (try self.parseExpr(.{})) orelse {
-                    return self.reportError("Expected expression.", &.{});
-                };
-                if (self.peek().tag() != .right_paren) {
-                    return self.reportError("Expected right paren.", &.{});
-                }
-                lastWasStringPart = false;
-            } else {
-                break;
-            }
-            try self.pushNode(@ptrCast(part));
-            self.advance();
-        }
-
-        return self.ast.newNode(.stringTemplate, .{
-            .parts = try self.ast.dupeNodes(self.node_stack.items[part_start..]),
-        });
-    }
-
     /// Assumes at `coinit` keyword.
     fn parseCoinitExpr(self: *Parser) !*ast.Node {
         const start = self.next_pos;
@@ -2818,11 +2771,54 @@ pub const Parser = struct {
                 },
                 .pound => {
                     self.advance();
-                    const call = try self.parseCallExpression(left, config.allow_block_expr);
-                    call.ct = true;
-                    left = @ptrCast(call);
+                    if (self.peek().tag() == .left_paren) {
+                        const call = try self.parseCallExpression(left, config.allow_block_expr);
+                        call.ct = true;
+                        left = @ptrCast(call);
+                    }
                 },
-                .minus_double_dot, .dot_dot, .right_bracket, .right_paren, .right_brace, .else_k, .catch_k, .comma, .colon, .equal, .plus, .minus, .star, .slash, .ampersand, .vert_bar, .double_vert_bar, .double_left_angle, .double_right_angle, .caret, .left_angle, .left_angle_equal, .right_angle, .right_angle_equal, .percent, .equal_equal, .bang_equal, .and_k, .or_k, .as_k, .minus_right_angle, .raw_string, .string, .bin, .oct, .hex, .dec, .float, .if_k, .templateString, .equal_right_angle, .new_line, .null => break,
+                .minus_double_dot,
+                .dot_dot,
+                .right_bracket,
+                .right_paren,
+                .right_brace,
+                .else_k,
+                .catch_k,
+                .comma,
+                .colon,
+                .equal,   
+                .plus,
+                .minus,
+                .star,
+                .slash,
+                .ampersand,
+                .vert_bar,
+                .double_vert_bar,
+                .double_left_angle,
+                .double_right_angle,
+                .caret,
+                .left_angle,
+                .left_angle_equal,
+                .right_angle,
+                .right_angle_equal,
+                .percent,
+                .equal_equal,
+                .bang_equal,
+                .and_k,
+                .or_k,
+                .as_k,
+                .minus_right_angle,
+                .raw_string,
+                .string,
+                .bin,
+                .oct,
+                .hex,
+                .dec,
+                .float,
+                .if_k,
+                .equal_right_angle,
+                .new_line,
+                .null => break,
                 else => break,
             }
         }
@@ -2999,9 +2995,6 @@ pub const Parser = struct {
                 self.advance();
                 return @ptrCast(try self.newSpanNode(.stringLit, start));
             },
-            .templateString => {
-                return @ptrCast(try self.parseStringTemplate());
-            },
             .pound => {
                 return @ptrCast(try self.parseComptimeExpr());
             },
@@ -3128,11 +3121,7 @@ pub const Parser = struct {
     fn parseComptimeExpr(self: *Parser) !*ast.ComptimeExpr {
         // Assumes current token is `#`.
         self.advance();
-
-        const child = (try self.parseExpr(.{})) orelse {
-            return self.reportError("Expected expression.", &.{});
-        };
-
+        const child = try self.parseTermExpr2(.{});
         return self.ast.newNode(.comptimeExpr, .{
             .child = child,
         });
@@ -3424,7 +3413,9 @@ pub const Parser = struct {
                     }
                     // Attempt to parse as no paren call expr.
                     switch (left.type()) {
-                        .accessExpr, .ident => {
+                        .comptimeExpr,
+                        .accessExpr,
+                        .ident => {
                             return @ptrCast(try self.parseNoParenCallExpression(left));
                         },
                         else => {
@@ -3797,7 +3788,19 @@ fn toBinExprOp(op: cy.tokenizer.TokenType) ?cy.ast.BinaryExprOp {
         .equal_equal => .equal_equal,
         .and_k => .and_op,
         .or_k => .or_op,
-        .null, .as_k, .at, .await_k, .bang, .bin, .break_k, .minus_right_angle, .case_k, .catch_k, .coinit_k, .colon, .comma, .context_k, .continue_k, .coresume_k, .coyield_k, .cstruct_k, .dec, .def_k, .dot, .dot_bang, .dot_question, .dot_dot, .dot_star, .else_k, .enum_k, .err, .error_k, .equal, .equal_right_angle, .false_k, .float, .for_k, .func_k, .Func_k, .hex, .ident, .if_k, .mod_k, .indent, .left_brace, .left_bracket, .left_paren, .dyn_k, .minus_double_dot, .new_line, .none_k, .not_k, .object_k, .oct, .pass_k, .underscore, .pound, .question, .return_k, .right_brace, .right_bracket, .right_paren, .rune, .raw_string, .string, .struct_k, .switch_k, .symbol_k, .templateExprStart, .templateString, .throw_k, .tilde, .trait_k, .true_k, .try_k, .type_k, .use_k, .var_k, .void_k, .while_k, .with_k => null,
+        .null,
+        .as_k, .at, .await_k,
+        .bang, .bin, .break_k,
+        .minus_right_angle, .case_k, .catch_k, .coinit_k, .colon, .comma, .context_k, .continue_k, .coresume_k, .coyield_k, .cstruct_k,
+        .dec, .def_k, .dot, .dot_bang, .dot_question, .dot_dot, .dot_star,
+        .else_k, .enum_k, .err, .error_k, .equal, .equal_right_angle,
+        .false_k, .float, .for_k, .func_k, .Func_k,
+        .hex, .ident, .if_k, .mod_k, .indent,
+        .left_brace, .left_bracket, .left_paren, .dyn_k,
+        .minus_double_dot, .new_line, .none_k, .not_k, .object_k, .oct, .pass_k, .underscore, .pound, .question,
+        .return_k, .right_brace, .right_bracket, .right_paren, .rune, .raw_string,
+        .string, .struct_k, .switch_k, .symbol_k,
+        .throw_k, .tilde, .trait_k, .true_k, .try_k, .type_k, .use_k, .var_k, .void_k, .while_k, .with_k => null,
     };
 }
 

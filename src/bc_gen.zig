@@ -324,7 +324,7 @@ fn genStmt(c: *Chunk, idx: u32) anyerror!void {
     const node = c.ir.getNode(idx);
     c.curNode = node;
     if (cy.Trace) {
-        const contextStr = try c.encoder.format(node, &cy.tempBuf);
+        const contextStr = try c.encoder.formatTrunc(node, &cy.tempBuf);
         if (cc.verbose()) {
             rt.logFmt("{}| {}: `{}` unw={} nslots={}", &.{
                 cy.fmt.repeat(' ', c.indent * 4), v(@tagName(code)), v(contextStr),
@@ -437,7 +437,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
     const node = c.ir.getNode(idx);
     if (cy.Trace) {
         c.indent += 1;
-        const contextStr = try c.encoder.format(node, &cy.tempBuf);
+        const contextStr = try c.encoder.formatTrunc(node, &cy.tempBuf);
         if (cc.verbose()) {
             rt.logFmt("{}( {}: `{}` {} unw={} nslots={}", &.{
                 cy.fmt.repeat(' ', c.indent * 4), v(@tagName(code)), v(contextStr), v(@tagName(cstr.type)),
@@ -484,7 +484,6 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .call_obj_sym       => genCallObjSym(c, idx, cstr, node),
         .preUnOp            => genUnOp(c, idx, cstr, node),
         .string             => genString(c, idx, cstr, node),
-        .stringTemplate     => genStringTemplate(c, idx, cstr, node),
         .switchExpr         => genSwitch(c, idx, cstr, node),
         .symbol             => genSymbol(c, idx, cstr, node),
         .tag_lit            => genTagLit(c, idx, cstr, node),
@@ -1332,42 +1331,6 @@ fn genNone(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     }
 
     return finishDstInst(c, inst, false);
-}
-
-fn genStringTemplate(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
-    const data = c.ir.getExprData(idx, .stringTemplate);
-    const strsIdx = c.ir.advanceExpr(idx, .stringTemplate);
-    const strs = c.ir.getArray(strsIdx, []const u8, data.numExprs+1);
-    const args = c.ir.getArray(data.args, u32, data.numExprs);
-
-    const inst = try bc.selectForDstInst(c, cstr, bt.String, true, node); 
-    const argStart = numSlots(c);
-
-    for (args, 0..) |argIdx, i| {
-        const temp = try bc.reserveTemp(c, bt.Any);
-        if (cy.Trace and temp != argStart + i) return error.Unexpected;
-        const argv = try genExpr(c, argIdx, Cstr.toTemp(temp));
-        try initSlot(c, temp, argv.retained, node);
-    }
-    if (cy.Trace and numSlots(c) != argStart + data.numExprs) return error.Unexpected;
-
-    try c.pushOptionalDebugSym(node);
-    try c.buf.pushOp3(.stringTemplate, @intCast(argStart), data.numExprs, inst.dst);
-
-    // Append const str indexes.
-    const start = try c.buf.reserveData(strs.len);
-    for (strs, 0..) |str, i| {
-        const ustr = try c.unescapeString(str);
-        const constIdx = try c.buf.getOrPushStaticStringConst(ustr);
-        c.buf.ops.items[start + i].val = @intCast(constIdx);
-    }
-
-    try popTemps(c, args.len, node);
-    if (inst.own_dst) {
-        try initSlot(c, inst.dst, true, node);
-    }
-
-    return finishDstInst(c, inst, true);
 }
 
 fn genString(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {

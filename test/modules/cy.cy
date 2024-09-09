@@ -11,7 +11,7 @@ func mul(a int, b int) int:
     return a * b
 mul(10, 5)''')
 t.eq(res, 50)
-res = cy.eval('"hello $(123)"')
+res = cy.eval('"hello " + 123')
 t.eq(res, 'hello 123')
 t.throws(func () => cy.eval('a'), error.EvalError)
 

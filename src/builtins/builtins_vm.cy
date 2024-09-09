@@ -471,10 +471,16 @@ type String _:
     func $index(self, range Range) String
 
     --| Returns a new string that concats this string and `str`.
-    @host func '$infix+'(self, o any) String
+    @host func '$infix+'(self, str String) String
+
+    --| Returns a new string that concats this string with a string representation of `v`.
+    @host='String.$infix+_any' func '$infix+'(self, v any) String
 
     --| Returns a new string that concats this string and `str`.
-    @host func concat(self, o String) String
+    @host func concat(self, str String) String
+
+    --| Returns a new string that concats this string with a string representation of `v`.
+    @host='String.concat_any' func concat(self, v any) String
 
     --| Returns the number of runes in the string.
     @host func count(self) int
@@ -510,6 +516,11 @@ type String _:
 
     --| Returns the first byte index of a rune `needle` in the string or `none` if not found. SIMD enabled.
     @host func findRune(self, rune int) ?int
+
+    --| Replaces each placeholder `@` from the receiver string with the corresponding value in `args` converted to a string.
+    @host func fmt(self, args List[any]) String
+
+    @host='String.fmt2' func fmt(self, placeholder String, args List[any]) String
 
     --| Formats each byte in the string using a NumberFormat.
     --| Each byte is zero padded.

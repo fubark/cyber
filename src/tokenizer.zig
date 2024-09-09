@@ -135,8 +135,6 @@ pub const TokenType = enum(u8) {
     struct_k,
     switch_k,
     symbol_k,
-    templateExprStart,
-    templateString,
     throw_k,
     tilde,
     trait_k,
@@ -183,20 +181,11 @@ const StringDelim = enum(u2) {
 
 pub const TokenizeState = struct {
     stateT: TokenizeStateTag,
-
-    /// For string interpolation, open parens can accumulate so the end of a template expression can be determined.
-    openParens: u8 = 0,
-
-    /// For string interpolation, if true the delim is a double quote otherwise it's a backtick.
-    stringDelim: StringDelim = .single,
-    hadTemplateExpr: u1 = 0,
 };
 
 pub const TokenizeStateTag = enum {
     start,
     token,
-    templateString,
-    templateExprToken,
     end,
 };
 
@@ -291,25 +280,9 @@ pub const Tokenizer = struct {
         switch (ch) {
             '(' => {
                 try t.pushToken(.left_paren, start);
-                if (state.stateT == .templateExprToken) {
-                    var next = state;
-                    next.openParens += 1;
-                    return next;
-                }
             },
             ')' => {
                 try t.pushToken(.right_paren, start);
-                if (state.stateT == .templateExprToken) {
-                    var next = state;
-                    if (state.openParens == 0) {
-                        next.stateT = .templateString;
-                        next.openParens = 0;
-                        return next;
-                    } else {
-                        next.openParens -= 1;
-                        return next;
-                    }
-                }
             },
             '{' => {
                 try t.pushToken(.left_brace, start);
@@ -500,46 +473,30 @@ pub const Tokenizer = struct {
                 try t.pushSpanToken(.rune, start + 1, t.nextPos - 1);
             },
             '"' => {
-                if (state.stateT == .templateExprToken) {
-                    try t.reportError("Nested string literal is not allowed.", &.{});
-                } else {
-                    if (peek(t) == '"') {
-                        if (peekAhead(t, 1)) |ch2| {
-                            if (ch2 == '"') {
-                                _ = consume(t);
-                                _ = consume(t);
-                                return tokenizeTemplateStringOne(t, .{
-                                    .stateT = state.stateT,
-                                    .stringDelim = .triple,
-                                });
-                            }
+                if (peek(t) == '"') {
+                    if (peekAhead(t, 1)) |ch2| {
+                        if (ch2 == '"') {
+                            _ = consume(t);
+                            _ = consume(t);
+                            try tokenizeStringMulti(t, t.nextPos);
+                            return state;
                         }
                     }
-                    return tokenizeTemplateStringOne(t, .{
-                        .stateT = state.stateT,
-                        .stringDelim = .single,
-                    });
                 }
+                try tokenizeString(t, t.nextPos);
             },
             '\'' => {
-                if (state.stateT == .templateExprToken) {
-                    // Only allow raw-string literals inside template expressions.
-                    try tokenizeSingleLineRawString(t, t.nextPos);
-                    return state;
-                } else {
-                    if (peek(t) == '\'') {
-                        if (peekAhead(t, 1)) |ch2| {
-                            if (ch2 == '\'') {
-                                _ = consume(t);
-                                _ = consume(t);
-                                try tokenizeMultiLineRawString(t, t.nextPos);
-                                return state;
-                            }
+                if (peek(t) == '\'') {
+                    if (peekAhead(t, 1)) |ch2| {
+                        if (ch2 == '\'') {
+                            _ = consume(t);
+                            _ = consume(t);
+                            try tokenizeMultiLineRawString(t, t.nextPos);
+                            return state;
                         }
                     }
-                    try tokenizeSingleLineRawString(t, t.nextPos);
-                    return state;
                 }
+                try tokenizeSingleLineRawString(t, t.nextPos);
             },
             '#' => try t.pushToken(.pound, start),
             '?' => try t.pushToken(.question, start),
@@ -663,18 +620,6 @@ pub const Tokenizer = struct {
                         }
                     }
                 },
-                .templateString => {
-                    state = try tokenizeTemplateStringOne(t, state);
-                },
-                .templateExprToken => {
-                    while (true) {
-                        const nextState = try tokenizeOne(t, state);
-                        if (nextState.stateT != .token) {
-                            state = nextState;
-                            break;
-                        }
-                    }
-                },
                 .end => {
                     break;
                 },
@@ -682,64 +627,21 @@ pub const Tokenizer = struct {
         }
     }
 
-    /// Returns the next tokenizer state.
-    fn tokenizeTemplateStringOne(t: *Tokenizer, state: TokenizeState) !TokenizeState {
-        const start = t.nextPos;
-
+    fn tokenizeString(t: *Tokenizer, start: u32) !void {
+        const save = t.nextPos;
         while (true) {
             if (isAtEnd(t)) {
                 if (t.ignoreErrors) {
-                    t.nextPos = start;
+                    t.nextPos = save;
                     try t.pushToken(.err, start);
-                    return .{ .stateT = .token };
-                }
-                try t.reportErrorAt("UnterminatedString", &.{}, start);
+                } else return t.reportErrorAt("UnterminatedString", &.{}, start);
             }
-            const ch = peek(t);
-            switch (ch) {
+
+            switch (t.peek()) {
                 '"' => {
-                    if (state.stringDelim == .single) {
-                        if (state.hadTemplateExpr == 1) {
-                            try t.pushSpanToken(.templateString, start, t.nextPos);
-                        } else {
-                            try t.pushSpanToken(.string, start, t.nextPos);
-                        }
-                        _ = consume(t);
-                        return .{ .stateT = .token };
-                    } else if (state.stringDelim == .triple) {
-                        var ch2 = peekAhead(t, 1) orelse 0;
-                        if (ch2 == '"') {
-                            ch2 = peekAhead(t, 2) orelse 0;
-                            if (ch2 == '"') {
-                                if (state.hadTemplateExpr == 1) {
-                                    try t.pushSpanToken(.templateString, start, t.nextPos);
-                                } else {
-                                    try t.pushSpanToken(.string, start, t.nextPos);
-                                }
-                                _ = consume(t);
-                                _ = consume(t);
-                                _ = consume(t);
-                                return .{ .stateT = .token };
-                            }
-                        }
-                    }
-                    _ = consume(t);
-                },
-                '$' => {
-                    const ch2 = peekAhead(t, 1) orelse 0;
-                    if (ch2 == '(') {
-                        try t.pushSpanToken(.templateString, start, t.nextPos);
-                        try t.pushToken(.templateExprStart, t.nextPos);
-                        advance(t);
-                        advance(t);
-                        var next = state;
-                        next.stateT = .templateExprToken;
-                        next.openParens = 0;
-                        next.hadTemplateExpr = 1;
-                        return next;
-                    } else {
-                        advance(t);
-                    }
+                    try t.pushSpanToken(.string, start, t.nextPos);
+                    advance(t);
+                    return;
                 },
                 '\\' => {
                     // Escape the next character.
@@ -748,27 +650,70 @@ pub const Tokenizer = struct {
                         if (t.ignoreErrors) {
                             t.nextPos = start;
                             try t.pushToken(.err, start);
-                            return .{ .stateT = .token };
+                            return;
+                        } else {
+                            return t.reportErrorAt("UnterminatedString", &.{}, start);
                         }
-                        try t.reportErrorAt("UnterminatedString", &.{}, start);
+                    }
+                    _ = consume(t);
+                },
+                '\n' => {
+                    if (t.ignoreErrors) {
+                        t.nextPos = start;
+                        try t.pushToken(.err, start);
+                    } else {
+                        return t.reportErrorAt("Encountered new line in single line literal.", &.{}, start);
+                    }
+                },
+                else => {
+                    advance(t);
+                }
+            }
+        }
+    }
+
+    fn tokenizeStringMulti(t: *Tokenizer, start: u32) !void {
+        const save = t.nextPos;
+        while (true) {
+            if (isAtEnd(t)) {
+                if (t.ignoreErrors) {
+                    t.nextPos = save;
+                    try t.pushToken(.err, start);
+                } else return t.reportErrorAt("UnterminatedString", &.{}, start);
+            }
+
+            switch (t.peek()) {
+                '"' => {
+                    var ch = peekAhead(t, 1) orelse 0;
+                    if (ch == '"') {
+                        ch = peekAhead(t, 2) orelse 0;
+                        if (ch == '"') {
+                            try t.pushSpanToken(.string, start, t.nextPos);
+                            _ = consume(t);
+                            _ = consume(t);
+                            _ = consume(t);
+                            return;
+                        }
+                    }
+                    _ = consume(t);
+                },
+                '\\' => {
+                    // Escape the next character.
+                    _ = consume(t);
+                    if (isAtEnd(t)) {
+                        if (t.ignoreErrors) {
+                            t.nextPos = start;
+                            try t.pushToken(.err, start);
+                        } else {
+                            return t.reportErrorAt("UnterminatedString", &.{}, start);
+                        }
                     }
                     _ = consume(t);
                     continue;
                 },
-                '\n' => {
-                    if (state.stringDelim == .single) {
-                        if (t.ignoreErrors) {
-                            t.nextPos = start;
-                            try t.pushToken(.err, start);
-                            return .{ .stateT = .token };
-                        }
-                        try t.reportErrorAt("Encountered new line in single line literal.", &.{}, start);
-                    }
-                    _ = consume(t);
-                },
                 else => {
-                    _ = consume(t);
-                },
+                    advance(t);
+                }
             }
         }
     }
@@ -1028,8 +973,8 @@ pub fn defaultReportFn(ctx: *anyopaque, format: []const u8, args: []const cy.fmt
 test "tokenizer internals." {
     try tt.eq(@sizeOf(Token), 8);
     try tt.eq(@alignOf(Token), 4);
-    try tt.eq(@sizeOf(TokenizeState), 4);
+    try tt.eq(@sizeOf(TokenizeState), 1);
 
-    try tt.eq(std.enums.values(TokenType).len, 97);
+    try tt.eq(std.enums.values(TokenType).len, 95);
     try tt.eq(keywords.kvs.len, 42);
 }

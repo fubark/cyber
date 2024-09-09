@@ -3305,32 +3305,6 @@ fn zAllocExternalObject(vm: *cy.VM, size: usize) callconv(.C) vmc.HeapObjectResu
     };
 }
 
-fn zAllocStringTemplate(vm: *cy.VM, strs: [*]cy.Inst, strCount: u8, vals: [*]Value, valCount: u8) callconv(.C) vmc.ValueResult {
-    const val = cy.heap.allocStringTemplate(vm, strs[0..strCount], vals[0..valCount]) catch {
-        return .{
-            .val = undefined,
-            .code = vmc.RES_CODE_UNKNOWN,
-        };
-    };
-    return .{
-        .val = @bitCast(val),
-        .code = vmc.RES_CODE_SUCCESS,
-    };
-}
-
-pub fn zAllocStringTemplate2(vm: *cy.VM, strs: [*]cy.Value, strCount: u8, vals: [*]Value, valCount: u8) callconv(.C) vmc.ValueResult {
-    const val = cy.heap.allocStringTemplate2(vm, strs[0..strCount], vals[0..valCount]) catch {
-        return .{
-            .val = undefined,
-            .code = vmc.RES_CODE_UNKNOWN,
-        };
-    };
-    return .{
-        .val = @bitCast(val),
-        .code = vmc.RES_CODE_SUCCESS,
-    };
-}
-
 pub fn zDumpValue(vm: *VM, val: Value) callconv(.C) void {
     var buf: [1024]u8 = undefined;
     var fbuf = std.io.fixedBufferStream(&buf);
@@ -3447,53 +3421,51 @@ comptime {
     }
 
     if (build_options.export_vmz) {
-        @export(&zAwait, .{ .name = "zAwait", .linkage = .strong });
-        @export(&zFutureValue, .{ .name = "zFutureValue", .linkage = .strong });
-        @export(&zPopFiber, .{ .name = "zPopFiber", .linkage = .strong });
-        @export(&zPushFiber, .{ .name = "zPushFiber", .linkage = .strong });
-        @export(&zGetFieldFallback, .{ .name = "zGetFieldFallback", .linkage = .strong });
-        @export(&zSetFieldFallback, .{ .name = "zSetFieldFallback", .linkage = .strong });
-        @export(&zMapSet, .{ .name = "zMapSet", .linkage = .strong });
-        @export(&zValueMapGet, .{ .name = "zValueMapGet", .linkage = .strong });
-        @export(&zPanicFmt, .{ .name = "zPanicFmt", .linkage = .strong });
-        @export(&zOtherToF64, .{ .name = "zOtherToF64", .linkage = .strong });
-        @export(&zAllocExternalObject, .{ .name = "zAllocExternalObject", .linkage = .strong });
-        @export(&zAllocExternalCycObject, .{ .name = "zAllocExternalCycObject", .linkage = .strong });
-        @export(&zAllocStringTemplate, .{ .name = "zAllocStringTemplate", .linkage = .strong });
-        @export(&zAllocStringTemplate2, .{ .name = "zAllocStringTemplate2", .linkage = .strong });
-        @export(&zAllocPoolObject, .{ .name = "zAllocPoolObject", .linkage = .strong });
-        @export(&zAllocObjectSmall, .{ .name = "zAllocObjectSmall", .linkage = .strong });
-        @export(&zAllocFiber, .{ .name = "zAllocFiber", .linkage = .strong });
-        @export(&zAllocFuncPtr, .{ .name = "zAllocFuncPtr", .linkage = .strong });
-        @export(&zAllocLambda, .{ .name = "zAllocLambda", .linkage = .strong });
-        @export(&zAllocClosure, .{ .name = "zAllocClosure", .linkage = .strong });
-        @export(&zAlloc, .{ .name = "zAlloc", .linkage = .strong });
-        @export(&zAllocArray, .{ .name = "zAllocArray", .linkage = .strong });
-        @export(&zAllocList, .{ .name = "zAllocList", .linkage = .strong });
-        @export(&zAllocListDyn, .{ .name = "zAllocListDyn", .linkage = .strong });
-        @export(&zCopyStruct, .{ .name = "zCopyStruct", .linkage = .strong });
-        @export(&zBox, .{ .name = "zBox", .linkage = .strong });
-        @export(&zUnbox, .{ .name = "zUnbox", .linkage = .strong });
-        @export(&zCall, .{ .name = "zCall", .linkage = .strong });
-        @export(&zCallSym, .{ .name = "zCallSym", .linkage = .strong });
-        @export(&zCallTrait, .{ .name = "zCallTrait", .linkage = .strong });
-        @export(&zCallSymDyn, .{ .name = "zCallSymDyn", .linkage = .strong });
-        @export(&zCallObjSym, .{ .name = "zCallObjSym", .linkage = .strong });
-        @export(&zOpMatch, .{ .name = "zOpMatch", .linkage = .strong });
-        @export(&zOpCodeName, .{ .name = "zOpCodeName", .linkage = .strong });
-        @export(&zLog, .{ .name = "zLog", .linkage = .strong });
-        @export(&zGetTypeName, .{ .name = "zGetTypeName", .linkage = .strong });
-        @export(&zFreeObject, .{ .name = "zFreeObject", .linkage = .strong });
-        @export(&zDumpValue, .{ .name = "zDumpValue", .linkage = .strong });
-        @export(&zDumpEvalOp, .{ .name = "zDumpEvalOp", .linkage = .strong });
-        @export(&zCheckDoubleFree, .{ .name = "zCheckDoubleFree", .linkage = .strong });
-        @export(&zCheckRetainDanglingPointer, .{ .name = "zCheckRetainDanglingPointer", .linkage = .strong });
-        @export(&zFatal, .{ .name = "zFatal", .linkage = .strong });
-        @export(&zEvalCompareNot, .{ .name = "zEvalCompareNot", .linkage = .strong });
-        @export(&zEvalCompare, .{ .name = "zEvalCompare", .linkage = .strong });
-        @export(&zEnsureListCap, .{ .name = "zEnsureListCap", .linkage = .strong });
-        @export(&zEnd, .{ .name = "zEnd", .linkage = .strong });
-        @export(&zGetTypeField, .{ .name = "zGetTypeField", .linkage = .strong });
+        @export(zAwait, .{ .name = "zAwait", .linkage = .strong });
+        @export(zFutureValue, .{ .name = "zFutureValue", .linkage = .strong });
+        @export(zPopFiber, .{ .name = "zPopFiber", .linkage = .strong });
+        @export(zPushFiber, .{ .name = "zPushFiber", .linkage = .strong });
+        @export(zGetFieldFallback, .{ .name = "zGetFieldFallback", .linkage = .strong });
+        @export(zSetFieldFallback, .{ .name = "zSetFieldFallback", .linkage = .strong });
+        @export(zMapSet, .{ .name = "zMapSet", .linkage = .strong });
+        @export(zValueMapGet, .{ .name = "zValueMapGet", .linkage = .strong });
+        @export(zPanicFmt, .{ .name = "zPanicFmt", .linkage = .strong });
+        @export(zOtherToF64, .{ .name = "zOtherToF64", .linkage = .strong });
+        @export(zAllocExternalObject, .{ .name = "zAllocExternalObject", .linkage = .strong });
+        @export(zAllocExternalCycObject, .{ .name = "zAllocExternalCycObject", .linkage = .strong });
+        @export(zAllocPoolObject, .{ .name = "zAllocPoolObject", .linkage = .strong });
+        @export(zAllocObjectSmall, .{ .name = "zAllocObjectSmall", .linkage = .strong });
+        @export(zAllocFiber, .{ .name = "zAllocFiber", .linkage = .strong });
+        @export(zAllocFuncPtr, .{ .name = "zAllocFuncPtr", .linkage = .strong });
+        @export(zAllocLambda, .{ .name = "zAllocLambda", .linkage = .strong });
+        @export(zAllocClosure, .{ .name = "zAllocClosure", .linkage = .strong });
+        @export(zAlloc, .{ .name = "zAlloc", .linkage = .strong });
+        @export(zAllocArray, .{ .name = "zAllocArray", .linkage = .strong });
+        @export(zAllocList, .{ .name = "zAllocList", .linkage = .strong });
+        @export(zAllocListDyn, .{ .name = "zAllocListDyn", .linkage = .strong });
+        @export(zCopyStruct, .{ .name = "zCopyStruct", .linkage = .strong });
+        @export(zBox, .{ .name = "zBox", .linkage = .strong });
+        @export(zUnbox, .{ .name = "zUnbox", .linkage = .strong });
+        @export(zCall, .{ .name = "zCall", .linkage = .strong });
+        @export(zCallSym, .{ .name = "zCallSym", .linkage = .strong });
+        @export(zCallTrait, .{ .name = "zCallTrait", .linkage = .strong });
+        @export(zCallSymDyn, .{ .name = "zCallSymDyn", .linkage = .strong });
+        @export(zCallObjSym, .{ .name = "zCallObjSym", .linkage = .strong });
+        @export(zOpMatch, .{ .name = "zOpMatch", .linkage = .strong });
+        @export(zOpCodeName, .{ .name = "zOpCodeName", .linkage = .strong });
+        @export(zLog, .{ .name = "zLog", .linkage = .strong });
+        @export(zGetTypeName, .{ .name = "zGetTypeName", .linkage = .strong });
+        @export(zFreeObject, .{ .name = "zFreeObject", .linkage = .strong });
+        @export(zDumpValue, .{ .name = "zDumpValue", .linkage = .strong });
+        @export(zDumpEvalOp, .{ .name = "zDumpEvalOp", .linkage = .strong });
+        @export(zCheckDoubleFree, .{ .name = "zCheckDoubleFree", .linkage = .strong });
+        @export(zCheckRetainDanglingPointer, .{ .name = "zCheckRetainDanglingPointer", .linkage = .strong });
+        @export(zFatal, .{ .name = "zFatal", .linkage = .strong });
+        @export(zEvalCompareNot, .{ .name = "zEvalCompareNot", .linkage = .strong });
+        @export(zEvalCompare, .{ .name = "zEvalCompare", .linkage = .strong });
+        @export(zEnsureListCap, .{ .name = "zEnsureListCap", .linkage = .strong });
+        @export(zEnd, .{ .name = "zEnd", .linkage = .strong });
+        @export(zGetTypeField, .{ .name = "zGetTypeField", .linkage = .strong });
     }
 }
 

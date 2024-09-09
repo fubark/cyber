@@ -175,8 +175,10 @@ const funcs = [_]C.HostFuncEntry{
     func("MapIterator.next",   bindings.mapIteratorNext),
 
     // String
-    func("String.$infix+",     string.concat),
-    func("String.concat",      string.concat),
+    func("String.$infix+",     zErrFunc(string.concat)),
+    func("String.$infix+_any", zErrFunc(string.concatAny)),
+    func("String.concat",      zErrFunc(string.concat)),
+    func("String.concat_any",  zErrFunc(string.concatAny)),
     func("String.count",       string.count),
     // func("String.decode",       String_decode),
     // func("String.decode2",      String_decode2),
@@ -186,6 +188,8 @@ const funcs = [_]C.HostFuncEntry{
     func("String.findAnyRune", zErrFunc(string.findAnyRune)),
     func("String.findByte",    stringFindByte),
     func("String.findRune",    string.findRune),
+    func("String.fmt",         zErrFunc(string_fmt)),
+    func("String.fmt2",        zErrFunc(string_fmt2)),
     func("String.fmtBytes",    zErrFunc(stringFmtBytes)),
     func("String.getByte",     zErrFunc(stringGetByte)),
     func("String.getInt",      zErrFunc(String_getInt)),
@@ -1370,6 +1374,59 @@ fn stringFindByte(vm: *cy.VM) Value {
         return intSome(vm, @intCast(idx)) catch cy.fatal();
     }
     return intNone(vm) catch cy.fatal();
+}
+
+fn string_fmt(vm: *cy.VM) anyerror!Value {
+    const format = vm.getObject(*cy.heap.String, 0);
+    const args = vm.getObject(*cy.heap.List, 1).items();
+    return stringFmt(vm, format.getSlice(), format.getType().isAstring(), "@", args);
+}
+
+fn string_fmt2(vm: *cy.VM) anyerror!Value {
+    const format = vm.getObject(*cy.heap.String, 0);
+    const placeholder = vm.getString(1);
+    const args = vm.getObject(*cy.heap.List, 2).items();
+    return stringFmt(vm, format.getSlice(), format.getType().isAstring(), placeholder, args);
+}
+
+fn stringFmt(vm: *cy.VM, format: []const u8, ascii_format: bool, placeholder: []const u8, args: []const cy.Value) !cy.Value {
+    var ascii_args = true;
+    const buf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
+    buf.clearRetainingCapacity();
+    defer buf.ensureMaxCapOrClear(vm.alloc, 4096) catch fatal();
+
+    var pos: usize = 0;
+    var num_ph: usize = 0;
+    while (true) {
+        // Find the next placeholder.
+        const ph_pos = std.mem.indexOfPos(u8, format, pos, placeholder) orelse {
+            if (num_ph != args.len) {
+                return error.InvalidArgument;
+            }
+            try buf.appendSlice(vm.alloc, format[pos..]);
+            break;
+        };
+
+        try buf.appendSlice(vm.alloc, format[pos..ph_pos]);
+
+        if (num_ph + 1 > args.len) {
+            return error.InvalidArgument;
+        }
+
+        var out_ascii: bool = undefined;
+        const val_str = try vm.getOrBufPrintValueStr2(&cy.tempBuf, args[num_ph], &out_ascii);
+        ascii_args = ascii_args and out_ascii;
+        try buf.appendSlice(vm.alloc, val_str);
+
+        pos = ph_pos + placeholder.len;
+        num_ph += 1;
+    }
+
+    if (ascii_format and ascii_args) {
+        return vm.retainOrAllocAstring(buf.items());
+    } else {
+        return vm.retainOrAllocUstring(buf.items());
+    }
 }
 
 fn stringFmtBytes(vm: *cy.VM) anyerror!Value {

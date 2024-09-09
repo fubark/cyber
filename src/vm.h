@@ -293,7 +293,6 @@ typedef enum {
     /// Perform modulus on the two locals and stores result to a dst local.
     CodeModFloat,
     CodeCompareNot,
-    CodeStringTemplate,
     CodeNegFloat,
     CodeStructSmall,
     CodeStruct,
@@ -950,8 +949,6 @@ PcFpResult zCall(VM* vm, Inst* pc, Value* stack, Value callee, uint8_t startLoca
 HeapObjectResult zAllocPoolObject(VM* vm);
 HeapObjectResult zAllocExternalObject(VM* vm, size_t size);
 HeapObjectResult zAllocExternalCycObject(VM* vm, size_t size);
-ValueResult zAllocStringTemplate(VM* vm, Inst* strs, u8 strCount, Value* vals, u8 valCount);
-ValueResult zAllocStringTemplate2(VM* vm, Value* strs, u8 strCount, Value* vals, u8 valCount);
 ValueResult zAllocFuncPtr(VM* vm, TypeId ptr_t, u16 id);
 ValueResult zAllocLambda(VM* vm, u32 rt_id, TypeId ptr_t);
 ValueResult zAllocClosure(VM* vm, Value* fp, u32 rt_id, TypeId ptr_t, Inst* captures, u8 ncaptures, u8 closure_local);

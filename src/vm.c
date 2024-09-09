@@ -606,7 +606,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(PowFloat),
         JENTRY(ModFloat),
         JENTRY(CompareNot),
-        JENTRY(StringTemplate),
         JENTRY(NegFloat),
         JENTRY(StructSmall),
         JENTRY(Struct),
@@ -1495,21 +1494,6 @@ beginSwitch:
         }
         pc += 4;
         NEXT();
-    }
-    CASE(StringTemplate): {
-        u8 startLocal = pc[1];
-        u8 exprCount = pc[2];
-        u8 dst = pc[3];
-        u8 strCount = exprCount + 1;
-        Inst* strs = pc + 4;
-        Value* vals = stack + startLocal;
-        ValueResult res = zAllocStringTemplate(vm, strs, strCount, vals, exprCount);
-        if (LIKELY(res.code == RES_CODE_SUCCESS)) {
-            stack[dst] = res.val;
-            pc += 4 + strCount;
-            NEXT();
-        }
-        RETURN(res.code);
     }
     CASE(NegFloat): {
         FLOAT_UNOP(stack[pc[2]] = VALUE_FLOAT(-VALUE_AS_FLOAT(val)))

@@ -89,7 +89,7 @@ pub fn matchFuncTemplate(c: *cy.Chunk, template: *cy.sym.FuncTemplate,
 
     // Prepare template context.
     const src_chunk = template.chunk();
-    try sema.pushResolveContext(src_chunk);
+    try sema.pushResolveContext(src_chunk, node);
     var template_ctx = sema.saveResolveContext(src_chunk);
     template_ctx.has_ct_params = true;
     defer template_ctx.deinit(src_chunk);

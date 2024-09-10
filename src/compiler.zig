@@ -563,7 +563,7 @@ fn performChunkParse(self: *Compiler, chunk: *cy.Chunk) !void {
 /// Symbol resolving, type checking, and builds the model for codegen.
 fn performChunkSema(self: *Compiler, chunk: *cy.Chunk) !void {
     if (chunk == self.main_chunk) {
-        try sema.pushResolveContext(chunk);
+        try sema.pushResolveContext(chunk, @ptrCast(chunk.ast.root));
         defer sema.popResolveContext(chunk);
 
         _ = try sema.semaMainBlock(self, chunk);

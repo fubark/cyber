@@ -1332,7 +1332,7 @@ pub fn reserveTemplate(c: *cy.Chunk, node: *ast.TemplateDecl) !*cy.sym.Template 
 }
 
 pub fn resolveFuncTemplate(c: *cy.Chunk, template: *cy.sym.FuncTemplate) !void {
-    try pushResolveContext(c);
+    try pushResolveContext(c, @ptrCast(template.decl));
     defer popResolveContext(c);
 
     // Determine where each template param is declared in the function signature and which are inferrable.
@@ -1396,7 +1396,7 @@ fn resolveFuncTemplateParamDeep(c: *cy.Chunk, template: *cy.sym.FuncTemplate, no
 }
 
 pub fn resolveTemplate(c: *cy.Chunk, sym: *cy.sym.Template) !void {
-    try pushResolveContext(c);
+    try pushResolveContext(c, @ptrCast(sym.decl));
     getResolveContext(c).has_ct_params = true;
     getResolveContext(c).prefer_ct_type = true;
     defer popResolveContext(c);
@@ -1530,7 +1530,7 @@ pub fn reserveTypeAlias(c: *cy.Chunk, node: *ast.TypeAliasDecl) !*cy.sym.TypeAli
 }
 
 pub fn resolveTypeAlias(c: *cy.Chunk, sym: *cy.sym.TypeAlias) !void {
-    try sema.pushResolveContext(c);
+    try sema.pushResolveContext(c, @ptrCast(sym.decl));
     defer sema.popResolveContext(c);
 
     sym.type = try cy.sema.resolveTypeSpecNode(c, sym.decl.typeSpec);
@@ -1672,9 +1672,9 @@ pub fn reserveEnum(c: *cy.Chunk, node: *ast.EnumDecl) !*cy.sym.EnumType {
 
 pub fn resolveEnumType(c: *cy.Chunk, sym: *cy.sym.EnumType, decl: *ast.EnumDecl) !void {
     if (sym.variant != null) {
-        try pushVariantResolveContext(c, sym.variant.?);
+        try pushVariantResolveContext(c, sym.variant.?, @ptrCast(decl));
     } else {
-        try pushResolveContext(c);
+        try pushResolveContext(c, @ptrCast(decl));
     }
     defer popResolveContext(c);
 
@@ -1801,7 +1801,7 @@ pub const ResolveContext = struct {
     }
 };
 
-pub fn pushVariantResolveContext(c: *cy.Chunk, variant: *cy.sym.Variant) !void {
+pub fn pushVariantResolveContext(c: *cy.Chunk, variant: *cy.sym.Variant, node: *ast.Node) !void {
     switch (variant.type) {
         .sym => {
             var new = ResolveContext{
@@ -1811,7 +1811,7 @@ pub fn pushVariantResolveContext(c: *cy.Chunk, variant: *cy.sym.Variant) !void {
                 .data = .{ .sym = variant.data.sym.sym },
             };
             try setContextTemplateParams(c, &new, variant.data.sym.template, variant.args);
-            try c.resolve_stack.append(c.alloc, new);
+            try pushResolveContext2(c, new, node);
         }, 
         .ct_val => {
             var new = ResolveContext{
@@ -1821,7 +1821,7 @@ pub fn pushVariantResolveContext(c: *cy.Chunk, variant: *cy.sym.Variant) !void {
                 .data = undefined,
             };
             try setContextTemplateParams(c, &new, variant.data.ct_val.template, variant.args);
-            try c.resolve_stack.append(c.alloc, new);
+            try pushResolveContext2(c, new, node);
         },
         .func => {
             var new = ResolveContext{
@@ -1835,7 +1835,7 @@ pub fn pushVariantResolveContext(c: *cy.Chunk, variant: *cy.sym.Variant) !void {
                 c.vm.retain(arg);
                 try new.setCtParam(c.alloc, param.name, arg);
             }
-            try c.resolve_stack.append(c.alloc, new);
+            try pushResolveContext2(c, new, node);
         },
     }
 }
@@ -1848,34 +1848,44 @@ pub fn setContextTemplateParams(c: *cy.Chunk, ctx: *ResolveContext, template: *c
     }
 }
 
-pub fn pushSymResolveContext(c: *cy.Chunk, sym: *cy.Sym) !void {
+pub fn pushSymResolveContext(c: *cy.Chunk, sym: *cy.Sym, node: *ast.Node) !void {
     const new = ResolveContext{
         .type = .sym,
         .has_ct_params = false,
         .ct_params = .{},
         .data = .{ .sym = sym },
     };
-    try c.resolve_stack.append(c.alloc, new);
+    try pushResolveContext2(c, new, node);
 }
 
-pub fn pushFuncResolveContext(c: *cy.Chunk, func: *cy.Func) !void {
+pub fn pushFuncResolveContext(c: *cy.Chunk, func: *cy.Func, node: *ast.Node) !void {
     const new = ResolveContext{
         .type = .func,
         .has_ct_params = false,
         .ct_params = .{},
         .data = .{ .func = func },
     };
-    try c.resolve_stack.append(c.alloc, new);
+    try pushResolveContext2(c, new, node);
 }
 
-pub fn pushResolveContext(c: *cy.Chunk) !void {
+pub fn pushResolveContext(c: *cy.Chunk, node: *ast.Node) !void {
     const new = ResolveContext{
         .type = .incomplete,
         .has_ct_params = false,
         .ct_params = .{},
         .data = undefined,
     };
-    try c.resolve_stack.append(c.alloc, new);
+    try pushResolveContext2(c, new, node);
+}
+
+pub fn pushResolveContext2(c: *cy.Chunk, ctx: ResolveContext, node: *ast.Node) !void {
+    try c.resolve_stack.append(c.alloc, ctx);
+    // Maximum limit to prevent recursive template expansions.
+    // TODO: Another approach might involve determining if expanding template args contain a derived type from a type parameter.
+    //       If it does and the template is already expanding, it would be a cycle.
+    if (c.resolve_stack.items.len > 20) {
+        return c.reportError("Maximum resolve depth reached.", node);
+    }
 }
 
 pub fn pushSavedResolveContext(c: *cy.Chunk, ctx: ResolveContext) !void {
@@ -1947,7 +1957,7 @@ pub fn reserveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, opt_head
         .custom_t => {
             const header_decl = opt_header_decl orelse template.decl.child_decl;
 
-            try pushVariantResolveContext(tchunk, variant);
+            try pushVariantResolveContext(tchunk, variant, header_decl);
             defer popResolveContext(tchunk);
 
             const custom_t = try resolveCustomType(tchunk, header_decl.cast(.custom_decl));
@@ -2002,7 +2012,7 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
             const object_t = sym.cast(.object_t);
             try resolveObjectLikeType(tchunk, @ptrCast(sym), template.decl.child_decl.cast(.objectDecl));
 
-            try pushVariantResolveContext(tchunk, object_t.variant.?);
+            try pushVariantResolveContext(tchunk, object_t.variant.?, @ptrCast(template.decl));
             defer popResolveContext(tchunk);
 
             const object_decl = template.decl.child_decl.cast(.objectDecl);
@@ -2016,7 +2026,7 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
         },
         .hostobj_t => {
             const hostobj_t = sym.cast(.hostobj_t);
-            try pushVariantResolveContext(tchunk, hostobj_t.variant.?);
+            try pushVariantResolveContext(tchunk, hostobj_t.variant.?, @ptrCast(template.decl));
             defer popResolveContext(tchunk);
 
             const custom_decl = template.decl.child_decl.cast(.custom_decl);
@@ -2048,7 +2058,7 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
             const struct_t = sym.cast(.struct_t);
             try resolveObjectLikeType(tchunk, @ptrCast(sym), template.decl.child_decl.cast(.structDecl));
 
-            try pushVariantResolveContext(tchunk, struct_t.variant.?);
+            try pushVariantResolveContext(tchunk, struct_t.variant.?, @ptrCast(template.decl));
             defer popResolveContext(tchunk);
 
             const struct_decl = template.decl.child_decl.cast(.structDecl);
@@ -2069,7 +2079,7 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
             const distinct_t = sym.cast(.distinct_t);
             const new_sym = try sema.resolveDistinctType(tchunk, distinct_t);
 
-            try pushVariantResolveContext(tchunk, distinct_t.variant.?);
+            try pushVariantResolveContext(tchunk, distinct_t.variant.?, @ptrCast(template.decl));
             defer popResolveContext(tchunk);
 
             const distinct_decl = template.decl.child_decl.cast(.distinct_decl);
@@ -2078,12 +2088,12 @@ pub fn resolveTemplateVariant(c: *cy.Chunk, template: *cy.sym.Template, sym: *cy
                 // func.sym.?.variant = object_t.variant.?;
                 try resolveFunc2(tchunk, func, true);
                 try tchunk.deferred_funcs.append(c.alloc, func);
-            }
+            } 
             return new_sym;
         },
         .type => {
             const type_sym = sym.cast(.type);
-            try pushVariantResolveContext(tchunk, type_sym.variant.?);
+            try pushVariantResolveContext(tchunk, type_sym.variant.?, @ptrCast(template.decl));
             defer popResolveContext(tchunk);
 
             const custom_decl = template.decl.child_decl.cast(.custom_decl);
@@ -2195,9 +2205,9 @@ pub fn resolveDistinctType(c: *cy.Chunk, distinct_t: *cy.sym.DistinctType) !*cy.
     }
 
     if (distinct_t.variant) |variant| {
-        try sema.pushVariantResolveContext(c, variant);
+        try sema.pushVariantResolveContext(c, variant, @ptrCast(distinct_t.decl));
     } else {
-        try sema.pushResolveContext(c);
+        try sema.pushResolveContext(c, @ptrCast(distinct_t.decl));
     }
     defer sema.popResolveContext(c);
 
@@ -2285,9 +2295,9 @@ pub fn resolveStructTypeId(c: *cy.Chunk, struct_t: *cy.sym.ObjectType, is_tuple:
 
 pub fn resolveObjectLikeType(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.ObjectDecl) !void {
     if (object_like.getVariant()) |variant| {
-        try pushVariantResolveContext(c, variant);
+        try pushVariantResolveContext(c, variant, @ptrCast(decl));
     } else {
-        try pushSymResolveContext(c, object_like);
+        try pushSymResolveContext(c, object_like, @ptrCast(decl));
     }
     defer popResolveContext(c);
 
@@ -2484,7 +2494,7 @@ pub fn resolveFunc2(c: *cy.Chunk, func: *cy.Func, has_parent_ctx: bool) !void {
         return;
     }
 
-    try pushFuncResolveContext(c, func);
+    try pushFuncResolveContext(c, func, @ptrCast(func.decl));
     defer popResolveContext(c);
     getResolveContext(c).has_parent_ctx = has_parent_ctx;
 
@@ -2527,7 +2537,7 @@ pub fn getHostAttrName(c: *cy.Chunk, attr: *ast.Attribute) !?[]const u8 {
 }
 
 pub fn resolveHostFuncVariant(c: *cy.Chunk, func: *cy.Func) !void {
-    try pushVariantResolveContext(c, func.variant.?);
+    try pushVariantResolveContext(c, func.variant.?, @ptrCast(func.decl));
     defer popResolveContext(c);
 
     const sig_id = try resolveFuncSig(c, func);
@@ -2588,7 +2598,7 @@ pub fn reserveUserFunc2(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *
 }
 
 pub fn resolveUserFuncVariant(c: *cy.Chunk, func: *cy.Func) !void {
-    try pushVariantResolveContext(c, func.variant.?);
+    try pushVariantResolveContext(c, func.variant.?, @ptrCast(func.decl));
     defer popResolveContext(c);
 
     const sig_id = try resolveFuncSig(c, func);
@@ -2627,18 +2637,18 @@ pub fn reserveNestedFunc(c: *cy.Chunk, parent: *cy.Sym, decl: *ast.FuncDecl, def
 
 pub fn methodDecl(c: *cy.Chunk, func: *cy.Func) !void {
     if (func.variant) |variant| {
-        try pushVariantResolveContext(c, variant);
+        try pushVariantResolveContext(c, variant, @ptrCast(func.decl));
         defer popResolveContext(c);
         try methodDecl2(c, func);
         return;
     }
 
     if (func.parent.parent.?.getVariant()) |parent_variant| {
-        try pushVariantResolveContext(c, parent_variant);
+        try pushVariantResolveContext(c, parent_variant, @ptrCast(func.decl));
         defer popResolveContext(c);
         try methodDecl2(c, func);
     } else {
-        try pushFuncResolveContext(c, func);
+        try pushFuncResolveContext(c, func, @ptrCast(func.decl));
         defer popResolveContext(c);
         try methodDecl2(c, func);
     }
@@ -2659,18 +2669,18 @@ pub fn methodDecl2(c: *cy.Chunk, func: *cy.Func) !void {
 
 pub fn funcDecl(c: *cy.Chunk, func: *cy.Func) !void {
     if (func.variant) |variant| {
-        try pushVariantResolveContext(c, variant);
+        try pushVariantResolveContext(c, variant, @ptrCast(func.decl));
         defer popResolveContext(c);
         try funcDecl2(c, func);
         return;
     }
 
     if (func.parent.parent.?.getVariant()) |parent_variant| {
-        try pushVariantResolveContext(c, parent_variant);
+        try pushVariantResolveContext(c, parent_variant, @ptrCast(func.decl));
         defer popResolveContext(c);
         try funcDecl2(c, func);
     } else {
-        try pushFuncResolveContext(c, func);
+        try pushFuncResolveContext(c, func, @ptrCast(func.decl));
         defer popResolveContext(c);
         try funcDecl2(c, func);
     }
@@ -2718,7 +2728,7 @@ pub fn resolveContextVar(c: *cy.Chunk, sym: *cy.sym.ContextVar) !void {
         return error.TODO;
     }
 
-    try pushResolveContext(c);
+    try pushResolveContext(c, @ptrCast(sym.decl));
     defer popResolveContext(c);
 
     const name = sym.head.name();
@@ -2748,7 +2758,7 @@ pub fn ensureUserVarResolved(c: *cy.Chunk, sym: *cy.sym.UserVar) !void {
 /// Resolves the variable's type and initializer.
 /// If type spec is not provided, the initializer is resolved to obtain the type.
 pub fn resolveUserVar(c: *cy.Chunk, sym: *cy.sym.UserVar) !void {
-    try pushResolveContext(c);
+    try pushResolveContext(c, @ptrCast(sym.decl));
     defer popResolveContext(c);
 
     const node = sym.decl.?;
@@ -2804,7 +2814,7 @@ pub fn semaUserVarInitDeep(c: *cy.Chunk, sym: *cy.sym.UserVar) !void {
 }
 
 pub fn resolveHostVar(c: *cy.Chunk, sym: *cy.sym.HostVar) !void {
-    try pushResolveContext(c);
+    try pushResolveContext(c, @ptrCast(sym.decl));
     defer popResolveContext(c);
 
     const decl = sym.decl.?;
@@ -5851,7 +5861,7 @@ pub const ChunkExt = struct {
                     }
                 }
 
-                try pushResolveContext(c);
+                try pushResolveContext(c, node);
                 defer popResolveContext(c);
 
                 if (try inferLambdaFuncSig(c, lambda, expr)) |sig| {

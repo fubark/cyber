@@ -129,9 +129,11 @@ pub const TokenType = enum(u8) {
     right_paren,
     rune,
     raw_string,
+    raw_string_multi,
     slash,
     star,
     string,
+    string_multi,
     struct_k,
     switch_k,
     symbol_k,
@@ -153,15 +155,23 @@ pub const Token = extern struct {
     // First 8 bits is the TokenType, last 24 bits is the start pos.
     head: u32,
     data: extern union {
-        end_pos: u32,
+        /// End position.
+        end: u32,
         // Num indent spaces.
         indent: u32,
     },
 
-    pub fn init(ttype: TokenType, startPos: u32, data: std.meta.FieldType(Token, .data)) Token {
+    pub fn init(ttype: TokenType, start_pos: u32, end_pos: u32) Token {
         return .{
-            .head = (startPos << 8) | @intFromEnum(ttype),
-            .data = data,
+            .head = (start_pos << 8) | @intFromEnum(ttype),
+            .data = .{ .end = end_pos },
+        };
+    }
+
+    pub fn initIndent(start_pos: u32, indent: u32) Token {
+        return .{
+            .head = (start_pos << 8) | @intFromEnum(TokenType.indent),
+            .data = .{ .indent = indent },
         };
     }
 
@@ -470,7 +480,7 @@ pub const Tokenizer = struct {
                         }
                     }
                 }
-                try t.pushSpanToken(.rune, start + 1, t.nextPos - 1);
+                try t.pushToken(.rune, start);
             },
             '"' => {
                 if (peek(t) == '"') {
@@ -478,12 +488,12 @@ pub const Tokenizer = struct {
                         if (ch2 == '"') {
                             _ = consume(t);
                             _ = consume(t);
-                            try tokenizeStringMulti(t, t.nextPos);
+                            try tokenizeStringMulti(t, start);
                             return state;
                         }
                     }
                 }
-                try tokenizeString(t, t.nextPos);
+                try tokenizeString(t, start);
             },
             '\'' => {
                 if (peek(t) == '\'') {
@@ -491,12 +501,12 @@ pub const Tokenizer = struct {
                         if (ch2 == '\'') {
                             _ = consume(t);
                             _ = consume(t);
-                            try tokenizeMultiLineRawString(t, t.nextPos);
+                            try tokenizeMultiLineRawString(t, start);
                             return state;
                         }
                     }
                 }
-                try tokenizeSingleLineRawString(t, t.nextPos);
+                try tokenizeSingleLineRawString(t, start);
             },
             '#' => try t.pushToken(.pound, start),
             '?' => try t.pushToken(.question, start),
@@ -639,8 +649,8 @@ pub const Tokenizer = struct {
 
             switch (t.peek()) {
                 '"' => {
-                    try t.pushSpanToken(.string, start, t.nextPos);
                     advance(t);
+                    try t.pushToken(.string, start);
                     return;
                 },
                 '\\' => {
@@ -662,7 +672,7 @@ pub const Tokenizer = struct {
                         t.nextPos = start;
                         try t.pushToken(.err, start);
                     } else {
-                        return t.reportErrorAt("Encountered new line in single line literal.", &.{}, start);
+                        return t.reportErrorAt("Encountered new line in single line literal.", &.{}, t.nextPos);
                     }
                 },
                 else => {
@@ -688,10 +698,10 @@ pub const Tokenizer = struct {
                     if (ch == '"') {
                         ch = peekAhead(t, 2) orelse 0;
                         if (ch == '"') {
-                            try t.pushSpanToken(.string, start, t.nextPos);
                             _ = consume(t);
                             _ = consume(t);
                             _ = consume(t);
+                            try t.pushToken(.string_multi, start);
                             return;
                         }
                     }
@@ -738,9 +748,9 @@ pub const Tokenizer = struct {
     fn tokenizeKeywordOrIdent(t: *Tokenizer, start: u32) !void {
         consumeIdent(t);
         if (keywords.get(getSubStrFrom(t, start))) |token_t| {
-            try t.pushSpanToken(token_t, start, t.nextPos);
+            try t.pushToken(token_t, start);
         } else {
-            try t.pushSpanToken(.ident, start, t.nextPos);
+            try t.pushToken(.ident, start);
         }
     }
 
@@ -754,11 +764,11 @@ pub const Tokenizer = struct {
                 } else return t.reportErrorAt("UnterminatedString", &.{}, start);
             }
             if (peek(t) == '\'') {
-                try t.pushSpanToken(.raw_string, start, t.nextPos);
                 advance(t);
+                try t.pushToken(.raw_string, start);
                 return;
             } else if (peek(t) == '\n') {
-                return t.reportErrorAt("Encountered new line in single line literal.", &.{}, start);
+                return t.reportErrorAt("Encountered new line in single line literal.", &.{}, t.nextPos);
             } else {
                 advance(t);
             }
@@ -784,10 +794,10 @@ pub const Tokenizer = struct {
                     continue;
                 };
                 if (ch == '\'' and ch2 == '\'') {
-                    try t.pushSpanToken(.raw_string, start, t.nextPos);
                     advance(t);
                     advance(t);
                     advance(t);
+                    try t.pushToken(.raw_string_multi, start);
                     return;
                 } else {
                     advance(t);
@@ -815,7 +825,7 @@ pub const Tokenizer = struct {
     /// Assumes first digit is consumed.
     fn tokenizeNumber(t: *Tokenizer, start: u32) !void {
         if (isAtEnd(t)) {
-            try t.pushSpanToken(.dec, start, t.nextPos);
+            try t.pushToken(.dec, start);
             return;
         }
 
@@ -823,7 +833,7 @@ pub const Tokenizer = struct {
         if ((ch >= '0' and ch <= '9') or ch == '.' or ch == 'e') {
             consumeDigits(t);
             if (isAtEnd(t)) {
-                try t.pushSpanToken(.dec, start, t.nextPos);
+                try t.pushToken(.dec, start);
                 return;
             }
 
@@ -831,18 +841,18 @@ pub const Tokenizer = struct {
             ch = peek(t);
             if (ch == '.') {
                 const next = peekAhead(t, 1) orelse {
-                    try t.pushSpanToken(.dec, start, t.nextPos);
+                    try t.pushToken(.dec, start);
                     return;
                 };
                 if (next < '0' or next > '9') {
-                    try t.pushSpanToken(.dec, start, t.nextPos);
+                    try t.pushToken(.dec, start);
                     return;
                 }
                 advance(t);
                 advance(t);
                 consumeDigits(t);
                 if (isAtEnd(t)) {
-                    try t.pushSpanToken(.float, start, t.nextPos);
+                    try t.pushToken(.float, start);
                     return;
                 }
                 ch = peek(t);
@@ -871,9 +881,9 @@ pub const Tokenizer = struct {
             }
 
             if (isFloat) {
-                try t.pushSpanToken(.float, start, t.nextPos);
+                try t.pushToken(.float, start);
             } else {
-                try t.pushSpanToken(.dec, start, t.nextPos);
+                try t.pushToken(.dec, start);
             }
             return;
         }
@@ -893,7 +903,7 @@ pub const Tokenizer = struct {
                         continue;
                     } else break;
                 }
-                try t.pushSpanToken(.hex, start, t.nextPos);
+                try t.pushToken(.hex, start);
                 return;
             } else if (ch == 'o') {
                 // Oct integer.
@@ -908,7 +918,7 @@ pub const Tokenizer = struct {
                         continue;
                     } else break;
                 }
-                try t.pushSpanToken(.oct, start, t.nextPos);
+                try t.pushToken(.oct, start);
                 return;
             } else if (ch == 'b') {
                 // Bin integer.
@@ -923,7 +933,7 @@ pub const Tokenizer = struct {
                         continue;
                     } else break;
                 }
-                try t.pushSpanToken(.bin, start, t.nextPos);
+                try t.pushToken(.bin, start);
                 return;
             } else {
                 if (std.ascii.isAlphabetic(ch)) {
@@ -934,22 +944,16 @@ pub const Tokenizer = struct {
         }
 
         // Push single digit number.
-        try t.pushSpanToken(.dec, start, t.nextPos);
+        try t.pushToken(.dec, start);
         return;
     }
 
     fn pushIndentToken(self: *Tokenizer, count: u32, start_pos: u32, spaces: bool) !void {
-        try self.tokens.append(self.alloc, Token.init(.indent, start_pos, .{
-            .indent = if (spaces) count else count | 0x80000000,
-        }));
+        try self.tokens.append(self.alloc, Token.initIndent(start_pos, if (spaces) count else count | 0x80000000));
     }
 
     fn pushToken(self: *Tokenizer, token_t: TokenType, start_pos: u32) !void {
-        try self.tokens.append(self.alloc, Token.init(token_t, start_pos, .{ .end_pos = cy.NullId }));
-    }
-
-    fn pushSpanToken(self: *Tokenizer, token_t: TokenType, startPos: u32, endPos: u32) !void {
-        try self.tokens.append(self.alloc, Token.init(token_t, startPos, .{ .end_pos = endPos }));
+        try self.tokens.append(self.alloc, Token.init(token_t, start_pos, self.nextPos));
     }
 
     fn reportError(self: *Tokenizer, format: []const u8, args: []const cy.fmt.FmtValue) anyerror!void {
@@ -975,6 +979,6 @@ test "tokenizer internals." {
     try tt.eq(@alignOf(Token), 4);
     try tt.eq(@sizeOf(TokenizeState), 1);
 
-    try tt.eq(std.enums.values(TokenType).len, 95);
+    try tt.eq(std.enums.values(TokenType).len, 97);
     try tt.eq(keywords.kvs.len, 42);
 }

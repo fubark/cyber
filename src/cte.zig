@@ -679,7 +679,7 @@ const CtExpr = struct {
 pub fn resolveCtExprOpt(c: *cy.Chunk, expr: *ast.Node) anyerror!?CtExpr {
     switch (expr.type()) {
         .raw_string_lit => {
-            const str = c.ast.nodeString(expr);
+            const str = c.ast.asRawStringLit(expr);
             return CtExpr.initValue(.{
                 .type = bt.String,
                 .value = try c.vm.allocString(str),

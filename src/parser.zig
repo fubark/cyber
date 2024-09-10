@@ -399,7 +399,7 @@ pub const Parser = struct {
             .sig_t = .infer,
             .stmts = @as([*]*ast.Node, @ptrCast(@alignCast(expr)))[0..1],
             .params = params,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
             .ret = null,
         });
     }
@@ -417,7 +417,7 @@ pub const Parser = struct {
             .sig_t = .infer,
             .stmts = stmts,
             .params = params,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
             .ret = ret,
         });
     }
@@ -433,7 +433,7 @@ pub const Parser = struct {
 
         return self.ast.newNodeErase(.func_type, .{
             .params = params,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
             .ret = ret,
             .is_union = true,
         });
@@ -462,7 +462,7 @@ pub const Parser = struct {
                 .params = params,
                 .sig_t = .func,
                 .stmts = @as([*]*ast.Node, @ptrCast(@alignCast(expr)))[0..1],
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
                 .ret = ret,
             });
         }
@@ -473,7 +473,7 @@ pub const Parser = struct {
             // Parse as function type.
             return self.ast.newNodeErase(.func_type, .{
                 .params = params,
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
                 .ret = ret,
                 .is_union = false,
             });
@@ -487,7 +487,7 @@ pub const Parser = struct {
             .params = params,
             .sig_t = .func,
             .stmts = stmts,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
             .ret = ret,
         });
         @as(*ast.Node, @ptrCast(lambda)).setBlockExpr(true);
@@ -516,7 +516,7 @@ pub const Parser = struct {
         if (next.tag() == .ident) {
             // Check for space between ident and next token otherwise it could be a type.
             const next2 = self.peekAhead(1);
-            if (next2.pos() >= next.data.end_pos + 1) {
+            if (next2.pos() >= next.data.end + 1) {
                 name_type = @ptrCast(try self.newSpanNode(.ident, self.next_pos));
                 self.advance();
             } else {
@@ -623,7 +623,7 @@ pub const Parser = struct {
             },
             .string => {
                 self.advance();
-                return @ptrCast(try self.newSpanNode(.stringLit, start));
+                return @ptrCast(try self.newSpanNode(.string_lit, start));
             },
             else => return null,
         }
@@ -676,7 +676,7 @@ pub const Parser = struct {
         return self.ast.newNode(.enumMember, .{
             .name = name,
             .typeSpec = typeSpec,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
         });
     }
 
@@ -824,7 +824,7 @@ pub const Parser = struct {
             .attrs = config.attrs,
             .hidden = config.hidden,
             .funcs = funcs,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
         });
     }
 
@@ -848,7 +848,7 @@ pub const Parser = struct {
             .attrs = config.attrs,
             .hidden = config.hidden,
             .funcs = funcs,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
         });
     }
 
@@ -862,7 +862,7 @@ pub const Parser = struct {
             .name = name,
             .typeSpec = typeSpec,
             .hidden = config.hidden,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
         });
     }
 
@@ -909,14 +909,14 @@ pub const Parser = struct {
             .members = members,
             .isChoiceType = isChoiceType,
             .hidden = config.hidden,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
         });
     }
 
     fn newObjectDecl(self: *Parser, start: TokenId, node_t: ast.NodeType, opt_name: ?*ast.Node, config: TypeDeclConfig, impl_withs: []*ast.ImplWith, fields: []*ast.Field, funcs: []*ast.FuncDecl, is_tuple: bool) !*ast.ObjectDecl {
         const n = try self.ast.newNodeErase(.objectDecl, .{
             .name = opt_name,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
             .impl_withs = impl_withs,
             .fields = fields,
             .attrs = config.attrs,
@@ -948,7 +948,7 @@ pub const Parser = struct {
             };
             const with = try self.ast.newNode(.impl_with, .{
                 .trait = trait,
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
             });
             try self.pushNode(@ptrCast(with));
 
@@ -1053,7 +1053,7 @@ pub const Parser = struct {
             // Only declaration. No members.
             return self.ast.newNode(.trait_decl, .{
                 .name = name,
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
                 .attrs = config.attrs,
                 .funcs = &.{},
             });
@@ -1066,7 +1066,7 @@ pub const Parser = struct {
 
         return self.ast.newNode(.trait_decl, .{
             .name = name,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
             .attrs = config.attrs,
             .funcs = funcs,
         });
@@ -1216,7 +1216,7 @@ pub const Parser = struct {
             .stmts = stmts,
             .sig_t = .func,
             .hidden = config.hidden,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
         });
 
         template.child_decl = @ptrCast(decl);
@@ -1281,7 +1281,7 @@ pub const Parser = struct {
                 .stmts = stmts,
                 .sig_t = sig_t,
                 .hidden = config.hidden,
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
             });
         } else {
             // Just a declaration, no body.
@@ -1293,7 +1293,7 @@ pub const Parser = struct {
                 .stmts = &.{},
                 .sig_t = sig_t,
                 .hidden = config.hidden,
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
             });
         }
 
@@ -1349,7 +1349,7 @@ pub const Parser = struct {
             return self.ast.newNode(.else_block, .{
                 .cond = null,
                 .stmts = stmts,
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
             });
         } else {
             // else if block.
@@ -1363,7 +1363,7 @@ pub const Parser = struct {
                 return self.ast.newNode(.else_block, .{
                     .cond = cond,
                     .stmts = stmts,
-                    .pos = self.tokenSrcPos(start),
+                    .pos = self.tokenPos(start),
                 });
             } else {
                 return self.reportError("Expected colon after else if condition.", &.{});
@@ -1420,7 +1420,7 @@ pub const Parser = struct {
         const switch_n = try self.ast.newNode(.switchStmt, .{
             .expr = expr,
             .cases = cases,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
         });
         if (!isStmt) {
             @as(*ast.Node, @ptrCast(switch_n)).setType(.switchExpr);
@@ -1465,13 +1465,13 @@ pub const Parser = struct {
         const catchStmt = try self.ast.newNode(.catchStmt, .{
             .errorVar = errorVar,
             .stmts = catch_stmts,
-            .pos = self.tokenSrcPos(catch_start),
+            .pos = self.tokenPos(catch_start),
         });
 
         return self.ast.newNode(.tryStmt, .{
             .stmts = tryStmts,
             .catchStmt = catchStmt,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
         });
     }
 
@@ -1494,7 +1494,7 @@ pub const Parser = struct {
                 .cond = cond,
                 .stmts = stmts,
                 .else_blocks = else_blocks,
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
             });
         } else {
             return self.reportError("Expected colon after if condition.", &.{});
@@ -1543,7 +1543,7 @@ pub const Parser = struct {
             return self.ast.newNode(.ct_else_block, .{
                 .cond = null,
                 .stmts = stmts,
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
             });
         } else {
             // else if block.
@@ -1557,7 +1557,7 @@ pub const Parser = struct {
                 return self.ast.newNode(.ct_else_block, .{
                     .cond = cond,
                     .stmts = stmts,
-                    .pos = self.tokenSrcPos(start),
+                    .pos = self.tokenPos(start),
                 });
             } else {
                 return self.reportError("Expected colon after else if condition.", &.{});
@@ -1584,7 +1584,7 @@ pub const Parser = struct {
                 .cond = cond,
                 .stmts = stmts,
                 .else_blocks = else_blocks,
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
             });
         } else if (token.tag() == .minus_right_angle) {
             self.advance();
@@ -1605,7 +1605,7 @@ pub const Parser = struct {
                 .unwrap = unwrap,
                 .stmts = stmts,
                 .else_blocks = else_blocks,
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
             });
         } else {
             return self.reportError("Expected colon after if condition.", &.{});
@@ -1638,7 +1638,7 @@ pub const Parser = struct {
                     const alias = try self.ast.newNode(.use_alias, .{
                         .name = name,
                         .target = target,
-                        .pos = self.tokenSrcPos(start),
+                        .pos = self.tokenPos(start),
                     });
                     try self.staticDecls.append(self.alloc, @ptrCast(alias));
                     return @ptrCast(alias);
@@ -1648,7 +1648,7 @@ pub const Parser = struct {
                 },
             }
         } else if (self.peek().tag() == .star) {
-            name = try self.ast.newNodeErase(.all, .{ .pos = self.tokenSrcPos(self.next_pos) });
+            name = try self.newTokenNode(.all, self.next_pos);
             self.advance();
 
             if (self.peek().tag() != .raw_string) {
@@ -1663,7 +1663,7 @@ pub const Parser = struct {
         const import = try self.ast.newNode(.import_stmt, .{
             .name = name,
             .spec = spec,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
         });
         try self.staticDecls.append(self.alloc, @ptrCast(import));
         return @ptrCast(import);
@@ -1682,7 +1682,7 @@ pub const Parser = struct {
             const stmts = try self.parseSingleOrIndentedBodyStmts();
             return self.ast.newNodeErase(.whileInfStmt, .{
                 .stmts = stmts,
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
             });
         }
 
@@ -1698,7 +1698,7 @@ pub const Parser = struct {
             return self.ast.newNodeErase(.whileCondStmt, .{
                 .cond = expr,
                 .stmts = stmts,
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
             });
         } else if (token.tag() == .minus_right_angle) {
             self.advance();
@@ -1719,7 +1719,7 @@ pub const Parser = struct {
                 .opt = expr,
                 .capture = ident,
                 .stmts = stmts,
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
             });
         } else {
             return self.reportError("Expected :.", &.{});
@@ -1759,7 +1759,7 @@ pub const Parser = struct {
                     .end = range.end.?,
                     .increment = range.inc,
                     .each = null,
-                    .pos = self.tokenSrcPos(start),
+                    .pos = self.tokenPos(start),
                 });
             } else if (token.tag() == .minus_right_angle) {
                 self.advance();
@@ -1784,7 +1784,7 @@ pub const Parser = struct {
                     .end = range.end.?,
                     .increment = range.inc,
                     .each = ident,
-                    .pos = self.tokenSrcPos(start),
+                    .pos = self.tokenPos(start),
                 });
             } else {
                 return self.reportError("Expected :.", &.{});
@@ -1800,7 +1800,7 @@ pub const Parser = struct {
                 .each = null,
                 .count = null,
                 .stmts = stmts,
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
             });
         } else if (token.tag() == .minus_right_angle) {
             self.advance();
@@ -1835,7 +1835,7 @@ pub const Parser = struct {
                 .each = eachClause,
                 .count = count,
                 .stmts = stmts,
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
             });
         } else {
             return self.reportError("Expected :.", &.{});
@@ -1950,7 +1950,7 @@ pub const Parser = struct {
             .conds = conds,
             .stmts = stmts,
             .bodyIsExpr = bodyExpr,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
         });
     }
 
@@ -1985,7 +1985,7 @@ pub const Parser = struct {
                 if (token.tag() != .ident and token.tag() != .if_k) {
                     return self.reportError("Unsupported compile-time statement.", &.{});
                 }
-                const name = self.ast.src[token.pos()..token.data.end_pos];
+                const name = self.ast.src[token.pos()..token.data.end];
                 if (std.mem.eql(u8, "if", name)) {
                     return try self.parseCtIfStatement();
                 } else {
@@ -1999,7 +1999,7 @@ pub const Parser = struct {
                     const call: *ast.Node = @ptrCast(try self.parseCallExpression(@ptrCast(ident), false));
                     return self.ast.newNodeErase(.comptimeStmt, .{
                         .expr = call,
-                        .pos = self.tokenSrcPos(start),
+                        .pos = self.tokenPos(start),
                     });
                 }
             },
@@ -2068,21 +2068,15 @@ pub const Parser = struct {
             },
             .pass_k => {
                 self.advance();
-                return self.ast.newNodeErase(.passStmt, .{
-                    .pos = self.tokenSrcPos(start),
-                });
+                return self.newTokenNode(.passStmt, start);
             },
             .continue_k => {
                 self.advance();
-                return self.ast.newNodeErase(.continueStmt, .{
-                    .pos = self.tokenSrcPos(start),
-                });
+                return self.newTokenNode(.continueStmt, start);
             },
             .break_k => {
                 self.advance();
-                return self.ast.newNodeErase(.breakStmt, .{
-                    .pos = self.tokenSrcPos(start),
-                });
+                return self.newTokenNode(.breakStmt, start);
             },
             .return_k => {
                 return try self.parseReturnStatement();
@@ -2109,12 +2103,12 @@ pub const Parser = struct {
         return self.reportErrorAt(format, args, self.next_pos);
     }
 
-    fn reportErrorAt(self: *Parser, format: []const u8, args: []const fmt.FmtValue, tokenPos: u32) anyerror {
+    fn reportErrorAt(self: *Parser, format: []const u8, args: []const fmt.FmtValue, token_pos: u32) anyerror {
         var srcPos: u32 = undefined;
-        if (tokenPos >= self.tokens.len) {
+        if (token_pos >= self.tokens.len) {
             srcPos = @intCast(self.ast.src.len);
         } else {
-            srcPos = self.tokens[tokenPos].pos();
+            srcPos = self.tokens[token_pos].pos();
         }
         return self.reportErrorAtSrc(format, args, srcPos);
     }
@@ -2158,7 +2152,7 @@ pub const Parser = struct {
             return self.reportError("Expected ident after `@`.", &.{});
         }
         const start = self.next_pos;
-        const name = self.ast.src[token.pos()..token.data.end_pos];
+        const name = self.ast.src[token.pos()..token.data.end];
         const attr_t = attributes.get(name) orelse {
             return self.reportError("Unknown attribute.", &.{});
         };
@@ -2175,7 +2169,7 @@ pub const Parser = struct {
         return self.ast.newNode(.attribute, .{
             .type = attr_t,
             .value = value,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
         });
     }
 
@@ -2270,7 +2264,7 @@ pub const Parser = struct {
             const args = try self.ast.dupeNodes(self.node_stack.items[decl_start..]);
             return self.ast.newNode(.seqDestructure, .{
                 .args = args,
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
             });
         } else return self.reportError("Expected closing bracket.", &.{});
     }
@@ -2280,7 +2274,7 @@ pub const Parser = struct {
         const args = try self.parseArrayLiteral2();
         return self.ast.newNode(.array_lit, .{
             .args = args,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
         });
     }
 
@@ -2340,7 +2334,7 @@ pub const Parser = struct {
             self.advance();
             return self.ast.newNode(.init_lit, .{
                 .args = &.{},
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
                 .array_like = false,
             });
         } else if (self.peek().tag() == .underscore) {
@@ -2351,7 +2345,7 @@ pub const Parser = struct {
             self.advance();
             return self.ast.newNode(.init_lit, .{
                 .args = &.{},
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
                 .array_like = true,
             });
         }
@@ -2393,7 +2387,7 @@ pub const Parser = struct {
         const args: []*ast.Node = try self.ast.dupeNodes(self.node_stack.items[entry_start..]);
         return self.ast.newNode(.init_lit, .{
             .args = args,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
             .array_like = array_like,
         });
     }
@@ -2436,7 +2430,7 @@ pub const Parser = struct {
                 };
                 return self.ast.newNodeErase(.namedArg, .{
                     .name_pos = token.pos(),
-                    .name_len = token.data.end_pos - token.pos(),
+                    .name_len = token.data.end - token.pos(),
                     .arg = arg,
                 });
             }
@@ -2572,7 +2566,7 @@ pub const Parser = struct {
                 .left = right_id,
                 .right = next_right,
                 .op = rightOp,
-                .op_pos = self.tokenSrcPos(start),
+                .op_pos = self.tokenPos(start),
             });
 
             // Before returning the expr, perform left recursion if the op prec greater than the starting op.
@@ -2597,7 +2591,7 @@ pub const Parser = struct {
                         .left = left,
                         .right = rightExpr,
                         .op = rightOp2,
-                        .op_pos = self.tokenSrcPos(start),
+                        .op_pos = self.tokenPos(start),
                     });
                     left = @ptrCast(newBinExpr);
                     continue;
@@ -2652,7 +2646,7 @@ pub const Parser = struct {
         return self.ast.newNodeErase(.if_expr, .{
             .cond = cond,
             .body = body,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
             .else_expr = elseExpr,
         });
     }
@@ -2708,7 +2702,7 @@ pub const Parser = struct {
         });
         return self.ast.newNodeErase(.coinit, .{
             .child = call,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
         });
     }
 
@@ -2884,7 +2878,7 @@ pub const Parser = struct {
                 };
                 return try self.ast.newNodeErase(.ptr, .{
                     .elem = elem,
-                    .pos = self.tokenSrcPos(start),
+                    .pos = self.tokenPos(start),
                 });
             },
             .ampersand => {
@@ -2894,7 +2888,7 @@ pub const Parser = struct {
                 };
                 return try self.ast.newNodeErase(.ref, .{
                     .elem = elem,
-                    .pos = self.tokenSrcPos(start),
+                    .pos = self.tokenPos(start),
                 });
             },
             .question => {
@@ -2904,7 +2898,7 @@ pub const Parser = struct {
                 };
                 return try self.ast.newNodeErase(.expandOpt, .{
                     .param = param,
-                    .pos = self.tokenSrcPos(start),
+                    .pos = self.tokenPos(start),
                 });
             },
             .dot => {
@@ -2913,7 +2907,7 @@ pub const Parser = struct {
                     const init_n = try self.parseInitLiteral();
                     return try self.ast.newNodeErase(.dot_init_lit, .{
                         .init = init_n,
-                        .pos = self.tokenSrcPos(start),
+                        .pos = self.tokenPos(start),
                     });
                 } else {
                     const name = (try self.parseOptName()) orelse {
@@ -2941,19 +2935,19 @@ pub const Parser = struct {
             },
             .underscore => {
                 self.advance();
-                return try self.ast.newNodeErase(.void_lit, .{ .pos = self.tokenSrcPos(start) });
+                return try self.newTokenNode(.void_lit, start);
             },
             .true_k => {
                 self.advance();
-                return try self.ast.newNodeErase(.trueLit, .{ .pos = self.tokenSrcPos(start) });
+                return try self.newTokenNode(.trueLit, start);
             },
             .false_k => {
                 self.advance();
-                return try self.ast.newNodeErase(.falseLit, .{ .pos = self.tokenSrcPos(start) });
+                return try self.newTokenNode(.falseLit, start);
             },
             .none_k => {
                 self.advance();
-                return try self.ast.newNodeErase(.noneLit, .{ .pos = self.tokenSrcPos(start) });
+                return try self.newTokenNode(.noneLit, start);
             },
             .void_k => {
                 self.advance();
@@ -2985,15 +2979,23 @@ pub const Parser = struct {
             },
             .rune => {
                 self.advance();
-                return @ptrCast(try self.newSpanNode(.runeLit, start));
+                return @ptrCast(try self.newSpanNode(.rune_lit, start));
             },
             .raw_string => {
                 self.advance();
                 return @ptrCast(try self.newSpanNode(.raw_string_lit, start));
             },
+            .raw_string_multi => {
+                self.advance();
+                return @ptrCast(try self.newSpanNode(.raw_string_multi_lit, start));
+            },
             .string => {
                 self.advance();
-                return @ptrCast(try self.newSpanNode(.stringLit, start));
+                return @ptrCast(try self.newSpanNode(.string_lit, start));
+            },
+            .string_multi => {
+                self.advance();
+                return @ptrCast(try self.newSpanNode(.string_multi_lit, start));
             },
             .pound => {
                 return @ptrCast(try self.parseComptimeExpr());
@@ -3028,7 +3030,7 @@ pub const Parser = struct {
                     }
                     return try self.ast.newNodeErase(.group, .{
                         .child = expr,
-                        .pos = self.tokenSrcPos(start),
+                        .pos = self.tokenPos(start),
                     });
                 } else if (tag == .comma) {
                     self.advance();
@@ -3053,7 +3055,7 @@ pub const Parser = struct {
                     };
                     return try self.ast.newNodeErase(.ptr_slice, .{
                         .elem = elem,
-                        .pos = self.tokenSrcPos(start),
+                        .pos = self.tokenPos(start),
                     });
                 } else if (next_tag == .right_bracket) {
                     self.advance();
@@ -3063,7 +3065,7 @@ pub const Parser = struct {
                     };
                     return try self.ast.newNodeErase(.ref_slice, .{
                         .elem = elem,
-                        .pos = self.tokenSrcPos(start),
+                        .pos = self.tokenPos(start),
                     });
                 } else {
                     // Array type.
@@ -3081,7 +3083,7 @@ pub const Parser = struct {
                     return try self.ast.newNodeErase(.array_type, .{
                         .size = size,
                         .elem = elem,
-                        .pos = self.tokenSrcPos(start),
+                        .pos = self.tokenPos(start),
                     });
                 }
             },
@@ -3157,7 +3159,7 @@ pub const Parser = struct {
                 };
                 return self.ast.newNodeErase(.await_expr, .{
                     .child = child,
-                    .pos = self.tokenSrcPos(start),
+                    .pos = self.tokenPos(start),
                 });
             },
             .not_k => {
@@ -3177,7 +3179,7 @@ pub const Parser = struct {
                 };
                 return self.ast.newNodeErase(.throwExpr, .{
                     .child = child,
-                    .pos = self.tokenSrcPos(start),
+                    .pos = self.tokenPos(start),
                 });
             },
             .if_k => {
@@ -3190,13 +3192,14 @@ pub const Parser = struct {
                 };
                 return self.ast.newNodeErase(.coresume, .{
                     .child = fiberExpr,
-                    .pos = self.tokenSrcPos(start),
+                    .pos = self.tokenPos(start),
                 });
             },
             .coyield_k => {
                 self.advance();
                 return self.ast.newNodeErase(.coyield, .{
-                    .pos = self.tokenSrcPos(start),
+                    .pos = self.tokenPos(start),
+                    .end = self.tokenEnd(start),
                 });
             },
             .try_k => {
@@ -3215,7 +3218,7 @@ pub const Parser = struct {
                 return self.ast.newNodeErase(.tryExpr, .{
                     .expr = expr,
                     .catchExpr = catchExpr,
-                    .pos = self.tokenSrcPos(start),
+                    .pos = self.tokenPos(start),
                 });
             },
             .coinit_k => {
@@ -3231,7 +3234,7 @@ pub const Parser = struct {
                     .start = null,
                     .end = end,
                     .inc = false,
-                    .pos = self.tokenSrcPos(start),
+                    .pos = self.tokenPos(start),
                 });
             },
             .dot_dot => {
@@ -3243,7 +3246,7 @@ pub const Parser = struct {
                     .start = null,
                     .end = opt_end,
                     .inc = true,
-                    .pos = self.tokenSrcPos(start),
+                    .pos = self.tokenPos(start),
                 });
             },
             .func_k => {
@@ -3284,7 +3287,7 @@ pub const Parser = struct {
 
                     const group = try self.ast.newNodeErase(.group, .{
                         .child = expr,
-                        .pos = self.tokenSrcPos(start),
+                        .pos = self.tokenPos(start),
                     });
                     const term = try self.parseTermExprWithLeft(group, .{});
                     return self.parseExprWithLeft(start, term, .{});
@@ -3340,7 +3343,7 @@ pub const Parser = struct {
                         .left = left,
                         .right = right,
                         .op = bin_op,
-                        .op_pos = self.tokenSrcPos(op_start),
+                        .op_pos = self.tokenPos(op_start),
                     });
                 },
                 .ampersand, .vert_bar, .double_vert_bar, .double_left_angle, .double_right_angle, .caret, .left_angle, .left_angle_equal, .right_angle, .percent, .equal_equal, .bang_equal, .and_k, .or_k, .right_angle_equal => {
@@ -3352,7 +3355,7 @@ pub const Parser = struct {
                         .left = left,
                         .right = right,
                         .op = bin_op,
-                        .op_pos = self.tokenSrcPos(op_start),
+                        .op_pos = self.tokenPos(op_start),
                     });
                 },
                 .minus_double_dot => {
@@ -3364,7 +3367,7 @@ pub const Parser = struct {
                         .start = left,
                         .end = end,
                         .inc = false,
-                        .pos = self.tokenSrcPos(start),
+                        .pos = self.tokenPos(start),
                     });
                 },
                 .dot_dot => {
@@ -3376,7 +3379,7 @@ pub const Parser = struct {
                         .start = left,
                         .end = end,
                         .inc = true,
-                        .pos = self.tokenSrcPos(start),
+                        .pos = self.tokenPos(start),
                     });
                 },
                 .as_k => {
@@ -3478,7 +3481,7 @@ pub const Parser = struct {
             .name = name,
             .type = type_spec,
             .right = null,
-            .pos = self.tokenSrcPos(start),
+            .pos = self.tokenPos(start),
         });
         try self.staticDecls.append(self.alloc, @ptrCast(decl));
         return decl;
@@ -3555,7 +3558,7 @@ pub const Parser = struct {
                 .typed = config.typed,
                 .root = root,
                 .hidden = config.hidden,
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
             });
             try self.staticDecls.append(self.alloc, decl);
             return decl;
@@ -3568,7 +3571,7 @@ pub const Parser = struct {
                 .typeSpec = type_spec,
                 .right = right.?,
                 .typed = config.typed,
-                .pos = self.tokenSrcPos(start),
+                .pos = self.tokenPos(start),
             });
         }
     }
@@ -3579,14 +3582,15 @@ pub const Parser = struct {
         self.advance();
         const token = self.peek();
         switch (token.tag()) {
-            .new_line, .null => {
-                return self.ast.newNodeErase(.returnStmt, .{ .pos = self.tokenSrcPos(start) });
+            .new_line,
+            .null => {
+                return self.newTokenNode(.returnStmt, start);
             },
             else => {
                 const right = (try self.parseExpr(.{})).?;
                 return self.ast.newNodeErase(.returnExprStmt, .{
                     .child = right,
-                    .pos = self.tokenSrcPos(start),
+                    .pos = self.tokenPos(start),
                 });
             },
         }
@@ -3644,7 +3648,7 @@ pub const Parser = struct {
                 .left = expr,
                 .right = right,
                 .op = toBinExprOp(tag).?,
-                .assign_pos = self.tokenSrcPos(op_start),
+                .assign_pos = self.tokenPos(op_start),
             });
         }
 
@@ -3661,13 +3665,25 @@ pub const Parser = struct {
         // }
     }
 
-    fn tokenSrcPos(self: *Parser, idx: u32) u32 {
+    fn tokenPos(self: *Parser, idx: u32) u32 {
         return self.tokens[idx].pos();
+    }
+
+    fn tokenEnd(self: *Parser, idx: u32) u32 {
+        return self.tokens[idx].data.end;
+    }
+
+    pub fn newTokenNode(self: *Parser, comptime node_t: ast.NodeType, start: u32) !*ast.Node {
+        const token = self.tokens[start];
+        return self.ast.newNodeErase(node_t, .{
+            .pos = token.pos(),
+            .end = token.data.end
+        });
     }
 
     fn newSpanNode(self: *Parser, comptime node_t: ast.NodeType, start: u32) !*ast.Span {
         const token = self.tokens[start];
-        return self.ast.newSpanNode(node_t, token.pos(), token.data.end_pos);
+        return self.ast.newSpanNode(node_t, token.pos(), token.data.end);
     }
 
     /// When n=0, this is equivalent to peek.
@@ -3675,9 +3691,7 @@ pub const Parser = struct {
         if (self.next_pos + n < self.tokens.len) {
             return self.tokens[self.next_pos + n];
         } else {
-            return Token.init(.null, self.next_pos, .{
-                .end_pos = 0,
-            });
+            return Token.init(.null, self.next_pos, 0);
         }
     }
 
@@ -3685,9 +3699,7 @@ pub const Parser = struct {
         if (!self.isAtEnd()) {
             return self.tokens[self.next_pos];
         } else {
-            return Token.init(.null, @intCast(self.ast.src.len), .{
-                .end_pos = 0,
-            });
+            return Token.init(.null, @intCast(self.ast.src.len), 0);
         }
     }
 
@@ -3798,8 +3810,8 @@ fn toBinExprOp(op: cy.tokenizer.TokenType) ?cy.ast.BinaryExprOp {
         .hex, .ident, .if_k, .mod_k, .indent,
         .left_brace, .left_bracket, .left_paren, .dyn_k,
         .minus_double_dot, .new_line, .none_k, .not_k, .object_k, .oct, .pass_k, .underscore, .pound, .question,
-        .return_k, .right_brace, .right_bracket, .right_paren, .rune, .raw_string,
-        .string, .struct_k, .switch_k, .symbol_k,
+        .return_k, .right_brace, .right_bracket, .right_paren, .rune, .raw_string, .raw_string_multi,
+        .string, .string_multi, .struct_k, .switch_k, .symbol_k,
         .throw_k, .tilde, .trait_k, .true_k, .try_k, .type_k, .use_k, .var_k, .void_k, .while_k, .with_k => null,
     };
 }

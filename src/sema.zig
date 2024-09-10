@@ -582,11 +582,11 @@ pub fn semaStmt(c: *cy.Chunk, node: *ast.Node) !void {
                         return c.reportErrorFmt("genLabel expected 1 arg", &.{}, node);
                     }
 
-                    if (call.args[0].type() != .stringLit and call.args[0].type() != .raw_string_lit) {
+                    if (call.args[0].type() != .string_lit and call.args[0].type() != .raw_string_lit) {
                         return c.reportErrorFmt("genLabel expected string arg", &.{}, node);
                     }
 
-                    const label = c.ast.nodeString(call.args[0]);
+                    const label = c.ast.asRawStringLit(call.args[0]);
                     _ = try c.ir.pushStmt(c.alloc, .pushDebugLabel, node, .{ .name = label });
                 } else if (std.mem.eql(u8, "dumpLocals", name)) {
                     const proc = c.proc();
@@ -1573,7 +1573,7 @@ pub fn declareUseImport(c: *cy.Chunk, node: *ast.ImportStmt) !void {
             // use alias.
             return error.TODO;
         }
-        specPath = c.ast.nodeString(spec);
+        specPath = c.ast.asRawStringLit(spec);
     } else {
         if (node.name.type() == .ident) {
             // Single ident import.
@@ -2523,7 +2523,7 @@ pub fn getHostAttrName(c: *cy.Chunk, attr: *ast.Attribute) !?[]const u8 {
     if (value.type() != .raw_string_lit) {
         return error.Unsupported;
     }
-    return c.ast.nodeString(value);
+    return c.ast.asRawStringLit(value);
 }
 
 pub fn resolveHostFuncVariant(c: *cy.Chunk, func: *cy.Func) !void {
@@ -2607,7 +2607,7 @@ pub fn reserveImplicitTraitMethod(c: *cy.Chunk, parent: *cy.Sym, decl: *ast.Func
 }
 
 pub fn reserveNestedFunc(c: *cy.Chunk, parent: *cy.Sym, decl: *ast.FuncDecl, deferred: bool) !*cy.Func {
-    const name = c.ast.nodeString(decl.name);
+    const name = c.ast.declNameString(decl.name);
     const is_method = c.ast.isMethodDecl(decl);
     if (decl.stmts.len > 0) {
         const func = try c.reserveUserFunc(parent, name, decl, is_method, deferred);
@@ -5425,10 +5425,12 @@ pub const ChunkExt = struct {
             .ident => {
                 return try semaIdent(c, expr, false);
             },
-            .stringLit => return c.semaString(c.ast.nodeString(node), node),
-            .raw_string_lit => return c.semaRawString(c.ast.nodeString(node), node),
-            .runeLit => {
-                const literal = c.ast.nodeString(node);
+            .string_lit => return c.semaString(c.ast.asStringLit(node), node),
+            .string_multi_lit => return c.semaString(c.ast.asStringMultiLit(node), node),
+            .raw_string_lit => return c.semaRawString(c.ast.asRawStringLit(node), node),
+            .raw_string_multi_lit => return c.semaRawString(c.ast.asRawStringMultiLit(node), node),
+            .rune_lit => {
+                const literal = c.ast.asRuneLit(node);
                 if (literal.len == 0) {
                     return c.reportErrorFmt("Invalid UTF-8 Rune.", &.{}, node);
                 }
@@ -6632,7 +6634,7 @@ fn semaWithInitPairs(c: *cy.Chunk, type_sym: *cy.Sym, type_id: cy.TypeId, init_n
                 return c.reportError("Expected key value pair.", arg);
             }
             const pair = arg.cast(.keyValue);
-            const key_name = c.ast.nodeString(pair.key);
+            const key_name = c.ast.fieldNameString(pair.key);
             const key_expr = try c.semaString(key_name, pair.key);
 
             const arg_start = c.arg_stack.items.len;

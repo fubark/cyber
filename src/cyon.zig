@@ -442,20 +442,7 @@ pub const DecodeTableIR = struct {
     
     pub fn allocString(self: DecodeTableIR, key: []const u8) ![]const u8 {
         if (self.map.get(key)) |val| {
-            if (val.type() == .raw_string_lit) {
-                const token_s = self.ast.nodeString(val);
-                return try self.alloc.dupe(u8, token_s);
-            } else if (val.type() == .stringLit) {
-                const token_s = self.ast.nodeString(val);
-                var buf = std.ArrayList(u8).init(self.alloc);
-                defer buf.deinit();
-
-                try buf.resize(token_s.len);
-                const str = try cy.unescapeString(buf.items, token_s, true);
-                buf.items.len = str.len;
-                return buf.toOwnedSlice();
-            }
-            return error.NotAString;
+            return allocNodeString(self.alloc, self.ast, val);
         } else return error.NoSuchEntry;
     }
 
@@ -575,8 +562,10 @@ pub const DecodeValueIR = struct {
                     return .map;
                 }
             },
+            .raw_string_multi_lit,
             .raw_string_lit,
-            .stringLit => return .string,
+            .string_multi_lit,
+            .string_lit => return .string,
             .hexLit,
             .binLit,
             .octLit,
@@ -597,13 +586,7 @@ pub const DecodeValueIR = struct {
     }
 
     pub fn allocString(self: DecodeValueIR) ![]u8 {
-        const token_s = self.ast.nodeString(self.expr);
-        var buf = std.ArrayList(u8).init(self.alloc);
-        defer buf.deinit();
-        try buf.resize(token_s.len);
-        const str = try cy.unescapeString(buf.items, token_s, true);
-        buf.items.len = str.len;
-        return try buf.toOwnedSlice();
+        return allocNodeString(self.alloc, self.ast, self.expr);
     }
 
     pub fn getF64(self: DecodeValueIR) !f64 {
@@ -808,4 +791,40 @@ pub fn replaceIntoList(comptime T: type, input: []const T, needle: []const T, re
         }
     }
     return replacements;
+}
+
+pub fn allocNodeString(alloc: std.mem.Allocator, view: ast.AstView, node: *ast.Node) ![]u8 {
+    switch (node.type()) {
+        .raw_string_lit => {
+            const token_s = view.asRawStringLit(node);
+            return try alloc.dupe(u8, token_s);
+        },
+        .raw_string_multi_lit => {
+            const token_s = view.asRawStringMultiLit(node);
+            return try alloc.dupe(u8, token_s);
+        },
+        .string_lit => {
+            const token_s = view.asStringLit(node);
+            var buf = std.ArrayList(u8).init(alloc);
+            defer buf.deinit();
+
+            try buf.resize(token_s.len);
+            const str = try cy.unescapeString(buf.items, token_s, true);
+            buf.items.len = str.len;
+            return buf.toOwnedSlice();
+        },
+        .string_multi_lit => {
+            const token_s = view.asStringMultiLit(node);
+            var buf = std.ArrayList(u8).init(alloc);
+            defer buf.deinit();
+
+            try buf.resize(token_s.len);
+            const str = try cy.unescapeString(buf.items, token_s, true);
+            buf.items.len = str.len;
+            return buf.toOwnedSlice();
+        },
+        else => {
+            return error.NotAString;
+        },
+    }
 }

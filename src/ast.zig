@@ -81,6 +81,7 @@ pub const NodeType = enum(u7) {
     ptr_slice,
     range,
     raw_string_lit,
+    raw_string_multi_lit,
 
     // Ref type or address of operator.
     ref,
@@ -89,11 +90,12 @@ pub const NodeType = enum(u7) {
     returnExprStmt,
     returnStmt,
     root,
-    runeLit,
+    rune_lit,
     semaSym,
     seqDestructure,
     staticDecl,
-    stringLit,
+    string_lit,
+    string_multi_lit,
     structDecl,
     switchExpr,
     switchStmt,
@@ -163,13 +165,14 @@ pub const ImportStmt = struct {
 
 pub const Token = struct {
     pos: u32 align(8),
+    end: u32,
 };
 
 // idents and literals.
 pub const Span = struct {
     // This can be different from Node.srcPos if the literal was generated.
     pos: u32 align(8),
-    len: u16,
+    end: u32,
     srcGen: bool,
 };
 
@@ -326,6 +329,7 @@ pub const CallExpr = struct {
 pub const ArrayLit = struct {
     args: []*Node align(8),
     pos: u32,
+    end: u32,
 };
 
 pub const DotInitLit = struct {
@@ -674,14 +678,16 @@ fn NodeData(comptime node_t: NodeType) type {
         .ptr_slice      => PtrSlice,
         .range          => Range,
         .raw_string_lit => Span,
+        .raw_string_multi_lit => Span,
         .returnExprStmt => ReturnExprStmt,
         .returnStmt     => Token,
         .root           => Root,
-        .runeLit        => Span,
+        .rune_lit       => Span,
         .semaSym        => SemaSym,
         .seqDestructure => SeqDestructure,
         .staticDecl     => StaticVarDecl,
-        .stringLit      => Span,
+        .string_lit     => Span,
+        .string_multi_lit => Span,
         .structDecl     => ObjectDecl,
         .switchExpr     => SwitchBlock,
         .switchStmt     => SwitchBlock,
@@ -812,16 +818,18 @@ pub const Node = struct {
             .ptr_slice      => self.cast(.ptr_slice).pos,
             .range          => self.cast(.range).pos,
             .raw_string_lit => self.cast(.raw_string_lit).pos,
+            .raw_string_multi_lit => self.cast(.raw_string_multi_lit).pos,
             .ref            => self.cast(.ref).pos,
             .ref_slice      => self.cast(.ref_slice).pos,
             .returnExprStmt => self.cast(.returnExprStmt).pos,
             .returnStmt     => self.cast(.returnStmt).pos,
             .root           => self.cast(.root).stmts[0].pos(),
-            .runeLit        => self.cast(.runeLit).pos,
+            .rune_lit       => self.cast(.rune_lit).pos,
             .seqDestructure => self.cast(.seqDestructure).pos,
             .semaSym        => cy.NullId,
             .staticDecl     => self.cast(.staticDecl).pos,
-            .stringLit      => self.cast(.stringLit).pos,
+            .string_lit     => self.cast(.string_lit).pos,
+            .string_multi_lit => self.cast(.string_multi_lit).pos,
             .structDecl     => self.cast(.structDecl).pos,
             .switchExpr     => self.cast(.switchExpr).pos,
             .switchStmt     => self.cast(.switchStmt).pos,
@@ -842,6 +850,116 @@ pub const Node = struct {
             .whileInfStmt   => self.cast(.whileInfStmt).pos,
             .whileCondStmt  => self.cast(.whileCondStmt).pos,
             .whileOptStmt   => self.cast(.whileOptStmt).pos,
+        };
+    }
+
+    pub fn end(self: *Node) u32 {
+        return switch (self.type()) {
+            .null           => cy.NullId,
+            .all            => self.cast(.all).end,
+            .accessExpr     => self.cast(.accessExpr).right.end(),
+            .array_lit      => self.cast(.array_lit).end,
+            // .array_expr     => self.cast(.array_expr).left.pos(),
+            // .array_type     => self.cast(.array_type).pos,
+            // .assignStmt     => self.cast(.assignStmt).left.pos(),
+            // .attribute      => self.cast(.attribute).pos,
+            // .await_expr     => self.cast(.await_expr).pos,
+            // .binExpr        => self.cast(.binExpr).op_pos,
+            // .binLit         => self.cast(.binLit).pos,
+            // .breakStmt      => self.cast(.breakStmt).pos,
+            // .callExpr       => self.cast(.callExpr).callee.pos(),
+            // .caseBlock      => self.cast(.caseBlock).pos,
+            // .castExpr       => self.cast(.castExpr).expr.pos(),
+            // .catchStmt      => self.cast(.catchStmt).pos,
+            // .coinit         => self.cast(.coinit).pos,
+            // .comptimeExpr   => self.cast(.comptimeExpr).child.pos()-1,
+            // .comptimeStmt   => self.cast(.comptimeStmt).pos,
+            // .context_decl   => self.cast(.context_decl).pos,
+            // .continueStmt   => self.cast(.continueStmt).pos,
+            // .coresume       => self.cast(.coresume).pos,
+            // .coyield        => self.cast(.coyield).pos,
+            // .cstruct_decl   => self.cast(.cstruct_decl).pos,
+            // .ct_if_stmt     => self.cast(.ct_if_stmt).pos,
+            // .ct_else_block  => self.cast(.ct_else_block).pos,
+            // .custom_decl    => self.cast(.custom_decl).pos,
+            // .decLit         => self.cast(.decLit).pos,
+            // .deref          => self.cast(.deref).left.pos(),
+            // .distinct_decl  => self.cast(.distinct_decl).pos,
+            // .dot_init_lit   => self.cast(.dot_init_lit).pos,
+            // .dot_lit        => self.cast(.dot_lit).pos-1,
+            // .else_block     => self.cast(.else_block).pos,
+            // .enumDecl       => self.cast(.enumDecl).pos,
+            // .enumMember     => self.cast(.enumMember).name.pos(),
+            // .error_lit      => self.cast(.error_lit).pos-6,
+            // .expandOpt      => self.cast(.expandOpt).pos,
+            // .exprStmt       => self.cast(.exprStmt).child.pos(),
+            // .falseLit       => self.cast(.falseLit).pos,
+            // .floatLit       => self.cast(.floatLit).pos,
+            // .forIterStmt    => self.cast(.forIterStmt).pos,
+            // .forRangeStmt   => self.cast(.forRangeStmt).pos,
+            // .funcDecl       => self.cast(.funcDecl).pos,
+            // .func_param     => self.cast(.func_param).name_type.pos(),
+            // .func_type      => self.cast(.func_type).pos,
+            // .group          => self.cast(.group).pos,
+            // .hexLit         => self.cast(.hexLit).pos,
+            // .ident          => self.cast(.ident).pos,
+            // .if_expr        => self.cast(.if_expr).pos,
+            // .if_stmt        => self.cast(.if_stmt).pos,
+            // .if_unwrap_stmt => self.cast(.if_unwrap_stmt).pos,
+            // .impl_with      => self.cast(.impl_with).pos,
+            // .keyValue       => self.cast(.keyValue).key.pos(),
+            // .import_stmt    => self.cast(.import_stmt).pos,
+            // .init_expr      => self.cast(.init_expr).left.pos(),
+            // .init_lit       => self.cast(.init_lit).pos,
+            // .label_decl     => cy.NullId,
+            // .lambda_expr    => self.cast(.lambda_expr).pos,
+            // .lambda_multi   => self.cast(.lambda_multi).pos,
+            // .localDecl      => self.cast(.localDecl).pos,
+            // .name_path      => self.cast(.name_path).path[0].pos(),
+            // .namedArg       => self.cast(.namedArg).name_pos,
+            // .noneLit        => self.cast(.noneLit).pos,
+            // .objectDecl     => self.cast(.objectDecl).pos,
+            // .objectField    => self.cast(.objectField).name.pos(),
+            // .octLit         => self.cast(.octLit).pos,
+            // .opAssignStmt   => self.cast(.opAssignStmt).left.pos(),
+            // .passStmt       => self.cast(.passStmt).pos,
+            // .ptr            => self.cast(.ptr).pos,
+            // .ptr_slice      => self.cast(.ptr_slice).pos,
+            // .range          => self.cast(.range).pos,
+            .raw_string_lit => self.cast(.raw_string_lit).end,
+            // .ref            => self.cast(.ref).pos,
+            // .ref_slice      => self.cast(.ref_slice).pos,
+            // .returnExprStmt => self.cast(.returnExprStmt).pos,
+            // .returnStmt     => self.cast(.returnStmt).pos,
+            // .root           => self.cast(.root).stmts[0].pos(),
+            // .runeLit        => self.cast(.runeLit).pos,
+            // .seqDestructure => self.cast(.seqDestructure).pos,
+            // .semaSym        => cy.NullId,
+            // .staticDecl     => self.cast(.staticDecl).pos,
+            .string_lit     => self.cast(.string_lit).end,
+            // .structDecl     => self.cast(.structDecl).pos,
+            // .switchExpr     => self.cast(.switchExpr).pos,
+            // .switchStmt     => self.cast(.switchStmt).pos,
+            // .symbol_lit     => self.cast(.symbol_lit).pos,
+            // .template       => self.cast(.template).child_decl.pos(),
+            // .throwExpr      => self.cast(.throwExpr).pos,
+            // .trait_decl     => self.cast(.trait_decl).pos,
+            // .trueLit        => self.cast(.trueLit).pos,
+            // .tryExpr        => self.cast(.tryExpr).pos,
+            // .tryStmt        => self.cast(.tryStmt).pos,
+            // .typeAliasDecl  => self.cast(.typeAliasDecl).pos,
+            // .unary_expr     => self.cast(.unary_expr).child.pos()-1,
+            // .unwrap         => self.cast(.unwrap).opt.pos(),
+            // .unwrap_choice  => self.cast(.unwrap_choice).left.pos(),
+            // .unwrap_or      => self.cast(.unwrap_or).opt.pos(),
+            // .use_alias      => self.cast(.use_alias).pos,
+            // .void_lit       => self.cast(.void_lit).pos,
+            // .whileInfStmt   => self.cast(.whileInfStmt).pos,
+            // .whileCondStmt  => self.cast(.whileCondStmt).pos,
+            // .whileOptStmt   => self.cast(.whileOptStmt).pos,
+            else => {
+                std.debug.panic("TODO: {}", .{self.type()});
+            },
         };
     }
 };
@@ -914,7 +1032,7 @@ pub const UnaryOp = enum(u8) {
 };
 
 test "ast internals." {
-    try t.eq(std.enums.values(NodeType).len, 102);
+    try t.eq(std.enums.values(NodeType).len, 104);
     try t.eq(@sizeOf(NodeHeader), 1);
 }
 
@@ -1011,7 +1129,7 @@ pub const Ast = struct {
         const span = try self.newEmptyNode(node_t);
         span.* = .{
             .pos = @intCast(src_pos),
-            .len = @intCast(src_end-src_pos),
+            .end = @intCast(src_end),
             .srcGen = false,
         };
         return span;
@@ -1020,9 +1138,9 @@ pub const Ast = struct {
     pub fn nodeString(self: Ast, n: *Node) []const u8 {
         const span: *Span = @ptrCast(@alignCast(n));
         if (span.srcGen) {
-            return self.srcGen.items[span.pos..span.pos+span.len];
+            return self.srcGen.items[span.pos..span.end];
         } else {
-            return self.src[span.pos..span.pos+span.len];
+            return self.src[span.pos..span.end];
         }
     }
 };
@@ -1119,22 +1237,51 @@ pub const AstView = struct {
         }
     }
 
-    pub fn nodeString(self: AstView, n: *Node) []const u8 {
-        const span: *Span = @ptrCast(@alignCast(n));
-        if (span.srcGen) {
-            return self.srcGen[span.pos..span.pos+span.len];
-        } else {
-            return self.src[span.pos..span.pos+span.len];
+    pub fn asRuneLit(self: AstView, n: *Node) []const u8 {
+        const span = n.cast(.rune_lit);
+        return self.src[span.pos+1..span.end-1];
+    }
+
+    pub fn asStringLit(self: AstView, n: *Node) []const u8 {
+        const span = n.cast(.string_lit);
+        return self.src[span.pos+1..span.end-1];
+    }
+
+    pub fn asStringMultiLit(self: AstView, n: *Node) []const u8 {
+        const span = n.cast(.string_multi_lit);
+        return self.src[span.pos+3..span.end-3];
+    }
+
+    pub fn asRawStringLit(self: AstView, n: *Node) []const u8 {
+        const span = n.cast(.raw_string_lit);
+        return self.src[span.pos+1..span.end-1];
+    }
+
+    pub fn asRawStringMultiLit(self: AstView, n: *Node) []const u8 {
+        const span = n.cast(.raw_string_multi_lit);
+        return self.src[span.pos+3..span.end-3];
+    }
+
+    pub fn fieldNameString(self: AstView, n: *Node) []const u8 {
+        return self.declNameString(n);
+    }
+
+    pub fn declNameString(self: AstView, n: *Node) []const u8 {
+        switch (n.type()) {
+            .raw_string_lit => return self.asRawStringLit(n),
+            else => {
+                return self.nodeString(n);
+            }
         }
     }
 
-    pub fn nodeStringAndDelim(self: AstView, n: *Node) []const u8 {
-        const span: *Span = @ptrCast(n);
+    pub fn nodeString(self: AstView, n: *Node) []const u8 {
+        const span: *Span = @ptrCast(@alignCast(n));
         if (span.srcGen) {
-            return self.srcGen[span.pos-1..span.pos+span.len+1];
+            return self.srcGen[span.pos..span.end];
         } else {
-            return self.src[span.pos-1..span.pos+span.len+1];
-        } 
+            return self.src[span.pos..span.end];
+        }
     }
 
     pub fn isMethodDecl(self: AstView, decl: *FuncDecl) bool {
@@ -1150,7 +1297,7 @@ pub const AstView = struct {
 
     pub fn getNamePathInfo(self: AstView, name: *Node) NamePathInfo {
         if (name.type() != .name_path) {
-            const base = self.nodeString(name);
+            const base = self.declNameString(name);
             return .{
                 .name_path = base,
                 .base_name = base,
@@ -1393,10 +1540,10 @@ pub const Encoder = struct {
                 try w.writeAll(self.ast.nodeString(node));
             },
             .raw_string_lit => {
-                try w.writeAll(self.ast.nodeStringAndDelim(node));
+                try w.writeAll(self.ast.nodeString(node));
             },
-            .stringLit => {
-                try w.writeAll(self.ast.nodeStringAndDelim(node));
+            .string_lit => {
+                try w.writeAll(self.ast.nodeString(node));
             },
             .accessExpr => {
                 const expr = node.cast(.accessExpr);

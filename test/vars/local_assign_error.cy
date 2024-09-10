@@ -4,7 +4,7 @@ a = "123"
 --cytest: error
 --CompileError: Expected type `float`, got `String`.
 --
---main:2:6:
+--main:2:5:
 --a = "123"
---     ^
+--    ^
 --

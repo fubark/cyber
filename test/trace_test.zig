@@ -370,9 +370,9 @@ test "Import http spec." {
         try run_.expectErrorReport(res, c.ErrorCompile,
             \\CompileError: Can not connect to `doesnotexist123.com`.
             \\
-            \\@AbsPath(test/modules/import.cy):1:8:
+            \\@AbsPath(test/modules/import.cy):1:7:
             \\use a 'https://doesnotexist123.com/'
-            \\       ^
+            \\      ^
             \\
         );
     }}.func);
@@ -388,9 +388,9 @@ test "Import http spec." {
         try run_.expectErrorReport(res, c.ErrorCompile,
             \\CompileError: Can not load `https://exists.com/missing`. Response code: not_found
             \\
-            \\@AbsPath(test/modules/import.cy):1:8:
+            \\@AbsPath(test/modules/import.cy):1:7:
             \\use a 'https://exists.com/missing'
-            \\       ^
+            \\      ^
             \\
         );
 

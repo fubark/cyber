@@ -608,24 +608,12 @@ export fn clNewTuple(vm: *cy.VM, ptr: [*]const Value, len: usize) Value {
     return cy.heap.allocTuple(vm, elems) catch fatal();
 }
 
-export fn clNewEmptyListDyn(vm: *cy.VM) Value {
-    return vm.allocEmptyListDyn() catch fatal();
-}
-
-export fn clNewListDyn(vm: *cy.VM, ptr: [*]const Value, len: usize) Value {
+export fn clNewList(vm: *cy.VM, list_t: *cy.Type, ptr: [*]const Value, len: usize) Value {
     const elems = ptr[0..len];
     for (elems) |elem| {
         cy.arc.retain(vm, elem);
     }
-    return cy.heap.allocListDyn(vm, elems) catch fatal();
-}
-
-export fn clNewList(vm: *cy.VM, list_t: cy.TypeId, ptr: [*]const Value, len: usize) Value {
-    const elems = ptr[0..len];
-    for (elems) |elem| {
-        cy.arc.retain(vm, elem);
-    }
-    return cy.heap.allocList(vm, list_t, elems) catch fatal();
+    return vm.newList(list_t, elems) catch fatal();
 }
 
 export fn clNewEmptyMap(vm: *cy.VM) Value {
@@ -1033,71 +1021,71 @@ test "List ops." {
     const vm = c.create();
     defer vm.destroy();
 
-    var list: c.Value = undefined;
-    vm.evalMust("{1, 2, 3}", &list);
+    var list: C.Value = undefined;
+    vm.evalMust("List[dyn]{1, 2, 3}", &list);
     defer vm.release(list);
 
     // Initial cap.
-    try t.eq(c.listLen(list), 3);
-    try t.eq(c.listCap(list), 3);
+    try t.eq(C.listLen(list), 3);
+    try t.eq(C.listCap(list), 3);
 
     // Append.
-    c.listAppend(vm, list, c.float(4));
-    var res = c.listGet(vm, list, 3);
-    try t.eq(c.asFloat(res), 4);
-    try t.eq(c.listLen(list), 4);
-    try t.eq(c.listCap(list), 12);
+    C.listAppend(vm, list, C.float(4));
+    var res = C.listGet(vm, list, 3);
+    try t.eq(C.asFloat(res), 4);
+    try t.eq(C.listLen(list), 4);
+    try t.eq(C.listCap(list), 12);
 
     // Get.
-    res = c.listGet(vm, list, 1);
-    try t.eq(c.asBoxInt(res), 2);
+    res = C.listGet(vm, list, 1);
+    try t.eq(C.asBoxInt(res), 2);
 
     // Set.
-    c.listSet(vm, list, 1, c.float(100));
-    res = c.listGet(vm, list, 1);
-    try t.eq(c.asFloat(res), 100);
+    C.listSet(vm, list, 1, C.float(100));
+    res = C.listGet(vm, list, 1);
+    try t.eq(C.asFloat(res), 100);
 
     // Insert.
-    c.listInsert(vm, list, 0, c.float(123));
-    res = c.listGet(vm, list, 0);
-    try t.eq(c.asFloat(res), 123);
-    try t.eq(c.listLen(list), 5);
+    C.listInsert(vm, list, 0, C.float(123));
+    res = C.listGet(vm, list, 0);
+    try t.eq(C.asFloat(res), 123);
+    try t.eq(C.listLen(list), 5);
 }
 
-export fn clGetFullVersion() c.Str {
-    return c.toStr(build_options.full_version);
+export fn clGetFullVersion() C.Str {
+    return C.toStr(build_options.full_version);
 }
 
 test "clGetFullVersion()" {
-    const str = c.getFullVersion();
-    try t.eqStr(c.fromStr(str), build_options.full_version);
+    const str = C.getFullVersion();
+    try t.eqStr(C.fromStr(str), build_options.full_version);
 }
 
-export fn clGetVersion() c.Str {
-    return c.toStr(build_options.version);
+export fn clGetVersion() C.Str {
+    return C.toStr(build_options.version);
 }
 
 test "clGetVersion()" {
-    const str = c.getVersion();
-    try t.eqStr(c.fromStr(str), build_options.version);
+    const str = C.getVersion();
+    try t.eqStr(C.fromStr(str), build_options.version);
 }
 
-export fn clGetBuild() c.Str {
-    return c.toStr(build_options.build);
+export fn clGetBuild() C.Str {
+    return C.toStr(build_options.build);
 }
 
 test "clGetBuild()" {
-    const str = c.getBuild();
-    try t.eqStr(c.fromStr(str), build_options.build);
+    const str = C.getBuild();
+    try t.eqStr(C.fromStr(str), build_options.build);
 }
 
-export fn clGetCommit() c.Str {
-    return c.toStr(build_options.commit);
+export fn clGetCommit() C.Str {
+    return C.toStr(build_options.commit);
 }
 
 test "clGetCommit()" {
-    const str = c.getCommit();
-    try t.eqStr(c.fromStr(str), build_options.commit);
+    const str = C.getCommit();
+    try t.eqStr(C.fromStr(str), build_options.commit);
 }
 
 /// Used in C/C++ code to log synchronously.

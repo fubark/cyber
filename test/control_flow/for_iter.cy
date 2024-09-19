@@ -49,7 +49,7 @@ t.eq(sum, 6)
 
 -- Return expr inside loop body.
 list = {1, 2, 3}
-var f = func (arr List[dyn]) int:
+var f = func (arr List[int]) int:
     for arr -> item:
         if item == 4:
             return 1
@@ -59,7 +59,7 @@ var f = func (arr List[dyn]) int:
 t.eq(f(list), 0)
 
 -- Empty iterator. Tests that iterator is cleaned up without entering body loop.
-list = {_}
+list = .{}
 var count = 0
 for list -> it:
     count += 1

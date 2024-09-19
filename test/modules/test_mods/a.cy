@@ -1,7 +1,7 @@
 var .varInt = 123
 var .varTypedInt int = 123
-var .varAny = {1, 2, 3}
-var .varList List[dyn] = {1, 2, 3}
+var .varAny any = {1, 2, 3}
+var .varList List[int] = .{1, 2, 3}
 var .varMap Map = Map{a=1, b=2, c=3}
 var .varFunc = func() int:
     return 345

@@ -26,7 +26,7 @@ t.eq(count, 9)
 -- continue releases locals.
 i = 0
 while i != 10:
-    var a = {_}
+    var a = 'abc'
     i += 1
     if i == 2:
         continue

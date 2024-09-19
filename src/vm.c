@@ -562,7 +562,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(IndexTuple),
         JENTRY(IndexMap),
         JENTRY(AppendList),
-        JENTRY(ListDyn),
         JENTRY(List),
         JENTRY(Array),
         JENTRY(Map),
@@ -934,17 +933,6 @@ beginSwitch:
         pc += CALL_OBJ_SYM_INST_LEN;
         NEXT();
     }
-    CASE(ListDyn): {
-        u8 startLocal = pc[1];
-        u8 numElems = pc[2];
-        ValueResult res = zAllocListDyn(vm, stack + startLocal, numElems);
-        if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
-            RETURN(res.code);
-        }
-        stack[pc[3]] = res.val;
-        pc += 4;
-        NEXT();
-    }
     CASE(List): {
         u8 startLocal = pc[1];
         u8 numElems = pc[2];
@@ -1005,7 +993,7 @@ beginSwitch:
         for (int i = start; i < end; i += 1) {
             retain(vm, elems[i]);
         }
-        ValueResult res = zAllocListDyn(vm, elems + start, end - start);
+        ValueResult res = zAllocList(vm, OBJ_TYPEID(listo), elems + start, end - start);
         if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
             RETURN(res.code);
         }

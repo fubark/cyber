@@ -3064,19 +3064,6 @@ fn zAllocList(vm: *cy.VM, type_id: cy.TypeId, elemStart: [*]const Value, nElems:
     };
 }
 
-fn zAllocListDyn(vm: *cy.VM, elemStart: [*]const Value, nElems: u8) callconv(.C) vmc.ValueResult {
-    const list = cy.heap.allocListDyn(vm, elemStart[0..nElems]) catch {
-        return .{
-            .val = undefined,
-            .code = vmc.RES_CODE_UNKNOWN,
-        };
-    };
-    return .{
-        .val = @bitCast(list),
-        .code = vmc.RES_CODE_SUCCESS,
-    };
-}
-
 fn zOtherToF64(val: Value) callconv(.C) f64 {
     return val.otherToF64() catch fatal();
 }
@@ -3442,7 +3429,6 @@ comptime {
         @export(zAlloc, .{ .name = "zAlloc", .linkage = .strong });
         @export(zAllocArray, .{ .name = "zAllocArray", .linkage = .strong });
         @export(zAllocList, .{ .name = "zAllocList", .linkage = .strong });
-        @export(zAllocListDyn, .{ .name = "zAllocListDyn", .linkage = .strong });
         @export(zCopyStruct, .{ .name = "zCopyStruct", .linkage = .strong });
         @export(zBox, .{ .name = "zBox", .linkage = .strong });
         @export(zUnbox, .{ .name = "zUnbox", .linkage = .strong });

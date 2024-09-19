@@ -2,12 +2,12 @@ type S:
     a float
 
 var o = S{a=123}
-o.a = {_}
+o.a = 'abc'
 
 --cytest: error
---CompileError: Expected type `float`, got `List[dyn]`.
+--CompileError: Expected type `float`, got `String`.
 --
 --main:5:7:
---o.a = {_}
+--o.a = 'abc'
 --      ^
 --

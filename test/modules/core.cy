@@ -54,7 +54,7 @@ t.eq(newMap['b'], s)
 var oldStr = 'foo'
 var newStr = copy(oldStr)
 t.eq(newStr, oldStr)
-var rcList = {_}
+var rcList = List[dyn]{}
 s.foo = 123
 s.bar = rcList
 dyn newS = copy(s)
@@ -79,8 +79,8 @@ t.eq(is(1, 2), false)
 t.eq(is(2, 2), false)
 var a any = 2
 t.eq(is(a, a), true)
-t.eq(is({_}, {_}), false)
-var list = {_}
+t.eq(is(List[dyn]{}, List[dyn]{}), false)
+var list = List[dyn]{}
 var list2 = list
 t.eq(is(list, list2), true)
 
@@ -130,7 +130,7 @@ t.eq(typeOf('abc'), String)
 t.eq(typeOf('abc🦊'), String)
 t.eq(typeOf(symbol.abc), symbol)
 t.eq(typeOf(error.Foo), error)
-t.eq(typeOf({_}), List[dyn])
+t.eq(typeOf(List[dyn]{}), List[dyn])
 t.eq(typeOf(Map{}), Map)
 t.eq(typeOf({}), Table)
 type Foo:

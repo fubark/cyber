@@ -1,15 +1,13 @@
-use t 'test'
-
 type S:
     a float
 
-dyn o = t.erase(S{a=123})
-o.a = {_}
+dyn o = S{a=123}
+o.a = 'abc'
 
 --cytest: error
---panic: Assigning to `float` field with incompatible type `List`.
+--panic: Assigning to `float` field with incompatible type `String`.
 --
---main:7:3 main:
---o.a = {_}
+--main:5:3 main:
+--o.a = 'abc'
 --  ^
 --

@@ -6,7 +6,7 @@ use t 'test'
 func foo(list List[dyn]) dyn:
     coyield
     list.append(123)
-var list = {_}
+var list = List[dyn]{}
 var f = coinit(foo, list)
 t.eq(list.len(), 0)
 
@@ -14,7 +14,7 @@ t.eq(list.len(), 0)
 func foo2(list List[dyn]) dyn:
     coyield
     list.append(123)
-list = {_}
+list = .{}
 f = coinit(foo2, list)
 coresume f
 t.eq(list.len(), 0)
@@ -22,7 +22,7 @@ t.eq(list.len(), 0)
 -- Start fiber without yield.
 func foo3(list List[dyn]) dyn:
     list.append(123)
-list = {_}
+list = .{}
 f = coinit(foo3, list)
 coresume f
 t.eq(list[0], 123)
@@ -31,18 +31,18 @@ t.eq(list[0], 123)
 func foo4(list List[dyn]) dyn:
     list.append(123)
     return list[0]
-list = {_}
+list = .{}
 f = coinit(foo4, list)
 t.eq(coresume f, 123)
 
 -- Start fiber with yield in nested function.
 func bar():
-    var alist = {_} -- This should be released after fiber is freed.
+    var alist = List[dyn]{} -- This should be released after fiber is freed.
     coyield
 func foo5(list List[dyn]) dyn:
     bar()
     list.append(123)
-list = {_}
+list = .{}
 f = coinit(foo5, list)
 coresume f
 t.eq(list.len(), 0)
@@ -52,7 +52,7 @@ func foo6(list List[dyn]) dyn:
     list.append(123)
     coyield
     list.append(234)
-list = {_}
+list = .{}
 f = coinit(foo6, list)
 coresume f
 coresume f
@@ -90,7 +90,7 @@ t.eq(res, 210)
 -- coinit lambda
 var foof = func (list List[dyn]):
     list.append(123)
-list = {_}
+list = .{}
 f = coinit(foof, list)
 coresume f
 t.eq(list[0], 123)

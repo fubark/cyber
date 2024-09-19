@@ -150,7 +150,7 @@ t.eq(os.readFile('test/assets/write.txt'), 'foobarabcxyz')
 -- Dir.iterator()
 dir = os.openDir('test/assets/dir', true)
 var iter = dir.iterator()
-var entries = {_}
+var entries = List[dyn]{}
 while iter.next() -> n:
     entries.append(n)
 t.eq(entries.len(), 3)
@@ -165,7 +165,7 @@ t.eq(entries[2]['type'], symbol.file)
 -- Dir.walk()
 dir = os.openDir('test/assets/dir', true)
 iter = dir.walk()
-entries = {_}
+entries = .{}
 while iter.next() -> n:
     entries.append(n)
 t.eq(entries.len(), 4)

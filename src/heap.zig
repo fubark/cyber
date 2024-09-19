@@ -983,21 +983,7 @@ pub fn allocType(self: *cy.VM, typeId: cy.TypeId) !Value {
         .rc = 1,
         .type = typeId,
     };
-    return Value.initNoCycPtr(obj);
-}
-
-pub fn allocEmptyListDyn(self: *cy.VM) !Value {
-    const obj = try allocPoolObject(self);
-    obj.list = .{
-        .typeId = bt.ListDyn | vmc.CYC_TYPE_MASK,
-        .rc = 1,
-        .list = .{
-            .ptr = undefined,
-            .len = 0,
-            .cap = 0,
-        },
-    };
-    return Value.initCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocEmptyList(self: *cy.VM, type_id: cy.TypeId) !Value {
@@ -1143,31 +1129,6 @@ pub fn allocArray(vm: *cy.VM, type_id: cy.TypeId, elems: []const Value) !Value {
 }
 
 pub fn allocList(self: *cy.VM, type_id: cy.TypeId, elems: []const Value) !Value {
-    const cyclable = self.c.types[type_id].cyclable;
-    const obj = try allocPoolObject(self);
-    const cyc_mask = if (cyclable) vmc.CYC_TYPE_MASK else 0;
-    obj.list = .{
-        .typeId = type_id | cyc_mask,
-        .rc = 1,
-        .list = .{
-            .ptr = undefined,
-            .len = 0,
-            .cap = 0,
-        },
-    };
-    const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
-    // Initializes capacity to exact size.
-    try list.ensureTotalCapacityPrecise(self.alloc, elems.len);
-    list.len = elems.len;
-    @memcpy(list.items(), elems);
-    if (cyclable) {
-        return Value.initCycPtr(obj);
-    } else {
-        return Value.initNoCycPtr(obj);
-    }
-}
-
-pub fn allocListDyn(self: *cy.VM, elems: []const Value) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
         .typeId = bt.ListDyn | vmc.CYC_TYPE_MASK,
@@ -1191,25 +1152,7 @@ pub fn allocListIter(self: *cy.VM, type_id: cy.TypeId, list: Value) !Value {
     const obj = try allocPoolObject(self);
     const cyc_mask = if (cyclable) vmc.CYC_TYPE_MASK else 0;
     obj.listIter = .{
-        .typeId = type_id | cyc_mask,
-        .rc = 1,
-        .inner = .{
-            .list = list,
-            .nextIdx = 0,
-        },
-    };
-    if (cyclable) {
-        return Value.initCycPtr(obj);
-    } else {
-        return Value.initNoCycPtr(obj);
-    }
-}
-
-/// Assumes list is already retained for the iterator.
-pub fn allocListIterDyn(self: *cy.VM, list: Value) !Value {
-    const obj = try allocPoolObject(self);
-    obj.listIter = .{
-        .typeId = bt.ListIterDyn | vmc.CYC_TYPE_MASK,
+        .typeId = type_id,
         .rc = 1,
         .inner = .{
             .list = list,
@@ -1544,7 +1487,7 @@ pub const VmExt = struct {
     pub const allocHostFuncUnion = Root.allocHostFuncUnion;
     pub const allocTable = Root.allocTable;
     pub const allocEmptyMap = Root.allocEmptyMap;
-    pub const allocEmptyListDyn = Root.allocEmptyListDyn;
+    pub const allocEmptyList = Root.allocEmptyList;
     pub const allocArray = Root.allocArray;
     pub const allocPointer = Root.allocPointer;
     pub const allocInt = Root.allocInt;
@@ -1558,7 +1501,6 @@ pub const VmExt = struct {
     pub const allocUnsetUstringObject = Root.allocUnsetUstringObject;
     pub const allocListFill = Root.allocListFill;
     pub const allocListIter = Root.allocListIter;
-    pub const allocListIterDyn = Root.allocListIterDyn;
     pub const allocMapIterator = Root.allocMapIterator;
     pub const allocObjectSmall = Root.allocObjectSmall;
     pub const allocObject = Root.allocObject;

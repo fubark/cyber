@@ -370,31 +370,31 @@ By default, a comparison operator evaluates to a [Boolean](#booleans) value.
 
 The equals operator returns true if the two values are equal. For primitive types, the comparison checks the types and the underlying value. For strings, the underlying bytes are compared for equality. For objects, the comparison checks that the two values reference the same object.
 ```cy
-1 == 1      -- Evaluates to `true`
-1 == 2      -- Evaluates to `false`
-1 == true   -- Evaluates to `false`
+1 == 1          --> true
+1 == 2          --> false
+1 == true       --> false
 
 var a = 'abc'
-a == 'abc'  -- Evaluates to `true`
+a == 'abc'      --> true
 
-a = {_}
-var b = a
-a == b      -- Evaluates to `true`
-a == {_}    -- Evaluates to `false`
+var la = {1, 2, 3}
+var lb = la
+la == lb        --> true
+la == {1, 2, 3} --> false
 ```
 
 The not equals operator returns true if the two values are not equal.
 ```cy
-1 != 1      -- Evaluates to `false`
-1 != 2      -- Evaluates to `true`
+1 != 1          --> false
+1 != 2          --> true
 ```
 
 Number types have additional comparison operators.
 ```cy
-a > b    -- `true` if a is greater than b
-a >= b   -- `true` if a is greater than or equal to b
-a < b    -- `true` if a is less than b
-a <= b   -- `true` if a is less than or equal to b
+a > b           --> `true` if a is greater than b
+a >= b          --> `true` if a is greater than or equal to b
+a < b           --> `true` if a is less than b
+a <= b          --> `true` if a is less than or equal to b
 ```
 
 ### Logic Operators.
@@ -886,23 +886,27 @@ print a[2]    --> 300
 ## Lists.
 Lists are a builtin type that holds an ordered collection of elements. Lists grow or shrink as you insert or remove elements. See [`type List`](#type-list).
 
-The first element of the list starts at index 0.
-Lists are initialized with elements in braces:
+Lists are initialized with elements in braces.
+The first element is used to infer the List type:
 ```cy
 var list = {1, 2, 3}
+```
+
+The first element of the list starts at index 0.
+```cy
 print list[0]    --> 1
 ```
 
-The empty list is initialized with an underscore as the only element:
+An explicit List type can be specified before the initializer:
 ```cy
-var list = {_}
+var empty = List[int]{}
 print list.len() --> 0
 ```
 
 Lists can be sliced with the range `..` clause. The sliced list becomes a new list that you can modify without affecting the original list. The end index is non-inclusive.
 ```cy
 var list = {1, 2, 3, 4, 5}
-print list[0..0]    --> {_}          
+print list[0..0]    --> {}          
 print list[0..3]    --> {1, 2, 3}
 print list[3..]     --> {4, 5}
 print list[..3]     --> {1, 2, 3}
@@ -4260,8 +4264,8 @@ To invoke the GC, call the builtin function: `performGC`. *Incomplete Feature: O
 ```cy
 func foo():
     -- Create a reference cycle.
-    var a = {_}
-    var b = {_}
+    var a = List[dyn]{}
+    var b = List[dyn]{}
     a.append(b)
     b.append(a)
 

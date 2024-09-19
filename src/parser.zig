@@ -2337,17 +2337,6 @@ pub const Parser = struct {
                 .pos = self.tokenPos(start),
                 .array_like = false,
             });
-        } else if (self.peek().tag() == .underscore) {
-            self.advance();
-            if (self.peek().tag() != .right_brace) {
-                return self.reportErrorAt("Expected closing brace.", &.{}, self.next_pos);
-            }
-            self.advance();
-            return self.ast.newNode(.init_lit, .{
-                .args = &.{},
-                .pos = self.tokenPos(start),
-                .array_like = true,
-            });
         }
 
         var array_like = true;

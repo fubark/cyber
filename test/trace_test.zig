@@ -31,8 +31,8 @@ test "ARC." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 4);
-        try t.eq(trace.numReleases, 4);
+        try t.eq(trace.numRetains, 2);
+        try t.eq(trace.numReleases, 2);
     }}.func);
 
     // Local in if expr true branch is retained.
@@ -53,8 +53,8 @@ test "ARC." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 3);
-        try t.eq(trace.numReleases, 3);
+        try t.eq(trace.numRetains, 1);
+        try t.eq(trace.numReleases, 1);
     }}.func);
 
     // List literal is assigned to a local. Increase ref count.
@@ -63,23 +63,23 @@ test "ARC." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 3);
-        try t.eq(trace.numReleases, 3);
+        try t.eq(trace.numRetains, 1);
+        try t.eq(trace.numReleases, 1);
     }}.func);
 
     // Object is retained when assigned to struct literal.
     try eval(.{},
         \\use t 'test'
         \\type S:
-        \\  value List[dyn]
+        \\  value List[int]
         \\var a = {123}
         \\var s = S{value=a}
         \\t.eq(s.value[0], 123)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 7);
-        try t.eq(trace.numReleases, 7);
+        try t.eq(trace.numRetains, 4);
+        try t.eq(trace.numReleases, 4);
     }}.func);
 
     // Object is released when returned rvalue field access.
@@ -130,8 +130,8 @@ test "ARC for static variable declarations." {
         _ = try res.getValue();
         run.vm.deinit();
         const trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 6);
-        try t.eq(trace.numRetains, 5);
+        try t.eq(trace.numRetainAttempts, 3);
+        try t.eq(trace.numRetains, 2);
     }}.func);
 }
 
@@ -146,41 +146,41 @@ test "ARC assignments." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 7);
-        try t.eq(trace.numReleaseAttempts, 7);
-        try t.eq(trace.numRetains, 6);
-        try t.eq(trace.numReleases, 6);
+        try t.eq(trace.numRetainAttempts, 3);
+        try t.eq(trace.numReleaseAttempts, 3);
+        try t.eq(trace.numRetains, 1);
+        try t.eq(trace.numReleases, 1);
     }}.func);
 
     // Set index on rc-candidate child to rc-candidate.
     try eval(.{},
         \\use t 'test'
-        \\var a = {123}
-        \\var b = Map{}
+        \\var a = {'abc'}
+        \\var b = 'xyz'
         \\a[0] = b
-        \\t.eq(type(a[0]), Map)
+        \\t.eq(type(a[0]), String)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 8);
-        try t.eq(trace.numReleaseAttempts, 8);
+        try t.eq(trace.numRetainAttempts, 7);
+        try t.eq(trace.numReleaseAttempts, 7);
         try t.eq(trace.numRetains, 7);
         try t.eq(trace.numReleases, 7);
     }}.func);
 }
 
 test "ARC for passing call args." {
-    // Temp list is retained when passed into function.
+    // Temp list is not retained when passed into function.
     try eval(.{},
         \\use t 'test'
-        \\func foo(list List[dyn]) dyn:
+        \\func foo(list List[int]) int:
         \\  return list[0]
         \\t.eq(foo({1}), 1)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 5);
-        try t.eq(trace.numReleases, 5);
+        try t.eq(trace.numRetains, 1);
+        try t.eq(trace.numReleases, 1);
     }}.func);
 }
 
@@ -198,8 +198,8 @@ test "ARC for function return values." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 5);
-        try t.eq(trace.numReleases, 5);
+        try t.eq(trace.numRetains, 6);
+        try t.eq(trace.numReleases, 6);
     }}.func);
 
     // Object is released when returned from a function if no followup assignment.
@@ -225,8 +225,8 @@ test "ARC on temp locals in expressions." {
         \\var ret = traceRetains()
         \\var rel = traceReleases()
         \\var res = Map{a={123}}['a'][0]
-        \\test.eq(traceRetains() - ret, 11)
-        \\test.eq(traceReleases() - rel, 11)
+        \\test.eq(traceRetains() - ret, 10)
+        \\test.eq(traceReleases() - rel, 10)
         \\test.eq(res, 123)
     );
 
@@ -267,8 +267,8 @@ test "ARC in loops." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetains, 13);
-        try t.eq(trace.numReleases, 13);
+        try t.eq(trace.numRetains, 10);
+        try t.eq(trace.numReleases, 10);
     }}.func);
 
     // A non-rcCandidate var is reassigned to a rcCandidate var (field access on the right) inside a loop.
@@ -281,10 +281,10 @@ test "ARC in loops." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 13);
-        try t.eq(trace.numRetains, 13);
-        try t.eq(trace.numReleaseAttempts, 13);
-        try t.eq(trace.numReleases, 13);
+        try t.eq(trace.numRetainAttempts, 10);
+        try t.eq(trace.numRetains, 10);
+        try t.eq(trace.numReleaseAttempts, 10);
+        try t.eq(trace.numReleases, 10);
     }}.func);
 
     // An rc var first used inside a loop.
@@ -310,8 +310,8 @@ test "ARC in loops." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 17);
-        try t.eq(trace.numRetains, 17);
+        try t.eq(trace.numRetainAttempts, 9);
+        try t.eq(trace.numRetains, 7);
     }}.func);
 
     // For iter with `any` temp value, the last temp value is released at the end of the block.
@@ -323,9 +323,9 @@ test "ARC in loops." {
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();
-        try t.eq(trace.numRetainAttempts, 27);
-        try t.eq(trace.numRetains, 27);
-        try t.eq(trace.numReleases, 27);
+        try t.eq(trace.numRetainAttempts, 23);
+        try t.eq(trace.numRetains, 23);
+        try t.eq(trace.numReleases, 23);
     }}.func);
 }
 

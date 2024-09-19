@@ -715,21 +715,7 @@ fn dumpValue2(vm: *cy.VM, state: *DumpValueState, w: anytype, val: cy.Value, con
                 if (config.show_rc) {
                     try w.print(" rc={}", .{obj.head.rc});
                 }
-                switch (type_id) {
-                    bt.ListDyn => {
-                        if (state.depth < config.max_depth) {
-                            state.depth += 1;
-                            _ = try w.writeAll("[");
-                            const children = obj.list.items();
-                            for (children, 0..) |childv, i| {
-                                try dumpValue2(vm, state, w, childv, config);
-                                if (i < children.len - 1) {
-                                    _ = try w.writeAll(", ");
-                                }
-                            }
-                            _ = try w.writeByte(']');
-                        }
-                    },
+                switch (val_t.id()) {
                     bt.Table => {
                         const size = obj.table.map().size;
                         if (state.depth < config.max_depth) {

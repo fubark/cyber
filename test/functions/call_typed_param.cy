@@ -115,10 +115,10 @@ func fooList(a List[dyn]) bool:
     return a[0] == 123
 
 -- Literal.
-t.eq(fooList({123}), true)
+t.eq(fooList(.{123}), true)
 
 -- From var.
-var list = {123}
+var list = List[dyn]{123}
 t.eq(fooList(list), true)
 
 -- Cast erased type.

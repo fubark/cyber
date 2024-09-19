@@ -604,10 +604,6 @@ CLValue clUnwrapChoice(CLVM* vm, CLValue choice, CLStr name);
 
 bool clIsFuture(CLVM* vm, CLValue val);
 
-// This is equivalent to a List[dyn] initialized from the array literal `{_}`.
-CLValue clNewEmptyListDyn(CLVM* vm);
-// This is equivalent to a List[dyn] initialized from the array literal `{a, ...}`.
-CLValue clNewListDyn(CLVM* vm, const CLValue* vals, size_t len);
 // List[T], `list_t` should be obtained from `clExpandTemplateType`.
 // TODO: It should also be possible to obtain `list_t` from `clFindType("List[T]")`.
 CLValue clNewEmptyList(CLVM* vm, CLType list_t);

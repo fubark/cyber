@@ -360,7 +360,10 @@ fn parseArgs(vm: *cy.VM) anyerror!Value {
 
     var iter = try std.process.argsWithAllocator(vm.alloc);
     defer iter.deinit();
-    const rest = try vm.allocEmptyListDyn();
+
+    const list_t = (try vm.findType("List[String]")).?;
+    const rest = try vm.allocEmptyList(list_t.id());
+
     const restList = rest.asHeapObject().list.getList();
     while (iter.next()) |arg| {
         if (arg[0] == '-') {
@@ -423,7 +426,9 @@ fn osArgs(vm: *cy.VM) anyerror!Value {
     if (cy.isWasm) return vm.prepPanic("Unsupported.");
     var iter = try std.process.argsWithAllocator(vm.alloc);
     defer iter.deinit();
-    const listv = try vm.allocEmptyListDyn();
+
+    const list_t = (try vm.findType("List[String]")).?;
+    const listv = try vm.allocEmptyList(list_t.id());
     const listo = listv.asHeapObject();
     while (iter.next()) |arg| {
         const str = try vm.allocString(arg);

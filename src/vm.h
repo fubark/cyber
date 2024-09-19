@@ -240,7 +240,6 @@ typedef enum {
     CodeIndexTuple,
     CodeIndexMap,
     CodeAppendList,
-    CodeListDyn,
     CodeList,
     CodeArray,
     CodeMap,
@@ -386,8 +385,8 @@ enum {
     TYPE_TYPE = 11,
 
     TYPE_TUPLE = 12,
-    TYPE_LIST_DYN = 13,
-    TYPE_LIST_ITER_DYN = 14,
+    TYPE_PLACEHOLDER4 = 13,
+    TYPE_PLACEHOLDER5 = 14,
     TYPE_MAP = 15,
     TYPE_MAP_ITER = 16,
     TYPE_FUNC = 17,
@@ -933,7 +932,6 @@ void zDumpValue(VM* vm, Value val);
 void zFreeObject(VM* vm, HeapObject* obj);
 void zEnd(VM* vm, Inst* pc);
 ValueResult zAllocList(VM* vm, TypeId type_id, Value* elemStart, uint8_t nelems);
-ValueResult zAllocListDyn(VM* vm, Value* elemStart, uint8_t nelems);
 ValueResult zAllocArray(VM* vm, TypeId type_id, Value* elemStart, uint8_t nelems);
 double zOtherToF64(Value val);
 CallObjSymResult zCallObjSym(VM* vm, Inst* pc, Value* stack, Value recv, TypeId typeId, u16 method, u8 startLocal, u8 numArgs);

@@ -52,7 +52,7 @@ type Sym:
     addr int
 
 -- First pass accumulates the unordered symbols.
-var syms = {_}
+var syms = List[Sym]{}
 var symMap = {}
 while llvm.ObjectFileIsSymbolIteratorAtEnd(llBin, llSymIter) == 0:
     if llvm.GetSectionContainsSymbol(llSectIter, llSymIter) == 0:
@@ -92,9 +92,9 @@ for syms -> sym, i:
 
     print "$(sym.name) $(sym.addr) $(bin.fmt(.x))"
 
-    var bytes = {_}
+    var bytes = List[dyn]{}
     for bin -> byte:
-        bytes.append("0x$(byte.fmt(.x, {pad=`0`, width=2}))")
+        bytes.append("0x${byte.fmt(.hex, {pad=`0`, width=2})}")
 
     out += "pub const $(sym.name[1..]) = [_]u8{ $(bytes.join(', ')) };\n"
 

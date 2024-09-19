@@ -929,8 +929,8 @@ fn reserveCoreTypes(self: *Compiler) !void {
 
         // Object types.
         bt.Tuple,
-        bt.ListDyn,
-        bt.ListIterDyn,
+        bt.Placeholder4,
+        bt.Placeholder5,
         bt.Map,
         bt.MapIter,
         bt.Func,

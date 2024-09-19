@@ -4744,22 +4744,18 @@ pub const ChunkExt = struct {
         }
 
         const sym = left.data.sym.resolved();
-        if (sym.getStaticType()) |type_id| {
+        if (sym.getStaticType()) |type_| {
             if (left.data.sym.getVariant()) |variant| {
                 if (variant.getSymTemplate() == c.sema.list_tmpl) {
                     const nargs = node.init.args.len;
-                    const loc = try c.ir.pushEmptyExpr(.list, c.alloc, ir.ExprType.init(type_id), expr.node);
                     const args_loc = try c.ir.pushEmptyArray(c.alloc, u32, nargs);
 
-                    const elem_t = variant.args[0].asHeapObject().type.type;
-
+                    const elem_t = c.sema.getType(variant.args[0].asHeapObject().type.type);
                     for (node.init.args, 0..) |arg, i| {
-                        const res = try c.semaExprTarget(arg, elem_t);
+                        const res = try c.semaExprCstr(arg, elem_t);
                         c.ir.setArrayItem(args_loc, u32, i, res.irIdx);
                     }
-
-                    c.ir.setExprData(loc, .list, .{ .nargs = @intCast(nargs), .args = args_loc });
-                    return ExprResult.init(loc, type_id);
+                    return semaList(c, type_, args_loc, nargs, expr.node);
                 }
             }
         }
@@ -5767,16 +5763,24 @@ pub const ChunkExt = struct {
             .init_lit => {
                 const init_lit = node.cast(.init_lit);
                 if (init_lit.array_like) {
-                    const irIdx = try c.ir.pushEmptyExpr(.list, c.alloc, ir.ExprType.init(bt.ListDyn), node);
-                    const irArgsIdx = try c.ir.pushEmptyArray(c.alloc, u32, init_lit.args.len);
+                    // Assumes at least one element.
+                    // Infer list type from the first element.
+                    const args = try c.ir.pushEmptyArray(c.alloc, u32, init_lit.args.len);
+                    var arg_res = try c.semaExpr(init_lit.args[0], .{});
+                    c.ir.setArrayItem(args, u32, 0, arg_res.irIdx);
 
-                    for (init_lit.args, 0..) |arg, i| {
-                        const argRes = try c.semaExprCstr(arg, bt.Dyn);
-                        c.ir.setArrayItem(irArgsIdx, u32, i, argRes.irIdx);
+                    // Constrain rest of elements to the type of the first element.
+                    const elem_t = arg_res.type;
+                    for (init_lit.args[1..], 1..) |arg, i| {
+                        arg_res = try c.semaExprCstr(arg, elem_t);
+                        c.ir.setArrayItem(args, u32, i, arg_res.irIdx);
                     }
 
-                    c.ir.setExprData(irIdx, .list, .{ .nargs = @intCast(init_lit.args.len), .args = irArgsIdx });
-                    return ExprResult.init(irIdx, bt.ListDyn);
+                    const list_t = try getListType(c, elem_t);
+                    const irIdx = try c.ir.pushExpr(.list, c.alloc, list_t, node, .{
+                        .nargs = @intCast(init_lit.args.len), .args = args,
+                    });
+                    return ExprResult.init(irIdx, list_t);
                 } else {
                     const obj_t = c.sema.getTypeSym(bt.Table).cast(.object_t);
                     return c.semaObjectInit2(obj_t, init_lit);

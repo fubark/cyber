@@ -9,7 +9,7 @@ func inc() dyn:
     coyield
     count += 1
 
-var fibers = {_}
+var fibers = List[dyn]{}
 for 0..100000:
     var f = coinit(inc)
     coresume f

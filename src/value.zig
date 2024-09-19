@@ -468,14 +468,6 @@ pub fn shallowCopy(vm: *cy.VM, type_id: cy.TypeId, val: Value) anyerror!Value {
     }
     const obj = val.asHeapObject();
     switch (obj.getTypeId()) {
-        bt.ListDyn => {
-            const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
-            const new = try cy.heap.allocListDyn(vm, list.items());
-            for (list.items()) |item| {
-                vm.retain(item);
-            }
-            return new;
-        },
         bt.Map => {
             const new = try cy.heap.allocEmptyMap(vm);
             const newMap = cy.ptrAlignCast(*cy.MapInner, &(new.asHeapObject()).map.inner);

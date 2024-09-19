@@ -262,7 +262,8 @@ fn genImplicitFuncDeclEntry(vm: *cy.VM, view: ast.AstView, node: *ast.FuncDecl, 
     const entry = entryv.castHeapObject(*cy.heap.Map);
     const name = view.getNamePathInfo(node.name).name_path;
     
-    const params = try vm.allocEmptyListDyn();
+    const list_t = (try vm.findType("List[Map]")).?;
+    const params = try vm.allocEmptyList(list_t.id());
     for (node.params) |param| {
         const param_v = try genNodeValue(vm, view, @ptrCast(param));
         try params.asHeapObject().list.append(vm.alloc, param_v);
@@ -312,7 +313,8 @@ fn genDeclEntry(vm: *cy.VM, view: ast.AstView, decl: *ast.Node, state: *ParseCyb
         .funcDecl => {
             const func_decl = decl.cast(.funcDecl);
 
-            const params = try vm.allocEmptyListDyn();
+            const list_t = (try vm.findType("List[Map]")).?;
+            const params = try vm.allocEmptyList(list_t.id());
             for (func_decl.params) |param| {
                 const param_v = try genNodeValue(vm, view, @ptrCast(param));
                 try params.asHeapObject().list.append(vm.alloc, param_v);
@@ -325,9 +327,11 @@ fn genDeclEntry(vm: *cy.VM, view: ast.AstView, decl: *ast.Node, state: *ParseCyb
             const ret = try genTypeSpecString(vm, view, func_decl.ret);
             try vm.mapSet(entry, try vm.retainOrAllocAstring("ret"), ret);
         },
-        .structDecl => {
-            const struct_decl = decl.cast(.structDecl);
-            const funcs_ = try vm.allocEmptyListDyn();
+        .struct_decl => {
+            const struct_decl = decl.cast(.struct_decl);
+
+            const list_t = (try vm.findType("List[Map]")).?;
+            const funcs_ = try vm.allocEmptyList(list_t.id());
             for (struct_decl.funcs) |func_decl| {
                 const f = try genImplicitFuncDeclEntry(vm, view, func_decl, state);
                 try funcs_.asHeapObject().list.append(vm.alloc, f);
@@ -345,7 +349,9 @@ fn genDeclEntry(vm: *cy.VM, view: ast.AstView, decl: *ast.Node, state: *ParseCyb
         },
         .custom_decl => {
             const custom_decl = decl.cast(.custom_decl);
-            const funcs_ = try vm.allocEmptyListDyn();
+
+            const list_t = (try vm.findType("List[Map]")).?;
+            const funcs_ = try vm.allocEmptyList(list_t.id());
             for (custom_decl.funcs) |func_decl| {
                 const f = try genImplicitFuncDeclEntry(vm, view, func_decl, state);
                 try funcs_.asHeapObject().list.append(vm.alloc, f);
@@ -354,7 +360,9 @@ fn genDeclEntry(vm: *cy.VM, view: ast.AstView, decl: *ast.Node, state: *ParseCyb
         },
         .distinct_decl => {
             const distinct_decl = decl.cast(.distinct_decl);
-            const funcs_ = try vm.allocEmptyListDyn();
+
+            const list_t = (try vm.findType("List[Map]")).?;
+            const funcs_ = try vm.allocEmptyList(list_t.id());
             for (distinct_decl.funcs) |func_decl| {
                 const f = try genImplicitFuncDeclEntry(vm, view, func_decl, state);
                 try funcs_.asHeapObject().list.append(vm.alloc, f);
@@ -363,7 +371,9 @@ fn genDeclEntry(vm: *cy.VM, view: ast.AstView, decl: *ast.Node, state: *ParseCyb
         },
         .trait_decl => {
             const trait_decl = decl.cast(.trait_decl);
-            const funcs_ = try vm.allocEmptyListDyn();
+
+            const list_t = (try vm.findType("List[Map]")).?;
+            const funcs_ = try vm.allocEmptyList(list_t.id());
             for (trait_decl.funcs) |func_decl| {
                 const f = try genImplicitFuncDeclEntry(vm, view, func_decl, state);
                 try funcs_.asHeapObject().list.append(vm.alloc, f);
@@ -457,12 +467,8 @@ fn genDocComment(vm: *cy.VM, view: ast.AstView, decl_type: ast.NodeType, state: 
 }
 
 fn parseCyberGenResult(vm: *cy.VM, parser: *const cy.Parser) !cy.Value {
-    const root = try vm.allocEmptyMap();
-    errdefer vm.release(root);
-
-    const map = root.asHeapObject().map.map();
-
-    const decls = try vm.allocEmptyListDyn();
+    const list_t = (try vm.findType("List[Map]")).?;
+    const decls = try vm.allocEmptyList(list_t.id());
     errdefer vm.release(decls);
 
     const declsList = decls.asHeapObject().list.getList();

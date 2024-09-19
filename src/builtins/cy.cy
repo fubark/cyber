@@ -23,6 +23,9 @@ func eval(src String) any:
 
     return res.value.toHost()
 
+type ParseResult:
+    decls List[Map]
+
 --| Parses Cyber source string into a structured map object.
 --| Currently, only metadata about static declarations is made available but this will be extended to include an AST.
 @host func parse(src String) Map

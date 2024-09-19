@@ -15,7 +15,7 @@ t.eq(sum, 10)
 
 -- Assign rc value to variable.
 a = 0 
-var next2 = func () ?List[dyn]:
+var next2 = func () ?List[int]:
     if a < 4:
         a += 1
         return {a}

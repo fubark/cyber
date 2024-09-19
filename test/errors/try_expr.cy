@@ -21,14 +21,14 @@ t.eq(foo2(), 1)
 
 -- Non-error rc value inside function.
 func foo3() dyn:
-    return try {_}
-t.eqList(foo3() as List[dyn], {_})
+    return try 'abc'
+t.eq(foo3() as String, 'abc')
 
 -- Non-error rc value assignment inside function.
 func foo4() dyn:
-    var val = try {_}
+    var val = try 'abc'
     return val
-t.eqList(foo4() as List[dyn], {_})
+t.eq(foo4() as String, 'abc')
 
 -- Caught error.
 var res = try fail()

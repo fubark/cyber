@@ -165,6 +165,9 @@ type int #int64_t:
     @host func '$infix<<'(self, o int) int
     @host func '$infix>>'(self, o int) int
 
+    func fmt(self) String:
+        return self.fmt(.dec)
+
     --| Formats the integer using a NumberFormat.
     @host func fmt(self, format NumberFormat) String
 
@@ -200,6 +203,8 @@ type float #float64_t:
     @host func '$infix/'(self, o float) float
     @host func '$infix%'(self, o float) float
     @host func '$infix^'(self, o float) float
+
+    @host func fmt(self) String
 
 --| Converts the value to a `float`. Panics if type conversion fails.
 @host func float.$call(val any) float

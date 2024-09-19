@@ -118,6 +118,7 @@ const funcs = [_]C.HostFuncEntry{
     func("float.$infix%",  bindings.floatMod),
     func("float.$infix^",  bindings.floatPow),
     func("float.$call",    floatCall),
+    func("float.fmt",      zErrFunc(float_fmt)),
 
     // List
     func("List.$index",      bindings.listIndex),
@@ -1763,6 +1764,14 @@ fn errorCall(vm: *cy.VM) Value {
             return rt.prepThrowError(vm, .InvalidArgument);
         }
     }
+}
+
+fn float_fmt(vm: *cy.VM) anyerror!Value {
+    const val = vm.getFloat(0);
+    const BufSize = std.fmt.format_float.bufferSize(.decimal, f64);
+    var buf: [BufSize]u8 = undefined;
+    const str = try std.fmt.formatFloat(&buf, val, .{ .mode = .decimal });
+    return vm.retainOrAllocAstring(str);
 }
 
 pub const NumberFormat = enum {

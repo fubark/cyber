@@ -64,23 +64,15 @@ t.eq(choice_t.cases[1].name, 'line')
 t.eq(choice_t.cases[1].type, float)
 t.eq(choice_t.cases[2].name, 'point')
 t.eq(choice_t.cases[2].type, void)
+
 var enum_t = typeInfo(Shape.Tag).!enum_t
 t.eq(enum_t.name.?, 'Tag')
 t.eq(enum_t.cases.len(), 3)
 t.eq(enum_t.cases[0].name, 'rectangle')
 t.eq(enum_t.cases[1].name, 'line')
 t.eq(enum_t.cases[2].name, 'point')
-type O:
-    a int
-    b float
-var object_t = typeInfo(O).!object_t
-t.eq(object_t.name.?, 'O')
-t.eq(object_t.fields.len(), 2)
-t.eq(object_t.fields[0].name, 'a')
-t.eq(object_t.fields[0].type, int)
-t.eq(object_t.fields[1].name, 'b')
-t.eq(object_t.fields[1].type, float)
-type S struct:
+
+type S:
     a int
     b float
 var struct_t = typeInfo(S).!struct_t

@@ -37,8 +37,12 @@ t.eq(res.decls[0]['type'], 'import_stmt')
 t.eq(res.decls[0]['name'], 'foo')
 
 res = cy.parse("type foo:\n  a any")
-t.eq(res['decls'][0]['type'], 'objectDecl')
-t.eq(res['decls'][0]['name'], 'foo')
+t.eq(res.decls[0]['type'], 'struct_decl')
+t.eq(res.decls[0]['name'], 'foo')
+
+res = cy.parse("type foo struct:\n  a any")
+t.eq(res.decls[0]['type'], 'struct_decl')
+t.eq(res.decls[0]['name'], 'foo')
 
 res = cy.parse("type foo enum:\n  case a")
 t.eq(res.decls[0]['type'], 'enumDecl')

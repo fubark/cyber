@@ -18,7 +18,7 @@ var cbuf = llvm.GetBufferStart(llBuf)
 var size = llvm.GetBufferSize(llBuf)
 var buf = cbuf.getString(0, size)
 
-var llBin = llvm.CreateBinary(llBuf, pointer(void, 0), outMsg)
+var llBin = llvm.CreateBinary(llBuf, pointer.fromAddr(void, 0), outMsg)
 
 var binType = llvm.BinaryGetType(llBin)
 if binType != llvm.BinaryTypeMachO64L:
@@ -84,7 +84,7 @@ for syms -> sym, i:
     -- Skip ltmp0.
     if len == 0: continue 
 
-    dyn bin = codeBuf[sym.addr..sym.addr+len] 
+    var bin = (codeBuf as String)[sym.addr..sym.addr+len] 
 
     -- Remove ending continuation branch.
     if bin[bin.len()-4..].getInt32(0, .little) == 0x14000000:
@@ -118,7 +118,7 @@ while llvm.IsRelocationIteratorAtEnd(llSectIter, llRelocIter) == 0:
     var value = cname.fromCstr(0)
 
     -- Find relevant func sym.
-    dyn found = false
+    var found ?Sym = none
     for syms -> sym, i:
         if offset >= sym.addr:
             if i < syms.len()-1 and offset >= syms[i+1].addr:
@@ -126,10 +126,10 @@ while llvm.IsRelocationIteratorAtEnd(llSectIter, llRelocIter) == 0:
             found = sym
             break
 
-    if found == false:
+    if isNone(found):
         throw error.MissingSym
 
-    out += "pub const $(found.name[1..])_$(symName[1..]) = $(offset-found.addr);\n"
+    out += "pub const ${found.?.name[1..]}_${symName[1..]} = ${offset-found.?.addr};\n"
 
     llvm.MoveToNextRelocation(llRelocIter)
 

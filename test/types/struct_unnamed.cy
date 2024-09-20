@@ -2,7 +2,7 @@ use test
 
 type A:
     a int
-    b object:
+    b struct:
         a int
         b float
     c float

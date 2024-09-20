@@ -2,11 +2,8 @@ use test
 
 type Shape enum:
     case rectangle Rectangle
-    case circle    object:
-        radius float
-    case triangle  object:
-        base   float
-        height float
+    case circle    struct(radius float)
+    case triangle  struct(base float, height float)
     case line      float
     case point
 

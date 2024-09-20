@@ -16,6 +16,7 @@ pub const ParseResultView = parser.ResultView;
 pub const ParseResult = parser.Result;
 
 pub const sema = @import("sema.zig");
+pub const sema_func = @import("sema_func.zig");
 pub const Sema = sema.Sema;
 pub const unescapeString = sema.unescapeString;
 

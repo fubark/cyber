@@ -4,6 +4,7 @@ const fatal = cy.fatal;
 const builtin = @import("builtin");
 const cy = @import("../cyber.zig");
 const C = @import("../capi.zig");
+const CS = @import("../capi_shim.zig");
 const vmc = cy.vmc;
 const rt = cy.rt;
 const Value = cy.Value;
@@ -105,12 +106,12 @@ pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
 
     const htype = C.hostTypeEntry;
     const types = [_]C.HostTypeEntry{
-        htype("File", C.HOST_OBJECT(&cli_data.FileT, null, fs.fileFinalizer)),
-        htype("Dir", C.HOST_OBJECT(&cli_data.DirT, null, fs.dirFinalizer)),
-        htype("DirIterator", C.HOST_OBJECT(&cli_data.DirIterT, fs.dirIterGetChildren, fs.dirIterFinalizer)),
-        htype("FFI", C.HOST_OBJECT(&cli_data.FFIT, ffi.ffiGetChildren, ffi.ffiFinalizer)),
-        htype("CArray", C.DECL_TYPE_GET(&cli_data.CArrayT)),
-        htype("CDimArray", C.DECL_TYPE_GET(&cli_data.CDimArrayT)),
+        htype("File",         CS.HOBJ_TYPE(&cli_data.FileT, null, fs.fileFinalizer)),
+        htype("Dir",          CS.HOBJ_TYPE(&cli_data.DirT, null, fs.dirFinalizer)),
+        htype("DirIterator",  CS.HOBJ_TYPE(&cli_data.DirIterT, fs.dirIterGetChildren, fs.dirIterFinalizer)),
+        htype("FFI",          CS.HOBJ_TYPE(&cli_data.FFIT, ffi.ffiGetChildren, ffi.ffiFinalizer)),
+        htype("CArray",       CS.DECL_TYPE(&cli_data.CArrayT)),
+        htype("CDimArray",    CS.DECL_TYPE(&cli_data.CDimArrayT)),
     };
 
     var config = C.ModuleConfig{

@@ -29,6 +29,7 @@ pub const FuncResult = struct {
 
 const ArgType = enum {
     standard,
+    receiver,
     pre_resolved,
     skip,
 };
@@ -48,6 +49,7 @@ pub const Argument = struct {
     /// The resolved arg result is stored together to avoid building two lists.
     data: union {
         pre_resolved: sema.ExprResult,
+        receiver: sema.ExprResult,
     },
     resolve_t: ResolvedArgType,
     res: union {
@@ -73,6 +75,16 @@ pub const Argument = struct {
         return .{
             .type = .pre_resolved,
             .data = .{ .pre_resolved = res },
+            .resolve_t = .null,
+            .res = undefined,
+            .node = node,
+        };
+    }
+
+    pub fn initReceiver(node: *ast.Node, res: sema.ExprResult) Argument {
+        return .{
+            .type = .receiver,
+            .data = .{ .receiver = res },
             .resolve_t = .null,
             .res = undefined,
             .node = node,
@@ -391,7 +403,51 @@ fn resolveRtArg(c: *cy.Chunk, arg: Argument, node: *ast.Node, opt_target_t: ?cy.
             }
         },
         .pre_resolved => {
+            if (opt_target_t) |target_t| {
+                const target_is_boxed = target_t.id() == bt.Any or target_t.id() == bt.Dyn;
+                if (target_is_boxed and arg.data.pre_resolved.type.id() != bt.Any) {
+                    // Box value.
+                    var newRes = arg.data.pre_resolved;
+                    newRes.irIdx = try c.ir.pushExpr(.box, c.alloc, target_t, node, .{
+                        .expr = arg.data.pre_resolved.irIdx,
+                    });
+                    newRes.type = target_t;
+                    return newRes;
+                }
+            }
             return arg.data.pre_resolved;
+        },
+        .receiver => {
+            if (opt_target_t) |target_t| {
+                if (target_t.kind() == .pointer and target_t.cast(.pointer).ref) {
+                    const child_t = target_t.cast(.pointer).child_t;
+                    if (arg.data.receiver.type == child_t) {
+                        if (!arg.data.receiver.addressable) {
+                            const tempv = try sema.declareHiddenLocal(c, "$temp", child_t, arg.data.receiver, node);
+                            const temp = try sema.semaLocal(c, tempv.id, node);
+                            try sema.ensureLiftedVar(c, tempv.id);
+
+                            const loc = try c.ir.pushExpr(.address_of, c.alloc, target_t, node, .{
+                                .expr = temp.irIdx,
+                                .ref = true,
+                            });
+                            return sema.ExprResult.init(loc, target_t);
+                        }
+                        if (arg.data.receiver.resType == .local) {
+                            try sema.ensureLiftedVar(c, arg.data.receiver.data.local);
+                        }
+
+                        const loc = try c.ir.pushExpr(.address_of, c.alloc, target_t, node, .{
+                            .expr = arg.data.receiver.irIdx,
+                            .ref = true,
+                        });
+                        return sema.ExprResult.init(loc, target_t);
+                    }
+                }
+                return arg.data.receiver;
+            } else {
+                return arg.data.receiver;
+            }
         },
         .skip => {
             return error.Unexpected;
@@ -604,6 +660,11 @@ fn inferCtArgs(c: *cy.Chunk, arg_t: cy.TypeId, template: *cy.sym.FuncTemplate, t
             if (arg_t != arg_t) {
                 return sema.reportIncompatType(template_c, arg_t, act_t, template_n);
             }
+        },
+        .ref => {
+            const ref = template_n.cast(.ref);
+            const variant = try expectTypeFromTemplate(c, arg_t, c.sema.ref_tmpl, node);
+            try inferCtArgValue(c, variant.args[0], template, template_c, ref.elem);
         },
         .ptr => {
             const ptr = template_n.cast(.ptr);

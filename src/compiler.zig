@@ -746,16 +746,9 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                             _ = try sema.reserveNestedFunc(chunk, @ptrCast(sym), func, false);
                         }
                     },
-                    .structDecl => {
-                        const decl = node.cast(.structDecl);
+                    .struct_decl => {
+                        const decl = node.cast(.struct_decl);
                         const sym = try sema.reserveStruct(chunk, decl, false);
-                        for (decl.funcs) |func| {
-                            _ = try sema.reserveNestedFunc(chunk, @ptrCast(sym), func, false);
-                        }
-                    },
-                    .objectDecl => {
-                        const decl = node.cast(.objectDecl);
-                        const sym = try sema.reserveObjectType(chunk, decl);
                         for (decl.funcs) |func| {
                             _ = try sema.reserveNestedFunc(chunk, @ptrCast(sym), func, false);
                         }
@@ -839,12 +832,12 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                 self.sema.option_tmpl = core.getSym("Option").?.cast(.template);
                 self.sema.array_tmpl = core.getSym("Array").?.cast(.template);
                 self.sema.pointer_tmpl = core.getSym("pointer").?.cast(.template);
-                self.sema.ref_tmpl = core.getSym("Ref").?.cast(.template);
+                self.sema.ref_tmpl = core.getSym("ref").?.cast(.template);
                 self.sema.list_tmpl = core.getSym("List").?.cast(.template);
                 self.sema.table_type = core.getSym("Table").?.cast(.object_t);
                 self.sema.ptr_slice_tmpl = core.getSym("PtrSlice").?.cast(.template);
                 self.sema.func_sym_tmpl = core.getSym("funcsym_t").?.cast(.template);
-                self.sema.ref_slice_tmpl = core.getSym("RefSlice").?.cast(.template);
+                self.sema.ref_slice_tmpl = core.getSym("Slice").?.cast(.template);
                 self.sema.func_ptr_tmpl = core.getSym("funcptr_t").?.cast(.template);
                 self.sema.func_union_tmpl = core.getSym("funcunion_t").?.cast(.template);
             }
@@ -859,9 +852,8 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                             .enumDecl,
                             .funcDecl,
                             .import_stmt,
-                            .objectDecl,
                             .staticDecl,
-                            .structDecl,
+                            .struct_decl,
                             .typeAliasDecl,
                             .template => {},
                             else => {

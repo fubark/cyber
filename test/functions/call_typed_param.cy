@@ -52,7 +52,7 @@ func fooPointer(a *void) bool:
     return a.addr() == 123
 
 -- From var.
-var ptr = pointer(void, 123)
+var ptr = pointer.fromAddr(void, 123)
 t.eq(fooPointer(ptr), true)
 
 -- Cast erased type.

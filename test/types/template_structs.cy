@@ -1,5 +1,10 @@
 use test
 
+-- Without `struct`.
+type Foo2[T type]:
+    a T
+var o = Foo2[int]{a=123}
+
 type Foo[T type] struct:
     a T
 
@@ -23,9 +28,9 @@ test.eq(Foo[int].foo(123), 123)
 var f = Foo[String]{a='abc'}
 test.eq(f.a, 'abc')
 
--- Simplified syntax.
-f = Foo[String]{a='abc'}
-test.eq(f.a, 'abc')
+-- Reassign with infer record syntax.
+f = .{a='xyz'}
+test.eq(f.a, 'xyz')
 
 -- Declare with type spec.
 var f2 Foo[String] = .{a='abc'}
@@ -45,6 +50,6 @@ test.eq(a, 234)
 -- Method param type replaced with template param.
 f3 = Foo[int]{a=123}
 f3.set(234)
-test.eq(f3.a, 123)
+test.eq(f3.a, 234)
 
 --cytest: pass

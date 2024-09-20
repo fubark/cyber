@@ -1,6 +1,7 @@
 const std = @import("std");
 const cy = @import("../cyber.zig");
 const C = @import("../capi.zig");
+const CS = @import("../capi_shim.zig");
 const bt = cy.types.BuiltinTypes;
 const build_options = @import("build_options");
 const rt = cy.rt;
@@ -16,10 +17,10 @@ pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
 
     const htype = C.hostTypeEntry;
     const types = [_]C.HostTypeEntry{
-        htype("EvalConfig", C.DECL_TYPE_GET(&core_data.EvalConfigT)),
-        htype("EvalResult", C.DECL_TYPE_GET(&core_data.EvalResultT)),
-        htype("Value",      C.HOST_OBJECT_PRE(&core_data.ValueT, UserValue_getChildren, UserValue_finalizer)),
-        htype("VM",         C.HOST_OBJECT(&core_data.VMT,    null, UserVM_finalizer)),
+        htype("EvalConfig", CS.DECL_TYPE(&core_data.EvalConfigT)),
+        htype("EvalResult", CS.DECL_TYPE(&core_data.EvalResultT)),
+        htype("Value",      CS.HOBJ_TYPE_PRE(&core_data.ValueT, UserValue_getChildren, UserValue_finalizer)),
+        htype("VM",         CS.HOBJ_TYPE(&core_data.VMT,    null, UserVM_finalizer)),
     };
 
     var config = C.ModuleConfig{
@@ -338,15 +339,6 @@ fn genDeclEntry(vm: *cy.VM, view: ast.AstView, decl: *ast.Node, state: *ParseCyb
             }
             try vm.mapSet(entry, try vm.retainOrAllocAstring("funcs"), funcs_);
         },
-        .objectDecl => {
-            const object_decl = decl.cast(.objectDecl);
-            const funcs_ = try vm.allocEmptyListDyn();
-            for (object_decl.funcs) |func_decl| {
-                const f = try genImplicitFuncDeclEntry(vm, view, func_decl, state);
-                try funcs_.asHeapObject().list.append(vm.alloc, f);
-            }
-            try vm.mapSet(entry, try vm.retainOrAllocAstring("funcs"), funcs_);
-        },
         .custom_decl => {
             const custom_decl = decl.cast(.custom_decl);
 
@@ -443,8 +435,8 @@ fn genDocComment(vm: *cy.VM, view: ast.AstView, decl_type: ast.NodeType, state: 
                         posWithModifiers = decl.attrs[0].pos - 1;
                     }
                 },
-                .objectDecl => {
-                    const decl = state.node.cast(.objectDecl);
+                .struct_decl => {
+                    const decl = state.node.cast(.struct_decl);
                     if (decl.attrs.len > 0) {
                         posWithModifiers = decl.attrs[0].pos - 1;
                     }

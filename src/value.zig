@@ -203,17 +203,29 @@ pub const Value = packed union {
         }
     }
 
-    pub inline fn getTypeId(self: *const Value) u32 {
+    pub inline fn decodeType(self: *const Value, is_ref: *bool) cy.TypeId {
         const bits = self.val & TaggedPrimitiveMask;
         if (bits >= TaggedValueMask) {
-            if (self.isPointer()) {
+            if (bits >= MinPtrMask) {
+                const obj = self.asHeapObject();
+                is_ref.* = obj.isRef();
+                return obj.getTypeId();
+            } else {
+                is_ref.* = false;
+                return self.getTag();
+            }
+        } else {
+            is_ref.* = false;
+            return bt.Float;
+        }
+    }
+
+    pub inline fn getTypeId(self: *const Value) u32 {
+        if (self.val & TaggedValueMask == TaggedValueMask) {
+            if (self.val >= MinPtrMask) {
                 return self.asHeapObject().getTypeId();
             } else {
-                if (bits >= TaggedEnumMask) {
-                    return @intCast(self.val & 0xffffffff);
-                } else {
-                    return self.getTag();
-                }
+                return self.getTag();
             }
         } else {
             return bt.Float;
@@ -497,20 +509,17 @@ pub fn shallowCopy(vm: *cy.VM, type_id: cy.TypeId, val: Value) anyerror!Value {
                 .int => {
                     return vm.allocInt(obj.integer.val);
                 },
-                .object => {
-                    const numFields = entry.data.object.numFields;
-                    const fields = obj.object.getValuesConstPtr()[0..numFields];
-                    var new: Value = undefined;
-                    if (numFields <= 4) {
-                        new = try cy.heap.allocObjectSmall(vm, obj.getTypeId(), fields);
-                    } else {
-                        new = try cy.heap.allocObject(vm, obj.getTypeId(), fields);
-                    }
-                    const rt_fields = entry.data.object.fields[0..numFields];
-                    for (fields, 0..) |field, i| {
-                        if (rt_fields[i]) {
-                            cy.arc.retain(vm, field);
-                        }
+                .struct_t => {
+                    const struct_t = type_.cast(.struct_t);
+                    const size = struct_t.size;
+                    const src = obj.object.getValuesConstPtr()[0..size];
+
+                    const new = try vm.allocEmptyObject2(obj.getTypeId(), size);
+                    const dst = new.asHeapObject().object.getValuesPtr()[0..size];
+                    @memcpy(dst, src);
+
+                    if (type_.retain_layout) |retain_layout| {
+                        vm.retainLayout(dst.ptr, 0, retain_layout);
                     }
                     return new;
                 },

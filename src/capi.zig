@@ -102,42 +102,21 @@ pub const setUserData = c.clSetUserData;
 pub const getUserData = c.clGetUserData;
 pub const resultName = c.clResultName;
 pub const STR = c.CL_STR;
-pub inline fn CORE_TYPE(type_id: Type) HostType {
-    return HostType{
-        .type = c.CL_BIND_TYPE_CORE_CUSTOM,
-        .data = .{ .core_custom = .{
-            .type_id = type_id,
-            .get_children = null,
-            .finalizer = null,
-        }},
-    };
-}
-pub inline fn CORE_TYPE_EXT(type_id: Type, get_children: GetChildrenFn, finalizer: FinalizerFn, load_all_methods: bool) HostType {
-    return HostType{
-        .type = c.CL_BIND_TYPE_CORE_CUSTOM,
-        .data = .{ .core_custom = .{
-            .type_id = type_id,
-            .get_children = get_children,
-            .finalizer = finalizer,
-            .load_all_methods = load_all_methods,
-        }},
-    };
-}
-pub inline fn DECL_TYPE(type_id: Type) HostType {
+pub inline fn RESERVE_DECL_TYPE(type_id: TypeId, out_type: ?**ZType) HostType {
     return HostType{
         .type = c.CL_BIND_TYPE_DECL,
         .data = .{ .decl = .{
             .type_id = type_id,
-            .out_type_id = null,
+            .out_type = @ptrCast(out_type),
         }},
     };
 }
-pub inline fn DECL_TYPE_GET(out_type_id: *Type) HostType {
+pub inline fn DECL_TYPE(out_type: **ZType) HostType {
     return HostType{
         .type = c.CL_BIND_TYPE_DECL,
         .data = .{ .decl = .{
             .type_id = NullId,
-            .out_type_id = out_type_id,
+            .out_type = @ptrCast(out_type),
         }},
     };
 }
@@ -149,22 +128,48 @@ pub inline fn CREATE_TYPE(create_fn: CreateTypeFn) HostType {
         }},
     };
 }
-pub inline fn HOST_OBJECT(out_type_id: ?*Type, get_children: GetChildrenFn, finalizer: FinalizerFn) HostType {
+pub inline fn RESERVE_HOBJ_TYPE(id: TypeId, out_type: ?**ZType) HostType {
     return HostType{
         .type = c.CL_BIND_TYPE_HOSTOBJ,
         .data = .{ .hostobj = .{
-            .out_type_id = out_type_id,
+            .type_id = id,
+            .out_type = @ptrCast(out_type),
+            .get_children = null,
+            .finalizer = null,
+            .pre = false,
+        }},
+    };
+}
+pub inline fn RESERVE_HOBJ_TYPE2(id: TypeId, out_type: ?**ZType, get_children: GetChildrenFn, finalizer: FinalizerFn) HostType {
+    return HostType{
+        .type = c.CL_BIND_TYPE_HOSTOBJ,
+        .data = .{ .hostobj = .{
+            .type_id = id,
+            .out_type = @ptrCast(out_type),
             .get_children = get_children,
             .finalizer = finalizer,
             .pre = false,
         }},
     };
 }
-pub inline fn HOST_OBJECT_PRE(out_type_id: ?*Type, get_children: GetChildrenFn, finalizer: FinalizerFn) HostType {
+pub inline fn HOBJ_TYPE(out_type: ?**ZType, get_children: GetChildrenFn, finalizer: FinalizerFn) HostType {
     return HostType{
         .type = c.CL_BIND_TYPE_HOSTOBJ,
         .data = .{ .hostobj = .{
-            .out_type_id = out_type_id,
+            .type_id = NullId,
+            .out_type = @ptrCast(out_type),
+            .get_children = get_children,
+            .finalizer = finalizer,
+            .pre = false,
+        }},
+    };
+}
+pub inline fn HOBJ_TYPE_PRE(out_type: ?**ZType, get_children: GetChildrenFn, finalizer: FinalizerFn) HostType {
+    return HostType{
+        .type = c.CL_BIND_TYPE_HOSTOBJ,
+        .data = .{ .hostobj = .{
+            .type_id = NullId,
+            .out_type = @ptrCast(out_type),
             .get_children = get_children,
             .finalizer = finalizer,
             .pre = true,
@@ -411,7 +416,6 @@ pub const FuncEnumType = enum(u8) {
 };
 
 pub const BindTypeHostObj = c.CL_BIND_TYPE_HOSTOBJ;
-pub const BindTypeCoreCustom = c.CL_BIND_TYPE_CORE_CUSTOM;
 pub const BindTypeDecl = c.CL_BIND_TYPE_DECL;
 pub const BindTypeCreate = c.CL_BIND_TYPE_CREATE;
 

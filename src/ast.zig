@@ -72,8 +72,6 @@ pub const NodeType = enum(u7) {
     name_path,
     namedArg,
     noneLit,
-    objectDecl,
-    objectField,
     octLit,
     opAssignStmt,
     passStmt,
@@ -96,7 +94,12 @@ pub const NodeType = enum(u7) {
     staticDecl,
     string_lit,
     string_multi_lit,
-    structDecl,
+    stringt,
+    stringt_multi,
+    stringt_part,
+    stringt_expr,
+    struct_decl,
+    struct_field,
     switchExpr,
     switchStmt,
     symbol_lit,
@@ -469,7 +472,7 @@ pub const ImplWith = struct {
     pos: u32,
 };
 
-pub const ObjectDecl = struct {
+pub const StructDecl = struct {
     /// If unnamed, this points to the *Sym.
     name: ?*Node align(8),
     attrs: []*Attribute,
@@ -629,7 +632,7 @@ fn NodeData(comptime node_t: NodeType) type {
         .continueStmt   => Token,
         .coresume       => Coresume,
         .coyield        => Token,
-        .cstruct_decl   => ObjectDecl,
+        .cstruct_decl   => StructDecl,
         .ct_if_stmt     => IfStmt,
         .ct_else_block  => ElseBlock,
         .custom_decl    => CustomDecl,
@@ -669,8 +672,6 @@ fn NodeData(comptime node_t: NodeType) type {
         .name_path      => NamePath,
         .namedArg       => NamedArg,
         .noneLit        => Token,
-        .objectDecl     => ObjectDecl,
-        .objectField    => Field,
         .octLit         => Span,
         .opAssignStmt   => OpAssignStmt,
         .passStmt       => Token,
@@ -688,7 +689,12 @@ fn NodeData(comptime node_t: NodeType) type {
         .staticDecl     => StaticVarDecl,
         .string_lit     => Span,
         .string_multi_lit => Span,
-        .structDecl     => ObjectDecl,
+        .stringt        => StringTemplate,
+        .stringt_multi  => StringTemplate,
+        .stringt_part   => Span,
+        .stringt_expr   => StringTemplateExpr,
+        .struct_decl    => StructDecl,
+        .struct_field   => Field,
         .switchExpr     => SwitchBlock,
         .switchStmt     => SwitchBlock,
         .symbol_lit     => Span,
@@ -809,8 +815,6 @@ pub const Node = struct {
             .name_path      => self.cast(.name_path).path[0].pos(),
             .namedArg       => self.cast(.namedArg).name_pos,
             .noneLit        => self.cast(.noneLit).pos,
-            .objectDecl     => self.cast(.objectDecl).pos,
-            .objectField    => self.cast(.objectField).name.pos(),
             .octLit         => self.cast(.octLit).pos,
             .opAssignStmt   => self.cast(.opAssignStmt).left.pos(),
             .passStmt       => self.cast(.passStmt).pos,
@@ -830,7 +834,12 @@ pub const Node = struct {
             .staticDecl     => self.cast(.staticDecl).pos,
             .string_lit     => self.cast(.string_lit).pos,
             .string_multi_lit => self.cast(.string_multi_lit).pos,
-            .structDecl     => self.cast(.structDecl).pos,
+            .stringt        => self.cast(.stringt).pos,
+            .stringt_multi  => self.cast(.stringt_multi).pos,
+            .stringt_part   => self.cast(.stringt_part).pos,
+            .stringt_expr   => self.cast(.stringt_expr).pos,
+            .struct_decl    => self.cast(.struct_decl).pos,
+            .struct_field   => self.cast(.struct_field).name.pos(),
             .switchExpr     => self.cast(.switchExpr).pos,
             .switchStmt     => self.cast(.switchStmt).pos,
             .symbol_lit     => self.cast(.symbol_lit).pos,
@@ -1032,7 +1041,7 @@ pub const UnaryOp = enum(u8) {
 };
 
 test "ast internals." {
-    try t.eq(std.enums.values(NodeType).len, 104);
+    try t.eq(std.enums.values(NodeType).len, 103);
     try t.eq(@sizeOf(NodeHeader), 1);
 }
 
@@ -1179,15 +1188,9 @@ pub const AstView = struct {
                     return self.nodeString(name);
                 } else return "";
             },
-            .structDecl => {
-                const object_decl = n.cast(.structDecl);
-                if (object_decl.name) |name| {
-                    return self.nodeString(name);
-                } else return "";
-            },
-            .objectDecl => {
-                const object_decl = n.cast(.objectDecl);
-                if (object_decl.name) |name| {
+            .struct_decl => {
+                const struct_decl = n.cast(.struct_decl);
+                if (struct_decl.name) |name| {
                     return self.nodeString(name);
                 } else return "";
             },

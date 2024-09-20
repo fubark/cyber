@@ -46,9 +46,15 @@ test.eq(g.a, 345)
 g.a = 456
 test.eq(g.a, 456)
 
--- pointer.$call
-var ptr = pointer(void, 0xDEADBEEF)
+-- pointer.fromAddr
+var ptr = pointer.fromAddr(void, 0xDEADBEEF)
 test.eq(ptr.addr(), 3735928559)
+
+-- pointer.fromRef
+var a2 = 123
+var a2_ref = ^a2
+var a2_ptr = pointer.fromRef(a2_ref)
+test.eq(a2_ptr.*, 123)
 
 -- Infer pointer child type.
 var foo_ptr *Foo = *.{a=123}

@@ -818,9 +818,9 @@ pub fn resolveCtExprOpt(c: *cy.Chunk, expr: *ast.Node) anyerror!?CtExpr {
 
             return c.reportErrorFmt("Unexpected compile-time expression.", &.{}, expr);
         },
-        .objectDecl => {
-            // Unnamed object.
-            const sym: *cy.Sym = @ptrCast(expr.cast(.objectDecl).name);
+        .struct_decl => {
+            // Unnamed struct.
+            const sym: *cy.Sym = @ptrCast(expr.cast(.struct_decl).name);
             return CtExpr.initSym(sym);
         },
         .semaSym => {

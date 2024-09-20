@@ -10,7 +10,7 @@ o.foo(234)
 --cytest: error
 --panic: Can not find compatible method for call: `(S) foo(int)`.
 --Methods named `foo`:
---    func foo(S) int
+--    func foo(^S) int
 --
 --main:8:1 main:
 --o.foo(234)

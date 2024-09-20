@@ -147,12 +147,110 @@ pub inline fn retainObject(self: *cy.VM, obj: *cy.HeapObject) void {
     }
 }
 
+pub fn releaseLayout(vm: *cy.VM, dst: [*]const cy.Value, base_idx: usize, layout: *cy.types.RetainLayout, comptime gc: bool, res: if (gc) *c.GCResult else void) void {
+    switch (layout.kind) {
+        .struct_k => {
+            for (layout.data.struct_k.ptr[0..layout.data.struct_k.len]) |e| {
+                switch (e.kind) {
+                    .refs => {
+                        for (e.data.refs.ptr[0..e.data.refs.len]) |i| {
+                            vm.release2(dst[base_idx + e.offset + i], gc, res);
+                        }
+                    },
+                    .layout => {
+                        vm.releaseLayout(dst, base_idx + e.offset, e.data.layout, gc, res);
+                    },
+                }
+            }
+        },
+        .array => {
+            for (0..layout.data.array.n) |i| {
+                if (layout.data.array.layout) |elem_layout| {
+                    vm.releaseLayout(dst, base_idx + i * layout.data.array.elem_size, elem_layout, gc, res);
+                } else {
+                    vm.release2(dst[base_idx + i], gc, res);
+                }
+            }
+        },
+        .option => {
+            const tag = dst[base_idx].val;
+            if (tag == 1) {
+                if (layout.data.option.layout) |child_layout| {
+                    vm.releaseLayout(dst, base_idx + 1, child_layout, gc, res);
+                } else {
+                    vm.release2(dst[base_idx + 1], gc, res);
+                }
+            }
+        },
+        .union_k => {
+            const tag = dst[base_idx].val;
+            if (layout.data.union_k.ptr[tag]) |case| {
+                if (case.layout) |payload_layout| {
+                    vm.releaseLayout(dst, base_idx + 1, payload_layout, gc, res);
+                } else {
+                    vm.release2(dst[base_idx + 1], gc, res);
+                }
+            }
+        },
+    }
+}
+
+pub fn retainLayout(vm: *cy.VM, dst: [*]cy.Value, base_idx: usize, layout: *cy.types.RetainLayout) void {
+    switch (layout.kind) {
+        .struct_k => {
+            for (layout.data.struct_k.ptr[0..layout.data.struct_k.len]) |e| {
+                switch (e.kind) {
+                    .refs => {
+                        for (e.data.refs.ptr[0..e.data.refs.len]) |i| {
+                            vm.retain(dst[base_idx + e.offset + i]);
+                        }
+                    },
+                    .layout => {
+                        vm.retainLayout(dst, base_idx + e.offset, e.data.layout);
+                    },
+                }
+            }
+        },
+        .array => {
+            for (0..layout.data.array.n) |i| {
+                if (layout.data.array.layout) |elem_layout| {
+                    vm.retainLayout(dst, base_idx + i * layout.data.array.elem_size, elem_layout);
+                } else {
+                    vm.retain(dst[base_idx + i]);
+                }
+            }
+        },
+        .option => {
+            const tag = dst[base_idx].val;
+            if (tag == 1) {
+                if (layout.data.option.layout) |child_layout| {
+                    vm.retainLayout(dst, base_idx + 1, child_layout);
+                } else {
+                    vm.retain(dst[base_idx + 1]);
+                }
+            }
+        },
+        .union_k => {
+            const tag = dst[base_idx].val;
+            if (layout.data.union_k.ptr[tag]) |case| {
+                if (case.layout) |payload_layout| {
+                    vm.retainLayout(dst, base_idx + 1, payload_layout);
+                } else {
+                    vm.retain(dst[base_idx + 1]);
+                }
+            }
+        },
+    }
+}
+
 const Root = @This();
 
 pub const VmExt = struct {
     pub const retainObject = Root.retainObject;
     pub const retain = Root.retain;
     pub const releaseObject = Root.releaseObject;
+    pub const retainLayout = Root.retainLayout;
+    pub const releaseLayout = Root.releaseLayout;
     pub const release = Root.release;
 };
 

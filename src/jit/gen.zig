@@ -658,7 +658,7 @@ fn genToExact(c: *cy.Chunk, val: GenValue, dst: Cstr, desc: ?u32) !GenValue {
                 try assm.genStoreSlot(c, reg.dst, .temp);
             }
             // Parent only cares about the retained property.
-            return GenValue.initRetained(val.retained);
+            return GenValue.initRetained(val.tracked);
         },
         // .boxedLocal => {
         //     const boxed = dst.data.boxedLocal;
@@ -728,7 +728,7 @@ fn genCallFuncSym(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: *ast.Node) !GenV
 
     try bc.popTemps(c, data.numArgs, nodeId);
 
-    const retRetained = c.sema.isRcCandidateType(data.func.retType);
+    const retRetained = c.sema.isTrackedType(data.func.retType);
     return endCall(c, inst, retRetained);
 }
 
@@ -999,7 +999,7 @@ fn declareLocalInit(c: *cy.Chunk, idx: u32, nodeId: *ast.Node) !void {
     //     try c.pushOptionalDebugSym(nodeId);
     //     try c.buf.pushOp2(.box, reg, reg);
     // }
-    local.some.rcCandidate = val.retained;
+    local.some.rcCandidate = val.tracked;
 
     // rhs has generated, increase `nextLocalReg`.
     c.curBlock.nextLocalReg += 1;

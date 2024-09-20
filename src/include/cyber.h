@@ -196,9 +196,6 @@ typedef enum {
     // Use the provided declaration with a predefined or generated type id.
     CL_BIND_TYPE_DECL,
 
-    // Create a new type that has a predefined type id.
-    CL_BIND_TYPE_CORE_CUSTOM,
-
     CL_BIND_TYPE_CREATE,
 } CLBindTypeKind;
 

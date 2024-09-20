@@ -117,7 +117,7 @@ pub const Chunk = struct {
     /// Reference the current resolve context.
     resolve_stack: std.ArrayListUnmanaged(sema.ResolveContext),
 
-    arg_stack: std.ArrayListUnmanaged(sema.Argument),
+    arg_stack: std.ArrayListUnmanaged(cy.sema_func.Argument),
 
     ///
     /// Codegen pass

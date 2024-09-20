@@ -641,6 +641,10 @@ pub const VM = struct {
         self.compiler.cont = false;
     }
 
+    pub fn api(self: *VM) *cc.ZVM {
+        return @ptrCast(self);
+    }
+
     pub fn eval(self: *VM, src_uri: []const u8, src: ?[]const u8, config: cc.EvalConfig) !Value {
         var tt = cy.debug.timer();
 
@@ -1002,30 +1006,32 @@ pub const VM = struct {
         if (mod.getSym(name)) |_| {
             return error.DuplicateSym;
         }
-        const sym = c.createObjectType(parent, name, null) catch return error.Unexpected;
-        const type_id = try self.sema.pushType();
-        try sema.resolveObjectTypeId(c, sym, false, type_id);
+        const new_t = try c.sema.createType(.struct_t, .{ .cstruct = false, .tuple = false });
+        const sym = c.createTypeSym(parent, name, new_t, null) catch return error.Unexpected;
         sym.head.setNameOwned(true);
 
-        const infos = try c.alloc.alloc(cy.sym.FieldInfo, fields.len);
+        const infos = try c.alloc.alloc(cy.types.Field, fields.len);
         for (fields, 0..) |field, i| {
-            const field_sym = c.declareField(@ptrCast(sym), field, @intCast(i), bt.Any, null) catch return error.Unexpected;
+            const field_sym = c.declareField(@ptrCast(sym), field, @intCast(i), self.sema.any_t, null) catch return error.Unexpected;
             infos[i] = .{
                 .sym = @ptrCast(field_sym),
                 .type = bt.Any,
                 .offset = 0,
             };
         }
-        sym.fields = infos.ptr;
-        sym.numFields = @intCast(infos.len);
-        const rt_fields = try c.alloc.alloc(bool, infos.len);
-        @memset(rt_fields, true);
-        c.sema.types.items[sym.type].data.object = .{
-            .numFields = @intCast(sym.numFields),
-            .has_boxed_fields = true,
-            .tuple = false,
-            .fields = rt_fields.ptr,
-        };
+        const struct_t = new_t.cast(.struct_t);
+        struct_t.size = @intCast(fields.len);
+        struct_t.fields_ptr = infos.ptr;
+        struct_t.fields_len = @intCast(infos.len);
+        // const rt_fields = try c.alloc.alloc(bool, infos.len);
+        // @memset(rt_fields, true);
+        // c.sema.types.items[sym.type].data.struct_t = .{
+        //     .nfields = @intCast(sym.numFields),
+        //     .has_boxed_fields = true,
+        //     .tuple = false,
+        //     .fields = rt_fields.ptr,
+        //     .cstruct = false,
+        // };
 
         // Update vm types view.
         self.c.types = c.sema.types.items.ptr;
@@ -2867,15 +2873,10 @@ pub fn copyStruct(vm: *VM, obj: *HeapObject) !cy.Value {
     }
 
     const dst = res.castHeapObject(*cy.heap.Object).getValuesPtr();
-    if (type_e.data.struct_t.has_boxed_fields) {
-        for (type_e.data.struct_t.fields[0..nfields], 0..) |boxed, i| {
-            dst[i] = values[i];
-            if (boxed) {
-                retain(vm, dst[i]);
-            }
-        }
-    } else {
-        @memcpy(dst[0..nfields], values[0..nfields]);
+    @memcpy(dst[0..struct_t.size], values[0..struct_t.size]);
+
+    if (type_.retain_layout) |layout| {
+        vm.retainLayout(dst, 0, layout);
     }
     return res;
 }
@@ -2996,6 +2997,16 @@ pub fn zFreeObject(vm: *cy.VM, obj: *HeapObject) callconv(.C) void {
 fn zEnd(vm: *cy.VM, pc: [*]const cy.Inst) callconv(.C) void {
     vm.endLocal = pc[1].val;
     vm.c.curFiber.pcOffset = @intCast(getInstOffset(vm, pc + 2));
+}
+
+fn zReleaseLayout(vm: *cy.VM, dst: [*]Value, type_id: cy.TypeId) callconv(.C) void {
+    const layout = vm.getType(type_id).retain_layout.?;
+    vm.releaseLayout(dst, 0, layout, false, {});
+}
+
+fn zRetainLayout(vm: *cy.VM, dst: [*]Value, type_id: cy.TypeId) callconv(.C) void {
+    const layout = vm.getType(type_id).retain_layout.?;
+    vm.retainLayout(dst, 0, layout);
 }
 
 fn zAllocLambda(vm: *cy.VM, rt_id: u32, ptr_t: cy.TypeId) callconv(.C) vmc.ValueResult {

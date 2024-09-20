@@ -268,8 +268,8 @@ typedef enum {
     CodeCall,
     CodeTypeCheck,
     CodeTypeCheckOption,
-    CodeFieldStruct,
-    CodeField,
+    CodeDerefObj,
+    CodeDeref,
     CodeFieldDyn,
     CodeFieldDynIC,
     CodeLambda,
@@ -293,9 +293,6 @@ typedef enum {
     CodeModFloat,
     CodeCompareNot,
     CodeNegFloat,
-    CodeStructSmall,
-    CodeStruct,
-    CodeObjectSmall,
     CodeObject,
     CodeTrait,
 
@@ -304,18 +301,20 @@ typedef enum {
     CodeAddrLocal,
     CodeAddrConstIndex,
     CodeAddrIndex,
-    CodeDeref,
-    CodeDerefStruct,
-    CodeSetDeref,
-    CodeSetDerefStruct,
-    CodeUnwrapChoice,
+    CodeDerefValuePtr,
+    CodeDerefStructPtr,
+    CodeSetDerefPtr,
+    CodeSetDerefStructPtr,
+    CodeUnwrapUnionS,
+    CodeUnwrapUnion,
 
     /// Set field with runtime type check.
     CodeSetFieldDyn,
     CodeSetFieldDynIC,
 
     /// Set field with predetermined field index.
-    CodeSetField,
+    CodeSet,
+    CodeSetS,
     
     CodeCatch,
     CodeThrow,
@@ -326,9 +325,8 @@ typedef enum {
     CodeAwait,
     CodeFutureValue,
     CodeRetain,
-    CodeUp,
-    CodeSetUpValue,
-    CodeUpValue,
+    CodeLift,
+    CodeRef,
     CodeCaptured,
     CodeSetCaptured,
     CodeTagLit,
@@ -965,3 +963,5 @@ void zTraceRetain(VM* vm, Value v);
 Value zBox(VM* vm, Value v, TypeId type_id);
 Value zUnbox(VM* vm, Value v, TypeId type_id);
 ValueResult zCopyStruct(VM* vm, HeapObject* obj);
+void zRetainLayout(VM* vm, Value* dst, TypeId type_id);
+void zReleaseLayout(VM* vm, Value* dst, TypeId type_id);

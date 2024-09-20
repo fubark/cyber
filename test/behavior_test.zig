@@ -139,10 +139,10 @@ if (!aot) {
     run.case("functions/lambda.cy");
     run.case("functions/lambda_incompat_arg_panic.cy");
     run.case("functions/namespace_call.cy");
-    run.case("functions/object_funcs.cy");
     run.case("functions/overload.cy");
     run.case("functions/read_capture_local_error.cy");
     run.case("functions/static.cy");
+    run.case("functions/struct_funcs.cy");
     run.case("functions/template_functions.cy");
     run.case("functions/template_value.cy");
     run.case("functions/template_value_host_error.cy");
@@ -202,23 +202,23 @@ if (!aot) {
     run.case("types/object_set_field_panic.cy");
     run.case("types/object_set_undeclared_field_error.cy");
     run.case("types/object_zero_init.cy");
-    run.case("types/object_zero_init_error.cy");
-    run.case("types/objects.cy");
     run.case("types/optionals_incompat_value_error.cy");
     run.case("types/optionals_unwrap_panic.cy");
     run.case("types/optionals.cy");
     run.case("types/pointers.cy");
+    run.case("types/refs.cy");
     run.case("types/self_type.cy");
     run.case("types/slices.cy");
     run.case("types/struct_circular_dep_error.cy");
     run.case("types/structs.cy");
+    run.case("types/struct_unnamed.cy");
+    run.case("types/struct_zero_init_error.cy");
     run.case("types/template_choices.cy");
     run.case("types/template_dep_param_type.cy");
     run.case("types/template_dep_param_type_error.cy");
     run.case("types/template_object_init_noexpand_error.cy");
     run.case("types/template_object_spec_noexpand_error.cy");
     run.case("types/template_object_expand_error.cy");
-    run.case("types/template_objects.cy");
     run.case("types/template_structs.cy");
     run.case("types/template_builtin_ints.cy");
     run.case("types/trait_error.cy");
@@ -226,7 +226,6 @@ if (!aot) {
     run.case("types/tuple.cy");
     run.case("types/type_alias.cy");
     run.case("types/type_spec.cy");
-    run.case("types/unnamed_object.cy");
     run.case("types/void.cy");
 
     if (!cy.isWasm) {

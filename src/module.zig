@@ -474,6 +474,28 @@ pub const ChunkExt = struct {
         }
     }
 
+    pub fn getSymFromRecType(c: *cy.Chunk, rec_t: *cy.Type, name: []const u8, node: *ast.Node) !*cy.Sym {
+        if (rec_t.kind() == .pointer) {
+            // Look for sym for non-pointer child type first.
+            const rec_ptr_t = rec_t.cast(.pointer);
+            if (rec_ptr_t.child_t.kind() != .pointer) {
+                const mod = rec_t.cast(.pointer).child_t.sym().getMod();
+                if (mod.getSym(name)) |sym| {
+                    return sym;
+                }
+            }
+        }
+
+        const mod = rec_t.sym().getMod();
+        if (mod.getSym(name)) |sym| {
+            return sym;
+        }
+
+        const type_name = try c.sema.allocTypeName(rec_t);
+        defer c.alloc.free(type_name);
+        return c.reportErrorFmt("Can not find the symbol `{}` for `{}`.", &.{v(name), v(type_name)}, node);
+    }
+
     pub fn mustFindSym(c: *cy.Chunk, modSym: *cy.Sym, name: []const u8, nodeId: *ast.Node) !*cy.Sym {
         const mod = modSym.getMod() orelse {
             const mod_name = try cy.sym.formatSymName(c.sema, &cy.tempBuf, modSym, .{ .from = c });

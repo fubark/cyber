@@ -338,14 +338,14 @@ const Chunk = struct {
         return switch (id) {
             bt.Integer => try c.bufw.writeAll("BOX_INT("),
             else => {
-                const type_e = c.sema.types.items[id];
-                if (type_e.kind == .object) {
-                    const c_name = c.cSymName(type_e.sym);
-                    try c.bufPushFmt("BOX_OBJ({s}, ", .{c_name});
-                } else {
-                    const name = c.sema.getTypeBaseName(id);
+                const type_ = c.sema.getType(id);
+                // if (type_e.kind == .object) {
+                //     const c_name = c.cSymName(type_e.sym);
+                //     try c.bufPushFmt("BOX_OBJ({s}, ", .{ c_name });
+                // } else {
+                    const name = type_.name();
                     return c.base.reportErrorFmt("Unsupported box macro: {}", &.{v(name)}, null);
-                }
+                // }
             },
         };
     }
@@ -475,9 +475,6 @@ pub fn gen(self: *cy.Compiler) !cy.compiler.AotCompileResult {
                         },
                         else => {},
                     }
-                },
-                .hostobj_t, .object_t => {
-                    try compiler.genSymName(sym, sym.name());
                 },
                 else => {},
             }
@@ -703,9 +700,9 @@ fn genHead(c: *Compiler, w: std.ArrayListUnmanaged(u8).Writer, chunks: []Chunk) 
                         else => {},
                     }
                 },
-                .object_t => {
-                    try genObjectDecl(chunk, sym, w);
-                },
+                // .object_t => {
+                //     try genObjectDecl(chunk, sym, w);
+                // },
                 else => {},
             }
         }
@@ -1332,38 +1329,39 @@ fn genObjectInit(c: *Chunk, loc: usize, cstr: Cstr, node: *ast.Node) !Value {
 
     const data = c.ir.getExprData(loc, .object_init);
     const args = c.ir.getArray(data.args, u32, data.numArgs);
+    _ = args;
 
     const typ = c.sema.types.items[data.typeId];
     switch (typ.kind) {
         .struct_t => {
             return error.TODO;
         },
-        .object => {
-            // const obj: *cy.sym.ObjectType = if (typ.kind == .object) typ.sym.cast(.object_t) else typ.sym.cast(.struct_t);
-            // if (data.numFieldsToCheck > 0) {
-            //     try c.pushFCode(.objectTypeCheck, &.{ argStart , @as(u8, @intCast(data.numFieldsToCheck)) }, node);
+        // .object => {
+        //     // const obj: *cy.sym.ObjectType = if (typ.kind == .object) typ.sym.cast(.object_t) else typ.sym.cast(.struct_t);
+        //     // if (data.numFieldsToCheck > 0) {
+        //     //     try c.pushFCode(.objectTypeCheck, &.{ argStart , @as(u8, @intCast(data.numFieldsToCheck)) }, node);
 
-            //     const checkFields = c.ir.getArray(data.fieldsToCheck, u8, data.numFieldsToCheck);
+        //     //     const checkFields = c.ir.getArray(data.fieldsToCheck, u8, data.numFieldsToCheck);
 
-            //     for (checkFields) |fidx| {
-            //         const start = c.buf.ops.items.len;
-            //         try c.buf.pushOperands(&.{ @as(u8, @intCast(fidx)), 0, 0, 0, 0 });
-            //         c.buf.setOpArgU32(start + 1, obj.fields[fidx].type);
-            //     }
-            // }
+        //     //     for (checkFields) |fidx| {
+        //     //         const start = c.buf.ops.items.len;
+        //     //         try c.buf.pushOperands(&.{ @as(u8, @intCast(fidx)), 0, 0, 0, 0 });
+        //     //         c.buf.setOpArgU32(start + 1, obj.fields[fidx].type);
+        //     //     }
+        //     // }
 
-            const sym = c.sema.getTypeSym(data.typeId);
-            const name = c.cSymName(sym);
-            try c.bufPushFmt("CB_NEW({s}, {{", .{name});
-            if (args.len > 0) {
-                _ = try genExpr(c, args[0], Cstr.init());
-                for (args[1..]) |arg| {
-                    try c.bufPush(", ");
-                    _ = try genExpr(c, arg, Cstr.init());
-                }
-            }
-            try c.bufPush("})");
-        },
+        //     const sym = c.sema.getTypeSym(data.typeId);
+        //     const name = c.cSymName(sym);
+        //     try c.bufPushFmt("CB_NEW({s}, {{", .{name});
+        //     if (args.len > 0) {
+        //         _ = try genExpr(c, args[0], Cstr.init());
+        //         for (args[1..]) |arg| {
+        //             try c.bufPush(", ");
+        //             _ = try genExpr(c, arg, Cstr.init());
+        //         }
+        //     }
+        //     try c.bufPush("})");
+        // },
         .choice => {
             return error.TODO;
         },

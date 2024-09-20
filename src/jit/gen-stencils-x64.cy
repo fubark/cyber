@@ -18,7 +18,7 @@ var cbuf = llvm.GetBufferStart(llBuf)
 var size = llvm.GetBufferSize(llBuf)
 var buf = cbuf.getString(0, size)
 
-var llBin = llvm.CreateBinary(llBuf, pointer(void, 0), outMsg)
+var llBin = llvm.CreateBinary(llBuf, pointer.fromAddr(void, 0), outMsg)
 
 var binType = llvm.BinaryGetType(llBin)
 if binType != llvm.BinaryTypeELF64L:
@@ -69,7 +69,7 @@ while llvm.ObjectFileIsSymbolIteratorAtEnd(llBin, llSymIter) == 0:
 
     var addr = llvm.GetSymbolAddress(llSymIter)
     var size = llvm.GetSymbolSize(llSymIter)
-    var code = codeBuf[addr..addr+size]
+    var code = (codeBuf as String)[addr..addr+size]
     var sym = Sym{name=name, addr=addr, code=code}
     syms.append(sym)
     symMap[name] = sym
@@ -110,7 +110,7 @@ while llvm.IsRelocationIteratorAtEnd(llSectIter, llRelocIter) == 0:
         instOffset = 1
 
     -- Find relevant func sym.
-    dyn found = false
+    var found ?Sym = none
     for syms -> sym, i:
         if offset >= sym.addr:
             if i < syms.len()-1 and offset >= syms[i+1].addr:
@@ -118,19 +118,19 @@ while llvm.IsRelocationIteratorAtEnd(llSectIter, llRelocIter) == 0:
             found = sym
             break
 
-    if found == false:
+    if isNone(found):
         throw error.MissingSym
 
-    var roffset = (offset - instOffset) - found.addr
+    var roffset = (offset - instOffset) - found.?.addr
     if symName.startsWith('cont'):
         -- Remove code after continuation.
-        found.code = found.code[0..roffset]
+        found.?.code = found.?.code[0..roffset]
 
         -- Skip continuations.
         llvm.MoveToNextRelocation(llRelocIter)
         continue
 
-    out += "pub const $(found.name)_$(symName) = $(roffset);\n"
+    out += "pub const ${found.?.name}_${symName} = ${roffset};\n"
 
     llvm.MoveToNextRelocation(llRelocIter)
 

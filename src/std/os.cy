@@ -92,7 +92,7 @@
 @host func openFile(path String, mode symbol) File
 
 --| Given expected `ArgOption`s, returns a `Table` of the options and a `rest` entry which contains the non-option arguments.
-@host func parseArgs(options List[dyn]) Table
+@host func parseArgs(options List[dyn]) ^Table
 
 --| Reads stdin to the EOF as a UTF-8 string.
 --| To return the bytes instead, use `stdin.readAll()`.
@@ -133,7 +133,7 @@ type File _:
     --| Closes the file handle. File ops invoked afterwards will return `error.Closed`.
     @host func close(self) void
     @host func iterator(self) File
-    @host func next(self) String
+    @host func next(self) ?String
 
     --| Reads at most `n` bytes as an `Array`. `n` must be at least 1.
     --| A result with length 0 indicates the end of file was reached.

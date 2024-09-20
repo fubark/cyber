@@ -30,7 +30,6 @@ const keywords = std.StaticStringMap(TokenType).initComptime(.{
     .{ "mod", .mod_k },
     .{ "none", .none_k },
     .{ "not", .not_k },
-    .{ "object", .object_k },
     .{ "or", .or_k },
     .{ "pass", .pass_k },
     .{ "return", .return_k },
@@ -112,7 +111,6 @@ pub const TokenType = enum(u8) {
     new_line,
     none_k,
     not_k,
-    object_k,
     oct,
     or_k,
     pass_k,
@@ -979,6 +977,6 @@ test "tokenizer internals." {
     try tt.eq(@alignOf(Token), 4);
     try tt.eq(@sizeOf(TokenizeState), 1);
 
-    try tt.eq(std.enums.values(TokenType).len, 97);
-    try tt.eq(keywords.kvs.len, 42);
+    try tt.eq(std.enums.values(TokenType).len, 96);
+    try tt.eq(keywords.kvs.len, 41);
 }

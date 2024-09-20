@@ -231,7 +231,8 @@ const funcs = [_]C.HostFuncEntry{
     func("pointer.get",        zErrFunc(pointerGet)),
     func("pointer.getString",  zErrFunc(pointerGetString)),
     func("pointer.set",        zErrFunc(pointerSet)),
-    func("pointer.$call",      zErrFunc(pointerCall)),
+    func("pointer.fromAddr",   zErrFunc(pointer_fromAddr)),
+    func("pointer.fromRef",    zErrFunc(pointer_fromRef)),
 
     // ExternFunc
     func("ExternFunc.addr",    externFuncAddr),
@@ -1726,9 +1727,15 @@ fn pointerGetString(vm: *cy.VM) anyerror!Value {
     return vm.allocString(ptr[off..@intCast(off+len)]);
 }
 
-fn pointerCall(vm: *cy.VM) anyerror!Value {
+fn pointer_fromAddr(vm: *cy.VM) anyerror!Value {
     const val = vm.getInt(0);
     const addr: usize = @intCast(val);
+    return Value.initRaw(@intCast(addr));
+}
+
+fn pointer_fromRef(vm: *cy.VM) anyerror!Value {
+    const ref_raw: u64 = @bitCast(vm.getInt(0));
+    const addr: usize = (ref_raw & vmc.PTR_PAYLOAD_MASK) + 8;
     return Value.initRaw(@intCast(addr));
 }
 

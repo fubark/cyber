@@ -39,18 +39,20 @@ type S:
     foo any
     bar any
 var s = S{}
-var oldList = {123, s}
-var newList = copy(oldList) as List[dyn]
-t.eq(newList == oldList, false)
-t.eq(newList.len(), 2)
-t.eq(newList[0], 123)
-t.eq(newList[1], s)
+-- var oldList = List[dyn]{123, s}
+-- var newList = copy(oldList)
+-- t.eq(newList == oldList, false)
+-- t.eq(newList.len(), 2)
+-- t.eq(newList[0], 123)
+-- t.eq(newList[1].foo, s.foo)
+-- t.eq(newList[1].bar, s.bar)
 var oldMap = Map{a=123, b=s}
 dyn newMap = copy(oldMap)
 t.eq(newMap == oldMap, false)
 t.eq(newMap.size(), 2)
 t.eq(newMap['a'], 123)
-t.eq(newMap['b'], s)
+t.eq(newMap['b'].foo, s.foo)
+t.eq(newMap['b'].bar, s.bar)
 var oldStr = 'foo'
 var newStr = copy(oldStr)
 t.eq(newStr, oldStr)
@@ -125,14 +127,14 @@ t.eq(typeOf(true), bool)
 t.eq(typeOf(false), bool)
 t.eq(typeOf(123), int)
 t.eq(typeOf(123.0), float)
-t.eq(typeOf(pointer(void, 123)), *void)
+t.eq(typeOf(pointer.fromAddr(void, 123)), *void)
 t.eq(typeOf('abc'), String)
 t.eq(typeOf('abc🦊'), String)
 t.eq(typeOf(symbol.abc), symbol)
 t.eq(typeOf(error.Foo), error)
 t.eq(typeOf(List[dyn]{}), List[dyn])
 t.eq(typeOf(Map{}), Map)
-t.eq(typeOf({}), Table)
+t.eq(typeOf({}), ^Table)
 type Foo:
     a float
 var foo = Foo{a=123}

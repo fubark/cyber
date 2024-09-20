@@ -366,10 +366,19 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
         len = try fmt.printCount(w, "{} {}: ", &.{v(pcOffset), v(code)});
     }
     switch (code) {
-        .up => {
-            const local = pc[1].val;
+        .ref => {
+            const src = pc[1].val;
             const dst = pc[2].val;
-            len += try fmt.printCount(w, "local={}, dst={}", &.{v(local), v(dst)});
+            len += try fmt.printCount(w, "%{} = ref(%{})", &.{
+                v(dst), v(src)});
+        },
+        .lift => {
+            const src = pc[1].val;
+            const src_is_struct = pc[2].val == 1;
+            const obj_t = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const dst = pc[6].val;
+            len += try fmt.printCount(w, "%{} = lift(%{}, struct={}, obj_t={})", &.{
+                v(dst), v(src), v(src_is_struct), v(obj_t)});
         },
         .captured => {
             const closure = pc[1].val;
@@ -564,13 +573,6 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const dst = pc[3].val;
             len += try fmt.printCount(w, "%{} = (%{} == %{})", &.{v(dst), v(left), v(right)});
         },
-        .field => {
-            const recv = pc[1].val;
-            const fieldIdx = pc[2].val;
-            const retain = pc[3].val;
-            const dst = pc[4].val;
-            len += try fmt.printCount(w, "%{} = (%{}).{}, +{}", &.{v(dst), v(recv), v(fieldIdx), v(retain)});
-        },
         .fieldDyn => {
             const recv = pc[1].val;
             const dst = pc[2].val;
@@ -644,8 +646,9 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
         .list => {
             const startLocal = pc[1].val;
             const numElems = pc[2].val;
-            const dst = pc[3].val;
-            len += try fmt.printCount(w, "%{} = [List %{}..%{}]", &.{v(dst), v(startLocal), v(startLocal+numElems)});
+            const type_id = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const dst = pc[5].val;
+            len += try fmt.printCount(w, "%{} = List(type={}){{%{}..%{}}", &.{v(dst), v(type_id), v(startLocal), v(startLocal+numElems)});
         },
         .map => {
             const dst = pc[1].val;
@@ -661,22 +664,24 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
                 v(dst), v(type_id), v(vtable), v(src),
             });
         },
-        .object,
-        .objectSmall => {
-            const typeId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const argStart = pc[3].val;
-            const numFields = pc[4].val;
+        .array => {
+            const arg_start = pc[1].val;
+            const nelems = pc[2].val;
+            const arr_t = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
             const dst = pc[5].val;
-            len += try fmt.printCount(w, "%{} = type={}{%{}..%{}}", &.{
-                v(dst), v(typeId), v(argStart), v(argStart+numFields)
+            len += try fmt.printCount(w, "%{} = arr_t={}{%{}..%{}}", &.{
+                v(dst), v(arr_t), v(arg_start), v(arg_start+nelems),
             });
         },
-        .struct_init,
-        .struct_small => {
+        .object => {
             const typeId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const argStart = pc[3].val;
-            const numFields = pc[4].val;
-            const dst = pc[5].val;
+            const size = pc[3].val;
+            _ = size;
+            const argStart = pc[4].val;
+            const numFields = pc[5].val;
+            const ref = pc[6].val == 1;
+            _ = ref;
+            const dst = pc[7].val;
             len += try fmt.printCount(w, "%{} = type={}{%{}..%{}}", &.{
                 v(dst), v(typeId), v(argStart), v(argStart+numFields)
             });
@@ -694,16 +699,26 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const regs = std.mem.sliceAsBytes(pc[2..2+numRegs]);
             len += try fmt.printCount(w, "{}", &.{fmt.sliceU8(regs)});
         },
-        .setField => {
-            const recv = pc[1].val;
+        .set => {
+            const rec = pc[1].val;
             const idx = pc[2].val;
-            const val = pc[3].val;
-            len += try fmt.printCount(w, "(%{}).{} = %{}", &.{v(recv), v(idx), v(val)});
+            const release = pc[3].val == 1;
+            const val = pc[4].val;
+            len += try fmt.printCount(w, "[%{} + {}] = %{}, release={}", &.{v(rec), v(idx), v(val), v(release)});
+        },
+        .set_s => {
+            const rec = pc[1].val;
+            const val_t = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
+            const idx = pc[4].val;
+            const size = pc[5].val;
+            const has_retain_layout = pc[6].val == 1;
+            const val = pc[7].val;
+            len += try fmt.printCount(w, "[%{} + {}] = %{}, type={}, size={}, retain={}", &.{v(rec), v(idx), v(val), v(val_t), v(size), v(has_retain_layout)});
         },
         .typeCheck => {
             const slot = pc[1].val;
             const exp_t = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
-            const dst = pc[4].val;
+            const dst = pc[6].val;
             len += try fmt.printCount(w, "%{} = check(%{}, type={})", &.{v(dst), v(slot), v(exp_t)});
         },
         .unbox => {
@@ -725,9 +740,8 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
         },
         .addr_local => {
             const local = pc[1].val;
-            const up_struct = pc[2].val == 1;
-            const dst = pc[3].val;
-            len += try fmt.printCount(w, "%{} = &%{}.values, upstruct={}", &.{v(dst), v(local), v(up_struct)});
+            const dst = pc[2].val;
+            len += try fmt.printCount(w, "%{} = &%{}.values", &.{v(dst), v(local)});
         },
         .addr_const_index => {
             const local = pc[1].val;
@@ -741,28 +755,43 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const dst = pc[3].val;
             len += try fmt.printCount(w, "%{} = &%{}[%{}]", &.{v(dst), v(local), v(index)});
         },
-        .deref => {
+        .deref_value_ptr => {
             const ptr = pc[1].val;
-            const retain = pc[2].val == 1;
-            const dst = pc[3].val;
+            const retain = pc[3].val == 1;
+            const dst = pc[4].val;
             len += try fmt.printCount(w, "%{} = %{}.*, retain={}", &.{v(dst), v(ptr), v(retain)});
         },
-        .deref_struct => {
-            const ptr = pc[1].val;
-            const nfields = pc[4].val;
-            const dst = pc[5].val;
-            len += try fmt.printCount(w, "%{} = copy_struct(%{}.*, nfields={})", &.{v(dst), v(ptr), v(nfields)});
+        .deref => {
+            const recv = pc[1].val;
+            const offset = pc[2].val;
+            const retain = pc[3].val == 1;
+            const dst = pc[4].val;
+            len += try fmt.printCount(w, "%{} = [%{} + {}], retain={}", &.{v(dst), v(recv), v(offset), v(retain)});
         },
-        .set_deref => {
+        .deref_obj => {
+            const obj = pc[1].val;
+            const offset = pc[4].val;
+            const size = pc[5].val;
+            const retain = pc[6].val == 1;
+            const dst = pc[7].val;
+            len += try fmt.printCount(w, "%{} = [%{} + {}], size={}, retain={}", &.{v(dst), v(obj), v(offset), v(size), v(retain)});
+        },
+        .deref_struct_ptr => {
+            const ptr = pc[1].val;
+            const size = pc[5].val;
+            const dst = pc[7].val;
+            len += try fmt.printCount(w, "%{} = struct(%{}.*, nfields={})", &.{v(dst), v(ptr), v(size)});
+        },
+        .set_deref_ptr => {
             const ref = pc[1].val;
-            const val = pc[2].val;
+            const val = pc[3].val;
             len += try fmt.printCount(w, "%{}.* = %{}", &.{v(ref), v(val)});
         },
-        .set_deref_struct => {
+        .set_deref_struct_ptr => {
             const ref = pc[1].val;
-            const nfields = pc[2].val;
-            const val = pc[3].val;
-            len += try fmt.printCount(w, "%{}.* = %{}, size={}", &.{v(ref), v(val), v(nfields)});
+            const size = pc[3].val;
+            const val = pc[4].val;
+            len += try fmt.printCount(w, "%{}.* = %{}, size={}", &.{v(ref), v(val), v(size)});
         },
         .setFieldDyn,
         .setFieldDynIC => {
@@ -836,6 +865,27 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const err_slot = pc[3].val;
             const dst_retained = pc[4].val;
             len += try fmt.printCount(w, "catch jmp={}, err_slot={}, dst_retained={}", &.{v(endOffset), v(err_slot), v(dst_retained)});
+        },
+        .unwrap_union => {
+            const choice_s = pc[1].val;
+            const tag = pc[2].val;
+            const offset = pc[3].val;
+            _ = offset;
+            const retain = pc[4].val == 1;
+            const dst = pc[5].val;
+            len += try fmt.printCount(w, "%{} = %{}.!{}, retain={}", &.{v(dst), v(choice_s), v(tag), v(retain)});
+        },
+        .unwrap_union_s => {
+            const choice_s = pc[1].val;
+            const tag = pc[2].val;
+            const type_id = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const offset = pc[5].val;
+            _ = offset;
+            const size = pc[6].val;
+            const has_retain_layout = pc[7].val;
+            _ = has_retain_layout;
+            const dst = pc[8].val;
+            len += try fmt.printCount(w, "%{} = %{}.!tag={}, type={} size={}", &.{v(dst), v(choice_s), v(tag), v(type_id), v(size)});
         },
         else => {},
     }
@@ -981,8 +1031,9 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numVars = pc[1].val;
             return 2 + numVars;
         },
+        .ref,
+        .addr_local,
         .copy_struct,
-        .set_deref,
         .not,
         .copy,
         .copyRetainSrc,
@@ -1004,17 +1055,13 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .symbol => {
             return 3;
         },
-        .addr_local,
+        .set_deref_ptr,
         .addr_const_index,
         .addr_index,
-        .deref,
-        .set_deref_struct,
-        .set_up_value,
         .call,
         .constOp,
         .constRetain,
         .staticVar,
-        .setField,
         .jumpCond,
         .compare,
         .compareNot,
@@ -1024,14 +1071,15 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .jumpNotCond => {
             return 4;
         },
+        .set_deref_struct_ptr,
+        .set,
+        .deref_value_ptr,
         .setStaticVar,
         .func_union,
-        .typeCheck,
-        .field,
+        .deref,
         .captured,
         .box,
         .unbox,
-        .unwrapChoice,
         .cast,
         .catch_op,
         .castAbstract => {
@@ -1041,34 +1089,38 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numConds = pc[2].val;
             return 5 + numConds * 3;
         },
+        .unwrap_union,
         .lambda,
         .func_ptr,
-        .deref_struct,
-        .field_struct,
         .list,
         .array,
-        .object,
-        .objectSmall,
         .forRange,
         .forRangeReverse => {
             return 6;
         },
-        .struct_init,
-        .struct_small => {
-            const num_fields = pc[4].val;
-            return 6 + num_fields;
-        },
+        .lift,
+        .typeCheck,
         .type,
         .trait,
         .coinit => {
             return 7;
         },
+        .set_s,
+        .deref_obj,
+        .deref_struct_ptr,
         .forRangeInit => {
             return 8;
         },
         .closure => {
             const numCaptured = pc[5].val;
             return 8 + numCaptured;
+        },
+        .object => {
+            const num_fields = pc[5].val;
+            return 8 + num_fields;
+        },
+        .unwrap_union_s => {
+            return 9;
         },
         .func_sym,
         .setFieldDyn,
@@ -1199,8 +1251,8 @@ pub const OpCode = enum(u8) {
     typeCheck = vmc.CodeTypeCheck,
     typeCheckOption = vmc.CodeTypeCheckOption,
 
-    field_struct = vmc.CodeFieldStruct,
-    field = vmc.CodeField,
+    deref_obj = vmc.CodeDerefObj,
+    deref = vmc.CodeDeref,
     fieldDyn = vmc.CodeFieldDyn,
     fieldDynIC = vmc.CodeFieldDynIC,
     lambda = vmc.CodeLambda,
@@ -1224,9 +1276,6 @@ pub const OpCode = enum(u8) {
 
     negFloat = vmc.CodeNegFloat,
 
-    struct_small = vmc.CodeStructSmall,
-    struct_init = vmc.CodeStruct,
-    objectSmall = vmc.CodeObjectSmall,
     object = vmc.CodeObject,
     trait = vmc.CodeTrait,
 
@@ -1235,15 +1284,17 @@ pub const OpCode = enum(u8) {
     addr_local = vmc.CodeAddrLocal,
     addr_const_index = vmc.CodeAddrConstIndex,
     addr_index = vmc.CodeAddrIndex,
-    deref = vmc.CodeDeref,
-    deref_struct = vmc.CodeDerefStruct,
-    set_deref = vmc.CodeSetDeref,
-    set_deref_struct = vmc.CodeSetDerefStruct,
-    unwrapChoice = vmc.CodeUnwrapChoice,
+    deref_value_ptr = vmc.CodeDerefValuePtr,
+    deref_struct_ptr = vmc.CodeDerefStructPtr,
+    set_deref_ptr = vmc.CodeSetDerefPtr,
+    set_deref_struct_ptr = vmc.CodeSetDerefStructPtr,
+    unwrap_union = vmc.CodeUnwrapUnion,
+    unwrap_union_s = vmc.CodeUnwrapUnionS,
 
     setFieldDyn = vmc.CodeSetFieldDyn,
     setFieldDynIC = vmc.CodeSetFieldDynIC,
-    setField = vmc.CodeSetField,
+    set = vmc.CodeSet,
+    set_s = vmc.CodeSetS,
 
     coinit = vmc.CodeCoinit,
     coyield = vmc.CodeCoyield,
@@ -1254,7 +1305,8 @@ pub const OpCode = enum(u8) {
     /// Lifts a source local to a box object and stores the result in `dstLocal`.
     /// The source local is also retained.
     /// [srcLocal] [dstLocal]
-    up = vmc.CodeUp,
+    lift = vmc.CodeLift,
+    ref = vmc.CodeRef,
 
     set_up_value = vmc.CodeSetUpValue,
     up_value = vmc.CodeUpValue,
@@ -1320,7 +1372,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 129);
+    try t.eq(std.enums.values(OpCode).len, 126);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

@@ -161,6 +161,9 @@ pub const Await = struct {
 
 pub const AddressOf = struct {
     expr: Loc,
+
+    /// Whether to obtain a reference or pointer.
+    ref: bool,
 };
 
 pub const Deref = struct {
@@ -290,9 +293,6 @@ pub const Field = struct {
     /// Receiver.
     rec: Loc,
 
-    /// Parent type is recorded since a field can be applied to a type or a pointer.
-    parent_t: cy.TypeId,
-
     /// Field index of receiver.
     idx: u8,
 
@@ -309,6 +309,7 @@ pub const ObjectInit = struct {
     typeId: TypeId,
     args: Loc,
     numArgs: u8,
+    ref: bool,
 };
 
 pub const ForRangeStmt = struct {

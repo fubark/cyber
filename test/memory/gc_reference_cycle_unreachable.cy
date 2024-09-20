@@ -19,7 +19,7 @@ func foo2():
     var b = List[dyn]{}
     a.append(b as any)
     b.append(a as any)
-    a.append(pointer(void, 1))
+    a.append(pointer.fromAddr(void, 1))
 foo2()
 res = performGC()
 t.eq(res['numCycFreed'], 2)
@@ -32,8 +32,8 @@ type T:
     d any
     e any
 func foo3():
-    var a = T{}
-    var b = T{}
+    var a = ^T{}
+    var b = ^T{}
     a.c = b
     b.c = a
 foo3()

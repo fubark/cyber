@@ -324,7 +324,7 @@ There are `29` general keywords. This list categorizes them:
 ### Contextual keywords.
 These keywords only have meaning in a certain context.
 - [Methods](#methods): `self` `Self`
-- [Types](#custom-types): [`object`](#objects) [`struct`](#structs) [`cstruct`](#c-structs) [`enum`](#enums) [`trait`](#traits)
+- [Types](#custom-types): [`struct`](#structs) [`cstruct`](#c-structs) [`enum`](#enums) [`trait`](#traits)
 - [Catching Errors](#caught-variable): `caught`
 - Function Return: `void`
 
@@ -532,6 +532,7 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
   * [Line-join literal.](#line-join-literal)
   * [Mutable strings.](#mutable-strings) 
 * [Symbols.](#symbols)
+* [References.](#references)
 </td>
 <td valign="top">
 
@@ -835,6 +836,38 @@ var v = opt ?else:
     throw error.Missing
 ```
 
+## Symbols.
+Symbol literals begin with `symbol.`, followed by an identifier.
+Each symbol has a global unique ID.
+```cy
+var currency = symbol.usd
+print currency == .usd   --> true
+print int(currency)      --> <unique ID>
+```
+
+## References.
+A reference type is denoted as `^T` where `T` is the type of the value that the reference points to. 
+References are safe to use because the memory that they point to are [automatically managed](#automatic-memory).
+
+Separating values and references provides more control over how data is laid out in memory. For example, some types may benefit from compacted members to leverage cache locality and reduce object indirection. In contrast, languages that only provide reference types such as JavaScript or Python are prone to cache thrashing.
+
+The reference operator `^` is used to obtain a reference to a value:
+```cy
+var i = 123
+var ref = ^i
+```
+Referenced values on the stack are automatically lifted to the heap and become managed objects.
+
+The `.*` access operator is used to obtain the dereferenced value:
+```cy
+print ref.*         --> 123
+```
+
+If a value was intended to be allocated on the heap, it's usually initialized with the reference operator `^`:
+```cy
+var pos = ^Vec2{x=4, y=5}
+```
+
 ### Optional chaining.
 Given the last member's type `T` in a chain of `?.` access operators, the chain's execution will either return `Option[T].none` on the first encounter of `none` or returns the last member as an `Option[T].some`: *Planned Feature*
 ```cy
@@ -1055,15 +1088,6 @@ var colors = {}:
         .blue  = 0x0000AA
 ```
 
-## Symbols.
-Symbol literals begin with `symbol.`, followed by an identifier.
-Each symbol has a global unique ID.
-```cy
-var currency = symbol.usd
-print currency == .usd   --> true
-print int(currency)      --> <unique ID>
-```
-
 ## `any`.
 Unlike `dyn`, `any` is statically typed and performs type checks at compile-time.
 `any` type can hold any value, but copying it to narrowed type destination will result in a compile error:
@@ -1089,19 +1113,16 @@ The dynamic type defers type checking to runtime. However, it also tracks its ow
 <table><tr>
 <td valign="top">
 
-* [Objects.](#objects)
+* [Structs.](#structs)
   * [Instantiate.](#instantiate)
   * [Field visibility.](#field-visibility)
   * [Default field values.](#default-field-values)
   * [Circular references.](#circular-references)
-  * [Unnamed object.](#unnamed-object)
+  * [Unnamed struct.](#unnamed-struct)
   * [Methods.](#methods)
   * [Type functions.](#type-functions)
   * [Type variables.](#type-variables)
   * [Type embedding.](#type-embedding)
-* [Structs.](#structs)
-  * [Declare struct.](#declare-struct)
-  * [Copy structs.](#copy-structs)
 * [Tuples.](#tuples)
 </td><td valign="top">
 
@@ -1121,37 +1142,44 @@ The dynamic type defers type checking to runtime. However, it also tracks its ow
 
 [^top](#table-of-contents)
 
-## Objects.
-An object type contains field and function members. New instances can be created from them similar to a struct or class in other languages. Unlike classes, there is no builtin concept of inheritance but a similar effect can be achieved using composition and embedding.
+## Structs.
+A struct type contains fields and functions.
+Unlike classes found in other languages, there is no builtin concept of inheritance but a similar effect can be achieved using composition, embedding, and traits.
 
-Object types are declared with `type object`. The `object` keyword is optional when using a `type` declaration. These two declarations are equivalent:
+Struct types are declared with `type` followed by an optional `struct` keyword,
+These two declarations are equivalent:
 ```cy
-type A object:
-    my_field int
+type Vec2 struct:
+    x float
+    y float
 
-type A:
-    my_field int
+type Vec2:
+    x float
+    y float
 ```
-
-Fields must be declared at the top of the `type` block with their names and type specifiers:
-```cy
-type Node:
-    value int
-    next  ?Node
-```
+Fields must be declared at the top of the `type` block with their names and type specifiers.
 
 ### Instantiate.
-New object instances are created using a record literal with a leading type name:
+New struct instances are created using the type name followed by an initializer:
 ```cy
-var node = Node{value=123, next=none}
-print node.value       -- Prints "123"
+var v = Vec2{x=30, y=40}
+print v.x       --> 30
 ```
 
-A dot record literal can also initialize to the inferred object type:
+A dot initializer infers the struct type:
 ```cy
-var node Node = .{value=234, next=none}
-print node.value       -- Prints "234"
+var v Vec2 = .{x=30, y=40}
 ```
+
+Structs are values so instances are copied by value:
+```cy
+var v = Vec2{x=30, y=40}
+var w = v
+v.x = 100
+print w.x      --> 30
+print v.x      --> 100
+```
+A struct instance can become an object (lifted to the heap) when it is [referenced](#references).
 
 ## Field visibility.
 All fields have public visibility. However, when a field is declared with a `-` prefix, it suggests that it should not be made available to an editor's autocomplete:
@@ -1163,7 +1191,7 @@ type Info:
 ```
 
 ### Default field values.
-When a field is omitted in the record literal, it gets initialized to its [zero value](#zero-values):
+When a field is omitted in the initializer, it's assigned to its [zero value](#zero-values): *This feature will be removed in favor of explicit default values.*
 ```cy
 var node Node = .{value=234}
 print node.next    --> Option.none
@@ -1180,36 +1208,33 @@ print s.gpa        --> 0.0
 ```
 
 ### Circular references.
-Circular type references are allowed if the object can be initialized:
+Field declarations may have circular type references if the struct can be initialized:
 ```cy
 type Node:
     val  any
-    next ?Node
+    next ?^Node
 
-var n = Node{}    -- Initializes.
+var n = Node{val=123, next=none}
 ```
-In this example, `next` has an optional `?Node` type so it can be initialized to `none` when creating a new `Node` object.
+In the above example, `next` has an optional `?^Node` reference type so it can be initialized to `none` when creating a new `Node` instance.
 
 The following example will fail because this version of `Node` can not be initialized:
 ```cy
 type Node:
     val  any
-    next Node
-
-var n = Node{}    -- CompileError. Can not zero initialize `next`
-                   -- because of circular dependency.
+    next Node     --> CompileError. Circular reference.
 ```
 
-### Unnamed object.
-Unnamed object types can be declared and used without an explicit `type` declaration:
+### Unnamed struct.
+Unnamed struct types can be declared and used without an explicit `type` declaration:
 ```cy
 type Node:
-    value object:
+    value struct:
         a  int
         b  float
-    next  ?Node
+    next  ?^Node
 
-var node = Node{
+var n = Node{
     value = .{a=123, b=100.0},
     next  = none,
 }
@@ -1221,9 +1246,9 @@ When the first parameter of a function contains `self`, it's declared as a metho
 ```cy
 type Node:
     value int
-    next  ?Node
+    next  ?^Node
 
-    func inc(self, n):
+    func inc(self, n int):
         self.value += n
 
     func incAndPrint(self):
@@ -1233,12 +1258,42 @@ type Node:
 var n = Node{value=123, next=none}
 n.incAndPrint()         -- Prints "444"
 ```
-`self` is then used to reference members of the parent instance.
+
+When a type is not attached to `self`, it defaults to the reference type `^T` where `T` is the struct type.
+This means that the original value can be mutated by the method.
+```cy
+type Vec2:
+    x float
+    y float
+
+    func setX(self, x float):
+        self.x = x
+```
+
+When `self` needs to be passed by value, a type specifier is required to express the intent:
+```cy
+type Vec2:
+    x float
+    y float
+
+    -- Pass by value.
+    func add(self Vec2, o Vec2):
+        return Vec2{
+            x = self.x + o.x,
+            y = self.y + o.y,
+        }
+
+    -- Pass by safe reference.
+    func addMut(self ^Vec2, o Vec2):
+        self.x += o.x
+        self.y += o.y
+```
+When the type specifier is `^T`, it is no different than omitting the type specifier.
 
 Methods can be declared outside of the type declaration as a flat declaration:
 ```cy
-func Node.getNext(self):
-    return self.next
+func Vec2.getX(self):
+    return self.x
 ```
 
 ### Type functions.
@@ -1246,7 +1301,7 @@ Type functions can be declared within the type block without a `self` param:
 ```cy
 type Node:
     value int
-    next  ?Node
+    next  ?^Node
 
     func new():
         return Node{value=123, next=none}
@@ -1256,10 +1311,6 @@ var n = Node.new()
 
 Type functions can also be declared outside of the type block using a flat declaration:
 ```cy
-type Node:
-    value int
-    next  ?Node
-
 func Node.new():
     return Node{value=123, next=none}
 
@@ -1309,45 +1360,23 @@ Since the embedding field is named, it can be used just like any other field:
 print c.b.a       --> 123
 ```
 
-## Structs.
-Struct types can contain field and method members just like object types, but their instances are copied by value rather than by reference. In that sense, they behave like primitive data types.
-
-Unlike objects, structs are value types and do not have a reference count. They can be safely referenced with the `ref` modifier and their lifetime can be managed with single ownership semantics. Unsafe pointers can not reference structs by default, but there may be an unsafe builtin to allow it anyway.
-
-### Declare struct.
-Struct types are created using the `type struct` declaration:
-```cy
-type Vec2 struct:
-    x float
-    y float
-
-var v = Vec2{x=30, y=40}
-```
-
-### Copy structs.
-Since structs are copied by value, assigning a struct to another variable creates a new struct:
-```cy
-var v = Vec2{x=30, y=40}
-var w = v
-v.x = 100
-print w.x    -- Prints '30'
-print v.x    -- Prints '100'
-```
-
 ## Tuples.
-Tuples can be declared using parentheses to wrap member fields:
+Tuples are declared using parentheses to wrap member fields:
 ```cy
 type Vec2 struct(x float, y float)
+
+-- Shorthand declaration.
+type Vec(x float, y float)
 ```
 
 If the fields share the same type, they can be declared in a field group:
 ```cy
-type Vec3 struct(x, y, z float)
+type Vec3(x, y, z float)
 ```
 
 Function declarations can still be declared under the type:
 ```cy
-type Vec2 struct(x float, y float):
+type Vec2(x float, y float):
     func scale(self, s float):
         self.x *= s
         self.y *= s
@@ -1395,11 +1424,8 @@ Choices are enums with payloads (also known as sum types or tagged unions). An e
 ```cy
 type Shape enum:
     case rectangle Rectangle
-    case circle    object:
-        radius float
-    case triangle  object:
-        base   float
-        height float
+    case circle    struct(radius float)
+    case triangle  struct(base float, height float)
     case line      float
     case point 
 
@@ -1640,9 +1666,7 @@ type Data cstruct:
 A `C struct` may contain:
 * C types.
 * Primitive types.
-* Container types that contain a compatible element type. This includes `enums`, `choices`, and `optionals`.
-
-It may not contain `structs` or `objects`.
+* Container types that contain a compatible element type. This includes `structs`, `enums`, `choices`, and `optionals`.
 
 ### C struct methods.
 `C structs` can be declared with methods:
@@ -3872,13 +3896,13 @@ void myNodeFinalizer(CLVM* vm, void* obj) {
   * [Copy semantics.](#copy-semantics)
   * [Cloning.](#cloning)
   * [Moving.](#moving)
-  * [References.](#references)
-  * [Exclusive reference.](#exclusive-reference)
-  * [`self` reference.](#self-reference)
+  * [Borrows.](#borrows)
+  * [Exclusive borrows.](#exclusive-borrows)
+  * [`self` borrow.](#self-borrow)
   * [Lifted values.](#lifted-values)
-  * [Deferred references.](#deferred-references)
+  * [Deferred borrows.](#deferred-borrows)
   * [Implicit lifetimes.](#implicit-lifetimes)
-  * [Reference lifetimes.](#explicit-reference-lifetimes)
+  * [Borrow lifetimes.](#borrow-lifetimes)
   * [Shared ownership.](#shared-ownership)
   * [Deinitializer.](#deinitializer)
   * [Pointer interop.](#pointer-interop)
@@ -3905,7 +3929,7 @@ Manual memory is also supported but discouraged.
 
 ## Structured memory.
 *Structured memory is very much incomplete. It will be centered around single value ownership but the semantics are subject to change.*
-Cyber uses single value ownership and variable scopes to determine the lifetime of values and references.
+Cyber uses single value ownership and variable scopes to determine the lifetime of values and borrows.
 When lifetimes are known at compile-time, the memory occupied by values do not need to be manually managed which prevents memory bugs such as:
 * Use after free.
 * Use after invalidation.
@@ -4092,15 +4116,15 @@ print computeSum(move a)    --> 6
 ```
 In this case, the list value is moved into the `computeSum` function, so the list is deinitialized in the function before the function returns.
 
-### References.
-References are safe pointers to values.
-Unlike unsafe pointers, a reference is never concerned with when to free or deinitialize a value since that responsibility always belongs to the value's owner.
+### Borrows.
+Borrows are safe pointers to values.
+Unlike unsafe pointers, a borrow is never concerned with when to free or deinitialize a value since that responsibility always belongs to the value's owner.
 They are considered safe pointers because they are guaranteed to point to their values and never outlive the lifetime of their values.
 
-References grant **in-place mutability** which allows a value to be modified as long as it does not invalidate other references.
-**Multiple** references can be alive at once as long as an [exclusive reference](#exclusive-reference) is not also alive.
+Borrows grant **in-place mutability** which allows a value to be modified as long as it does not invalidate other references.
+**Multiple** borrows can be alive at once as long as an [exclusive borrow](#exclusive-borrows) is not also alive.
 
-The `&` operator is used to obtain a reference to a value:
+The `&` operator is used to obtain a borrow to a value:
 ```cy
 var a = 123
 var ref = &a
@@ -4108,7 +4132,7 @@ ref.* = 234
 print a        --> 234
 ```
 
-A reference can not outlive the value it's referencing:
+A borrow can not outlive the value it's referencing:
 ```cy
 var a = 123
 var ref = &a
@@ -4117,7 +4141,7 @@ if true:
     ref = &b   --> error: `ref` can not outlive `b`.
 ```
 
-A reference type is denoted as `&T` where `T` is the type that the reference points to:
+A borrow type is denoted as `&T` where `T` is the type that the borrow points to:
 ```cy
 var a = 123
 
@@ -4125,7 +4149,7 @@ func inc(a &int):
     a.* = a.* + 1
 ```
 
-References allow in-place mutation:
+Borrows allow in-place mutation:
 ```cy
 var a = ListValue[int]{1, 2, 3}
 var third = &a[2]
@@ -4134,42 +4158,42 @@ print a        --> {1, 2, 300}
 ```
 The element that `third` points to can be mutated because it does not invalidate other references.
 
-References however can not perform an unstable mutation.
-An unstable mutation requires an exclusive reference:
+Borrows however can not perform an unstable mutation.
+An unstable mutation requires an exclusive borrow:
 ```cy
 var a = ListValue[int]{1, 2, 3}
 var ref = &a
-ref.append(4)  --> error: Expected exclusive reference.
+ref.append(4)  --> error: Expected exclusive borrow.
 ```
 
-### Exclusive reference.
-An exclusive reference grants **full mutability** which allows a value to be modified even if could potentially invalidate unsafe pointers.
+### Exclusive borrows.
+An exclusive borrow grants **full mutability** which allows a value to be modified even if could potentially invalidate unsafe pointers.
 
-A **single** exclusive reference can be alive as long as no other references are also alive.
-Since no other references (safe pointers) are allowed to be alive at the same time, no references can become invalidated.
+A **single** exclusive borrow can be alive as long as no other borrows are also alive.
+Since no other borrows are allowed to be alive at the same time, no borrows can become invalidated.
 
-The `&!` operator is used to obtain an exclusive reference to a value.
-An exclusive reference type is denoted as `&!T` where `T` is the type that the reference points to.
+The `!&` operator is used to obtain an exclusive borrow to a value.
+An exclusive borrow type is denoted as `!&T` where `T` is the type that the reference points to.
 
-`ListValue` is an example of a type that requires an exclusive reference for operations that can resize or reallocate its dynamic buffer:
+`ListValue` is an example of a type that requires an exclusive borrow for operations that can resize or reallocate its dynamic buffer:
 ```cy
 var a = ListValue[int]{1, 2, 3}
 a.append(4)
 print a        --> {1, 2, 3, 4}
 ```
-Note that invoking the method `append` here automatically obtains an exclusive reference for `self` without an explicit `&!` operator.
+Note that invoking the method `append` here automatically obtains an exclusive borrow for `self` without an explicit `!&` operator.
 
-If another reference is alive before `append`, the compiler will not allow an exclusive reference to be obtained from `a`.
-Doing so would allow `append` to potentially reallocate its dynamic buffer, thereby invalidating other references:
+If another reference is alive before `append`, the compiler will not allow an exclusive borrow to be obtained from `a`.
+Doing so would allow `append` to potentially reallocate its dynamic buffer, thereby invalidating other borrows:
 ```cy
 var a = ListValue[int]{1, 2, 3}
 var third = &a[2]
-a.append(4)    --> error: Can not obtain exclusive reference, `third` is still alive.
+a.append(4)    --> error: Can not obtain exclusive borrow, `third` is still alive.
 print third
 ```
 
-### `self` reference.
-By default `self` has a type of `&T` when declared in a value `T`'s method:
+### `self` borrow.
+By default `self` has a type of `^T` when declared in a value `T`'s method:
 ```cy
 type Pair struct:
     a int
@@ -4179,7 +4203,7 @@ type Pair struct:
         return self.a + self.b
 ```
 
-If `self` requires an exclusive reference, then it must be prepended with `!`:
+If `self` requires an exclusive borrow, then it must be prepended with `!`:
 ```cy
 type Pair struct:
     a int
@@ -4189,7 +4213,7 @@ type Pair struct:
         return self.a + self.b
 ```
 
-Invoking methods automatically obtains the correct reference as specified by the method:
+Invoking methods automatically obtains the correct borrow as specified by the method:
 ```cy
 var p = Pair{a=1, b=2}
 print p.sum()     --> 3
@@ -4198,13 +4222,13 @@ print p.sum()     --> 3
 ### Lifted values.
 > _Planned Feature_
 
-### Deferred references.
+### Deferred borrows.
 > _Planned Feature_
 
 ### Implicit lifetimes.
 > _Planned Feature_
 
-### Reference lifetimes.
+### Borrow lifetimes.
 > _Planned Feature_
 
 ### Shared ownership.

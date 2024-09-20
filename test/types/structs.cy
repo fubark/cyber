@@ -1,5 +1,9 @@
 use test
 
+-- `struct` keyword is optional.
+type FooNoKeyword:
+    val int
+
 type Foo struct:
     val int
 
@@ -46,5 +50,19 @@ test.eq(c.b.val, 2345)
 test.eq(c2.a, 123)
 test.eq(c2.b.val, 234)
 test.eq(cb.val, 234)
+
+-- Multiple structs with the same field names but different offsets.
+type Node1:
+    a any
+    b any
+type Node2:
+    b any
+    a any
+var na = Node1{a=1, b=2}
+var nb = Node2{a=3, b=4}
+test.eq(na.a, 1)
+test.eq(na.b, 2)
+test.eq(nb.a, 3)
+test.eq(nb.b, 4)
 
 --cytest: pass

@@ -68,7 +68,7 @@ func ptrcast[D, S](D type, val S) *D:
 --| Queues a callback function as an async task.
 @host func queueTask(fn Func() void) void
 
-@host func refcast[T](T type, ptr *T) &T
+@host func refcast[T](T type, ptr *T) ^T
 
 --| Converts a rune to a string.
 @host func runestr(val int) String
@@ -141,7 +141,7 @@ type byte #int8_t:
 
     --| `opts.pad` provides the ASCII rune that is used for padding with a string length of `config.width`.
     @host='int.fmt2'
-    func fmt(self, format NumberFormat, config Table) String
+    func fmt(self, format NumberFormat, config ^Table) String
 
     @host func $call(b byte) byte
 
@@ -173,7 +173,7 @@ type int #int64_t:
 
     --| `opts.pad` provides the ASCII rune that is used for padding with a string length of `config.width`.
     @host='int.fmt2'
-    func fmt(self, format NumberFormat, config Table) String
+    func fmt(self, format NumberFormat, config ^Table) String
 
 type NumberFormat enum:
     --| ASCII
@@ -209,8 +209,11 @@ type float #float64_t:
 --| Converts the value to a `float`. Panics if type conversion fails.
 @host func float.$call(val any) float
 
+@host type placeholder1 _
 @host type placeholder2 _
 @host type placeholder3 _
+@host type placeholder4 _
+@host type placeholder5 _
 @host type taglit _
 
 @host type dyn _
@@ -234,7 +237,6 @@ type TypeInfo enum:
     case error_t   void
     case float_t   FloatInfo
     case func_t    FuncInfo
-    case object_t  ObjectInfo
     case hostobj_t HostObjectInfo
     case opt_t     OptionInfo
     case ptr_t     PointerInfo
@@ -254,15 +256,6 @@ type HostObjectInfo struct:
     name   String
     -- getchildren
     -- finalizer
-
-type ObjectInfo struct:
-    name   ?String
-    fields List[ObjectField]
-    -- funcs  List[funcsym_t]
-
-type ObjectField struct:
-    name   String
-    type   type
 
 type EnumInfo struct:
     name  ?String
@@ -311,37 +304,13 @@ type TraitInfo struct:
     -- funcs List[funcsym_t]
 
 type PointerInfo struct:
-    elem type
+    child type
+    ref   bool
 
 type OptionInfo struct:
     elem type
 
--- @host type ListValue[T type] struct:
---     @host func $index(self, idx int) &T
-
---     func $index(self, range Range) []T:
---         return self.indexRange(([]T).id(), range)
-
---     @host func indexRange(self, slice_t int, range Range) RefSlice(self, []T)
-
---     --| Appends a value to the end of the list.
---     @host func append(self, val T) void
-
---     --| Appends the elements of another list to the end of this list.
---     @host func appendList(self, o ListValue[T]) void
-
---     --| Appends the elements of another list to the end of this list.
---     @host func appendSlice(self, slice []T) void
-
---     --| Inserts a value at index `idx`.
---     @host func insert(self, idx int, val T) void
-
---     --| Returns a new iterator over the list elements.
---     func iterator(self) ListIterator[T]:
---         return self.iterator_((ListIterator[T]).id())
-
 @host type List[T type] _:
-    -- val ListValue[T]
 
     @host func $index(self, idx int) T
 
@@ -549,6 +518,9 @@ type String _:
     --| Returns whether the string contains all ASCII runes.
     @host func isAscii(self) bool
 
+    func iterator(self) StringIterator:
+        return .{str=self, idx=0}
+
     --| Returns the byte length of the string. See `count()` to obtain the number of runes.
     @host func len(self) int
 
@@ -585,13 +557,23 @@ type String _:
 --| Converts a value to a string.
 @host func String.$call(val any) String
 
-@host type array_t[N int, T type] _
+type StringIterator:
+    str String
+    idx int
 
-type Array[N int, T type] array_t[N, T]:
-    func $index(self, idx int) &T:
-        return self.index(N, typeid[T], idx)
+    func next(self) ?int:
+        if self.idx >= self.str.len():
+            return none
+        var res = self.str[self.idx]
+        self.idx += 1
+        return res
 
-    @host -func index(self, n int, elem_t int, idx int) &T
+@host
+type Array[N int, T type] _:
+    func $indexAddr(self, idx int) *T:
+        return self.indexAddr(N, typeid[T], idx)
+
+    @host -func indexAddr(self, n int, elem_t int, idx int) *T
 
     -- --| Returns a slice into this array from a `Range` with `start` (inclusive) to `end` (exclusive) indexes.
     -- func $index(self, range Range) []T:
@@ -630,32 +612,41 @@ type pointer[T type] #int64_t:
 
     @host -func indexRange(self, slice_t int, range Range) [*]T
 
-    func $setIndex(self, idx int, val T) void:
+    func $setIndex(self Self, idx int, val T) void:
         self.setIndex(typeid[T], idx, val)
 
-    @host -func setIndex(self, elem_t int, idx int, val T) void
+    @host -func setIndex(self Self, elem_t int, idx int, val T) void
 
     --| When pointer runtime safety is enabled, this returns the raw pointer address as an `int64`. 
     --| Otherwise, the pointer itself is bitcasted to an `int64`.
-    @host func addr(self) int
+    @host func addr(self Self) int
 
     --| Casts the pointer to a Cyber object. The object is retained before it's returned.
-    @host func asObject(self) any
+    @host func asObject(self Self) any
 
     --| Returns a `String` from a null terminated C string.
-    @host func fromCstr(self, offset int) String
+    @host func fromCstr(self Self, offset int) String
 
     --| Dereferences the pointer at a byte offset and returns the C value converted to Cyber.
-    @host func get(self, offset int, ctype symbol) dyn
+    @host func get(self Self, offset int, ctype symbol) dyn
 
     --| Returns a `String` with a copy of the byte data starting from an offset to the specified length.
-    @host func getString(self, offset int, len int) String
+    @host func getString(self Self, offset int, len int) String
 
     --| Converts the value to a compatible C value and writes it to a byte offset from this pointer.
-    @host func set(self, offset int, ctype symbol, val any) void
+    @host func set(self Self, offset int, ctype symbol, val any) void
+
+    --| Sets the value assuming the underlying memory is uninitialized.
+    -- func init(self Self, val T) void:
+    --     self.init_(typeid[T], val)
+
+    -- @host func init_(self Self, type_id int, val T) void
 
 --| Converts an `int` to a `pointer` value.
-@host func pointer.$call[T](T type, addr int) *T
+@host func pointer.fromAddr[T](T type, addr int) *T
+
+--| Converts `^T` to `*T`.
+@host func pointer.fromRef[T](ref ^T) *T
 
 @host
 type ExternFunc _:
@@ -704,8 +695,8 @@ func FutureResolver.new[T](T type) FutureResolver[T]:
 
 type Ref[T type] #int64_t
 
-type RefSlice[T type] struct:
-    ptr *T
+type Slice[T type]:
+    ptr ^T
     n   int
 
     func $index(self, idx int) &T:
@@ -715,8 +706,8 @@ type RefSlice[T type] struct:
         var ptr_slice = self.ptr[range.start..range.end]
         return .{ ptr=ptr_slice.ptr, n=ptr_slice.n }
 
-    func $setIndex(self, idx int, val T) void:
-        self.ptr[idx] = val
+    func $setIndex(self Self, idx int, val T) void:
+        pointer.fromRef(self.ptr)[idx] = val
 
     -- --| Returns whether the array ends with `suffix`.
     -- @host func endsWith(self, suffix []T) bool
@@ -730,10 +721,10 @@ type RefSlice[T type] struct:
     -- --| Returns the first index of `needle` in the slice or `none` if not found.
     -- @host func findScalar(self, needle T) ?int
 
-    func iterator(self) RefSliceIterator[T]:
-        return RefSliceIterator[T]{slice=self, next_idx=0}
+    func iterator(self Self) SliceIterator[T]:
+        return SliceIterator[T]{slice=self, next_idx=0}
 
-    func len(self) int:
+    func len(self Self) int:
         return self.n
 
     -- --| Returns a list of arrays split at occurrences of `sep`.
@@ -745,7 +736,7 @@ type RefSlice[T type] struct:
     -- --| Returns a slice with ends trimmed from `delims`. `mode` can be .left, .right, or .ends.
     -- @host func trim(self, mode symbol, delims []T) []T
 
-type RefSliceIterator[T type]:
+type SliceIterator[T type]:
     slice    []T
     next_idx int
 
@@ -766,17 +757,21 @@ type PtrSlice[T type] struct:
     func $index(self, range Range) [*]T:
         return self.ptr[range.start..range.end]
 
-    func $setIndex(self, idx int, val T) void:
+    func $setIndex(self Self, idx int, val T) void:
         self.ptr[idx] = val
 
     --| Returns whether the array ends with `suffix`.
-    func endsWith(self, suffix [*]T) bool:
+    func endsWith(self Self, suffix [*]T) bool:
         if suffix.len() > self.len():
             return false
         for self[self.len()-suffix.len()..] -> elem, i:
             if elem != suffix[i]:
                 return false
         return true
+
+    func fill(self Self, val T) void:
+        for 0..self.n -> i:
+            self.ptr[i] = val
 
     -- --| Returns the first index of `needle` in the slice or `none` if not found.
     -- @host func find(self, needle [*]T) ?int
@@ -785,15 +780,15 @@ type PtrSlice[T type] struct:
     -- @host func findAny(self, set [*]T) ?int
 
     --| Returns the first index of `needle` in the slice or `none` if not found.
-    func findScalar(self, needle T) ?int:
+    func findScalar(self Self, needle T) ?int:
         for self -> elem, i:
             if elem == needle: return i
         return none
 
-    func iterator(self) PtrSliceIterator[T]:
+    func iterator(self Self) PtrSliceIterator[T]:
         return PtrSliceIterator[T]{slice=self, next_idx=0}
 
-    func len(self) int:
+    func len(self Self) int:
         return self.n
 
     -- TODO: Consider returning iterator instead.
@@ -801,7 +796,7 @@ type PtrSlice[T type] struct:
     -- @host func split(self, sep [*]T) List[Array]
 
     --| Returns whether the array starts with `prefix`.
-    func startsWith(self, prefix [*]T) bool:
+    func startsWith(self Self, prefix [*]T) bool:
         if prefix.len() > self.len():
             return false
         for self[..prefix.len()] -> elem, i:

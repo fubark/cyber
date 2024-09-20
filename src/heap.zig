@@ -1151,6 +1151,7 @@ pub fn allocListIter(self: *cy.VM, type_id: cy.TypeId, list: Value) !Value {
     const cyclable = self.c.types[type_id].cyclable;
     const obj = try allocPoolObject(self);
     const cyc_mask = if (cyclable) vmc.CYC_TYPE_MASK else 0;
+    _ = cyc_mask;
     obj.listIter = .{
         .typeId = type_id,
         .rc = 1,
@@ -1810,10 +1811,37 @@ pub fn allocBoxValue(self: *cy.VM, type_id: cy.TypeId, value: u64) !Value {
     return Value.initNoCycPtr(obj);
 }
 
+pub fn allocEmptyObject(self: *cy.VM, type_id: cy.TypeId, size: usize) !Value {
+    // First slot holds the typeId and rc.
+    const obj: *Object = @ptrCast(try allocExternalObject(self, (1 + size) * @sizeOf(Value)));
+    obj.* = .{
+        .typeId = type_id,
+        .rc = 1,
+        .firstValue = undefined,
+    };
+    return Value.initPtr(obj);
+}
+
+pub fn allocEmptyObject2(self: *cy.VM, type_id: cy.TypeId, size: usize) !Value {
+    if (size <= 4) {
+        return self.allocEmptyObjectSmall(type_id);
+    } else {
+        return self.allocEmptyObject(type_id, size);
+    }
+}
+
+pub fn allocObject2(self: *cy.VM, shape_t: cy.TypeId, size: usize, fields: []const Value) !Value {
+    if (size <= 4) {
+        return self.allocObjectSmall(shape_t, fields);
+    } else {
+        return self.allocObject(shape_t, fields);
+    }
+}
+
 /// Allocates an object outside of the object pool.
 pub fn allocObject(self: *cy.VM, type_id: cy.TypeId, fields: []const Value) !Value {
     // First slot holds the typeId and rc.
-    const obj: *Object = @ptrCast(try allocExternalObject(self, (1 + fields.len) * @sizeOf(Value), true));
+    const obj: *Object = @ptrCast(try allocExternalObject(self, (1 + fields.len) * @sizeOf(Value)));
     obj.* = .{
         .typeId = type_id | vmc.CYC_TYPE_MASK,
         .rc = 1,
@@ -1822,26 +1850,7 @@ pub fn allocObject(self: *cy.VM, type_id: cy.TypeId, fields: []const Value) !Val
     const dst = obj.getValuesPtr();
     @memcpy(dst[0..fields.len], fields);
 
-    return Value.initCycPtr(obj);
-}
-
-pub fn allocEmptyObject(self: *cy.VM, type_id: cy.TypeId, nfields: u32) !Value {
-    // First slot holds the typeId and rc.
-    const obj: *Object = @ptrCast(try allocExternalObject(self, (1 + nfields) * @sizeOf(Value), true));
-    obj.* = .{
-        .typeId = type_id | vmc.CYC_TYPE_MASK,
-        .rc = 1,
-        .firstValue = undefined,
-    };
-    return Value.initCycPtr(obj);
-}
-
-pub fn allocObject2(self: *cy.VM, type_id: cy.TypeId, fields: []const Value) !Value {
-    if (fields.len <= 4) {
-        return self.allocObjectSmall(type_id, fields);
-    } else {
-        return self.allocObject(type_id, fields);
-    }
+    return Value.initPtr(obj);
 }
 
 pub fn allocObjectSmall(self: *cy.VM, type_id: cy.TypeId, fields: []const Value) !Value {
@@ -2109,32 +2118,18 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                     freePoolObject(vm, obj);
                 },
                 .struct_t => {
-                    if (entry.data.struct_t.cstruct) {
-                        const nfields = entry.data.struct_t.nfields;
-                        if (nfields <= 4) {
-                            freePoolObject(vm, obj);
-                        } else {
-                            freeExternalObject(vm, obj, (1 + nfields) * @sizeOf(Value), true);
+                    const struct_t = entry.cast(.struct_t);
+                    const size = struct_t.size;
+                    if (!struct_t.cstruct) {
+                        if (entry.retain_layout) |layout| {
+                            const field_vals = obj.object.getValuesConstPtr();
+                            vm.releaseLayout(field_vals, 0, layout, gc, res);
                         }
+                    }
+                    if (size <= 4) {
+                        freePoolObject(vm, obj);
                     } else {
-                        const nfields = entry.data.struct_t.nfields;
-                        if (entry.data.struct_t.has_boxed_fields) {
-                            const field_vals = obj.object.getValuesConstPtr()[0..nfields];
-                            for (entry.data.struct_t.fields[0..nfields], 0..) |boxed, i| {
-                                if (boxed) {
-                                    const field = field_vals[i];
-                                    if (skip_cyc_children and field.isCycPointer()) {
-                                        continue;
-                                    }
-                                    cy.arc.release(vm, field);
-                                }
-                            }
-                        }
-                        if (nfields <= 4) {
-                            freePoolObject(vm, obj);
-                        } else {
-                            freeExternalObject(vm, obj, (1 + nfields) * @sizeOf(Value), true);
-                        }
+                        freeExternalObject(vm, obj, (1 + size) * @sizeOf(Value), gc);
                     }
                 },
                 .func_ptr => {
@@ -2175,45 +2170,26 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                     freePoolObject(vm, obj);
                 },
                 .array => {
-                    var size = entry.data.array.n;
-                    const child_te = vm.c.types[entry.data.array.elem_t];
-                    if (child_te.kind == .struct_t) {
-                        size *= child_te.data.struct_t.nfields;
+                    const array_t = entry.cast(.array);
+                    var size = array_t.n;
+                    const child_t = array_t.elem_t;
+                    if (child_t.kind() == .struct_t) {
+                        size *= child_t.cast(.struct_t).size;
                     }
                     for (obj.object.getValuesPtr()[0..size]) |it| {
-                        if (skip_cyc_children and it.isCycPointer()) {
-                            continue;
-                        }
-                        cy.arc.release(vm, it);
+                        cy.arc.release2(vm, it, gc, res);
                     }
-                    freeExternalObject(vm, obj, @intCast((1 + size) * @sizeOf(Value)), true);
+
+                    if (size <= 4) {
+                        freePoolObject(vm, obj);
+                    } else {
+                        freeExternalObject(vm, obj, @intCast((1 + size) * @sizeOf(Value)), gc);
+                    }
                 },
                 .trait => {
                     const impl = obj.trait.impl;
-                    if (!skip_cyc_children or !impl.isCycPointer()) {
-                        cy.arc.release(vm, impl);
-                    }
+                    cy.arc.release2(vm, impl, gc, res);
                     freePoolObject(vm, obj);
-                },
-                .object => {
-                    const numFields = entry.data.object.numFields;
-                    if (entry.data.object.has_boxed_fields) {
-                        const field_vals = obj.object.getValuesConstPtr()[0..numFields];
-                        for (entry.data.object.fields[0..numFields], 0..) |boxed, i| {
-                            if (boxed) {
-                                const field = field_vals[i];
-                                if (skip_cyc_children and field.isCycPointer()) {
-                                    continue;
-                                }
-                                cy.arc.release(vm, field);
-                            }
-                        }
-                    }
-                    if (numFields <= 4) {
-                        freePoolObject(vm, obj);
-                    } else {
-                        freeExternalObject(vm, obj, (1 + numFields) * @sizeOf(Value), true);
-                    }
                 },
                 .choice => {
                     const value = obj.object.getValuesConstPtr()[1];
@@ -2222,47 +2198,59 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                     }
                     freePoolObject(vm, obj);
                 },
-                .host_object => {
-                    if (entry.info.custom_pre) {
-                        if (entry.data.host_object.finalizerFn) |finalizer| {
-                            finalizer(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
-                        }
-                    }
-                    if (entry.data.host_object.getChildrenFn) |getChildren| {
-                        const children = getChildren(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
-                        for (Value.fromSliceC(children)) |child| {
-                            if (skip_cyc_children and child.isCycPointer()) {
-                                continue;
-                            }
-                            cy.arc.release(vm, child);
-                        }
-                    }
-                    if (!entry.info.custom_pre) {
-                        if (entry.data.host_object.finalizerFn) |finalizer| {
-                            finalizer(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
-                        }
-                    }
-                    if (!obj.isExternalObject()) {
+                .hostobj => {
+                    if (obj.isRef()) {
+                        cy.arc.release2(vm, obj.object.firstValue, gc, res);
                         freePoolObject(vm, obj);
                     } else {
-                        if (obj.isCyclable()) {
-                            if (cy.Malloc == .zig) {
-                                const size = (@as([*]u64, @ptrCast(obj)) - 1)[0];
-                                freeExternalObject(vm, obj, @intCast(size), true);
-                            } else {
-                                freeExternalObject(vm, obj, 1, true);
+                        const hostobj_t = entry.cast(.hostobj);
+                        if (hostobj_t.pre) {
+                            if (hostobj_t.finalizerFn) |finalizer| {
+                                finalizer(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
                             }
+                        }
+                        if (hostobj_t.getChildrenFn) |getChildren| {
+                            const children = getChildren(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
+                            for (Value.fromSliceC(children)) |child| {
+                                cy.arc.release2(vm, child, gc, res);
+                            }
+                        }
+                        if (!hostobj_t.pre) {
+                            if (hostobj_t.finalizerFn) |finalizer| {
+                                finalizer(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
+                            }
+                        }
+                        if (!obj.isExternalObject()) {
+                            freePoolObject(vm, obj);
                         } else {
                             if (cy.Malloc == .zig) {
                                 const size = (@as([*]u64, @ptrCast(obj)) - 1)[0];
-                                freeExternalObject(vm, obj, @intCast(size), false);
+                                freeExternalObject(vm, obj, @intCast(size), gc);
                             } else {
-                                freeExternalObject(vm, obj, 1, false);
+                                freeExternalObject(vm, obj, 1, gc);
                             }
                         }
                     }
                 },
-                else => {},
+                .pointer => {
+                    if (entry.cast(.pointer).ref and obj.isRef()) {
+                        cy.arc.release2(vm, obj.object.firstValue, gc, res);
+                        freePoolObject(vm, obj);
+                    } else {
+                        freePoolObject(vm, obj);
+                    }
+                },
+                .bool,
+                .int,
+                .enum_t => {
+                    freePoolObject(vm, obj);
+                },
+                .null,
+                .float,
+                .bare,
+                .ct_ref => {
+                    @panic("Unexpected.");
+                },
             }
         },
     }

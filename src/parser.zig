@@ -654,6 +654,67 @@ pub const Parser = struct {
         });
     }
 
+    /// A string template begins and ends with .stringt/stringt_multi token.
+    /// Inside the template there are stringt_part and stringt_expr.
+    fn parseStringTemplate(self: *Parser, template_kind: cy.tokenizer.TokenType) !*ast.StringTemplate {
+        const start = self.next_pos;
+        self.advance();
+
+        const part_start = self.node_stack.items.len;
+        defer self.node_stack.items.len = part_start;
+
+        var expect_expr = false;
+        while (true) {
+            const tag = self.peek().tag();
+            if (tag == template_kind) {
+                // End of this template.
+                self.advance();
+                break;
+            } else if (tag == .stringt_expr) {
+                if (!expect_expr) {
+                    return self.reportError("Expected string template part.", &.{});
+                }
+                const expr_start = self.next_pos;
+                self.advance();
+                const child = (try self.parseExpr(.{})) orelse {
+                    return self.reportError("Expected expression.", &.{});
+                };
+                if (self.peek().tag() != .right_brace) {
+                    return self.reportError("Expected right brace.", &.{});
+                }
+                self.advance();
+                const expr = try self.ast.newNode(.stringt_expr, .{
+                    .child = child,
+                    .pos = self.tokenPos(expr_start),
+                });
+                try self.pushNode(@ptrCast(expr));
+                expect_expr = false;
+            } else if (tag == .stringt_part) {
+                if (expect_expr) {
+                    return self.reportError("Expected string template expression.", &.{});
+                }
+                const part = try self.newSpanNode(.stringt_part, self.next_pos);
+                self.advance();
+                try self.pushNode(@ptrCast(part));
+                expect_expr = true;
+            } else {
+                return self.reportError("Expected string template part.", &.{});
+            }
+        }
+
+        if (template_kind == .stringt) {
+            return self.ast.newNode(.stringt, .{
+                .parts = try self.ast.dupeNodes(self.node_stack.items[part_start..]),
+                .pos = self.tokenPos(start),
+            });
+        } else {
+            return self.ast.newNode(.stringt_multi, .{
+                .parts = try self.ast.dupeNodes(self.node_stack.items[part_start..]),
+                .pos = self.tokenPos(start),
+            });
+        }
+    }
+
     fn parseEnumMember(self: *Parser) !*ast.EnumMember {
         const start = self.next_pos;
         if (self.peek().tag() != .case_k) {
@@ -2772,6 +2833,8 @@ pub const Parser = struct {
                 .dec,
                 .float,
                 .if_k,
+                .stringt,
+                .stringt_multi,
                 .equal_right_angle,
                 .new_line,
                 .null => break,
@@ -2958,6 +3021,12 @@ pub const Parser = struct {
             .string_multi => {
                 self.advance();
                 return @ptrCast(try self.newSpanNode(.string_multi_lit, start));
+            },
+            .stringt => {
+                return @ptrCast(try self.parseStringTemplate(.stringt));
+            },
+            .stringt_multi => {
+                return @ptrCast(try self.parseStringTemplate(.stringt_multi));
             },
             .pound => {
                 return @ptrCast(try self.parseComptimeExpr());
@@ -3773,7 +3842,7 @@ fn toBinExprOp(op: cy.tokenizer.TokenType) ?cy.ast.BinaryExprOp {
         .left_brace, .left_bracket, .left_paren, .dyn_k,
         .minus_double_dot, .new_line, .none_k, .not_k, .oct, .pass_k, .underscore, .pound, .question,
         .return_k, .right_brace, .right_bracket, .right_paren, .rune, .raw_string, .raw_string_multi,
-        .string, .string_multi, .struct_k, .switch_k, .symbol_k,
+        .string, .string_multi, .struct_k, .switch_k, .symbol_k, .stringt, .stringt_multi, .stringt_part, .stringt_expr,
         .throw_k, .tilde, .trait_k, .true_k, .try_k, .type_k, .use_k, .var_k, .void_k, .while_k, .with_k => null,
     };
 }

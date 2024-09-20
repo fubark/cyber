@@ -132,6 +132,10 @@ pub const TokenType = enum(u8) {
     star,
     string,
     string_multi,
+    stringt,
+    stringt_multi,
+    stringt_part,
+    stringt_expr,
     struct_k,
     switch_k,
     symbol_k,
@@ -189,11 +193,21 @@ const StringDelim = enum(u2) {
 
 pub const TokenizeState = struct {
     stateT: TokenizeStateTag,
+
+    /// For string interpolation, open braces can accumulate so the end of a template can be determined.
+    open_braces: u8 = 0,
+
+    /// For string interpolation.
+    string_delim: StringDelim = undefined,
+
+    has_template_expr: u1 = 0,
 };
 
 pub const TokenizeStateTag = enum {
     start,
     token,
+    stringt_part,
+    stringt_expr,
     end,
 };
 
@@ -294,9 +308,23 @@ pub const Tokenizer = struct {
             },
             '{' => {
                 try t.pushToken(.left_brace, start);
+                if (state.stateT == .stringt_expr) {
+                    var next = state;
+                    next.open_braces += 1;
+                    return next;
+                }
             },
             '}' => {
                 try t.pushToken(.right_brace, start);
+                if (state.stateT == .stringt_expr) {
+                    var next = state;
+                    if (state.open_braces == 0) {
+                        next.stateT = .stringt_part;
+                    } else {
+                        next.open_braces -= 1;
+                    }
+                    return next;
+                }
             },
             '[' => try t.pushToken(.left_bracket, start),
             ']' => try t.pushToken(.right_bracket, start),
@@ -486,12 +514,17 @@ pub const Tokenizer = struct {
                         if (ch2 == '"') {
                             _ = consume(t);
                             _ = consume(t);
-                            try tokenizeStringMulti(t, start);
-                            return state;
+                            return tokenizeStringOne(t, start, .{
+                                .stateT = state.stateT,
+                                .string_delim = .triple,
+                            });
                         }
                     }
                 }
-                try tokenizeString(t, start);
+                return tokenizeStringOne(t, start, .{
+                    .stateT = state.stateT,
+                    .string_delim = .single,
+                });
             },
             '\'' => {
                 if (peek(t) == '\'') {
@@ -628,6 +661,18 @@ pub const Tokenizer = struct {
                         }
                     }
                 },
+                .stringt_part => {
+                    state = try tokenizeStringOne(t, t.nextPos, state);
+                },
+                .stringt_expr => {
+                    while (true) {
+                        const nextState = try tokenizeOne(t, state);
+                        if (nextState.stateT != .token) {
+                            state = nextState;
+                            break;
+                        }
+                    }
+                },
                 .end => {
                     break;
                 },
@@ -635,96 +680,122 @@ pub const Tokenizer = struct {
         }
     }
 
-    fn tokenizeString(t: *Tokenizer, start: u32) !void {
+    /// Returns the next tokenizer state.
+    fn tokenizeStringOne(t: *Tokenizer, start: u32, state: TokenizeState) !TokenizeState {
         const save = t.nextPos;
         while (true) {
             if (isAtEnd(t)) {
                 if (t.ignoreErrors) {
                     t.nextPos = save;
-                    try t.pushToken(.err, start);
-                } else return t.reportErrorAt("UnterminatedString", &.{}, start);
+                    try t.pushToken(.err, save);
+                    return .{ .stateT = .token };
+                } else {
+                    try t.reportErrorAt("UnterminatedString", &.{}, save);
+                }
             }
 
             switch (t.peek()) {
                 '"' => {
-                    advance(t);
-                    try t.pushToken(.string, start);
-                    return;
+                    switch (state.string_delim) {
+                        .single => {
+                            if (state.has_template_expr == 1) {
+                                try t.pushToken(.stringt_part, start);
+                                const end = t.nextPos;
+                                advance(t);
+                                try t.pushToken(.stringt, end);
+                            } else {
+                                advance(t);
+                                try t.pushToken(.string, start);
+                            }
+                            return .{ .stateT = .token };
+                        },
+                        .triple => {
+                            var ch2 = peekAhead(t, 1) orelse 0;
+                            if (ch2 == '"') {
+                                ch2 = peekAhead(t, 2) orelse 0;
+                                if (ch2 == '"') {
+                                    if (state.has_template_expr == 1) {
+                                        try t.pushToken(.stringt_part, start);
+                                        const end = t.nextPos;
+                                        advance(t);
+                                        advance(t);
+                                        advance(t);
+                                        try t.pushToken(.stringt_multi, end);
+                                    } else {
+                                        advance(t);
+                                        advance(t);
+                                        advance(t);
+                                        try t.pushToken(.string_multi, start);
+                                    }
+                                    return .{ .stateT = .token };
+                                }
+                            }
+                            advance(t);
+                        },
+                    }
+                },
+                '$' => {
+                    const ch2 = peekAhead(t, 1) orelse 0;
+                    if (ch2 == '{') {
+                        var next = state;
+                        if (state.has_template_expr == 0) {
+                            // Encounter first expression.
+                            switch (state.string_delim) {
+                                .single => {
+                                    try t.pushToken2(.stringt, start, save);
+                                },
+                                .triple => {
+                                    try t.pushToken2(.stringt_multi, start, save);
+                                },
+                            }
+                            try t.pushToken(.stringt_part, save);
+                            next.has_template_expr = 1;
+                        } else {
+                            try t.pushToken(.stringt_part, start);
+                        }
+                        const expr_start = t.nextPos;
+                        advance(t);
+                        advance(t);
+                        try t.pushToken(.stringt_expr, expr_start);
+                        next.stateT = .stringt_expr;
+                        next.open_braces = 0;
+                        return next;
+                    } else {
+                        advance(t);
+                    }
                 },
                 '\\' => {
                     // Escape the next character.
-                    _ = consume(t);
+                    advance(t);
                     if (isAtEnd(t)) {
                         if (t.ignoreErrors) {
                             t.nextPos = start;
                             try t.pushToken(.err, start);
-                            return;
+                            return .{ .stateT = .token };
                         } else {
-                            return t.reportErrorAt("UnterminatedString", &.{}, start);
+                            try t.reportErrorAt("UnterminatedString", &.{}, start);
                         }
                     }
-                    _ = consume(t);
+                    advance(t);
                 },
                 '\n' => {
-                    if (t.ignoreErrors) {
-                        t.nextPos = start;
-                        try t.pushToken(.err, start);
-                    } else {
-                        return t.reportErrorAt("Encountered new line in single line literal.", &.{}, t.nextPos);
-                    }
-                },
-                else => {
-                    advance(t);
-                }
-            }
-        }
-    }
-
-    fn tokenizeStringMulti(t: *Tokenizer, start: u32) !void {
-        const save = t.nextPos;
-        while (true) {
-            if (isAtEnd(t)) {
-                if (t.ignoreErrors) {
-                    t.nextPos = save;
-                    try t.pushToken(.err, start);
-                } else return t.reportErrorAt("UnterminatedString", &.{}, start);
-            }
-
-            switch (t.peek()) {
-                '"' => {
-                    var ch = peekAhead(t, 1) orelse 0;
-                    if (ch == '"') {
-                        ch = peekAhead(t, 2) orelse 0;
-                        if (ch == '"') {
-                            _ = consume(t);
-                            _ = consume(t);
-                            _ = consume(t);
-                            try t.pushToken(.string_multi, start);
-                            return;
-                        }
-                    }
-                    _ = consume(t);
-                },
-                '\\' => {
-                    // Escape the next character.
-                    _ = consume(t);
-                    if (isAtEnd(t)) {
+                    if (state.string_delim == .single) {
                         if (t.ignoreErrors) {
                             t.nextPos = start;
                             try t.pushToken(.err, start);
+                            return .{ .stateT = .token };
                         } else {
-                            return t.reportErrorAt("UnterminatedString", &.{}, start);
+                            try t.reportErrorAt("Encountered new line in single line literal.", &.{}, t.nextPos);
                         }
                     }
-                    _ = consume(t);
-                    continue;
+                    advance(t);
                 },
                 else => {
                     advance(t);
                 }
             }
         }
-    }
+    } 
 
     /// Assume first character is consumed already.
     fn consumeIdent(t: *Tokenizer) void {
@@ -954,6 +1025,10 @@ pub const Tokenizer = struct {
         try self.tokens.append(self.alloc, Token.init(token_t, start_pos, self.nextPos));
     }
 
+    fn pushToken2(self: *Tokenizer, token_t: TokenType, start_pos: u32, end_pos: u32) !void {
+        try self.tokens.append(self.alloc, Token.init(token_t, start_pos, end_pos));
+    }
+
     fn reportError(self: *Tokenizer, format: []const u8, args: []const cy.fmt.FmtValue) anyerror!void {
         try self.reportErrorAt(format, args, self.nextPos);
     }
@@ -975,8 +1050,8 @@ pub fn defaultReportFn(ctx: *anyopaque, format: []const u8, args: []const cy.fmt
 test "tokenizer internals." {
     try tt.eq(@sizeOf(Token), 8);
     try tt.eq(@alignOf(Token), 4);
-    try tt.eq(@sizeOf(TokenizeState), 1);
+    try tt.eq(@sizeOf(TokenizeState), 4);
 
-    try tt.eq(std.enums.values(TokenType).len, 96);
+    try tt.eq(std.enums.values(TokenType).len, 100);
     try tt.eq(keywords.kvs.len, 41);
 }

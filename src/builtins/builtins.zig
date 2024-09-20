@@ -212,6 +212,7 @@ const funcs = [_]C.HostFuncEntry{
     func("String.trim",        string.trim),
     func("String.upper",       string.upper),
     func("String.$call",       zErrFunc(string.stringCall)),
+    func("String.interpolate", zErrFunc(string.string_interpolate)),
 
     // Array
     // func("Array.$infix+",      arrayConcat),

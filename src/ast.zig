@@ -599,6 +599,18 @@ const IfExpr = struct {
     pos: u32,
 };
 
+pub const StringTemplate = struct {
+    // Begins and ends with stringt_part and alternates between stringt_expr.
+    parts: []*Node align(8),
+
+    pos: u32,
+};
+
+const StringTemplateExpr = struct {
+    child: *Node align(8),
+    pos: u32,
+};
+
 pub const FuncSigType = enum(u8) {
     func,
     infer,
@@ -1041,7 +1053,7 @@ pub const UnaryOp = enum(u8) {
 };
 
 test "ast internals." {
-    try t.eq(std.enums.values(NodeType).len, 103);
+    try t.eq(std.enums.values(NodeType).len, 107);
     try t.eq(@sizeOf(NodeHeader), 1);
 }
 
@@ -1253,6 +1265,11 @@ pub const AstView = struct {
     pub fn asStringMultiLit(self: AstView, n: *Node) []const u8 {
         const span = n.cast(.string_multi_lit);
         return self.src[span.pos+3..span.end-3];
+    }
+
+    pub fn asStringTemplatePart(self: AstView, n: *Node) []const u8 {
+        const span = n.cast(.stringt_part);
+        return self.src[span.pos..span.end];
     }
 
     pub fn asRawStringLit(self: AstView, n: *Node) []const u8 {

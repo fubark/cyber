@@ -3381,6 +3381,44 @@ fn semaIdent(c: *cy.Chunk, expr: Expr, prefer_ct_sym: bool) !ExprResult {
     }
 }
 
+pub fn semaList(c: *cy.Chunk, list_t: *cy.Type, args_loc: usize, nargs: usize, node: *ast.Node) !ExprResult {
+    const loc = try c.ir.pushExpr(.list, c.alloc, list_t, node, .{
+        .nargs = @intCast(nargs),
+        .args = @intCast(args_loc),
+    });
+    return ExprResult.init(loc, list_t);
+}
+
+pub fn semaStringTemplate(c: *cy.Chunk, template: *ast.StringTemplate) !ExprResult {
+    const nexprs = template.parts.len / 2;
+
+    // strs as List[String]
+    const nstrs = nexprs+1;
+    const strs_loc = try c.ir.pushEmptyArray(c.alloc, u32, nstrs);
+    for (0..nexprs+1) |i| {
+        const str_n = template.parts[i*2];
+        const str = c.ast.asStringTemplatePart(str_n);
+        const str_res = try c.semaString(str, str_n);
+        c.ir.setArrayItem(strs_loc, u32, i, str_res.irIdx);
+    }
+    const str_list_t = try getListType(c, c.sema.string_t);
+    const strs = try semaList(c, str_list_t, strs_loc, nstrs, @ptrCast(template));
+
+    // exprs as List[any]
+    const exprs_loc = try c.ir.pushEmptyArray(c.alloc, u32, nexprs);
+    for (0..nexprs) |i| {
+        const expr = template.parts[1 + i*2].cast(.stringt_expr);
+        const res = try c.semaExprCstr(expr.child, c.sema.any_t);
+        c.ir.setArrayItem(exprs_loc, u32, i, res.irIdx);
+    }
+    const any_list_t = try getListType(c, c.sema.any_t);
+    const exprs = try semaList(c, any_list_t, exprs_loc, nexprs, @ptrCast(template));
+
+    const sym = c.sema.string_t.sym().getMod().getSym("interpolate").?;
+    const func_sym = try requireFuncSym(c, sym, @ptrCast(template));
+    return c.semaCallFuncSym2(func_sym, @ptrCast(template), strs, @ptrCast(template), exprs, .any, @ptrCast(template));
+}
+
 pub fn getLocalDistinctSym(c: *cy.Chunk, name: []const u8, node: *ast.Node) !?*Sym {
     // if (c.sym_cache.get(name)) |sym| {
     //     if (!sym.isDistinct()) {
@@ -5739,6 +5777,14 @@ pub const ChunkExt = struct {
                     const ref_t = try getRefType(c, c.sema.table_t);
                     return c.semaObjectInit2(struct_t, ref_t, init_lit);
                 }
+            },
+            .stringt => {
+                const template = node.cast(.stringt);
+                return semaStringTemplate(c, template);
+            },
+            .stringt_multi => {
+                const template = node.cast(.stringt_multi);
+                return semaStringTemplate(c, template);
             },
             .group => {
                 return c.semaExpr(node.cast(.group).child, .{});

@@ -10,7 +10,7 @@ var curDir = os.dirName(#modUri)
 
 dyn outLLBuf = llvm.ffi.new(.voidPtr)
 var outMsg = llvm.ffi.new(.charPtr)
-if llvm.CreateMemoryBufferWithContentsOfFile(os.cstr("$(curDir)/stencils.o"), outLLBuf, outMsg) != 0:
+if llvm.CreateMemoryBufferWithContentsOfFile(os.cstr("${curDir}/stencils.o"), outLLBuf, outMsg) != 0:
     throw error.Unexpected
 
 var llBuf = outLLBuf.get(0, .voidPtr)
@@ -136,12 +136,12 @@ while llvm.IsRelocationIteratorAtEnd(llSectIter, llRelocIter) == 0:
 
 -- After continuations are removed, gen sym's code.
 for syms -> sym, i:
-    print "$(sym.name) $(sym.addr) $(sym.code.fmt(.x))"
+    print "${sym.name} ${sym.addr} ${sym.code.fmtBytes(.hex)}"
 
     var bytes = List[dyn]{}
     for sym.code -> byte:
-        bytes.append("0x$(byte.fmt(.x, {pad=`0`, width=2}))")
+        bytes.append("0x${byte.fmt(.hex, {pad=`0`, width=2})}")
 
-    out += "pub const $(sym.name) = [_]u8{ $(bytes.join(', ')) };\n"
+    out += "pub const ${sym.name} = [_]u8{ ${bytes.join(', ')} };\n"
 
-os.writeFile("$(curDir)/x64_stencils.zig", out)
+os.writeFile("${curDir}/x64_stencils.zig", out)

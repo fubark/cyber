@@ -562,3 +562,31 @@ pub fn stringCall(vm: *cy.VM) anyerror!Value {
         return vm.retainOrAllocAstring(str);
     }
 }
+
+pub fn string_interpolate(vm: *cy.VM) !Value {
+    const strs = vm.getValue(0).asHeapObject().list.items();
+    const args = vm.getValue(1).asHeapObject().list.items();
+
+    const firstStr = strs[0].castHeapObject(*cy.heap.String);
+    const firstSlice = firstStr.getSlice();
+    try vm.u8Buf.resize(vm.alloc, firstSlice.len);
+    defer if (vm.u8Buf.capacity > 4096) vm.u8Buf.clearAndFree(vm.alloc);
+    @memcpy(vm.u8Buf.items, firstSlice);
+    var is_ascii = firstStr.getType().isAstring();
+
+    const w = vm.u8Buf.writer(vm.alloc);
+    for (args, 0..) |arg, i| {
+        const out_ascii = try vm.writeValue(w, arg.getTypeId(), cy.vm.unbox2(vm, arg), false);
+        is_ascii = is_ascii and out_ascii;
+
+        const str = strs[i+1].asHeapObject();
+        try w.writeAll(str.string.getSlice());
+        is_ascii = is_ascii and str.string.getType().isAstring();
+    }
+
+    if (is_ascii) {
+        return vm.retainOrAllocUstring(vm.u8Buf.items);
+    } else {
+        return vm.retainOrAllocAstring(vm.u8Buf.items);
+    }
+}

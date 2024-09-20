@@ -36,7 +36,7 @@ use math
 var worlds = {'World', '世界', 'दुनिया', 'mundo'}
 worlds.append(math.random().fmt())
 for worlds -> w:
-    print 'Hello, @!'.fmt(.{w})
+    print "Hello, ${w}!"
 ```
 
 # Syntax.
@@ -528,6 +528,7 @@ CYON or the Cyber object notation is similar to JSON. The format uses the same l
   * [Escape sequences.](#escape-sequences)
   * [String indexing.](#string-indexing)
   * [String concatenation.](#string-concatenation)
+  * [String interpolation.](#string-interpolation)
   * [String formatting.](#string-formatting)
   * [Line-join literal.](#line-join-literal)
   * [Mutable strings.](#mutable-strings) 
@@ -638,7 +639,7 @@ Strings are **immutable**, so operations that do string manipulation return a ne
 Under the hood, there are multiple string implementations to make operations faster by default using SIMD.
 
 ### Raw string literal.
-A raw string doesn't allow any escape sequences.
+A raw string doesn't allow any escape sequences or string interpolation.
 
 Single quotes are used to delimit a single line literal:
 ```cy
@@ -659,11 +660,12 @@ World'''
 ```
 
 ### String literal.
-A string literal allows escape sequences.
+A string literal allows escape sequences and string interpolation.
 
 Double quotes are used to delimit a single line literal:
 ```cy
 var fruit = "apple"
+var sentence = "The ${fruit} is tasty."
 var doc = "A double quote can be escaped: \""
 ```
 
@@ -673,6 +675,7 @@ var title = "last"
 var doc = """A double quote " doesn't need to be escaped."""
 var str = """line a
 line "b"
+line ${title}
 """
 ```
 
@@ -737,6 +740,15 @@ var res = 'abc' + 'xyz'
 res = res.concat('end')
 ```
 
+### String interpolation.
+Expressions can be embedded into string templates with `${}`:
+```cy
+var name = 'Bob'
+var points = 123
+var str = "Scoreboard: ${name} ${points}"
+```
+String templates can not contain nested string templates.
+
 ### String formatting.
 Formatting replaces `@` placeholders with values converted to strings:
 ```cy
@@ -745,7 +757,7 @@ print 'First: @, Last: @'.fmt(.{'John', 'Doe'})
 
 If `@` is needed as a literal, a custom placeholder can be used instead:
 ```cy
-print "if ($PH) {\n\t$PH}".fmt('$PH', cond, body})
+print "if ($PH) {\n\t$PH}".fmt('$PH', .{cond, body})
 ```
 
 *Named placeholders will be supported.*
@@ -773,7 +785,7 @@ This has several properties:
 var paragraph = {
     \'the line-join literal
     \'hello\nworld
-    \"\n\thello\n
+    \"hello ${name}
     \'last line
     \'
 }
@@ -1063,7 +1075,7 @@ map.remove(123)
 
 -- Iterating a map.
 for map -> {val, key}:
-    print('@ -> @'.fmt(.{key, val}))
+    print "${key} -> ${val}"
 ```
 
 ### Map block.
@@ -1458,11 +1470,11 @@ var s = Shape.point
 ```cy
 switch s
 case .rectangle -> r:
-    print('@ @'.fmt(.{r.width, r.height}))
+    print "${r.width} ${r.height}"
 case .circle -> c:
     print c.radius
 case .triangle -> t:
-    print('@ @'.fmt(.{t.base, t.height}))
+    print "${t.base} ${t.height}"
 case .line -> len:
     print len
 case .point:
@@ -1942,7 +1954,7 @@ for map -> entry:
 Use the destructure syntax to extract the key and value into two separate variables:
 ```cy
 for map -> {key, val}:
-    print 'key @ -> value @'.fmt(.{key, val})
+    print "key ${key} -> value ${val}"
 ```
 
 ### `for` each with index.
@@ -1951,7 +1963,7 @@ A counting index can be declared after the each variable. The count starts at 0 
 var list = {1, 2, 3, 4, 5}
 
 for list -> val, i:
-    print 'index @, value @'.fmt(.{i, val})
+    print "index ${i}, value ${val}"
 ```
 
 ### Exit loop.
@@ -1988,7 +2000,7 @@ case 200:
 case 300, 400:
     print 'combined case'
 else:
-    print('val is ' + val)
+    print "val is ${val}"
 ```
 The switch statement requires at least one `case` block or an `else` block.
 When the switch statement begins a new block, the case statements must be indented:
@@ -2604,7 +2616,7 @@ use os
 
 var map = os.getEnvAll()
 for map -> {k, v}:
-    print '@ -> @'.fmt(.{k, v})
+    print "${k} -> ${v}"
 ```
 
 [^topic](#modules)
@@ -3482,7 +3494,7 @@ After an instance of the type is created from its default record initializer, th
 ```cy
 type MyMap:
     func $initPair(self, key any, value any) void:
-        print '@ = @'.fmt(.{key, value})
+        print "${key} = ${value}"
 
 var m = MyMap{a=123, b=234}
 --> a = 123
@@ -3507,7 +3519,7 @@ The `$set` method allows overriding field assignments for **undeclared fields**:
 ```cy
 type Foo:
     func $set(self, name String, value any):
-        print 'setting @ @'.fmt(.{name, value})
+        print "setting ${name} ${value}"
 
 var f = Foo{}
 f.abc = 123      --> setting abc 123

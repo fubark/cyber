@@ -554,6 +554,8 @@ type String _:
     --| Returns this string in uppercase.
     @host func upper(self) String
 
+@host func String.interpolate(strs List[String], args List[any]) String
+
 --| Converts a value to a string.
 @host func String.$call(val any) String
 

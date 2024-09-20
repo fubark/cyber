@@ -10,7 +10,7 @@ var curDir = os.dirName(#modUri)
 
 dyn outLLBuf = llvm.ffi.new(symbol.voidPtr)
 var outMsg = llvm.ffi.new(symbol.charPtr)
-if llvm.CreateMemoryBufferWithContentsOfFile(os.cstr("$(curDir)/stencils.o"), outLLBuf, outMsg) != 0:
+if llvm.CreateMemoryBufferWithContentsOfFile(os.cstr("${curDir}/stencils.o"), outLLBuf, outMsg) != 0:
     throw error.Unexpected
 
 var llBuf = outLLBuf.get(0, symbol.voidPtr)
@@ -90,13 +90,13 @@ for syms -> sym, i:
     if bin[bin.len()-4..].getInt32(0, .little) == 0x14000000:
         bin = bin[0..bin.len()-4]
 
-    print "$(sym.name) $(sym.addr) $(bin.fmt(.x))"
+    print "${sym.name} ${sym.addr} ${bin.fmtBytes(.hex)}"
 
     var bytes = List[dyn]{}
     for bin -> byte:
         bytes.append("0x${byte.fmt(.hex, {pad=`0`, width=2})}")
 
-    out += "pub const $(sym.name[1..]) = [_]u8{ $(bytes.join(', ')) };\n"
+    out += "pub const ${sym.name[1..]} = [_]u8{ ${bytes.join(', ')} };\n"
 
 -- llSectIter is already at text section.
 -- Visit relocation entries and record them as Zig constants.
@@ -133,4 +133,4 @@ while llvm.IsRelocationIteratorAtEnd(llSectIter, llRelocIter) == 0:
 
     llvm.MoveToNextRelocation(llRelocIter)
 
-os.writeFile("$(curDir)/a64_stencils.zig", out)
+os.writeFile("${curDir}/a64_stencils.zig", out)

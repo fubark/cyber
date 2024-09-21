@@ -679,7 +679,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Captured),
         JENTRY(SetCaptured),
         JENTRY(TagLit),
-        JENTRY(Enum),
         JENTRY(Symbol),
         JENTRY(Cast),
         JENTRY(CastAbstract),
@@ -2006,13 +2005,6 @@ beginSwitch:
         u8 sym = pc[1];
         stack[pc[2]] = VALUE_TAGLIT(sym);
         pc += 3;
-        NEXT();
-    }
-    CASE(Enum): {
-        u8 tagId = pc[1];
-        u8 val = pc[2];
-        stack[pc[3]] = VALUE_ENUM(tagId, val);
-        pc += 4;
         NEXT();
     }
     CASE(Symbol): {

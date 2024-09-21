@@ -1075,8 +1075,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .jumpCond,
         .compare,
         .compareNot,
-        .list_dyn,
-        .enumOp,
         .setCaptured,
         .jumpNotCond => {
             return 4;
@@ -1224,7 +1222,6 @@ pub const OpCode = enum(u8) {
     appendList = vmc.CodeAppendList,
 
     /// First operand points the first elem and also the dst local. Second operand contains the number of elements.
-    list_dyn = vmc.CodeListDyn,
     list = vmc.CodeList,
     array = vmc.CodeArray,
     /// First operand points the first entry value and also the dst local. Second operand contains the number of elements.
@@ -1324,7 +1321,6 @@ pub const OpCode = enum(u8) {
     captured = vmc.CodeCaptured,
     setCaptured = vmc.CodeSetCaptured,
     tag_lit = vmc.CodeTagLit,
-    enumOp = vmc.CodeEnum,
     symbol = vmc.CodeSymbol,
 
     bitwiseAnd = vmc.CodeBitwiseAnd,

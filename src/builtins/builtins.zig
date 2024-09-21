@@ -675,12 +675,12 @@ pub fn copy(vm: *cy.VM) anyerror!Value {
 
 pub fn choicetag(vm: *cy.VM) anyerror!Value {
     const tag_t: cy.TypeId = @intCast(vm.getInt(0));
-    const type_e = vm.sema.getType(tag_t);
-    if (type_e.kind != .enum_t) {
+    const type_ = vm.getType(tag_t);
+    if (type_.kind() != .enum_t) {
         return error.InvalidArgument;
     }
     const choice_tag = vm.getValue(1).castHeapObject(*cy.heap.Object).getValue(0).asInt();
-    return cy.Value.initEnum(@intCast(tag_t), @intCast(choice_tag));
+    return cy.Value.initInt(choice_tag);
 }
 
 pub fn errorReport(vm: *cy.VM) anyerror!Value {
@@ -1449,7 +1449,7 @@ fn stringFmt(vm: *cy.VM, format: []const u8, ascii_format: bool, placeholder: []
 
 fn stringFmtBytes(vm: *cy.VM) anyerror!Value {
     const str = vm.getString(0);
-    const kind = try std.meta.intToEnum(NumberFormat, vm.getEnumValue(1));
+    const kind = try std.meta.intToEnum(NumberFormat, vm.getInt(1));
     if (kind == .asc) {
         var buf: std.ArrayListUnmanaged(u8) = .{};
         defer buf.deinit(vm.alloc);
@@ -1778,12 +1778,12 @@ fn errorCall(vm: *cy.VM) Value {
     } else {
         if (val.isSymbol()) {
             return Value.initErrorSymbol(@intCast(val.asSymbolId()));
-        } else if (val.isEnum()) {
-            const enumT = val.getEnumType();
-            const enumv = val.getEnumValue();
-            const name = vm.c.types[enumT].sym.cast(.enum_t).getValueSym(enumv).head.name();
-            const symId = vm.ensureSymbol(name) catch cy.unexpected();
-            return Value.initErrorSymbol(symId);
+        // } else if (val.isEnum()) {
+        //     const enumT = val.getEnumType();
+        //     const enumv = val.getEnumValue();
+        //     const name = vm.c.types[enumT].sym.cast(.enum_t).getValueSym(enumv).head.name();
+        //     const symId = vm.ensureSymbol(name) catch cy.unexpected();
+        //     return Value.initErrorSymbol(symId);
         } else {
             return rt.prepThrowError(vm, .InvalidArgument);
         }
@@ -1808,13 +1808,13 @@ pub const NumberFormat = enum {
 
 fn intFmt(vm: *cy.VM) anyerror!Value {
     const val = vm.getInt(0);
-    const format = try std.meta.intToEnum(NumberFormat, vm.getEnumValue(1));
+    const format = try std.meta.intToEnum(NumberFormat, vm.getInt(1));
     return intFmtExt(vm, val, format, .{});
 }
 
 fn intFmt2(vm: *cy.VM) anyerror!Value {
     const val = vm.getInt(0);
-    const format = try std.meta.intToEnum(NumberFormat, vm.getEnumValue(1));
+    const format = try std.meta.intToEnum(NumberFormat, vm.getInt(1));
     const optsv = vm.getObject(*cy.heap.Table, 2);
     const opts = try getIntFmtOptions(optsv);
     return intFmtExt(vm, val, format, opts);
@@ -1889,8 +1889,9 @@ fn intCall(vm: *cy.VM) Value {
             return Value.initInt(val.asHeapObject().integer.val);
         },
         else => {
-            if (val.isEnum()) {
-                return Value.initInt(val.getEnumValue());
+            const type_e = vm.getType(val.getTypeId());
+            if (type_e.kind() == .enum_t) {
+                return Value.initInt(val.asBoxInt());
             }
             return Value.initInt(0);
         }
@@ -1916,8 +1917,9 @@ fn floatCall(vm: *cy.VM) Value {
         bt.Void => return Value.initF64(0),
         bt.Boolean => return Value.initF64(if (val.asBool()) 1 else 0),
         else => {
-            if (val.isEnum()) {
-                return Value.initF64(@floatFromInt(val.getEnumValue()));
+            const type_e = vm.getType(val.getTypeId());
+            if (type_e.kind() == .enum_t) {
+                return Value.initF64(@floatFromInt(val.asBoxInt()));
             }
             vm.release(val);
             return vm.prepPanic("Not a type that can be converted to `float`.");

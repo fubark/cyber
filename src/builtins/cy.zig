@@ -156,7 +156,7 @@ pub fn UserVM_evalExt(vm: *cy.VM) anyerror!cy.Value {
         .single_run = (try vm.getFieldName(config, "single_run")).asBool(),
         .file_modules = (try vm.getFieldName(config, "file_modules")).asBool(),
         .gen_all_debug_syms = (try vm.getFieldName(config, "gen_all_debug_syms")).asBool(),
-        .backend = (try vm.getFieldName(config, "backend")).getEnumValue(),
+        .backend = @intCast((try vm.getFieldName(config, "backend")).asBoxInt()),
         .reload = (try vm.getFieldName(config, "reload")).asBool(),
         .spawn_exe = (try vm.getFieldName(config, "spawn_exe")).asBool(),
     };

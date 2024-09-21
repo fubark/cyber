@@ -112,7 +112,6 @@ typedef struct IndexSlice {
 #define VALUE_BOOLEAN(b) (b ? TRUE_MASK : FALSE_MASK)
 #define VALUE_VOID VOID_MASK
 #define VALUE_FLOAT(n) ((ValueUnion){ .d = n }.u)
-#define VALUE_ENUM(tag, val) ((Value)(ENUM_MASK | tag << 8 | val ))
 #define VALUE_CALLINFO(retFlag, callInstOff, stack_size) ((Value)(retFlag | ((u32)callInstOff << 1) | ((u32)stack_size << 8)))
 #define VALUE_TRUE TRUE_MASK
 #define VALUE_FALSE FALSE_MASK
@@ -321,7 +320,6 @@ typedef enum {
     CodeCaptured,
     CodeSetCaptured,
     CodeTagLit,
-    CodeEnum,
     CodeSymbol,
     CodeCast,
     CodeCastAbstract,

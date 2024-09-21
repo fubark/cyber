@@ -3697,10 +3697,6 @@ pub const VMGetArgExt = struct {
         vm.c.framePtr[CallArgStart + idx] = Value.initBool(b);
     }
 
-    pub fn getEnumValue(vm: *VM, idx: u32) u32 {
-        return vm.c.framePtr[CallArgStart + idx].getEnumValue();
-    }
-
     pub fn getSymbol(vm: *VM, idx: u32) u32 {
         return vm.c.framePtr[CallArgStart + idx].asSymbolId();
     }

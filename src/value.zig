@@ -242,10 +242,6 @@ pub const Value = packed union {
         return self.isPointer() and self.asHeapObject().getTypeId() == bt.Integer;
     }
 
-    pub inline fn isEnum(self: *const Value) bool {
-        return self.val & TaggedUpperValueMask == TaggedEnumMask;
-    }
-
     pub inline fn isPointer(self: *const Value) bool {
         return self.val >= MinPtrMask;
     }
@@ -320,18 +316,6 @@ pub const Value = packed union {
 
     pub inline fn getTag(self: *const Value) u4 {
         return @intCast(@as(u32, @intCast(self.val >> 32)) & TagMask);
-    }
-
-    pub inline fn initEnum(typeId: cy.TypeId, val: u16) Value {
-        return .{ .val = TaggedEnumMask | (@as(u64, val) << 32) | typeId };
-    }
-
-    pub inline fn getEnumType(self: *const Value) cy.TypeId {
-        return @intCast(self.val & 0xffffffff);
-    }
-
-    pub inline fn getEnumValue(self: *const Value) u16 {
-        return @intCast((self.val >> 32) & 0xff);
     }
 
     pub inline fn isSymbol(self: *const Value) bool {

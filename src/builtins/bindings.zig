@@ -508,13 +508,13 @@ pub fn byteNot(vm: *cy.VM) Value {
 
 pub fn byteFmt(vm: *cy.VM) anyerror!Value {
     const val = vm.getByte(0);
-    const format = try std.meta.intToEnum(cy.builtins.NumberFormat, vm.getEnumValue(1));
+    const format = try std.meta.intToEnum(cy.builtins.NumberFormat, vm.getInt(1));
     return cy.builtins.intFmtExt(vm, @intCast(val), format, .{});
 }
 
 pub fn byteFmt2(vm: *cy.VM) anyerror!Value {
     const val = vm.getByte(0);
-    const format = try std.meta.intToEnum(cy.builtins.NumberFormat, vm.getEnumValue(1));
+    const format = try std.meta.intToEnum(cy.builtins.NumberFormat, vm.getInt(1));
     const optsv = vm.getObject(*cy.heap.Table, 2);
     const opts = try cy.builtins.getIntFmtOptions(optsv);
     return cy.builtins.intFmtExt(vm, @intCast(val), format, opts);

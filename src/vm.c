@@ -616,6 +616,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Ret0),
         JENTRY(RetDyn),
         JENTRY(Call),
+        JENTRY(CallValue),
         JENTRY(TypeCheck),
         JENTRY(TypeCheckOption),
         JENTRY(DerefObj),
@@ -1308,6 +1309,22 @@ beginSwitch:
 
         Value callee = stack[ret + CALLEE_START];
         PcFpResult res = zCall(vm, pc, stack, callee, ret, numArgs);
+        if (LIKELY(res.code == RES_CODE_SUCCESS)) {
+            pc = res.pc;
+            stack = res.fp;
+            NEXT();
+        }
+        RETURN(res.code);
+    }
+    CASE(CallValue): {
+        #if TRACE
+            vm->c.trace_indent += 1;
+        #endif
+        u8 ret = pc[1];
+        u8 numArgs = pc[2];
+
+        Value callee = stack[ret + CALLEE_START];
+        PcFpResult res = zCallValue(vm, pc, stack, callee, ret);
         if (LIKELY(res.code == RES_CODE_SUCCESS)) {
             pc = res.pc;
             stack = res.fp;

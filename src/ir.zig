@@ -117,6 +117,7 @@ pub const ExprCode = enum(u8) {
     pre,
     preBinOp,
     preUnOp,
+    call_value,
     call_dyn,
     call_obj_sym,
     call_sym,
@@ -551,6 +552,12 @@ pub const CallTrait = struct {
     vtable_idx: u8,
 };
 
+pub const CallValue = struct {
+    callee: Loc,
+    args: Loc,
+    nargs: u8,
+};
+
 pub const CallDyn = struct {
     callee: Loc,
     args: Loc,
@@ -669,6 +676,7 @@ pub fn ExprData(comptime code: ExprCode) type {
         .switchExpr => Switch,
         .switchCase => SwitchCase,
         .else_block => ElseBlock,
+        .call_value => CallValue,
         .call_dyn => CallDyn,
         .call_sym => CallFuncSym,
         .call_trait => CallTrait,

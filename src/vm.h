@@ -198,6 +198,7 @@ typedef struct FmtValue {
 #define CALL_OBJ_SYM_INST_LEN 16
 #define CALL_SYM_INST_LEN 12
 #define CALL_INST_LEN 4
+#define CALL_VALUE_INST_LEN 3
 #define INST_COINIT_LEN 7
 
 #define CALL_ARG_START 5
@@ -266,6 +267,7 @@ typedef enum {
     CodeRet0,
     CodeRetDyn,
     CodeCall,
+    CodeCallValue,
     CodeTypeCheck,
     CodeTypeCheckOption,
     CodeDerefObj,
@@ -1004,6 +1006,7 @@ TypeField zGetTypeField(VM* vm, TypeId typeId, uint32_t field_id);
 Value zEvalCompare(Value left, Value right);
 Value zEvalCompareNot(Value left, Value right);
 PcFpResult zCall(VM* vm, Inst* pc, Value* stack, Value callee, uint8_t startLocal, uint8_t numArgs);
+PcFpResult zCallValue(VM* vm, Inst* pc, Value* stack, Value callee, uint8_t startLocal);
 HeapObjectResult zAllocPoolObject(VM* vm);
 HeapObjectResult zAllocExternalObject(VM* vm, size_t size);
 HeapObjectResult zAllocExternalCycObject(VM* vm, size_t size);

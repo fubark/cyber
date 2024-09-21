@@ -89,7 +89,7 @@ if (!aot) {
     run.case("functions/call_bool_param_error.cy");
 if (!aot) {
     run.case("functions/call_closure.cy");
-    run.case("functions/call_closure_param_panic.cy");
+    run.case("functions/call_closure_param_error.cy");
 }
 
     run.case("functions/call_dyn_object_member.cy");
@@ -107,7 +107,7 @@ if (!aot) {
 if (!aot) {
     run.case("functions/call_method_sig_panic.cy");
     run.case("functions/call_host.cy");
-    run.case("functions/call_host_param_panic.cy");
+    run.case("functions/call_host_param_error.cy");
 }
 if (!aot) {
     run.case("functions/call_object_param.cy");
@@ -122,7 +122,7 @@ if (!aot) {
     run.case("functions/call_recursive.cy");
 if (!aot) {
     run.case("functions/call_shorthand.cy");
-    run.case("functions/call_static_lambda_incompat_arg_panic.cy");
+    run.case("functions/call_static_lambda_incompat_arg_error.cy");
     run.case("functions/call_string_param_error.cy");
     run.case("functions/call_symbol_param_error.cy");
     run.case("functions/call_type_param.cy");
@@ -137,7 +137,7 @@ if (!aot) {
     run.case("functions/func_union_type.cy");
     run.case("functions/func_union_type_error.cy");
     run.case("functions/lambda.cy");
-    run.case("functions/lambda_incompat_arg_panic.cy");
+    run.case("functions/lambda_incompat_arg_error.cy");
     run.case("functions/namespace_call.cy");
     run.case("functions/overload.cy");
     run.case("functions/read_capture_local_error.cy");

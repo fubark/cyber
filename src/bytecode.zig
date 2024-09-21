@@ -1002,6 +1002,7 @@ const DebugMarker = extern struct {
 pub const CallObjSymInstLen = vmc.CALL_OBJ_SYM_INST_LEN;
 pub const CallSymInstLen = vmc.CALL_SYM_INST_LEN;
 pub const CallInstLen = vmc.CALL_INST_LEN;
+pub const CallValueInstLen = vmc.CALL_VALUE_INST_LEN;
 pub const RetDynLen = 2;
 
 test "getInstLenAt" {
@@ -1036,6 +1037,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .copy_struct,
         .not,
         .copy,
+        .call_value,
         .copyRetainSrc,
         .copyReleaseDst,
         .copyRetainRelease,
@@ -1247,6 +1249,7 @@ pub const OpCode = enum(u8) {
     /// Calls a lambda.
     /// [calleeLocal] [numArgs] [numRet=0/1]
     call = vmc.CodeCall,
+    call_value = vmc.CodeCallValue,
 
     typeCheck = vmc.CodeTypeCheck,
     typeCheckOption = vmc.CodeTypeCheckOption,

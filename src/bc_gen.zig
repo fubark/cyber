@@ -479,6 +479,7 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .object_init        => genObjectInit(c, idx, cstr, node),
         .pre                => return error.Unexpected,
         .preBinOp           => genBinOp(c, idx, cstr, node),
+        .call_value         => genCallValue(c, idx, cstr, node),
         .call_dyn           => genCallDyn(c, idx, cstr, node),
         .call_sym           => genCallFuncSym(c, idx, cstr, node),
         .call_sym_dyn       => genCallSymDyn(c, idx, cstr, node),
@@ -1554,6 +1555,37 @@ fn genCallFuncSym(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue 
 
     const retRetained = data.func.retType.isBoxed();
     return endCall(c, inst, retRetained);
+}
+
+fn genCallValue(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
+    const data = c.ir.getExprData(idx, .call_value);
+    const ret_t = c.ir.getExprType(idx);
+    const inst = try beginCall(c, cstr, ret_t, true, node);
+
+    // Callee.
+    const argStart = numSlots(c);
+    var temp = try bc.reserveTemp(c, c.sema.dyn_t);
+    const callee = try genExpr(c, data.callee, Cstr.toTemp(temp));
+    try initSlot(c, temp, callee.retained, node);
+
+    // Args.
+    const args = c.ir.getArray(data.args, u32, data.nargs);
+    for (args, 0..) |argIdx, i| {
+        const arg_t = c.ir.getExprType(argIdx);
+        temp = try bc.reserveTemp(c, arg_t);
+        if (cy.Trace and temp != argStart + 1 + i) return error.Unexpected;
+        const argv = try genExpr(c, argIdx, Cstr.toTemp(temp));
+        try initSlot(c, temp, argv.retained, node);
+    }
+
+    try c.pushFCode(.call_value, &.{inst.ret, data.nargs}, node);
+
+    try popTemps(c, args.len + 1, node);
+    if (inst.own_ret) {
+        try initSlot(c, inst.ret, ret_t.isBoxed(), node);
+    }
+
+    return endCall(c, inst, ret_t.isBoxed());
 }
 
 fn genCallDyn(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {

@@ -18,7 +18,7 @@ t.eq(foo2(20, 10), 30)
 -- Static function wrapped in value.
 func foo3() int:
     return 5
-var bar = foo3
+dyn bar = foo3
 t.eq(bar(), 5)
 
 -- Wrong number of arguments when invoking lambda.
@@ -34,7 +34,7 @@ func toString(val int) String:
 t.eq(try bar('a', 123), error.InvalidSignature)
 
 -- Using as custom less function for sort.
-func less(a dyn, b dyn) bool:
+func less(a int, b int) bool:
     return a < b
 var list = {3, 2, 1}
 list.sort(less)

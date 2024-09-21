@@ -2281,6 +2281,100 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
     }
 }
 
+pub fn callValue(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8) !cy.fiber.PcFp {
+    const obj = callee.asHeapObject();
+    const type_e = vm.getType(obj.getTypeId());
+
+    if (type_e.kind() == .func_ptr) {
+        switch (obj.func_ptr.kind) {
+            .bc => {
+                if (@intFromPtr(framePtr + ret + obj.func_ptr.data.bc.stack_size) >= @intFromPtr(vm.c.stackEndPtr)) {
+                    return error.StackOverflow;
+                }
+
+                const newFramePtr = framePtr + ret;
+                newFramePtr[1] = buildCallInfo(true, cy.bytecode.CallValueInstLen, @intCast(obj.func_ptr.data.bc.stack_size));
+                newFramePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallValueInstLen };
+                newFramePtr[3] = Value{ .retFramePtr = framePtr };
+                return cy.fiber.PcFp{
+                    .pc = cy.fiber.toVmPc(vm, obj.func_ptr.data.bc.pc),
+                    .fp = newFramePtr,
+                };
+            },
+            .host => {
+                defer if (cy.Trace) {
+                    vm.c.trace_indent -= 1;
+                };
+                vm.c.pc = pc;
+                vm.c.framePtr = framePtr + ret;
+                framePtr[ret + 1] = buildRootCallInfo(false);
+                framePtr[ret + 2] = Value{ .retPcPtr = pc };
+                framePtr[ret + 3] = Value{ .retFramePtr = framePtr };
+                const res: Value = @bitCast(obj.func_ptr.data.host.ptr.?(@ptrCast(vm)));
+                if (res.isInterrupt()) {
+                    return error.Panic;
+                }
+                framePtr[ret] = @bitCast(res);
+                return cy.fiber.PcFp{
+                    .pc = pc + cy.bytecode.CallValueInstLen,
+                    .fp = framePtr,
+                };
+            },
+        }
+    } else if (type_e.kind() == .func_union) {
+        // return callFuncUnion(vm, pc, framePtr, callee, ret, numArgs, cont, &obj.func_union);
+        switch (obj.func_union.kind) {
+            .closure => {
+                const newFramePtr = framePtr + ret;
+                // Copy closure to local.
+                newFramePtr[obj.func_union.data.closure.local] = callee;
+                newFramePtr[1] = buildCallInfo(true, cy.bytecode.CallValueInstLen, @intCast(obj.func_union.data.bc.stack_size));
+                newFramePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallValueInstLen };
+                newFramePtr[3] = Value{ .retFramePtr = framePtr };
+                return cy.fiber.PcFp{
+                    .pc = cy.fiber.toVmPc(vm, obj.func_union.data.closure.pc),
+                    .fp = newFramePtr,
+                };
+            },
+            .bc => {
+                if (@intFromPtr(framePtr + ret + obj.func_union.data.bc.stack_size) >= @intFromPtr(vm.c.stackEndPtr)) {
+                    return error.StackOverflow;
+                }
+
+                const newFramePtr = framePtr + ret;
+                newFramePtr[1] = buildCallInfo(true, cy.bytecode.CallValueInstLen, @intCast(obj.func_union.data.bc.stack_size));
+                newFramePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallValueInstLen };
+                newFramePtr[3] = Value{ .retFramePtr = framePtr };
+                return cy.fiber.PcFp{
+                    .pc = cy.fiber.toVmPc(vm, obj.func_union.data.bc.pc),
+                    .fp = newFramePtr,
+                };
+            },
+            .host => {
+                defer if (cy.Trace) {
+                    vm.c.trace_indent -= 1;
+                };
+                vm.c.pc = pc;
+                vm.c.framePtr = framePtr + ret;
+                framePtr[ret + 1] = buildRootCallInfo(false);
+                framePtr[ret + 2] = Value{ .retPcPtr = pc };
+                framePtr[ret + 3] = Value{ .retFramePtr = framePtr };
+                const res: Value = @bitCast(obj.func_union.data.host.ptr.?(@ptrCast(vm)));
+                if (res.isInterrupt()) {
+                    return error.Panic;
+                }
+                framePtr[ret] = @bitCast(res);
+                return cy.fiber.PcFp{
+                    .pc = pc + cy.bytecode.CallValueInstLen,
+                    .fp = framePtr,
+                };
+            },
+        }
+    } else {
+        @panic("Unexpected.");
+    }
+}
+
 fn callFuncUnion(vm: *VM, pc: [*]cy.Inst, framePtr: [*]cy.Value, callee: cy.Value, ret: u8, numArgs: u8, cont: bool, func: *cy.heap.FuncUnion) !cy.fiber.PcFp {
     switch (func.kind) {
         .closure => {
@@ -3294,8 +3388,8 @@ fn zEvalCompareNot(left: Value, right: Value) callconv(.C) vmc.Value {
     return @bitCast(evalCompareNot(left, right));
 }
 
-fn zCall(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8, numArgs: u8) callconv(.C) vmc.PcFpResult {
-    const res = call(vm, pc, framePtr, callee, ret, numArgs, true) catch |err| {
+fn zCallValue(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8) callconv(.C) vmc.PcFpResult {
+    const res = callValue(vm, pc, framePtr, callee, ret) catch |err| {
         if (err == error.Panic) {
             return .{
                 .pc = undefined,
@@ -3323,15 +3417,31 @@ fn zCall(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8, nu
     };
 }
 
-fn zAllocPoolObject(vm: *cy.VM) callconv(.C) vmc.HeapObjectResult {
-    const obj = cy.heap.allocPoolObject(vm) catch {
-        return .{
-            .obj = undefined,
-            .code = vmc.RES_CODE_UNKNOWN,
-        };
+fn zCall(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8, numArgs: u8) callconv(.C) vmc.PcFpResult {
+    const res = call(vm, pc, framePtr, callee, ret, numArgs, true) catch |err| {
+        if (err == error.Panic) {
+            return .{
+                .pc = undefined,
+                .fp = undefined,
+                .code = vmc.RES_CODE_PANIC,
+            };
+        } else if (err == error.StackOverflow) {
+            return .{
+                .pc = undefined,
+                .fp = undefined,
+                .code = vmc.RES_CODE_STACK_OVERFLOW,
+            };
+        } else {
+            return .{
+                .pc = undefined,
+                .fp = undefined,
+                .code = vmc.RES_CODE_UNKNOWN,
+            };
+        }
     };
     return .{
-        .obj = @ptrCast(obj),
+        .pc = @ptrCast(res.pc),
+        .fp = @ptrCast(res.fp),
         .code = vmc.RES_CODE_SUCCESS,
     };
 }
@@ -3503,6 +3613,7 @@ comptime {
         @export(zBox, .{ .name = "zBox", .linkage = .strong });
         @export(zUnbox, .{ .name = "zUnbox", .linkage = .strong });
         @export(zCall, .{ .name = "zCall", .linkage = .strong });
+        @export(zCallValue, .{ .name = "zCallValue", .linkage = .strong });
         @export(zCallSym, .{ .name = "zCallSym", .linkage = .strong });
         @export(zCallTrait, .{ .name = "zCallTrait", .linkage = .strong });
         @export(zCallSymDyn, .{ .name = "zCallSymDyn", .linkage = .strong });

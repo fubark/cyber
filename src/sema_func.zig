@@ -22,6 +22,22 @@ const FuncResultUnion = union {
     ct: cte.CtValue,
 };
 
+pub const FuncSigResult = struct {
+    incompat: bool,
+    data: union {
+        rt: struct {
+            args_loc: u32,
+            nargs: u32,
+        },
+        ct: usize, // ct_arg_start.
+        incompat: *ast.Node,
+    },
+
+    fn initIncompat(node: *ast.Node) FuncSigResult {
+        return .{ .incompat = true, .data = .{ .incompat = node }};
+    }
+};
+
 pub const FuncResult = struct {
     func: *cy.Func,
     data: FuncResultUnion,
@@ -130,7 +146,6 @@ pub fn matchFuncTemplate(c: *cy.Chunk, template: *cy.sym.FuncTemplate,
     }
 
     const config = MatchConfig{
-        .template_arg_start = undefined,
         .single_func = true,
         .ct_call = cstr.ct_call,
     };
@@ -206,9 +221,38 @@ pub fn matchFuncTemplate(c: *cy.Chunk, template: *cy.sym.FuncTemplate,
 
 pub fn matchFunc(c: *cy.Chunk, func: *cy.sym.Func, arg_start: usize, nargs: usize, cstr: CallCstr, node: *ast.Node) !FuncResult {
     const func_sig = c.sema.getFuncSig(func.funcSigId);
-    const params = func_sig.params();
+    const res = try matchFuncSig(c, func_sig, arg_start, nargs, cstr, node);
+    if (res.incompat) {
+        return reportIncompatCallFunc(c, func, arg_start, cstr.ret, res.data.incompat);
+    }
+    if (cstr.ct_call) {
+        const ct_args = c.valueStack.items[res.data.ct..];
+        defer {
+            for (ct_args) |arg| {
+                c.vm.release(arg);
+            }
+            c.valueStack.items.len = res.data.ct;
+        }
+        const ct_res = try cte.compileAndCallFunc(c, func, ct_args);
+        return .{
+            .func = func,
+            .data = .{ .ct = ct_res },
+        };
+    } else {
+        return .{
+            .func = func,
+            .data = .{ .rt = .{
+                .args_loc = res.data.rt.args_loc,
+                .nargs = res.data.rt.nargs,
+            }},
+        };
+    }
+}
+
+pub fn matchFuncSig(c: *cy.Chunk, sig: cy.sema.FuncSig, arg_start: usize, nargs: usize, cstr: CallCstr, node: *ast.Node) !FuncSigResult {
+    const params = sig.params();
     if (params.len != nargs) {
-        return reportIncompatCallFunc(c, func, arg_start, cstr.ret, node);
+        return FuncSigResult.initIncompat(node);
     }
 
     const loc = try c.ir.pushEmptyArray(c.alloc, u32, nargs);
@@ -222,26 +266,16 @@ pub fn matchFunc(c: *cy.Chunk, func: *cy.sym.Func, arg_start: usize, nargs: usiz
         ct_arg_start = c.valueStack.items.len;
         try c.valueStack.resize(c.alloc, ct_arg_start + nargs);
     }
-    const template_arg_start = c.valueStack.items.len;
-    defer {
+    errdefer {
         if (cstr.ct_call) {
             for (c.valueStack.items[ct_arg_start..ct_arg_start+rt_arg_idx]) |arg| {
                 c.vm.release(arg);
             }
-            for (c.valueStack.items[template_arg_start..]) |arg| {
-                c.vm.release(arg);
-            }
             c.valueStack.items.len = ct_arg_start;
-        } else {
-            for (c.valueStack.items[template_arg_start..]) |arg| {
-                c.vm.release(arg);
-            }
-            c.valueStack.items.len = template_arg_start;
         }
     }
 
     const config = MatchConfig{
-        .template_arg_start = template_arg_start,
         .single_func = true,
         .ct_call = cstr.ct_call,
     };
@@ -261,7 +295,7 @@ pub fn matchFunc(c: *cy.Chunk, func: *cy.sym.Func, arg_start: usize, nargs: usiz
             c.valueStack.items[ct_arg_start + rt_arg_idx] = final_arg.res.ct.value;
             rt_arg_idx += 1;
         } else if (final_arg.resolve_t == .incompat) {
-            return reportIncompatCallFunc(c, func, arg_start, cstr.ret, arg.node);
+            return FuncSigResult.initIncompat(arg.node);
         }
     }
 
@@ -271,15 +305,13 @@ pub fn matchFunc(c: *cy.Chunk, func: *cy.sym.Func, arg_start: usize, nargs: usiz
     }
 
     if (cstr.ct_call) {
-        const ct_args = c.valueStack.items[ct_arg_start..];
-        const res = try cte.compileAndCallFunc(c, func, ct_args);
         return .{
-            .func = func,
-            .data = .{ .ct = res },
+            .incompat = false,
+            .data = .{ .ct = ct_arg_start },
         };
     } else {
         return .{
-            .func = func,
+            .incompat = false,
             .data = .{ .rt = .{
                 .args_loc = loc,
                 .nargs = rt_arg_idx,
@@ -300,24 +332,16 @@ pub fn matchFuncSym(c: *cy.Chunk, func_sym: *cy.sym.FuncSym, arg_start: usize, n
         const res = try matchFunc(c, func_sym.first, arg_start, nargs, cstr, node);
         return .{
             .dyn_call = false,
-            .func = res.func,
+            .func = func_sym.first,
             .data = res.data,
         };
     }
 
     const loc = try c.ir.pushEmptyArray(c.alloc, u32, nargs);
 
-    const template_arg_start = c.valueStack.items.len;
-    defer {
-        for (c.valueStack.items[template_arg_start..]) |arg| {
-            c.vm.release(arg);
-        }
-        c.valueStack.items.len = template_arg_start;
-    }
-
     var next: ?*cy.Func = func_sym.first;
     while (next) |func| {
-        if (try matchOverloadedFunc(c, func, arg_start, nargs, template_arg_start, cstr, loc)) |res| {
+        if (try matchOverloadedFunc(c, func, arg_start, nargs, cstr, loc)) |res| {
             return res;
         }
         next = func.next;
@@ -326,7 +350,7 @@ pub fn matchFuncSym(c: *cy.Chunk, func_sym: *cy.sym.FuncSym, arg_start: usize, n
     return reportIncompatCallFuncSym(c, func_sym, arg_start, cstr.ret, node);
 }
 
-fn matchOverloadedFunc(c: *cy.Chunk, func: *cy.Func, arg_start: usize, nargs: usize, template_arg_start: usize, cstr: CallCstr, args_loc: u32) !?FuncSymResult {
+fn matchOverloadedFunc(c: *cy.Chunk, func: *cy.Func, arg_start: usize, nargs: usize, cstr: CallCstr, args_loc: u32) !?FuncSymResult {
     const func_sig = c.sema.getFuncSig(func.funcSigId);
     const params = func_sig.params();
 
@@ -335,7 +359,6 @@ fn matchOverloadedFunc(c: *cy.Chunk, func: *cy.Func, arg_start: usize, nargs: us
     }
 
     const config = MatchConfig{
-        .template_arg_start = template_arg_start,
         .single_func = false,
         .ct_call = cstr.ct_call,
     };
@@ -456,7 +479,6 @@ fn resolveRtArg(c: *cy.Chunk, arg: Argument, node: *ast.Node, opt_target_t: ?*cy
 }
 
 const MatchConfig = struct {
-    template_arg_start: usize,
     single_func: bool,
 
     /// Whether the function is intended to be invoked at compile-time.
@@ -630,9 +652,42 @@ pub fn reportIncompatCallFunc(c: *cy.Chunk, func: *cy.Func, arg_start: usize, re
     return sema.reportIncompatCallFunc2(c, func, types, ret_cstr, node);
 }
 
-fn expectTypeFromTemplate(c: *cy.Chunk, type_id: cy.TypeId, exp: *cy.sym.Template, node: *ast.Node) !*cy.sym.Variant {
-    const variant = c.sema.getTypeSym(type_id).getVariant() orelse {
-        const name = try c.sema.allocTypeName(type_id);
+pub fn reportIncompatCallValue(c: *cy.Chunk, exp_sig: cy.sema.FuncSigId, arg_start: usize, node: *ast.Node) anyerror {
+    const type_start = c.typeStack.items.len;
+    defer c.typeStack.items.len = type_start;
+
+    const args = c.arg_stack.items[arg_start..];
+    for (args) |arg| {
+        if (arg.resolve_t == .null) {
+            try c.typeStack.append(c.alloc, &cy.types.NullType);
+        } else if (arg.resolve_t == .rt) {
+            try c.typeStack.append(c.alloc, arg.res.rt.type);
+        } else if (arg.resolve_t == .ct) {
+            try c.typeStack.append(c.alloc, arg.res.ct.type);
+        } else {
+            try c.typeStack.append(c.alloc, arg.res.incompat.res_t);
+        }
+    }
+    const types = c.typeStack.items[type_start..];
+    return reportIncompatCallValue2(c, exp_sig, types, node);
+}
+
+fn reportIncompatCallValue2(c: *cy.Chunk, exp_sig: cy.sema.FuncSigId, args: []const *cy.Type, node: *ast.Node) anyerror { 
+    var msg: std.ArrayListUnmanaged(u8) = .{};
+    const w = msg.writer(c.alloc);
+    const funcStr = try c.sema.formatFuncSig(exp_sig, &cy.tempBuf, c);
+    try w.print("Can not call function value.\nExpected: `func {s}`", .{funcStr});
+    try w.writeAll("\n");
+    const callSigStr = try c.sema.allocTypesStr(args, c);
+    defer c.alloc.free(callSigStr);
+    try w.print("Found:    `func ({s})`", .{callSigStr});
+    try c.compiler.addReportConsume(.compile_err, try msg.toOwnedSlice(c.alloc), c.id, node.pos());
+    return error.CompileError;
+}
+
+fn expectTypeFromTemplate(c: *cy.Chunk, type_: *cy.Type, exp: *cy.sym.Template, node: *ast.Node) !*cy.sym.Variant {
+    const variant = type_.sym().variant orelse {
+        const name = try c.sema.allocTypeName(type_);
         defer c.alloc.free(name);
         return c.reportErrorFmt("Expected `{}` to be an expanded type.", &.{v(name)}, node);
     };

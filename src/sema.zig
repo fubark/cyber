@@ -3188,7 +3188,7 @@ fn callSym(c: *cy.Chunk, sym: *Sym, symNode: *ast.Node, args: []*ast.Node, cstr:
             // preCall.
             const callee = try sema.symbol(c, sym, Expr.init(symNode), true);
             const args_loc = try c.semaPushDynCallArgs(args);
-            return c.semaCallValue(callee.irIdx, args.len, args_loc, node);
+            return c.semaCallValueDyn(callee.irIdx, args.len, args_loc, node);
         },
         else => {
             // try pushCallArgs(c, node.data.callExpr.argHead, numArgs, true);
@@ -4967,6 +4967,26 @@ pub const ChunkExt = struct {
         return c.semaCallFuncSymResult(sym, res, cstr.ct_call, node);
     }
 
+    pub fn semaCallValue(c: *cy.Chunk, func: ExprResult, sig_id: FuncSigId, args: []*ast.Node, ret_cstr: ReturnCstr, node: *ast.Node) !ExprResult {
+        const arg_start = c.arg_stack.items.len;
+        defer c.arg_stack.items.len = arg_start;
+        for (args) |arg| {
+            try c.arg_stack.append(c.alloc, Argument.init(arg));
+        }
+        const sig = c.sema.getFuncSig(sig_id);
+        const cstr = CallCstr{ .ret = ret_cstr };
+        const res = try sema_func.matchFuncSig(c, sig, arg_start, args.len, cstr, node);
+        if (res.incompat) {
+            return sema_func.reportIncompatCallValue(c, sig_id, arg_start, res.data.incompat);
+        }
+        const loc = try c.ir.pushExpr(.call_value, c.alloc, sig.ret, node, .{
+            .callee = func.irIdx,
+            .nargs = @as(u8, @intCast(res.data.rt.nargs)),
+            .args = res.data.rt.args_loc,
+        });
+        return ExprResult.init(loc, sig.ret);
+    }
+
     pub fn semaCallFunc(c: *cy.Chunk, func: *cy.Func, args: []*ast.Node, ret_cstr: ReturnCstr, node: *ast.Node) !ExprResult {
         const arg_start = c.arg_stack.items.len;
         defer c.arg_stack.items.len = arg_start;
@@ -6033,14 +6053,13 @@ pub const ChunkExt = struct {
                             node.args, expr.getRetCstr(), expr.node);
                     } else {
                         const callee_v = try c.semaExpr(node.callee, .{});
-                        if (callee_v.type == bt.Dyn) {
+                        if (callee_v.type.id() == bt.Dyn) {
                             const args = try c.semaPushDynCallArgs(node.args);
-                            return c.semaCallValue(callee_v.irIdx, node.args.len, args, expr.node);
+                            return c.semaCallValueDyn(callee_v.irIdx, node.args.len, args, expr.node);
                         } else {
-                            const type_e = c.sema.getType(callee_v.type);
-                            if (type_e.kind == .func_ptr or type_e.kind == .func_union) {
+                            if (callee_v.type.kind() == .func_ptr or callee_v.type.kind() == .func_union) {
                                 const args = try c.semaPushDynCallArgs(node.args);
-                                return c.semaCallValue(callee_v.irIdx, node.args.len, args, expr.node);
+                                return c.semaCallValueDyn(callee_v.irIdx, node.args.len, args, expr.node);
                             } else {
                                 return c.reportErrorFmt("Expected `{}` to be a function.", &.{v(rightName)}, callee.right);
                             }
@@ -6057,8 +6076,15 @@ pub const ChunkExt = struct {
                 .local => {
                     // preCall.
                     const calleeRes = try c.semaExpr(node.callee, .{});
-                    const args = try c.semaPushDynCallArgs(node.args);
-                    return c.semaCallValue(calleeRes.irIdx, node.args.len, args, expr.node);
+
+                    if (calleeRes.type.kind() == .func_ptr) {
+                        return c.semaCallValue(calleeRes, calleeRes.type.cast(.func_ptr).sig, node.args, expr.getRetCstr(), expr.node);
+                    } else if (calleeRes.type.kind() == .func_union) {
+                        return c.semaCallValue(calleeRes, calleeRes.type.cast(.func_union).sig, node.args, expr.getRetCstr(), expr.node);
+                    } else {
+                        const args = try c.semaPushDynCallArgs(node.args);
+                        return c.semaCallValueDyn(calleeRes.irIdx, node.args.len, args, expr.node);
+                    }
                 },
                 .static => |sym| {
                     return callSym(c, sym, node.callee, node.args, expr.getCallCstr(ct_call), expr.node);
@@ -6088,7 +6114,7 @@ pub const ChunkExt = struct {
                 return c.semaCallFunc(calleeRes.data.func, node.args, expr.getRetCstr(), @ptrCast(node));
             } else {
                 const args = try c.semaPushDynCallArgs(node.args);
-                return c.semaCallValue(calleeRes.irIdx, node.args.len, args, expr.node);
+                return c.semaCallValueDyn(calleeRes.irIdx, node.args.len, args, expr.node);
             }
         }
     }

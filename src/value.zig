@@ -55,8 +55,10 @@ pub const Value = packed union {
     /// TODO: Remove once binded functions no longer have a Value return.
     pub const Void = Value{ .val = VoidMask };
 
-    pub const True = Value{ .val = TrueMask };
-    pub const False = Value{ .val = FalseMask };
+    pub const True = Value{ .val = 1 };
+    pub const False = Value{ .val = 0 };
+    pub const BoxTrue = Value{ .val = TrueMask };
+    pub const BoxFalse = Value{ .val = FalseMask };
 
     /// Interrupt value. Represented as an error tag literal with a null tag id.
     /// Returned from native funcs.
@@ -156,8 +158,8 @@ pub const Value = packed union {
     }
 
     pub fn toBool(self: *const Value) bool {
-        if (self.isBool()) {
-            return self.asBool();
+        if (self.isBoxBool()) {
+            return self.asBoxBool();
         }
         if (self.isFloat() and self.asF64() == 0) {
             return false;
@@ -291,14 +293,18 @@ pub const Value = packed union {
     }
 
     pub inline fn asBool(self: *const Value) bool {
+        return self.val == 1;
+    }
+
+    pub inline fn asBoxBool(self: *const Value) bool {
         return self.val == TrueMask;
     }
 
-    pub inline fn isVoid(self: *const Value) bool {
-        return self.val == VoidMask;
+    pub inline fn isTrue(self: *const Value) bool {
+        return self.val == 1;
     }
 
-    pub inline fn isTrue(self: *const Value) bool {
+    pub inline fn isBoxTrue(self: *const Value) bool {
         return self.val == TrueMask;
     }
 
@@ -306,7 +312,7 @@ pub const Value = packed union {
         return self.val == Interrupt.val;
     }
 
-    pub inline fn isBool(self: *const Value) bool {
+    pub inline fn isBoxBool(self: *const Value) bool {
         return self.val & (TaggedPrimitiveMask | SignMask) == BooleanMask;
     }
 
@@ -354,12 +360,11 @@ pub const Value = packed union {
         }
     }
 
-    pub inline fn initHostPtr(ptr: ?*anyopaque) Value {
-        const obj: *cy.HeapObject = @ptrFromInt(@intFromPtr(ptr) - 8);
-        if (obj.isCyclable()) {
-            return .{ .val = vmc.CYC_POINTER_MASK | (@intFromPtr(obj) & vmc.POINTER_PAYLOAD_MASK) };
+    pub inline fn initBoxBool(b: bool) Value {
+        if (b) {
+            return BoxTrue;
         } else {
-            return .{ .val = vmc.NOCYC_POINTER_MASK | (@intFromPtr(obj) & vmc.POINTER_PAYLOAD_MASK) };
+            return BoxFalse;
         }
     }
 
@@ -510,8 +515,8 @@ test "value internals." {
     try t.eq(@sizeOf(Value), 8);
     try t.eq(@alignOf(Value), 8);
     try t.eq(Value.Void.val, 0x7FFC000100000000);
-    try t.eq(Value.True.val, 0x7FFC000200000001);
-    try t.eq(Value.False.val, 0x7FFC000200000000);
+    try t.eq(Value.BoxTrue.val, 0x7FFC000200000001);
+    try t.eq(Value.BoxFalse.val, 0x7FFC000200000000);
     try t.eq(Value.Interrupt.val, 0x7ffc00030000ffff);
     try t.eq(vmc.MIN_PTR_MASK, 0xFFFC000000000000);
     try t.eq(Value.initInt(0).val, 0);

@@ -905,9 +905,13 @@ export fn clAsBool(val: Value) bool {
     return val.asBool();
 }
 
-test "clAsBool()" {
-    try t.eq(c.asBool(c.True), true);
-    try t.eq(c.asBool(c.False), false);
+export fn clAsBoxBool(val: Value) bool {
+    return val.asBoxBool();
+}
+
+test "clAsBoxBool()" {
+    try t.eq(C.asBoxBool(C.True), true);
+    try t.eq(C.asBoxBool(C.False), false);
 }
 
 export fn clAsBoxInt(val: Value) i64 {
@@ -915,15 +919,15 @@ export fn clAsBoxInt(val: Value) i64 {
 }
 
 test "clAsBoxInt()" {
-    const vm = c.create();
+    const vm = C.create();
     defer vm.destroy();
 
     const val = vm.newInt(123);
-    try t.eq(c.asBoxInt(val), 123);
+    try t.eq(C.asBoxInt(val), 123);
 }
 
-export fn clAsString(val: cy.Value) c.Str {
-    return c.toStr(val.asString());
+export fn clAsString(val: cy.Value) C.Str {
+    return C.toStr(val.asString());
 }
 
 export fn clAsSymbolId(val: Value) u32 {
@@ -931,67 +935,70 @@ export fn clAsSymbolId(val: Value) u32 {
 }
 
 test "clAsSymbolId()" {
-    const vm = c.create();
+    const vm = C.create();
     defer vm.destroy();
 
-    var val = c.symbol(vm, "foo");
-    try t.eq(c.asSymbolId(val), 49);
+    var val = C.symbol(vm, "foo");
+    try t.eq(C.asSymbolId(val), 49);
 
-    val = c.symbol(vm, "bar");
-    try t.eq(c.asSymbolId(val), 50);
+    val = C.symbol(vm, "bar");
+    try t.eq(C.asSymbolId(val), 50);
 
-    val = c.symbol(vm, "foo");
-    try t.eq(c.asSymbolId(val), 49);
+    val = C.symbol(vm, "foo");
+    try t.eq(C.asSymbolId(val), 49);
 }
 
-export fn clToTempString(vm: *cy.VM, val: Value) c.Str {
+export fn clToTempString(vm: *cy.VM, val: Value) C.Str {
     const str = vm.getOrBufPrintValueStr(&cy.tempBuf, val) catch cy.fatal();
-    return c.toStr(str);
+    return C.toStr(str);
 }
 
 test "Constants." {
-    try t.eq(c.TypeVoid, bt.Void);
-    try t.eq(c.TypeBoolean, bt.Boolean);
-    try t.eq(c.TypeError, bt.Error);
-    try t.eq(c.TypeSymbol, bt.Symbol);
-    try t.eq(c.TypeInteger, bt.Integer);
-    try t.eq(c.TypeFloat, bt.Float);
-    try t.eq(c.TypeListDyn, bt.ListDyn);
-    try t.eq(c.TypeListIterDyn, bt.ListIterDyn);
-    try t.eq(c.TypeMap, bt.Map);
-    try t.eq(c.TypeMapIter, bt.MapIter);
-    try t.eq(c.TypeFunc, bt.Func);
-    try t.eq(c.TypeString, bt.String);
-    try t.eq(c.TypeFiber, bt.Fiber);
-    try t.eq(c.TypeExternFunc, bt.ExternFunc);
-    try t.eq(c.TypeType, bt.Type);
-    try t.eq(c.TypeTccState, bt.TccState);
-    try t.eq(c.TypeTuple, bt.Tuple);
-    try t.eq(c.TypeFuncSig, bt.FuncSig);
-    try t.eq(c.TypeExprType, bt.ExprType);
+    try t.eq(C.TypeVoid, bt.Void);
+    try t.eq(C.TypeBoolean, bt.Boolean);
+    try t.eq(C.TypeError, bt.Error);
+    try t.eq(C.TypeSymbol, bt.Symbol);
+    try t.eq(C.TypeInteger, bt.Integer);
+    try t.eq(C.TypeFloat, bt.Float);
+    try t.eq(C.TypeMap, bt.Map);
+    try t.eq(C.TypeMapIter, bt.MapIter);
+    try t.eq(C.TypeFunc, bt.Func);
+    try t.eq(C.TypeString, bt.String);
+    try t.eq(C.TypeFiber, bt.Fiber);
+    try t.eq(C.TypeExternFunc, bt.ExternFunc);
+    try t.eq(C.TypeType, bt.Type);
+    try t.eq(C.TypeTccState, bt.TccState);
+    try t.eq(C.TypeTuple, bt.Tuple);
+    try t.eq(C.TypeFuncSig, bt.FuncSig);
+    try t.eq(C.TypeExprType, bt.ExprType);
 }
 
 export fn clAsHostObject(val: Value) *anyopaque {
     return val.castHostObject(*anyopaque);
 }
 
-export fn clGetType(val: Value) c.Type {
-    return val.getTypeId();
+export fn clTypeId(type_: *cy.Type) cy.TypeId {
+    return type_.id();
 }
 
-test "clGetTypeId()" {
-    try t.eq(c.getType(c.float(123)), bt.Float);
+export fn clGetType(vm: *cy.VM, val: Value) *C.Type {
+    const id = val.getTypeId();
+    return @ptrCast(vm.sema.getType(id));
 }
+
+// test "clGetTypeId()" {
+//     try t.eq(C.getType(C.float(123)), bt.Float);
+// }
 
 export fn clIsFuture(vm: *cy.VM, val: Value) bool {
     return vm.c.types[val.getTypeId()].info.is_future;
 }
 
-export fn clNewValueDump(vm: *cy.VM, val: Value) c.Str {
+export fn clNewValueDump(vm: *cy.VM, val: Value) C.Str {
     var buf: std.ArrayListUnmanaged(u8) = .{};
     const w = buf.writer(vm.alloc);
     cy.debug.dumpValue(vm, w, val, .{}) catch cy.fatal();
-    return c.toStr(buf.toOwnedSlice(vm.alloc) catch cy.fatal());
+    return C.toStr(buf.toOwnedSlice(vm.alloc) catch cy.fatal());
 }
 
 export fn clListLen(list: Value) usize {

@@ -771,25 +771,17 @@ beginSwitch:
         FLOAT_BINOP(stack[pc[3]] = VALUE_FLOAT(VALUE_AS_FLOAT(left) - VALUE_AS_FLOAT(right)))
     }
     CASE(True): {
-        stack[pc[1]] = VALUE_TRUE;
+        stack[pc[1]] = true;
         pc += 2;
         NEXT();
     }
     CASE(False): {
-        stack[pc[1]] = VALUE_FALSE;
+        stack[pc[1]] = false;
         pc += 2;
         NEXT();
     }
     CASE(Not): {
-        Value val = stack[pc[1]];
-#if TRACE
-        if (!VALUE_IS_BOOLEAN(val)) {
-            panicStaticMsg(vm, "Expected `bool` type.");
-            RETURN(RES_CODE_PANIC);
-        }
-#endif
-        bool bval = VALUE_AS_BOOLEAN(val);
-        stack[pc[2]] = VALUE_BOOLEAN(!bval);
+        stack[pc[2]] = !(stack[pc[1]]);
         pc += 3;
         NEXT();
     }
@@ -797,14 +789,14 @@ beginSwitch:
         Value opt = stack[pc[1]];
 #if TRACE
         TypeId typeId = getTypeId(opt);
-        TypeEntry entry = vm->c.typesPtr[typeId];
-        if (entry.kind != TYPE_KIND_OPTION) {
+        TypeBase* type = vm->c.typesPtr[typeId];
+        if (type->kind != TYPE_KIND_OPTION) {
             TRACEV("Expected option value.");
             zFatal();
         }
 #endif
         bool is_none = VALUE_AS_INTEGER(objectGetField((Object*)VALUE_AS_HEAPOBJECT(opt), 0)) == 0;
-        stack[pc[2]] = VALUE_BOOLEAN(is_none);
+        stack[pc[2]] = is_none;
         pc += 3;
         NEXT();
     }
@@ -1040,14 +1032,7 @@ beginSwitch:
         NEXT();
     }
     CASE(JumpNotCond): {
-        Value condv = stack[pc[1]];
-#if TRACE
-        if (!VALUE_IS_BOOLEAN(condv)) {
-            panicStaticMsg(vm, "Unexpected. Insert type check.");
-            RETURN(RES_CODE_PANIC);
-        }
-#endif
-        bool cond = VALUE_AS_BOOLEAN(condv);
+        bool cond = stack[pc[1]];
         if (!cond) {
             pc += READ_U16(2);
             NEXT();
@@ -1057,14 +1042,7 @@ beginSwitch:
         }
     }
     CASE(JumpCond): {
-        Value condv = stack[pc[1]];
-#if TRACE
-        if (!VALUE_IS_BOOLEAN(condv)) {
-            panicStaticMsg(vm, "Unexpected. Insert type check.");
-            RETURN(RES_CODE_PANIC);
-        }
-#endif
-        bool cond = VALUE_AS_BOOLEAN(condv);
+        bool cond = stack[pc[1]];
         if (cond) {
             pc += (uintptr_t)READ_I16(2);
         } else {
@@ -1475,7 +1453,7 @@ beginSwitch:
         Value left = stack[pc[1]];
         Value right = stack[pc[2]];
         if (left == right) {
-            stack[pc[3]] = VALUE_TRUE;
+            stack[pc[3]] = true;
         } else {
             stack[pc[3]] = zEvalCompare(left, right);
         }
@@ -1483,28 +1461,28 @@ beginSwitch:
         NEXT();
     }
     CASE(LessFloat): {
-        FLOAT_BINOP(stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_FLOAT(left) < VALUE_AS_FLOAT(right)))
+        FLOAT_BINOP(stack[pc[3]] = VALUE_AS_FLOAT(left) < VALUE_AS_FLOAT(right))
     }
     CASE(GreaterFloat): {
-        FLOAT_BINOP(stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_FLOAT(left) > VALUE_AS_FLOAT(right)))
+        FLOAT_BINOP(stack[pc[3]] = VALUE_AS_FLOAT(left) > VALUE_AS_FLOAT(right))
     }
     CASE(LessEqualFloat): {
-        FLOAT_BINOP(stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_FLOAT(left) <= VALUE_AS_FLOAT(right)))
+        FLOAT_BINOP(stack[pc[3]] = VALUE_AS_FLOAT(left) <= VALUE_AS_FLOAT(right))
     }
     CASE(GreaterEqualFloat): {
-        FLOAT_BINOP(stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_FLOAT(left) >= VALUE_AS_FLOAT(right)))
+        FLOAT_BINOP(stack[pc[3]] = VALUE_AS_FLOAT(left) >= VALUE_AS_FLOAT(right))
     }
     CASE(LessInt): {
-        INTEGER_BINOP(stack[pc[3]] = VALUE_BOOLEAN(left < right))
+        INTEGER_BINOP(stack[pc[3]] = left < right)
     }
     CASE(GreaterInt): {
-        INTEGER_BINOP(stack[pc[3]] = VALUE_BOOLEAN(left > right))
+        INTEGER_BINOP(stack[pc[3]] = left > right)
     }
     CASE(LessEqualInt): {
-        INTEGER_BINOP(stack[pc[3]] = VALUE_BOOLEAN(left <= right))
+        INTEGER_BINOP(stack[pc[3]] = left <= right)
     }
     CASE(GreaterEqualInt): {
-        INTEGER_BINOP(stack[pc[3]] = VALUE_BOOLEAN(left >= right))
+        INTEGER_BINOP(stack[pc[3]] = left >= right)
     }
     CASE(MulFloat): {
         FLOAT_BINOP(stack[pc[3]] = VALUE_FLOAT(VALUE_AS_FLOAT(left) * VALUE_AS_FLOAT(right)))
@@ -1522,7 +1500,7 @@ beginSwitch:
         Value left = stack[pc[1]];
         Value right = stack[pc[2]];
         if (left == right) {
-            stack[pc[3]] = VALUE_FALSE;
+            stack[pc[3]] = false;
         } else {
             stack[pc[3]] = zEvalCompareNot(left, right);
         }

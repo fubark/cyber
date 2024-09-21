@@ -1915,7 +1915,7 @@ fn floatCall(vm: *cy.VM) Value {
         bt.Symbol => return Value.initF64(@floatFromInt(val.val & @as(u64, 0xFF))),
         bt.Integer => return Value.initF64(@floatFromInt(val.asBoxInt())),
         bt.Void => return Value.initF64(0),
-        bt.Boolean => return Value.initF64(if (val.asBool()) 1 else 0),
+        bt.Boolean => return Value.initF64(if (val.asBoxBool()) 1 else 0),
         else => {
             const type_e = vm.getType(val.getTypeId());
             if (type_e.kind() == .enum_t) {

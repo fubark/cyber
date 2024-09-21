@@ -398,7 +398,7 @@ fn parseArgs(vm: *cy.VM) anyerror!Value {
                     },
                     .bool => {
                         vm.retain(opt.name);
-                        try map.put(vm.alloc, opt.name, Value.True);
+                        try map.put(vm.alloc, opt.name, Value.BoxTrue);
                         opt.found = true;
                     },
                 }

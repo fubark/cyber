@@ -530,7 +530,8 @@ CLStr clNewValueDump(CLVM* vm, CLValue val);
 
 // Booleans.
 CLValue clBool(bool b);
-bool clAsBool(CLValue val); // Assumes boolean.
+bool clAsBool(CLValue val);    // Assumes boolean.
+bool clAsBoxBool(CLValue val); // Assumes boxed boolean.
 bool clToBool(CLValue val); // Performs a naive conversion.
 
 // 64-bit integer.

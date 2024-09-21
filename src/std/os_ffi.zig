@@ -598,7 +598,11 @@ fn writeToCValue(w: anytype, val: []const u8, ctype: CType, unbox: bool) !void {
 fn writeToCValueForSym(w: anytype, val: []const u8, sym: Symbol, unbox: bool) !void {
     switch (sym) {
         .bool => {
-            try w.print("({s} == 0x7FFC000200000001)?1:0", .{val});
+            if (unbox) {
+                try w.print("({s} == 0x7FFC000200000001)?1:0", .{val});
+            } else {
+                try w.print("(bool)({s})", .{val});
+            }
         },
         .char => {
             try w.print("(int8_t)({s} & 0xFFFFFFFFFFFF)", .{val});

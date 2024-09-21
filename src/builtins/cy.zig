@@ -272,7 +272,7 @@ fn genImplicitFuncDeclEntry(vm: *cy.VM, view: ast.AstView, node: *ast.FuncDecl, 
     const ret = try genTypeSpecString(vm, view, node.ret);
     try vm.mapSet(entry, try vm.retainOrAllocAstring("ret"), ret);
 
-    const hidden = cy.Value.initBool(node.hidden);
+    const hidden = cy.Value.initBoxBool(node.hidden);
     try vm.mapSet(entry, try vm.retainOrAllocAstring("hidden"), hidden);
 
     state.pos = node.pos;
@@ -320,7 +320,7 @@ fn genDeclEntry(vm: *cy.VM, view: ast.AstView, decl: *ast.Node, state: *ParseCyb
             }
             try vm.mapSet(entry, try vm.retainOrAllocAstring("params"), params);
 
-            const hidden = cy.Value.initBool(func_decl.hidden);
+            const hidden = cy.Value.initBoxBool(func_decl.hidden);
             try vm.mapSet(entry, try vm.retainOrAllocAstring("hidden"), hidden);
 
             const ret = try genTypeSpecString(vm, view, func_decl.ret);

@@ -84,6 +84,7 @@ pub const bool_ = c.clBool;
 pub const asBoxInt = c.clAsBoxInt;
 pub const int = c.clInt;
 pub const asBool = c.clAsBool;
+pub const asBoxBool = c.clAsBoxBool;
 pub const toBool = c.clToBool;
 pub const declareFuncDyn = c.clDeclareFuncDyn;
 pub const declareFunc = c.clDeclareFunc;

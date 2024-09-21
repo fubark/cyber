@@ -738,8 +738,8 @@ fn semaIfStmt2(c: *cy.Chunk, cond: ExprResult, first_stmt: u32, else_block: u32,
 }
 
 fn semaCtIfStmt(c: *cy.Chunk, if_stmt: *ast.IfStmt) !void {
-    var cond_res = try cte.evalExpr(c, if_stmt.cond, bt.Boolean);
-    if (cond_res.value.asBool()) {
+    var cond_res = try cte.evalExpr(c, if_stmt.cond, c.sema.bool_t);
+    if (cond_res.value.asBoxBool()) {
         try pushBlock(c, @ptrCast(if_stmt));
         try semaStmts(c, if_stmt.stmts);
         const block = try popBlock(c);
@@ -748,8 +748,8 @@ fn semaCtIfStmt(c: *cy.Chunk, if_stmt: *ast.IfStmt) !void {
     } else {
         for (if_stmt.else_blocks) |else_b| {
             if (else_b.cond) |cond| {
-                cond_res = try cte.evalExpr(c, cond, bt.Boolean);
-                if (!cond_res.value.asBool()) {
+                cond_res = try cte.evalExpr(c, cond, c.sema.bool_t);
+                if (!cond_res.value.asBoxBool()) {
                     continue;
                 }
             }

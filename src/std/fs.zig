@@ -329,12 +329,12 @@ pub fn fileRead(vm: *cy.VM) anyerror!Value {
 
     const tempBuf = &vm.u8Buf;
     tempBuf.clearRetainingCapacity();
-    defer tempBuf.ensureMaxCapOrClear(vm.alloc, 4096) catch cy.fatal();
+    defer if (tempBuf.capacity > 4096) tempBuf.clearAndFree(vm.alloc);
     try tempBuf.ensureTotalCapacityPrecise(vm.alloc, unumBytes);
 
-    const numRead = try file.read(tempBuf.buf[0..unumBytes]);
+    const numRead = try file.read(tempBuf.items.ptr[0..unumBytes]);
     // Can return empty string when numRead == 0.
-    return vm.allocString(tempBuf.buf[0..numRead]);
+    return vm.allocString(tempBuf.items.ptr[0..numRead]);
 }
 
 pub fn fileReadAll(vm: *cy.VM) anyerror!Value {
@@ -349,18 +349,18 @@ pub fn fileReadAll(vm: *cy.VM) anyerror!Value {
 
     const tempBuf = &vm.u8Buf;
     tempBuf.clearRetainingCapacity();
-    defer tempBuf.ensureMaxCapOrClear(vm.alloc, 4096) catch cy.fatal();
+    defer if (tempBuf.capacity > 4096) tempBuf.clearAndFree(vm.alloc);
 
     const MinReadBufSize = 4096;
     tempBuf.ensureTotalCapacity(vm.alloc, MinReadBufSize) catch cy.fatal();
 
     while (true) {
-        const buf = tempBuf.buf[tempBuf.len .. tempBuf.buf.len];
+        const buf = tempBuf.items.ptr[tempBuf.items.len..tempBuf.capacity];
         const numRead = try file.readAll(buf);
-        tempBuf.len += numRead;
+        tempBuf.items.len += numRead;
         if (numRead < buf.len) {
             // Done.
-            const all = tempBuf.items();
+            const all = tempBuf.items;
             // Can return empty string.
             return vm.allocString(all);
         } else {

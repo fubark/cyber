@@ -309,55 +309,32 @@ pub fn listInsert(vm: *cy.VM) Value {
 }
 
 pub fn listJoin(vm: *cy.VM) anyerror!Value {
+    const elem_t: cy.TypeId = @intCast(vm.getInt(1));
     const obj = vm.getValue(0).asHeapObject();
     const items = obj.list.items();
     if (items.len > 0) {
-        var is_ascii = vm.getObject(*cy.heap.String, 1).getType().isAstring();
-        const sep = vm.getString(1);
+        var is_ascii = vm.getObject(*cy.heap.String, 2).getType().isAstring();
+        const sep = vm.getString(2);
 
-        // First record length.
-        var byteLen: u32 = 0;
-        var out_ascii: bool=  undefined;
+        var out_ascii: bool = undefined;
+
+        var builder = try cy.string.HeapStringBuilder.init(vm);
+        builder.detect_encoding = false;
+        const w = builder.writer();
+        defer builder.deinit();
 
         // Record first string part.
-        var str = try vm.getOrBufPrintValueStr2(&cy.tempBuf, items[0], &out_ascii);
+        out_ascii = try vm.writeValue2(w, elem_t, items[0], false);
         is_ascii = is_ascii and out_ascii;
-        byteLen += @intCast(str.len);
 
         // Record other string parts.
         for (items[1..]) |item| {
-            str = try vm.getOrBufPrintValueStr2(&cy.tempBuf, item, &out_ascii);
+            _ = try w.writeAll(sep);
+            out_ascii = try vm.writeValue2(w, elem_t, item, false);
             is_ascii = is_ascii and out_ascii;
-            byteLen += @intCast(str.len);
-        }
-        byteLen += @intCast(sep.len * (items.len-1));
-
-        // Allocate final buffer and perform join.
-        var newObj: *cy.HeapObject = undefined;
-        var buf: []u8 = undefined;
-
-        if (is_ascii) {
-            newObj = try vm.allocUnsetAstringObject(byteLen);
-            buf = newObj.astring.getMutSlice();
-        } else {
-            newObj = try vm.allocUnsetUstringObject(byteLen);
-            buf = newObj.ustring.getMutSlice();
         }
 
-        // Copy.
-        str = try vm.getOrBufPrintValueStr(&cy.tempBuf, items[0]);
-        @memcpy(buf[0..str.len], str);
-
-        var dst: usize = str.len;
-        for (items[1..]) |item| {
-            @memcpy(buf[dst..dst+sep.len], sep);
-            dst += sep.len;
-
-            str = try vm.getOrBufPrintValueStr(&cy.tempBuf, item);
-            @memcpy(buf[dst..dst+str.len], str);
-            dst += str.len;
-        }
-        return Value.initNoCycPtr(newObj);
+        return builder.buildWithEncoding(is_ascii);
     } else {
         const empty = vm.emptyString;
         vm.retain(empty);

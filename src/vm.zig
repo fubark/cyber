@@ -155,7 +155,7 @@ pub const VM = struct {
     /// Retains each value by +1.
     staticObjects: cy.List(cy.Value),
 
-    u8Buf: cy.ListAligned(u8, 8),
+    u8Buf: std.ArrayListAlignedUnmanaged(u8, 8),
 
     stackTrace: cy.StackTrace,
 

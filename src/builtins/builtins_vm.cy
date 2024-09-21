@@ -335,7 +335,10 @@ type OptionInfo struct:
     @host -func iterator_(self, ret_type int) ListIterator[T]
 
     --| Returns a new string that joins the elements with `separator`.
-    @host func join(self, sep String) String
+    func join(self, sep String) String:
+        return self.join(typeid[T], sep)
+
+    @host func join(self, elem_t int, sep String) String
 
     --| Returns the number of elements in the list.
     @host func len(self) int

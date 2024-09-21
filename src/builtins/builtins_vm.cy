@@ -592,8 +592,8 @@ type Array[N int, T type] _:
     -- @host func insert(self, idx int, arr Array) Array
 
     --| Returns a new iterator over the array.
-    func iterator(self) RefSliceIterator[T]:
-        var slice = &self
+    func iterator(self) SliceIterator[T]:
+        var slice = self[..]
         return slice.iterator()
 
     --| Returns the number of elements in the array.

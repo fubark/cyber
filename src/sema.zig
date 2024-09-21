@@ -6273,6 +6273,10 @@ pub const ChunkExt = struct {
             try ensureLiftedVar(c, child.data.local);
         }
 
+        // if (child.type.kind() == .array) {
+        //     return semaArrayRefSlice(c, child, expr.node);
+        // }
+
         const ref_t = try getRefType(c, child.type);
         const irIdx = try c.ir.pushExpr(.address_of, c.alloc, ref_t, expr.node, .{
             .expr = child.irIdx,

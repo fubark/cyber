@@ -6,12 +6,12 @@ func foo():
     var b = List[dyn]{}
     a.append(b as any)
     b.append(a as any)
-    var res = performGC()
+    var res = collectCycles()
     -- Cycle still alive in the current stack so no gc.
-    t.eq(res['numCycFreed'], 0)
+    t.eq(res['num_obj_freed'], 0)
 foo()
-var res = performGC()
-t.eq(res['numCycFreed'], 2)
+var res = collectCycles()
+t.eq(res['num_obj_freed'], 2)
 
 -- Reference cycle with child non cyclable.
 func foo2():
@@ -21,8 +21,8 @@ func foo2():
     b.append(a as any)
     a.append(pointer.fromAddr(void, 1))
 foo2()
-res = performGC()
-t.eq(res['numCycFreed'], 2)
+res = collectCycles()
+t.eq(res['num_obj_freed'], 3)
 
 -- Reference cycle with non pool objects.
 type T:
@@ -37,7 +37,7 @@ func foo3():
     a.c = b
     b.c = a
 foo3()
-res = performGC()
-t.eq(res['numCycFreed'], 2)
+res = collectCycles()
+t.eq(res['num_obj_freed'], 2)
 
 --cytest: pass

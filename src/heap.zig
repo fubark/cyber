@@ -188,32 +188,35 @@ pub const HeapObject = extern union {
         return self.head.typeId & vmc.TYPE_MASK;
     }
 
+    pub fn getRtTypePrefix(self: *HeapObject) []const u8 {
+        if (self.head.typeId & vmc.REF_TYPE_BIT != 0) {
+            return "^";
+        }
+        return "";
+    }
+
+    pub inline fn isRef(self: HeapObject) bool {
+        return (self.head.typeId & vmc.REF_TYPE_BIT) != 0;
+    }
+
     pub inline fn isFreed(self: HeapObject) bool {
         return self.head.typeId == cy.NullId;
     }
 
     pub inline fn isGcMarked(self: HeapObject) bool {
-        return (self.head.typeId & vmc.GC_MARK_MASK) == vmc.GC_MARK_MASK;
+        return (self.head.typeId & vmc.GC_MARK_BIT) != 0;
     }
 
     pub inline fn setGcMarked(self: *HeapObject) void {
-        self.head.typeId = self.head.typeId | vmc.GC_MARK_MASK;
+        self.head.typeId = self.head.typeId | vmc.GC_MARK_BIT;
     }
 
     pub inline fn resetGcMarked(self: *HeapObject) void {
-        self.head.typeId = self.head.typeId & ~vmc.GC_MARK_MASK;
-    }
-
-    pub inline fn isNoMarkCyc(self: *HeapObject) bool {
-        return (self.head.typeId & vmc.GC_MARK_CYC_TYPE_MASK) == vmc.CYC_TYPE_MASK;
-    }
-
-    pub inline fn isCyclable(self: *HeapObject) bool {
-        return (self.head.typeId & vmc.CYC_TYPE_MASK) == vmc.CYC_TYPE_MASK;
+        self.head.typeId = self.head.typeId & ~vmc.GC_MARK_BIT;
     }
 
     pub inline fn isExternalObject(self: *HeapObject) bool {
-        return (self.head.typeId & vmc.EXTERNAL_MASK) == vmc.EXTERNAL_MASK;
+        return (self.head.typeId & vmc.EXTERNAL_TYPE_BIT) == vmc.EXTERNAL_TYPE_BIT;
     }
 
     pub inline fn getDListNode(self: *HeapObject) *DListNode {
@@ -515,12 +518,12 @@ pub const Trait = extern struct {
 fn allocTrait(vm: *cy.VM, type_id: cy.TypeId, vtable: u16, impl: cy.Value) !cy.Value {
     const obj = try allocPoolObject(vm);
     obj.trait = .{
-        .typeId = type_id | vmc.CYC_TYPE_MASK,
+        .typeId = type_id,
         .rc = 1,
         .impl = impl,
         .vtable = vtable,
     };
-    return Value.initCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub const Object = extern struct {
@@ -591,42 +594,22 @@ pub const Future = extern struct {
 };
 
 pub fn allocFuture(vm: *cy.VM, type_id: cy.TypeId) !Value {
-    const cyclable = vm.c.types[type_id].cyclable;
-    var new: *Future = undefined;
-    if (cyclable) {
-        new = @ptrCast(try allocHostCycObject(vm, type_id, @sizeOf(Future)));
-    } else {
-        new = @ptrCast(try allocHostNoCycObject(vm, type_id, @sizeOf(Future)));
-    }
+    const new: *Future = @ptrCast(try allocHostObject(vm, type_id, @sizeOf(Future)));
     new.* = .{
         .val = undefined,
         .completed = false,
         .cont_head = null,
         .cont_tail = null,
     };
-    if (cyclable) {
-        return Value.initHostCycPtr(new);
-    } else {
-        return Value.initHostNoCycPtr(new);
-    }
+    return Value.initHostPtr(new);
 }
 
 pub fn allocFutureResolver(vm: *cy.VM, type_id: cy.TypeId, future: Value) !Value {
-    const cyclable = vm.c.types[type_id].cyclable;
-    var new: *FutureResolver = undefined;
-    if (cyclable) {
-        new = @ptrCast(try allocHostCycObject(vm, type_id, @sizeOf(FutureResolver)));
-    } else {
-        new = @ptrCast(try allocHostNoCycObject(vm, type_id, @sizeOf(FutureResolver)));
-    }
+    const new: *FutureResolver = @ptrCast(try allocHostObject(vm, type_id, @sizeOf(FutureResolver)));
     new.* = .{
         .future = future,
     };
-    if (cyclable) {
-        return Value.initHostCycPtr(new);
-    } else {
-        return Value.initHostNoCycPtr(new);
-    }
+    return Value.initHostPtr(new);
 }
 
 const UpValue = extern struct {
@@ -803,9 +786,9 @@ pub const DListNode = extern struct {
     }
 };
 
-pub fn allocExternalObject(vm: *cy.VM, size: usize, comptime cyclable: bool) !*HeapObject {
+pub fn allocExternalObject(vm: *cy.VM, size: usize) !*HeapObject {
     // Align with HeapObject so it can be casted.
-    const addToCyclableList = comptime (cy.hasGC and cyclable);
+    const addToCyclableList = comptime (cy.hasGC);
 
     // An extra size field is included for the Zig allocator.
     // u64 so it can be 8 byte aligned.
@@ -887,10 +870,16 @@ pub fn allocPoolObject(self: *cy.VM) !*HeapObject {
     }
 }
 
-fn freeExternalObject(vm: *cy.VM, obj: *HeapObject, len: usize, comptime cyclable: bool) void {
+/// TODO: Should always store the entry in heap pages.
+pub fn freeExternalObject(vm: *cy.VM, obj: *HeapObject, len: usize, comptime gc: bool) void {
     // Unlink.
     if (cy.hasGC) {
-        if (cyclable) {
+        if (gc) {
+            // Let GC do the cleanup since it's also iterating the list.
+            obj.head.typeId = (obj.head.typeId & vmc.TYPE_BITS) | (cy.NullId & vmc.TYPE_MASK);
+            obj.head.rc = @intCast(len);
+            return;
+        } else {
             const node = obj.getDListNode();
             if (node.prev) |prev| {
                 prev.next = node.next;
@@ -913,8 +902,10 @@ fn freeExternalObject(vm: *cy.VM, obj: *HeapObject, len: usize, comptime cyclabl
         }
     }
     const ZigLenSize = if (cy.Malloc == .zig) @sizeOf(u64) else 0;
-    const PayloadSize = (if (cy.hasGC and cyclable) @sizeOf(DListNode) else 0) + ZigLenSize;
-    const slice = (@as([*]align(@alignOf(HeapObject)) u8, @ptrCast(obj)) - PayloadSize)[0 .. len + PayloadSize];
+    const payload_size = @as(usize, (if (cy.hasGC) @sizeOf(DListNode) else 0)) + ZigLenSize;
+    const slice: []align(8) u8 = @alignCast((@as([*]u8, @ptrCast(obj)) - payload_size)[0..len + payload_size]);
+
+    // Allocator should automatically zero the memory for trace mode.
     vm.alloc.free(slice);
 }
 
@@ -937,6 +928,9 @@ pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) void {
         obj.freeSpan.typeId = cy.NullId;
     } else {
         if (cy.Trace) {
+            // Clear any memory unused by freeSpan to help surface dangling pointer access.
+            obj.* = std.mem.zeroes(HeapObject);
+
             // Tracing performs LRU allocation to surface double free errors better.
             // When an object is constantly reused, the most recent traced alloc/free info
             // can mask an earlier alloc/free on the same object pointer.
@@ -973,7 +967,7 @@ pub fn allocFuncSym(self: *cy.VM, type_id: cy.TypeId, func: *cy.Func) !Value {
         .rc = 1,
         .func = func,
     };
-    return Value.initNoCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocType(self: *cy.VM, typeId: cy.TypeId) !Value {
@@ -989,7 +983,7 @@ pub fn allocType(self: *cy.VM, typeId: cy.TypeId) !Value {
 pub fn allocEmptyList(self: *cy.VM, type_id: cy.TypeId) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
-        .typeId = type_id | vmc.CYC_TYPE_MASK,
+        .typeId = type_id,
         .rc = 1,
         .list = .{
             .ptr = undefined,
@@ -997,18 +991,13 @@ pub fn allocEmptyList(self: *cy.VM, type_id: cy.TypeId) !Value {
             .cap = 0,
         },
     };
-    if (self.c.types[type_id].cyclable) {
-        obj.list.typeId |= vmc.CYC_TYPE_MASK;
-        return Value.initCycPtr(obj);
-    } else {
-        return Value.initNoCycPtr(obj);
-    }
+    return Value.initPtr(obj);
 }
 
-pub fn allocOwnedList(self: *cy.VM, elems: []Value) !Value {
+pub fn allocOwnedList(self: *cy.VM, type_id: cy.TypeId, elems: []Value) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
-        .typeId = bt.ListDyn | vmc.CYC_TYPE_MASK,
+        .typeId = type_id,
         .rc = 1,
         .list = .{
             .ptr = elems.ptr,
@@ -1016,13 +1005,13 @@ pub fn allocOwnedList(self: *cy.VM, elems: []Value) !Value {
             .cap = elems.len,
         },
     };
-    return Value.initCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocListFill(self: *cy.VM, list_t: cy.TypeId, val_t: cy.TypeId, val: Value, n: u32) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
-        .typeId = list_t | vmc.CYC_TYPE_MASK,
+        .typeId = list_t,
         .rc = 1,
         .list = .{
             .ptr = undefined,
@@ -1042,10 +1031,10 @@ pub fn allocListFill(self: *cy.VM, list_t: cy.TypeId, val_t: cy.TypeId, val: Val
             list.buf[i] = try cy.value.shallowCopy(self, val_t, val);
         }
     }
-    return Value.initCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
-pub fn allocHostNoCycObject(vm: *cy.VM, typeId: cy.TypeId, numBytes: usize) !*align(8) anyopaque {
+pub fn allocHostObject(vm: *cy.VM, typeId: cy.TypeId, numBytes: usize) !*align(8) anyopaque {
     if (numBytes <= MaxPoolObjectUserBytes) {
         const obj = try allocPoolObject(vm);
         obj.head = .{
@@ -1054,27 +1043,9 @@ pub fn allocHostNoCycObject(vm: *cy.VM, typeId: cy.TypeId, numBytes: usize) !*al
         };
         return @ptrFromInt(@intFromPtr(obj) + 8);
     } else {
-        const obj = try allocExternalObject(vm, numBytes + 8, false);
+        const obj = try allocExternalObject(vm, numBytes + 8);
         obj.head = .{
-            .typeId = typeId | vmc.EXTERNAL_MASK,
-            .rc = 1,
-        };
-        return @ptrFromInt(@intFromPtr(obj) + 8);
-    }
-}
-
-pub fn allocHostCycObject(vm: *cy.VM, typeId: cy.TypeId, numBytes: usize) !*align(8) anyopaque {
-    if (numBytes <= MaxPoolObjectUserBytes) {
-        const obj = try allocPoolObject(vm);
-        obj.head = .{
-            .typeId = typeId | vmc.CYC_TYPE_MASK,
-            .rc = 1,
-        };
-        return @ptrFromInt(@intFromPtr(obj) + 8);
-    } else {
-        const obj = try allocExternalObject(vm, numBytes + 8, true);
-        obj.head = .{
-            .typeId = typeId | vmc.CYC_TYPE_MASK | vmc.EXTERNAL_MASK,
+            .typeId = typeId | vmc.EXTERNAL_TYPE_BIT,
             .rc = 1,
         };
         return @ptrFromInt(@intFromPtr(obj) + 8);
@@ -1086,10 +1057,10 @@ pub fn allocTuple(vm: *cy.VM, elems: []const Value) !Value {
     if (elems.len <= 3) {
         obj = try allocPoolObject(vm);
     } else {
-        obj = try allocExternalObject(vm, elems.len * 8 + 16, true);
+        obj = try allocExternalObject(vm, elems.len * 8 + 16);
     }
     obj.tuple = .{
-        .typeId = bt.Tuple | vmc.CYC_TYPE_MASK,
+        .typeId = bt.Tuple,
         .rc = 1,
         .len = @intCast(elems.len),
         .padding = undefined,
@@ -1097,7 +1068,7 @@ pub fn allocTuple(vm: *cy.VM, elems: []const Value) !Value {
     };
     const dst = obj.tuple.getElemsPtr()[0..elems.len];
     @memcpy(dst, elems);
-    return Value.initCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 /// Reuse `Object` so that address_of refers to the first element for both structs and arrays.
@@ -1105,19 +1076,25 @@ pub fn allocArray(vm: *cy.VM, type_id: cy.TypeId, elems: []const Value) !Value {
     const type_e = vm.getType(type_id);
     const child_t = type_e.cast(.array).elem_t;
     var size = elems.len;
-    if (child_t.kind == .struct_t) {
-        size = child_t.data.struct_t.nfields * elems.len;
+    if (child_t.kind() == .struct_t) {
+        size = child_t.cast(.struct_t).size * elems.len;
     }
-    const arr: *Object = @ptrCast(try allocExternalObject(vm, (1 + size) * @sizeOf(Value), true));
-    arr.* = .{
+
+    var arr: *HeapObject = undefined;
+    if (size <= 4) {
+        arr = try allocPoolObject(vm);
+    } else {
+        arr = try allocExternalObject(vm, (1 + size) * @sizeOf(Value));
+    }
+    arr.object = .{
         .typeId = type_id,
         .rc = 1,
         .firstValue = undefined,
     };
 
-    const dst = arr.getValuesPtr();
-    if (child_t.kind == .struct_t) {
-        const elem_size = child_t.data.struct_t.nfields;
+    const dst = arr.object.getValuesPtr();
+    if (child_t.kind() == .struct_t) {
+        const elem_size = child_t.cast(.struct_t).size;
         for (elems, 0..) |elem, i| {
             const fields = elem.castHeapObject(*cy.heap.Object).getValuesPtr()[0..elem_size];
             @memcpy(dst[i * elem_size .. i * elem_size + elem_size], fields);
@@ -1126,13 +1103,13 @@ pub fn allocArray(vm: *cy.VM, type_id: cy.TypeId, elems: []const Value) !Value {
     } else {
         @memcpy(dst[0..elems.len], elems);
     }
-    return Value.initNoCycPtr(arr);
+    return Value.initPtr(arr);
 }
 
 pub fn allocList(self: *cy.VM, type_id: cy.TypeId, elems: []const Value) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
-        .typeId = bt.ListDyn | vmc.CYC_TYPE_MASK,
+        .typeId = type_id,
         .rc = 1,
         .list = .{
             .ptr = undefined,
@@ -1145,14 +1122,11 @@ pub fn allocList(self: *cy.VM, type_id: cy.TypeId, elems: []const Value) !Value 
     try list.ensureTotalCapacityPrecise(self.alloc, elems.len);
     list.len = elems.len;
     @memcpy(list.items(), elems);
-    return Value.initCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocListIter(self: *cy.VM, type_id: cy.TypeId, list: Value) !Value {
-    const cyclable = self.c.types[type_id].cyclable;
     const obj = try allocPoolObject(self);
-    const cyc_mask = if (cyclable) vmc.CYC_TYPE_MASK else 0;
-    _ = cyc_mask;
     obj.listIter = .{
         .typeId = type_id,
         .rc = 1,
@@ -1161,23 +1135,23 @@ pub fn allocListIter(self: *cy.VM, type_id: cy.TypeId, list: Value) !Value {
             .nextIdx = 0,
         },
     };
-    return Value.initCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocTable(self: *cy.VM) !Value {
     const obj = try allocPoolObject(self);
     obj.table = .{
-        .typeId = bt.Table | vmc.CYC_TYPE_MASK,
+        .typeId = bt.Table,
         .rc = 1,
         .inner_map = try self.allocEmptyMap(),
     };
-    return Value.initCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocEmptyMap(self: *cy.VM) !Value {
     const obj = try allocPoolObject(self);
     obj.map = .{
-        .typeId = bt.Map | vmc.CYC_TYPE_MASK,
+        .typeId = bt.Map,
         .rc = 1,
         .inner = .{
             .metadata = null,
@@ -1187,13 +1161,13 @@ pub fn allocEmptyMap(self: *cy.VM) !Value {
             .available = 0,
         },
     };
-    return Value.initCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocMap(self: *cy.VM, keyIdxs: []align(1) const u16, vals: []const Value) !Value {
     const obj = try allocPoolObject(self);
     obj.map = .{
-        .typeId = bt.Map | vmc.CYC_TYPE_MASK,
+        .typeId = bt.Map,
         .rc = 1,
         .inner = .{
             .metadata = null,
@@ -1219,19 +1193,19 @@ pub fn allocMap(self: *cy.VM, keyIdxs: []align(1) const u16, vals: []const Value
         }
     }
 
-    return Value.initCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 /// Assumes map is already retained for the iterator.
 pub fn allocMapIterator(self: *cy.VM, map: Value) !Value {
     const obj = try allocPoolObject(self);
     obj.mapIter = .{
-        .typeId = bt.MapIter | vmc.CYC_TYPE_MASK,
+        .typeId = bt.MapIter,
         .rc = 1,
         .map = map,
         .nextIdx = 0,
     };
-    return Value.initCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 /// Captured values are retained during alloc.
@@ -1248,10 +1222,10 @@ pub fn allocClosure(
     if (captured.len <= 2) {
         obj = try allocPoolObject(self);
     } else {
-        obj = try allocExternalObject(self, (3 + captured.len) * @sizeOf(Value), true);
+        obj = try allocExternalObject(self, (3 + captured.len) * @sizeOf(Value));
     }
     obj.func_union = .{
-        .typeId = union_t | vmc.CYC_TYPE_MASK,
+        .typeId = union_t,
         .rc = 1,
         .kind = .closure,
         .reqCallTypeCheck = func.req_type_check,
@@ -1275,7 +1249,7 @@ pub fn allocClosure(
         self.retain(fp[local.val]);
         dst[i] = fp[local.val];
     }
-    return Value.initCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocBcFuncPtr(self: *cy.VM, ptr_t: cy.TypeId, funcPc: usize, numParams: u8, stackSize: u8, funcSigId: u16, req_type_check: bool) !Value {
@@ -1292,7 +1266,7 @@ pub fn allocBcFuncPtr(self: *cy.VM, ptr_t: cy.TypeId, funcPc: usize, numParams: 
             .stack_size = stackSize,
         } },
     };
-    return Value.initNoCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocBcFuncUnion(self: *cy.VM, union_t: cy.TypeId, funcPc: usize, numParams: u8, stackSize: u8, funcSigId: u16, req_type_check: bool) !Value {
@@ -1309,7 +1283,7 @@ pub fn allocBcFuncUnion(self: *cy.VM, union_t: cy.TypeId, funcPc: usize, numPara
             .stack_size = stackSize,
         } },
     };
-    return Value.initNoCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn getOrAllocOwnedAstring(self: *cy.VM, obj: *HeapObject) !Value {
@@ -1370,16 +1344,16 @@ pub fn getOrAllocAstringConcat(self: *cy.VM, str: []const u8, str2: []const u8) 
         const res = try self.strInterns.getOrPut(self.alloc, concat);
         if (res.found_existing) {
             cy.arc.retainObject(self, res.value_ptr.*);
-            return Value.initNoCycPtr(res.value_ptr.*);
+            return Value.initPtr(res.value_ptr.*);
         } else {
             const obj = try allocAstringObject(self, concat);
             res.key_ptr.* = obj.astring.getSlice();
             res.value_ptr.* = obj;
-            return Value.initNoCycPtr(obj);
+            return Value.initPtr(obj);
         }
     } else {
         const obj = try allocAstringConcatObject(self, str, str2);
-        return Value.initNoCycPtr(obj);
+        return Value.initPtr(obj);
     }
 }
 
@@ -1393,16 +1367,16 @@ pub fn getOrAllocAstringConcat3(self: *cy.VM, str1: []const u8, str2: []const u8
         const res = try self.strInterns.getOrPut(self.alloc, concat);
         if (res.found_existing) {
             cy.arc.retainObject(self, res.value_ptr.*);
-            return Value.initNoCycPtr(res.value_ptr.*);
+            return Value.initPtr(res.value_ptr.*);
         } else {
             const obj = try allocAstringObject(self, concat);
             res.key_ptr.* = obj.astring.getSlice();
             res.value_ptr.* = obj;
-            return Value.initNoCycPtr(obj);
+            return Value.initPtr(obj);
         }
     } else {
         const obj = try allocAstringConcat3Object(self, str1, str2, str3);
-        return Value.initNoCycPtr(obj);
+        return Value.initPtr(obj);
     }
 }
 
@@ -1416,16 +1390,16 @@ pub fn getOrAllocUstringConcat3(self: *cy.VM, str1: []const u8, str2: []const u8
         const res = try self.strInterns.getOrPut(self.alloc, concat);
         if (res.found_existing) {
             cy.arc.retainObject(self, res.value_ptr.*);
-            return Value.initNoCycPtr(res.value_ptr.*);
+            return Value.initPtr(res.value_ptr.*);
         } else {
             const obj = try allocUstringObject(self, concat);
             res.key_ptr.* = obj.ustring.getSlice();
             res.value_ptr.* = obj;
-            return Value.initNoCycPtr(obj);
+            return Value.initPtr(obj);
         }
     } else {
         const obj = try allocUstringConcat3Object(self, str1, str2, str3);
-        return Value.initNoCycPtr(obj);
+        return Value.initPtr(obj);
     }
 }
 
@@ -1438,16 +1412,16 @@ pub fn getOrAllocUstringConcat(self: *cy.VM, str: []const u8, str2: []const u8) 
         const res = try self.strInterns.getOrPut(self.alloc, concat);
         if (res.found_existing) {
             cy.arc.retainObject(self, res.value_ptr.*);
-            return Value.initNoCycPtr(res.value_ptr.*);
+            return Value.initPtr(res.value_ptr.*);
         } else {
             const obj = try allocUstringObject(self, concat);
             res.key_ptr.* = obj.ustring.getSlice();
             res.value_ptr.* = obj;
-            return Value.initNoCycPtr(obj);
+            return Value.initPtr(obj);
         }
     } else {
         const obj = try allocUstringConcatObject(self, str, str2);
-        return Value.initNoCycPtr(obj);
+        return Value.initPtr(obj);
     }
 }
 
@@ -1461,14 +1435,14 @@ pub fn getOrAllocOwnedString(self: *cy.VM, obj: *HeapObject, str: []const u8) !V
         if (res.found_existing) {
             cy.arc.releaseObject(self, obj);
             cy.arc.retainObject(self, res.value_ptr.*);
-            return Value.initNoCycPtr(res.value_ptr.*);
+            return Value.initPtr(res.value_ptr.*);
         } else {
             res.key_ptr.* = str;
             res.value_ptr.* = obj;
-            return Value.initNoCycPtr(obj);
+            return Value.initPtr(obj);
         }
     } else {
-        return Value.initNoCycPtr(obj);
+        return Value.initPtr(obj);
     }
 }
 
@@ -1530,7 +1504,7 @@ pub fn allocAstring(self: *cy.VM, str: []const u8) !Value {
     const obj = try allocUnsetAstringObject(self, str.len);
     const dst = obj.astring.getSlice();
     @memcpy(dst, str);
-    return Value.initNoCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocUnsetAstringObject(self: *cy.VM, len: usize) !*HeapObject {
@@ -1538,7 +1512,7 @@ pub fn allocUnsetAstringObject(self: *cy.VM, len: usize) !*HeapObject {
     if (len <= MaxPoolObjectAstringByteLen) {
         obj = try allocPoolObject(self);
     } else {
-        obj = try allocExternalObject(self, len + Astring.BufOffset, false);
+        obj = try allocExternalObject(self, len + Astring.BufOffset);
     }
     obj.astring = .{
         .typeId = bt.String,
@@ -1563,18 +1537,18 @@ pub fn getOrAllocUstring(self: *cy.VM, str: []const u8, outAllocated: *bool) !Va
         const res = try self.strInterns.getOrPut(self.alloc, str);
         if (res.found_existing) {
             outAllocated.* = false;
-            return Value.initNoCycPtr(res.value_ptr.*);
+            return Value.initPtr(res.value_ptr.*);
         } else {
             outAllocated.* = true;
             const obj = try allocUstringObject(self, str);
             res.key_ptr.* = obj.ustring.getSlice();
             res.value_ptr.* = obj;
-            return Value.initNoCycPtr(obj);
+            return Value.initPtr(obj);
         }
     } else {
         outAllocated.* = true;
         const obj = try allocUstringObject(self, str);
-        return Value.initNoCycPtr(obj);
+        return Value.initPtr(obj);
     }
 }
 
@@ -1592,24 +1566,24 @@ pub fn getOrAllocAstring(self: *cy.VM, str: []const u8, outAllocated: *bool) !Va
         const res = try self.strInterns.getOrPut(self.alloc, str);
         if (res.found_existing) {
             outAllocated.* = false;
-            return Value.initNoCycPtr(res.value_ptr.*);
+            return Value.initPtr(res.value_ptr.*);
         } else {
             outAllocated.* = true;
             const obj = try allocAstringObject(self, str);
             res.key_ptr.* = obj.astring.getSlice();
             res.value_ptr.* = obj;
-            return Value.initNoCycPtr(obj);
+            return Value.initPtr(obj);
         }
     } else {
         outAllocated.* = true;
         const obj = try allocAstringObject(self, str);
-        return Value.initNoCycPtr(obj);
+        return Value.initPtr(obj);
     }
 }
 
 pub fn allocUstring(self: *cy.VM, str: []const u8, charLen: u32) !Value {
     const obj = try allocUstringObject(self, str, charLen);
-    return Value.initNoCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocUstringObject(self: *cy.VM, str: []const u8) !*HeapObject {
@@ -1624,7 +1598,7 @@ pub fn allocUnsetUstringObject(self: *cy.VM, len: usize) !*HeapObject {
     if (len <= MaxPoolObjectUstringByteLen) {
         obj = try allocPoolObject(self);
     } else {
-        obj = try allocExternalObject(self, len + Ustring.BufOffset, false);
+        obj = try allocExternalObject(self, len + Ustring.BufOffset);
     }
     obj.ustring = .{
         .typeId = bt.String,
@@ -1644,7 +1618,7 @@ pub fn allocUstringSlice(self: *cy.VM, slice: []const u8, parent: ?*HeapObject) 
         .headerAndLen = (@as(u32, @intFromEnum(StringType.uslice)) << 30) | @as(u32, @intCast(slice.len)),
         .parent = parent,
     };
-    return Value.initNoCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocAstringSlice(self: *cy.VM, slice: []const u8, parent: *HeapObject) !Value {
@@ -1678,12 +1652,7 @@ pub fn allocExternFunc(self: *cy.VM, cyFunc: Value, funcPtr: *anyopaque, tccStat
         .ptr = funcPtr,
         .tccState = tccState,
     };
-    const cyclable = cyFunc.isCycPointer();
-    if (cyclable) {
-        return Value.initCycPtr(obj);
-    } else {
-        return Value.initNoCycPtr(obj);
-    }
+    return Value.initPtr(obj);
 }
 
 pub fn allocHostFuncPtr(self: *cy.VM, ptr_t: cy.TypeId, func: cy.ZHostFuncFn, numParams: u32, funcSigId: cy.sema.FuncSigId, tccState: ?Value, reqCallTypeCheck: bool) !Value {
@@ -1705,7 +1674,7 @@ pub fn allocHostFuncPtr(self: *cy.VM, ptr_t: cy.TypeId, func: cy.ZHostFuncFn, nu
         obj.func_ptr.data.host.tcc_state = state;
         obj.func_ptr.data.host.has_tcc_state = true;
     }
-    return Value.initNoCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocHostFuncUnion(self: *cy.VM, union_t: cy.TypeId, func: cy.ZHostFuncFn, numParams: usize, funcSigId: cy.sema.FuncSigId, tccState: ?Value, reqCallTypeCheck: bool) !Value {
@@ -1727,7 +1696,7 @@ pub fn allocHostFuncUnion(self: *cy.VM, union_t: cy.TypeId, func: cy.ZHostFuncFn
         obj.func_union.data.host.tcc_state = state;
         obj.func_union.data.host.has_tcc_state = true;
     }
-    return Value.initNoCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocTccState(self: *cy.VM, state: *tcc.TCCState, optLib: ?*std.DynLib) !Value {
@@ -1743,7 +1712,7 @@ pub fn allocTccState(self: *cy.VM, state: *tcc.TCCState, optLib: ?*std.DynLib) !
         obj.tccState.lib = lib;
         obj.tccState.hasDynLib = true;
     }
-    return Value.initNoCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocFuncSig(self: *cy.VM, sig: cy.sema.FuncSigId) !Value {
@@ -1753,7 +1722,7 @@ pub fn allocFuncSig(self: *cy.VM, sig: cy.sema.FuncSigId) !Value {
         .rc = 1,
         .val = @intCast(sig),
     };
-    return Value.initNoCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocInt(self: *cy.VM, val: i64) !Value {
@@ -1763,7 +1732,7 @@ pub fn allocInt(self: *cy.VM, val: i64) !Value {
         .rc = 1,
         .val = val,
     };
-    return Value.initNoCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocPointer(self: *cy.VM, type_id: cy.TypeId, ptr: ?*anyopaque) !Value {
@@ -1773,7 +1742,7 @@ pub fn allocPointer(self: *cy.VM, type_id: cy.TypeId, ptr: ?*anyopaque) !Value {
         .rc = 1,
         .ptr = ptr,
     };
-    return Value.initNoCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocRefSlice(self: *cy.VM, type_id: cy.TypeId, ptr: ?*anyopaque, len: usize) !Value {
@@ -1784,9 +1753,9 @@ pub fn allocRefSlice(self: *cy.VM, type_id: cy.TypeId, ptr: ?*anyopaque, len: us
         .firstValue = undefined,
     };
     const fields = obj.object.getValuesPtr();
-    fields[0] = Value.initRaw(@intFromPtr(ptr));
+    fields[0] = Value.initPtr(ptr);
     fields[1] = Value.initInt(@intCast(len));
-    return Value.initNoCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocSlice(self: *cy.VM, type_id: cy.TypeId, ptr: ?*anyopaque, len: usize) !Value {
@@ -1799,7 +1768,7 @@ pub fn allocSlice(self: *cy.VM, type_id: cy.TypeId, ptr: ?*anyopaque, len: usize
     const fields = obj.object.getValuesPtr();
     fields[0] = Value.initRaw(@intFromPtr(ptr));
     fields[1] = Value.initInt(@intCast(len));
-    return Value.initNoCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocBoxValue(self: *cy.VM, type_id: cy.TypeId, value: u64) !Value {
@@ -1809,7 +1778,7 @@ pub fn allocBoxValue(self: *cy.VM, type_id: cy.TypeId, value: u64) !Value {
         .rc = 1,
         .firstValue = @bitCast(value),
     };
-    return Value.initNoCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocEmptyObject(self: *cy.VM, type_id: cy.TypeId, size: usize) !Value {
@@ -1844,7 +1813,7 @@ pub fn allocObject(self: *cy.VM, type_id: cy.TypeId, fields: []const Value) !Val
     // First slot holds the typeId and rc.
     const obj: *Object = @ptrCast(try allocExternalObject(self, (1 + fields.len) * @sizeOf(Value)));
     obj.* = .{
-        .typeId = type_id | vmc.CYC_TYPE_MASK,
+        .typeId = type_id,
         .rc = 1,
         .firstValue = undefined,
     };
@@ -1857,7 +1826,7 @@ pub fn allocObject(self: *cy.VM, type_id: cy.TypeId, fields: []const Value) !Val
 pub fn allocObjectSmall(self: *cy.VM, type_id: cy.TypeId, fields: []const Value) !Value {
     const obj = try allocPoolObject(self);
     obj.object = .{
-        .typeId = type_id | vmc.CYC_TYPE_MASK,
+        .typeId = type_id,
         .rc = 1,
         .firstValue = undefined,
     };
@@ -1865,17 +1834,17 @@ pub fn allocObjectSmall(self: *cy.VM, type_id: cy.TypeId, fields: []const Value)
     const dst = obj.object.getValuesPtr();
     @memcpy(dst[0..fields.len], fields);
 
-    return Value.initCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocEmptyObjectSmall(self: *cy.VM, type_id: cy.TypeId) !Value {
     const obj = try allocPoolObject(self);
     obj.object = .{
-        .typeId = type_id | vmc.CYC_TYPE_MASK,
+        .typeId = type_id,
         .rc = 1,
         .firstValue = undefined,
     };
-    return Value.initCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocFuncPtr(self: *cy.VM, ptr_t: cy.TypeId, func: rt.FuncSymbol) !Value {
@@ -1906,15 +1875,15 @@ pub fn allocFunc(vm: *cy.VM, func: rt.FuncSymbol) !Value {
     return allocFuncUnion(vm, bt.Func, func);
 }
 
-/// `skip_cyc_children` is important for reducing the work for the GC mark/sweep.
 /// TODO: flatten recursion.
-pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool) void {
+pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
+    comptime gc: bool, res: if (gc) *c.GCResult else void) void {
     if (cy.Trace) {
         if (obj.isFreed()) {
             cy.panicFmt("Double free object: {*} Should have been discovered in release op.", .{obj});
         } else {
             if (log_free or log_mem) {
-                // Avoid printing too much details about the value here
+                // Avoid printing too much details about the value during type types teardown
                 // since it can be dependent on something already freed. (e.g. `type` that already has freed template args)
                 var desc: []const u8 = undefined;
                 if (obj.getTypeId() == bt.Type) {
@@ -1935,15 +1904,12 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
     switch (typeId) {
         bt.Tuple => {
             for (obj.tuple.getElemsPtr()[0..obj.tuple.len]) |it| {
-                if (skip_cyc_children and it.isCycPointer()) {
-                    continue;
-                }
-                cy.arc.release(vm, it);
+                cy.arc.release2(vm, it, gc, res);
             }
             if (obj.tuple.len <= 3) {
                 freePoolObject(vm, obj);
             } else {
-                freeExternalObject(vm, obj, (2 + obj.tuple.len) * @sizeOf(Value), true);
+                freeExternalObject(vm, obj, (2 + obj.tuple.len) * @sizeOf(Value), gc);
             }
         },
         bt.Range => {
@@ -1953,32 +1919,21 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
             const map = cy.ptrAlignCast(*MapInner, &obj.map.inner);
             var iter = map.iterator();
             while (iter.next()) |entry| {
-                if (skip_cyc_children) {
-                    if (!entry.key.isCycPointer()) {
-                        cy.arc.release(vm, entry.key);
-                    }
-                    if (!entry.value.isCycPointer()) {
-                        cy.arc.release(vm, entry.value);
-                    }
-                } else {
-                    cy.arc.release(vm, entry.key);
-                    cy.arc.release(vm, entry.value);
-                }
+                cy.arc.release2(vm, entry.key, gc, res);
+                cy.arc.release2(vm, entry.value, gc, res);
             }
             map.deinit(vm.alloc);
             freePoolObject(vm, obj);
         },
         bt.MapIter => {
-            if (!skip_cyc_children or !obj.mapIter.map.isCycPointer()) {
-                cy.arc.release(vm, obj.mapIter.map);
-            }
+            cy.arc.release2(vm, obj.mapIter.map, gc, res);
             freePoolObject(vm, obj);
         },
         bt.Func => {
             switch (obj.func.kind) {
                 .host => {
                     if (obj.func.data.host.has_tcc_state) {
-                        cy.arc.releaseObject(vm, obj.func.data.host.tcc_state.asHeapObject());
+                        cy.arc.releaseObject2(vm, obj.func.data.host.tcc_state.asHeapObject(), gc, res);
                     }
                     freePoolObject(vm, obj);
                 },
@@ -1986,15 +1941,12 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                     const num_captured = obj.func.data.closure.numCaptured;
                     const src = obj.func.getCapturedValuesPtr()[0..num_captured];
                     for (src) |capturedVal| {
-                        if (skip_cyc_children and capturedVal.isCycPointer()) {
-                            continue;
-                        }
-                        cy.arc.release(vm, capturedVal);
+                        cy.arc.release2(vm, capturedVal, gc, res);
                     }
                     if (num_captured <= 2) {
                         freePoolObject(vm, obj);
                     } else {
-                        freeExternalObject(vm, obj, (3 + num_captured) * @sizeOf(Value), true);
+                        freeExternalObject(vm, obj, (3 + num_captured) * @sizeOf(Value), gc);
                     }
                 },
                 .bc => {
@@ -2026,7 +1978,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                     if (len <= MaxPoolObjectAstringByteLen) {
                         freePoolObject(vm, obj);
                     } else {
-                        freeExternalObject(vm, obj, Astring.BufOffset + len, false);
+                        freeExternalObject(vm, obj, Astring.BufOffset + len, gc);
                     }
                 },
                 .ustring => {
@@ -2042,18 +1994,18 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                     if (len <= MaxPoolObjectUstringByteLen) {
                         freePoolObject(vm, obj);
                     } else {
-                        freeExternalObject(vm, obj, Ustring.BufOffset + len, false);
+                        freeExternalObject(vm, obj, Ustring.BufOffset + len, gc);
                     }
                 },
                 .aslice => {
                     if (obj.aslice.parent) |parent| {
-                        cy.arc.releaseObject(vm, parent);
+                        cy.arc.releaseObject2(vm, parent, gc, res);
                     }
                     freePoolObject(vm, obj);
                 },
                 .uslice => {
                     if (obj.uslice.parent) |parent| {
-                        cy.arc.releaseObject(vm, parent);
+                        cy.arc.releaseObject2(vm, parent, gc, res);
                     }
                     freePoolObject(vm, obj);
                 },
@@ -2075,8 +2027,8 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
             freePoolObject(vm, obj);
         },
         bt.ExternFunc => {
-            cy.arc.releaseObject(vm, obj.externFunc.tccState.asHeapObject());
-            cy.arc.releaseObject(vm, obj.externFunc.func.asHeapObject());
+            cy.arc.releaseObject2(vm, obj.externFunc.tccState.asHeapObject(), gc, res);
+            cy.arc.releaseObject2(vm, obj.externFunc.func.asHeapObject(), gc, res);
             freePoolObject(vm, obj);
         },
         bt.TccState => {
@@ -2096,8 +2048,6 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
         },
         else => {
             if (cy.Trace) {
-                log.tracevIf(log_mem, "free {s} {}", .{ vm.getTypeName(typeId), typeId });
-
                 // Check range.
                 if (typeId >= vm.c.types_len) {
                     log.tracev("unsupported type {}", .{typeId});
@@ -2135,7 +2085,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                 },
                 .func_ptr => {
                     if (obj.func_ptr.kind == .host and obj.func_ptr.data.host.has_tcc_state) {
-                        cy.arc.releaseObject(vm, obj.func_ptr.data.host.tcc_state.asHeapObject());
+                        cy.arc.releaseObject2(vm, obj.func_ptr.data.host.tcc_state.asHeapObject(), gc, res);
                     }
                     freePoolObject(vm, obj);
                 },
@@ -2143,23 +2093,20 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
                     switch (obj.func_union.kind) {
                         .host => {
                             if (obj.func_union.data.host.has_tcc_state) {
-                                cy.arc.releaseObject(vm, obj.func_union.data.host.tcc_state.asHeapObject());
+                                cy.arc.releaseObject2(vm, obj.func_union.data.host.tcc_state.asHeapObject(), gc, res);
                             }
                             freePoolObject(vm, obj);
                         },
                         .closure => {
                             const num_captured = obj.func_union.data.closure.numCaptured;
                             const src = obj.func_union.getCapturedValuesPtr()[0..num_captured];
-                            for (src) |capturedVal| {
-                                if (skip_cyc_children and capturedVal.isCycPointer()) {
-                                    continue;
-                                }
-                                cy.arc.release(vm, capturedVal);
+                            for (src) |captured| {
+                                cy.arc.release2(vm, captured, gc, res);
                             }
                             if (num_captured <= 2) {
                                 freePoolObject(vm, obj);
                             } else {
-                                freeExternalObject(vm, obj, (3 + num_captured) * @sizeOf(Value), true);
+                                freeExternalObject(vm, obj, (3 + num_captured) * @sizeOf(Value), gc);
                             }
                         },
                         .bc => {
@@ -2255,6 +2202,9 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
             }
         },
     }
+    if (gc) {
+        res.num_obj_freed += 1;
+    }
 }
 
 // User bytes excludes the type header.
@@ -2293,7 +2243,7 @@ test "Free object invalidation." {
         try t.eq(obj2.head.typeId, cy.NullId);
 
         // Free external object invalidates object pointer.
-        obj = try allocExternalObject(&vm, 40, false);
+        obj = try allocExternalObject(&vm, 40);
         obj.head.typeId = 100;
         vm.c.debugPc = 123;
         freeExternalObject(&vm, obj, 40, false);

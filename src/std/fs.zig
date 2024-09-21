@@ -108,7 +108,7 @@ pub const DirIterator = extern struct {
 
 pub fn allocFile(vm: *cy.VM, fd: if (cy.hasStdFiles) std.posix.fd_t else u32) !Value {
     const cli_data = vm.getData(*cli.CliData, "cli");
-    const file: *File = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, cli_data.FileT, @sizeOf(File))));
+    const file: *File = @ptrCast(@alignCast(try cy.heap.allocHostObject(vm, cli_data.FileT.id(), @sizeOf(File))));
     file.* = .{
         .fd = fd,
         .curPos = 0,
@@ -120,23 +120,23 @@ pub fn allocFile(vm: *cy.VM, fd: if (cy.hasStdFiles) std.posix.fd_t else u32) !V
         .closed = false,
         .closeOnFree = true,
     };
-    return Value.initHostNoCycPtr(file);
+    return Value.initHostPtr(file);
 }
 
 pub fn allocDir(vm: *cy.VM, fd: std.posix.fd_t, iterable: bool) !Value {
     const cli_data = vm.getData(*cli.CliData, "cli");
-    const dir: *Dir = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, cli_data.DirT, @sizeOf(Dir))));
+    const dir: *Dir = @ptrCast(@alignCast(try cy.heap.allocHostObject(vm, cli_data.DirT.id(), @sizeOf(Dir))));
     dir.* = .{
         .fd = fd,
         .iterable = iterable,
         .closed = false,
     };
-    return Value.initHostNoCycPtr(dir);
+    return Value.initHostPtr(dir);
 }
 
 pub fn allocDirIterator(vm: *cy.VM, dirv: Value, recursive: bool) !Value {
     const cli_data = vm.getData(*cli.CliData, "cli");
-    const dirIter: *DirIterator = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, cli_data.DirIterT, @sizeOf(DirIterator))));
+    const dirIter: *DirIterator = @ptrCast(@alignCast(try cy.heap.allocHostObject(vm, cli_data.DirIterT.id(), @sizeOf(DirIterator))));
     dirIter.* = .{
         .dir = dirv,
         .inner = undefined,
@@ -150,7 +150,7 @@ pub fn allocDirIterator(vm: *cy.VM, dirv: Value, recursive: bool) !Value {
         const iter = cy.ptrAlignCast(*std.fs.Dir.Iterator, &dirIter.inner.iter);
         iter.* = dir.getStdDir().iterate();
     }
-    return Value.initHostNoCycPtr(dirIter);
+    return Value.initHostPtr(dirIter);
 }
 
 test "fs internals" {
@@ -455,7 +455,7 @@ pub fn fileNext(vm: *cy.VM) anyerror!Value {
                 // End of stream.
                 fileo.iterLines = false;
                 if (lineBuf.len > 0) {
-                    return StringSome(vm, Value.initNoCycPtr(try lineBuf.build()));
+                    return StringSome(vm, Value.initPtr(try lineBuf.build()));
                 } else {
                     return StringNone(vm);
                 }
@@ -468,7 +468,7 @@ pub fn fileNext(vm: *cy.VM) anyerror!Value {
                 fileo.curPos = @intCast(end);
                 fileo.readBufEnd = @intCast(bytesRead);
 
-                return StringSome(vm, Value.initNoCycPtr(try lineBuf.build()));
+                return StringSome(vm, Value.initPtr(try lineBuf.build()));
             } else {
                 try lineBuf.appendString(readBuf[0..bytesRead]);
 

@@ -27,7 +27,7 @@ typedef struct IndexSlice {
 } IndexSlice;
 
 // 1000000000000000: Most significant bit.
-#define SIGN_MASK ((u64)1 << 63)
+#define SIGN_BIT ((u64)1 << 63)
 
 // 0111111111110000 (7FF0): +INF (from math.inf, +/zero, overflow)
 // 1111111111110000 (FFF0): -INF (from math.neginf, -/zero, overflow)
@@ -37,39 +37,27 @@ typedef struct IndexSlice {
 
 // 0111111111111100 (7FFC): QNAN and one extra bit to the right.
 #define TAGGED_VALUE_MASK ((u64)0x7ffc000000000000)
-// 1111111111111111 (FFFF): Tagged pointers, integers, and enums.
-#define TAGGED_UPPER_VALUE_MASK ((u64)0xffff000000000000)
 
 // 0000000000000010
-#define UPPER_PLACEHOLDER_MASK ((u64)1 << 49)
-
+#define UPPER1_BIT ((u64)1 << 49)
 // 0000000000000001
-#define ENUM_MASK ((u64)1 << 48)
+#define UPPER2_BIT ((u64)1 << 48)
 
-// 0111111111111111 0000000000000111
-#define TAGGED_PRIMITIVE_MASK (TAGGED_VALUE_MASK | PRIMITIVE_MASK)
-// 0000000000000011 0000000000000111: Bits relevant to the primitive's type.
-#define PRIMITIVE_MASK (TAGGED_VALUE_MASK | ((u64)TAG_MASK << 32) | UPPER_PLACEHOLDER_MASK | ENUM_MASK)
+#define PTR_BIT (SIGN_BIT)
 
-// 1111111111111100: TaggedMask + Sign bit indicates a pointer value.
-#define NOCYC_POINTER_MASK (TAGGED_VALUE_MASK | SIGN_MASK)
+// 1111111111111111
+#define TAGGED_UPPER_MASK (TAGGED_VALUE_MASK | SIGN_BIT | UPPER1_BIT | UPPER2_BIT)
 
-// 1111111111111110: Extra bit indicating cyclable pointer.
-//                   GC uses this to skip an expensive dereference.
-#define CYC_POINTER_MASK (NOCYC_POINTER_MASK | ((u64)1 << 49))
+// 1111111111111111 0000000000001111
+#define TAGGED_PRIMITIVE_MASK (TAGGED_UPPER_MASK | ((u64)TAG_MASK << 32))
 
-#define POINTER_MASK (CYC_POINTER_MASK)
+// 1111111111111100: Pointers, must be >= to this mask.
+#define MIN_PTR_MASK (PTR_BIT | TAGGED_VALUE_MASK)
 #if IS_32BIT
-    #define POINTER_PAYLOAD_MASK 0xFFFFFFFF
+    #define PTR_PAYLOAD_MASK 0xFFFFFFFF
 #else
-    #define POINTER_PAYLOAD_MASK 0xFFFFFFFFFFFF
+    #define PTR_PAYLOAD_MASK 0xFFFFFFFFFFFF
 #endif
-
-// 0111111111111110(7FFE) 0...
-#define TAGGED_PLACEHOLDER_MASK (TAGGED_VALUE_MASK | UPPER_PLACEHOLDER_MASK)
-
-// 0111111111111101(7FFD) 0...
-#define TAGGED_ENUM_MASK (TAGGED_VALUE_MASK | ENUM_MASK)
 
 // 0111111111111100 0000000000000000
 #define VOID_MASK (TAGGED_VALUE_MASK | ((u64)TAG_VOID << 32))
@@ -77,7 +65,7 @@ typedef struct IndexSlice {
 // 0111111111111100 0000000000000001
 #define BOOLEAN_MASK (TAGGED_VALUE_MASK | ((u64)TAG_BOOLEAN << 32))
 
-#define TAG_MASK (((uint32_t)1 << 3) - 1)
+#define TAG_MASK (((uint32_t)1 << 4) - 1)
 #define TAG_VOID ((uint8_t)1)
 #define TAG_BOOLEAN ((uint8_t)2)
 #define TAG_ERROR ((uint8_t)3)
@@ -95,23 +83,26 @@ typedef struct IndexSlice {
 #define NULL_U16 UINT16_MAX
 #define NULL_U8 UINT8_MAX
 
-// 0001111111111111
-#define TYPE_MASK ((u32)0x1fffffff)
+// 0000111111111111
+#define TYPE_MASK ((u32)0x0fffffff)
+
+// 1111000000000000
+#define TYPE_BITS ((u32)0xf0000000)
+
+// 0001111111111111: Includes the ref bit for comparison.
+#define TYPE_RT_MASK (TYPE_MASK | REF_TYPE_BIT)
+
+// 0001000000000000: Whether the type ID is the elem type of ref type.
+#define REF_TYPE_BIT ((u32)0x10000000)
 
 // 0010000000000000: External object bit (allocated using the GPA). VM checks this bit to free host objects (allocated from libcyber).
-#define EXTERNAL_MASK ((u32)0x20000000)
+#define EXTERNAL_TYPE_BIT ((u32)0x20000000)
 
-// 0100000000000000: Cyclable type bit. Currently has two purposes.
-//                   1. Since heap pages don't segregate non-cyc from cyc, it's used
-//                      to check which objects to visit.
-//                   2. Re-encapsulate an object pointer back to a cyc/non-cyc Value.
-#define CYC_TYPE_MASK ((u32)0x40000000)
+// 0100000000000000: 
+#define UNUSED_TYPE_BIT ((u32)0x40000000)
 
 // 1000000000000000: Mark bit.
-#define GC_MARK_MASK ((u32)0x80000000)
-
-// 1100000000000000
-#define GC_MARK_CYC_TYPE_MASK ((u32)0xC0000000)
+#define GC_MARK_BIT ((u32)0x80000000)
 
 #define FRAME_VM 0
 #define FRAME_HOST 1
@@ -127,16 +118,16 @@ typedef struct IndexSlice {
 #define VALUE_FALSE FALSE_MASK
 #define VALUE_INTERRUPT (ERROR_MASK | 0xffff) 
 #define VALUE_RAW(u) u
-#define VALUE_NOCYC_PTR(ptr) (NOCYC_POINTER_MASK | ((size_t)ptr & POINTER_PAYLOAD_MASK))
-#define VALUE_CYC_PTR(ptr) (CYC_POINTER_MASK | ((size_t)ptr & POINTER_PAYLOAD_MASK))
+#define VALUE_PTR(ptr) (MIN_PTR_MASK | ((size_t)ptr & PTR_PAYLOAD_MASK))
+
 #define VALUE_SYMBOL(symId) (SYMBOL_MASK | symId)
 #define VALUE_TAGLIT(symId) (TAGLIT_MASK | symId)
 #define VALUE_ERROR(symId) (ERROR_MASK | symId)
 
 // [Value ops]
-#define VALUE_AS_HEAPOBJECT(v) ((HeapObject*)(v & ~POINTER_MASK))
-#define VALUE_AS_INTEGER(v) BITCAST(_BitInt(48), v) // Padding bits returned are undefined.
-#define VALUE_AS_UINTEGER(v) BITCAST(unsigned _BitInt(48), v) // Padding bits returned are undefined.
+#define VALUE_AS_HEAPOBJECT(v) ((HeapObject*)(v & PTR_PAYLOAD_MASK))
+#define VALUE_AS_INTEGER(v) BITCAST(i64, v)
+#define VALUE_AS_UINTEGER(v) BITCAST(u64, v) // Padding bits returned are undefined.
 #define VALUE_AS_U32(v) ((u32)(v & 0xffffffff))
 #define VALUE_AS_FLOAT(v) ((ValueUnion){ .u = v }.d)
 #define VALUE_AS_FLOAT_TO_INT(v) ((int32_t)VALUE_AS_FLOAT(v))
@@ -145,19 +136,16 @@ typedef struct IndexSlice {
 #define VALUE_GET_TAG(v) ((BITCAST(u32, v >> 32)) & TAG_MASK)
 #define VALUE_CALLINFO_RETFLAG(v) (v & 0x1)
 
-#define VALUE_IS_BOOLEAN(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == BOOLEAN_MASK)
-#define VALUE_IS_POINTER(v) (v >= NOCYC_POINTER_MASK)
-#define VALUE_IS_CLOSURE(vm, v) (VALUE_IS_POINTER(v) && (vm->c.typesPtr[OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v))].kind == TYPE_KIND_FUNC_UNION) && (VALUE_AS_HEAPOBJECT(v)->func_union.kind == 2))
-#define VALUE_IS_UPVALUE(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_UPVALUE))
+#define VALUE_IS_BOOLEAN(v) ((v & TAGGED_PRIMITIVE_MASK) == BOOLEAN_MASK)
+#define VALUE_IS_POINTER(v) (v >= MIN_PTR_MASK)
+#define VALUE_IS_CLOSURE(vm, v) (VALUE_IS_POINTER(v) && (vm->c.typesPtr[OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v))]->kind == TYPE_KIND_FUNC_UNION) && (VALUE_AS_HEAPOBJECT(v)->func_union.kind == 2))
 #define VALUE_IS_FLOAT(v) ((v & TAGGED_VALUE_MASK) != TAGGED_VALUE_MASK)
-#define VALUE_IS_ERROR(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == ERROR_MASK)
+#define VALUE_IS_ERROR(v) ((v & TAGGED_PRIMITIVE_MASK) == ERROR_MASK)
 
 #define VALUE_IS_ARRAY(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_ARRAY))
 #define VALUE_IS_STRING(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_STRING))
-#define VALUE_IS_INTEGER(v) ((v & TAGGED_UPPER_VALUE_MASK) == TAGGED_INTEGER_MASK)
-#define VALUE_BOTH_INTEGERS(a, b) ((a & b & TAGGED_UPPER_VALUE_MASK) == TAGGED_INTEGER_MASK)
-#define VALUE_ALL3_INTEGERS(a, b, c) ((a & b & c & TAGGED_UPPER_VALUE_MASK) == TAGGED_INTEGER_MASK)
 #define OBJ_TYPEID(o) (o->head.typeId & TYPE_MASK)
+#define OBJ_RTTYPEID(o) (o->head.typeId & TYPE_RT_MASK)
 
 typedef enum {
     FMT_TYPE_CHAR,
@@ -170,6 +158,7 @@ typedef enum {
     FMT_TYPE_I32,
     FMT_TYPE_I48,
     FMT_TYPE_U64,
+    FMT_TYPE_I64,
     FMT_TYPE_F64,
     FMT_TYPE_BOOL,
     FMT_TYPE_PTR,
@@ -841,9 +830,6 @@ typedef struct TraceInfo {
     u32 numRetainAttempts;
     u32 numReleases;
     u32 numReleaseAttempts;
-
-    // Number cycle objects freed by gc.
-    u32 numCycFrees;
 } TraceInfo;
 
 typedef enum {
@@ -1009,7 +995,6 @@ PcFpResult zCall(VM* vm, Inst* pc, Value* stack, Value callee, uint8_t startLoca
 PcFpResult zCallValue(VM* vm, Inst* pc, Value* stack, Value callee, uint8_t startLocal);
 HeapObjectResult zAllocPoolObject(VM* vm);
 HeapObjectResult zAllocExternalObject(VM* vm, size_t size);
-HeapObjectResult zAllocExternalCycObject(VM* vm, size_t size);
 ValueResult zAllocFuncPtr(VM* vm, TypeId ptr_t, u16 id);
 ValueResult zAllocLambda(VM* vm, u32 rt_id, TypeId ptr_t);
 ValueResult zAllocClosure(VM* vm, Value* fp, u32 rt_id, TypeId ptr_t, Inst* captures, u8 ncaptures, u8 closure_local);

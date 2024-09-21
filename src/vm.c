@@ -51,7 +51,7 @@ static inline void release(VM* vm, Value val) {
 #endif
     if (VALUE_IS_POINTER(val)) {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(val);
-        TRACEV_IF(LOG_MEM, "arc | {} -1 | {}, {}", FMT_U32(obj->head.rc), FMT_STR(zGetTypeName(vm, getTypeId(val))), FMT_PTR(obj));
+        TRACEV_IF(LOG_MEM, "arc | {} -1 | {}, {}", FMT_U32(obj->head.rc), FMT_STR(zGetTypeBaseName(vm, getTypeId(val))), FMT_PTR(obj));
 #if TRACE
         zCheckDoubleFree(vm, obj);
 #endif
@@ -72,12 +72,12 @@ static inline void release(VM* vm, Value val) {
             zFreeObject(vm, obj);
         }
     } else {
-        TRACEV("release: {}, nop", FMT_STR(zGetTypeName(vm, getTypeId(val))));
+        TRACEV("release: {}, nop", FMT_STR(zGetTypeBaseName(vm, getTypeId(val))));
     }
 }
 
 static inline void releaseObject(VM* vm, HeapObject* obj) {
-    TRACEV_IF(LOG_MEM, "arc | {} -1 | {}, {}", FMT_U32(obj->head.rc), FMT_STR(zGetTypeName(vm, OBJ_TYPEID(obj))), FMT_PTR(obj));
+    TRACEV_IF(LOG_MEM, "arc | {} -1 | {}, {}", FMT_U32(obj->head.rc), FMT_STR(zGetTypeBaseName(vm, OBJ_TYPEID(obj))), FMT_PTR(obj));
 #if (TRACE)
     zCheckDoubleFree(vm, obj);
 #endif
@@ -101,7 +101,7 @@ static inline void releaseObject(VM* vm, HeapObject* obj) {
 }
 
 static inline void retainObject(VM* vm, HeapObject* obj) {
-    TRACEV_IF(LOG_MEM, "arc | {} +1 | {}, {}", FMT_U32(obj->head.rc), FMT_STR(zGetTypeName(vm, OBJ_TYPEID(obj))), FMT_PTR(obj));
+    TRACEV_IF(LOG_MEM, "arc | {} +1 | {}, {}", FMT_U32(obj->head.rc), FMT_STR(zGetTypeBaseName(vm, OBJ_TYPEID(obj))), FMT_PTR(obj));
     obj->head.rc += 1;
 #if TRACE
     zCheckRetainDanglingPointer(vm, obj);
@@ -121,7 +121,7 @@ static inline void retain(VM* vm, Value val) {
 #endif
     if (VALUE_IS_POINTER(val)) {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(val);
-        TRACEV_IF(LOG_MEM, "arc | {} +1 | {}, {}", FMT_U32(obj->head.rc), FMT_STR(zGetTypeName(vm, getTypeId(val))), FMT_PTR(obj));
+        TRACEV_IF(LOG_MEM, "arc | {} +1 | {}, {}", FMT_U32(obj->head.rc), FMT_STR(zGetTypeBaseName(vm, getTypeId(val))), FMT_PTR(obj));
         obj->head.rc += 1;
 #if TRACE
         zCheckRetainDanglingPointer(vm, obj);
@@ -134,7 +134,7 @@ static inline void retain(VM* vm, Value val) {
 #endif
         // zTraceRetain(vm, val);
     } else {
-        TRACEV("retain: {}, nop", FMT_STR(zGetTypeName(vm, getTypeId(val))));
+        TRACEV("retain: {}, nop", FMT_STR(zGetTypeBaseName(vm, getTypeId(val))));
     }
 }
 
@@ -147,17 +147,25 @@ static inline double toF64(Value val) {
 }
 
 static inline TypeId getTypeId(Value val) {
-    u64 bits = val & TAGGED_PRIMITIVE_MASK;
-    if (bits >= TAGGED_VALUE_MASK) {
+    if ((val & TAGGED_VALUE_MASK) == TAGGED_VALUE_MASK) {
         // Tagged.
-        if (VALUE_IS_POINTER(val)) {
+        if (val >= MIN_PTR_MASK) {
             return OBJ_TYPEID(VALUE_AS_HEAPOBJECT(val));
         } else {
-            if (bits >= TAGGED_ENUM_MASK) {
-                return val & 0xffffffff;
-            } else {
-                return VALUE_GET_TAG(bits);
-            }
+            return VALUE_GET_TAG(val);
+        }
+    } else {
+        return TYPE_FLOAT;
+    }
+}
+
+static inline u32 getRtTypeId(Value val) {
+    if ((val & TAGGED_VALUE_MASK) == TAGGED_VALUE_MASK) {
+        // Tagged.
+        if (val >= MIN_PTR_MASK) {
+            return OBJ_RTTYPEID(VALUE_AS_HEAPOBJECT(val));
+        } else {
+            return VALUE_GET_TAG(val);
         }
     } else {
         return TYPE_FLOAT;

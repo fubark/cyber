@@ -67,7 +67,7 @@ export fn clAlloc(vm: *cy.VM, size: usize) [*]const u8 {
     return slice.ptr;
 }
 
-export fn clFree(vm: *cy.VM, bytes: c.Str) void {
+export fn clFree(vm: *cy.VM, bytes: C.Str) void {
     vm.alloc.free(bytes.ptr[0..bytes.len]);
 }
 
@@ -75,16 +75,16 @@ export fn clFreeZ(vm: *cy.VM, str: [*:0]const u8) void {
     vm.alloc.free(std.mem.sliceTo(str, 0));
 }
 
-export fn clGetAllocator(vm: *cy.VM) c.Allocator {
-    return c.toAllocator(vm.alloc);
+export fn clGetAllocator(vm: *cy.VM) C.Allocator {
+    return C.toAllocator(vm.alloc);
 }
 
-export fn clDefaultEvalConfig() c.EvalConfig {
+export fn clDefaultEvalConfig() C.EvalConfig {
     return .{
         .single_run = false,
         .file_modules = false,
         .reload = false,
-        .backend = c.BackendVM,
+        .backend = C.BackendVM,
         .gen_all_debug_syms = false,
         .spawn_exe = false, 
     };
@@ -101,27 +101,27 @@ export fn clReset(vm: *cy.VM) void {
     vm.resetVM() catch cy.fatal();
 }
 
-export fn clEval(vm: *cy.VM, src: c.Str, outVal: *cy.Value) c.ResultCode {
+export fn clEval(vm: *cy.VM, src: C.Str, outVal: *cy.Value) C.ResultCode {
     const uri: []const u8 = "eval";
-    return clEvalExt(vm, c.toStr(uri), src, c.defaultEvalConfig(), outVal);
+    return clEvalExt(vm, C.toStr(uri), src, C.defaultEvalConfig(), outVal);
 }
 
-export fn clEvalExt(vm: *cy.VM, uri: c.Str, src: c.Str, config: c.EvalConfig, outVal: *cy.Value) c.ResultCode {
-    var res = c.Success;
-    outVal.* = vm.eval(c.fromStr(uri), c.fromStr(src), config) catch |err| b: {
+export fn clEvalExt(vm: *cy.VM, uri: C.Str, src: C.Str, config: C.EvalConfig, outVal: *cy.Value) C.ResultCode {
+    var res = C.Success;
+    outVal.* = vm.eval(C.fromStr(uri), C.fromStr(src), config) catch |err| b: {
         switch (err) {
             error.CompileError => {
-                res = c.ErrorCompile;
+                res = C.ErrorCompile;
             },
             error.Panic => {
-                res = c.ErrorPanic;
+                res = C.ErrorPanic;
             },
             error.Await => {
-                res = c.Await;
+                res = C.Await;
             },
             else => {
                 log.tracev("{}", .{err});
-                res = c.ErrorUnknown;
+                res = C.ErrorUnknown;
             },
         }
         break :b undefined;
@@ -130,22 +130,22 @@ export fn clEvalExt(vm: *cy.VM, uri: c.Str, src: c.Str, config: c.EvalConfig, ou
     return res;
 }
 
-export fn clEvalPath(vm: *cy.VM, uri: c.Str, config: c.EvalConfig, outVal: *cy.Value) c.ResultCode {
-    var res = c.Success;
-    outVal.* = vm.eval(c.fromStr(uri), null, config) catch |err| b: {
+export fn clEvalPath(vm: *cy.VM, uri: C.Str, config: C.EvalConfig, outVal: *cy.Value) C.ResultCode {
+    var res = C.Success;
+    outVal.* = vm.eval(C.fromStr(uri), null, config) catch |err| b: {
         switch (err) {
             error.CompileError => {
-                res = c.ErrorCompile;
+                res = C.ErrorCompile;
             },
             error.Panic => {
-                res = c.ErrorPanic;
+                res = C.ErrorPanic;
             },
             error.Await => {
-                res = c.Await;
+                res = C.Await;
             },
             else => {
                 log.tracev("{}", .{err});
-                res = c.ErrorUnknown;
+                res = C.ErrorUnknown;
             },
         }
         break :b undefined;
@@ -154,22 +154,22 @@ export fn clEvalPath(vm: *cy.VM, uri: c.Str, config: c.EvalConfig, outVal: *cy.V
     return res;
 }
 
-export fn clRunReadyTasks(vm: *cy.VM) c.ResultCode {
-    var res = c.Success;
+export fn clRunReadyTasks(vm: *cy.VM) C.ResultCode {
+    var res = C.Success;
     runReadyTasks(vm) catch |err| {
         switch (err) {
             error.CompileError => {
-                res = c.ErrorCompile;
+                res = C.ErrorCompile;
             },
             error.Panic => {
-                res = c.ErrorPanic;
+                res = C.ErrorPanic;
             },
             error.Await => {
-                res = c.Await;
+                res = C.Await;
             },
             else => {
                 log.tracev("{}", .{err});
-                res = c.ErrorUnknown;
+                res = C.ErrorUnknown;
             },
         }
     };
@@ -240,27 +240,27 @@ fn runReadyTasks(vm: *cy.VM) anyerror!void {
     }
 }
 
-export fn clDefaultCompileConfig() c.CompileConfig {
+export fn clDefaultCompileConfig() C.CompileConfig {
     return .{
         .single_run = false,
         .gen_all_debug_syms = false,
         .file_modules = false,
-        .backend = c.BackendVM,
+        .backend = C.BackendVM,
         .skip_codegen = false,
         .emit_source_map = false,
         .gen_debug_func_markers = false,
     };
 }
 
-export fn clCompile(vm: *cy.VM, uri: c.Str, src: c.Str, config: c.CompileConfig) c.ResultCode {
-    var res = c.Success;
-    _ = vm.compile(c.fromStr(uri), c.fromStr(src), config) catch |err| {
+export fn clCompile(vm: *cy.VM, uri: C.Str, src: C.Str, config: C.CompileConfig) C.ResultCode {
+    var res = C.Success;
+    _ = vm.compile(C.fromStr(uri), C.fromStr(src), config) catch |err| {
         switch (err) {
             error.CompileError => {
-                res = c.ErrorCompile;
+                res = C.ErrorCompile;
             },
             else => {
-                res = c.ErrorUnknown;
+                res = C.ErrorUnknown;
             },
         }
     };
@@ -268,17 +268,17 @@ export fn clCompile(vm: *cy.VM, uri: c.Str, src: c.Str, config: c.CompileConfig)
     return res;
 }
 
-export fn clValidate(vm: *cy.VM, src: c.Str) c.ResultCode {
-    var res = c.Success;
-    _ = vm.validate("main", c.fromStr(src), .{
+export fn clValidate(vm: *cy.VM, src: C.Str) C.ResultCode {
+    var res = C.Success;
+    _ = vm.validate("main", C.fromStr(src), .{
         .file_modules = false,
     }) catch |err| {
         switch (err) {
             error.CompileError => {
-                res = c.ErrorCompile;
+                res = C.ErrorCompile;
             },
             else => {
-                res = c.ErrorUnknown;
+                res = C.ErrorUnknown;
             },
         }
     };
@@ -287,17 +287,17 @@ export fn clValidate(vm: *cy.VM, src: c.Str) c.ResultCode {
 }
 
 test "clValidate()" {
-    const vm = c.create();
+    const vm = C.create();
     defer vm.destroy();
 
-    c.setSilent(true);
-    defer c.setSilent(false);
+    C.setSilent(true);
+    defer C.setSilent(false);
 
     var res = vm.validate("1 + 2");
-    try t.eq(res, c.Success);
+    try t.eq(res, C.Success);
 
     res = vm.validate("1 +");
-    try t.eq(res, c.ErrorCompile);
+    try t.eq(res, C.ErrorCompile);
 }
 
 export fn clGetInt(vm: *cy.VM, idx: u32) i64 {
@@ -312,100 +312,99 @@ export fn clGetValue(vm: *cy.VM, idx: u32) Value {
     return vm.getValue(idx);
 }
 
-export fn clResultName(code: c.ResultCode) c.Str {
+export fn clResultName(code: C.ResultCode) C.Str {
     switch (code) {
-        c.Success => return c.toStr("Success"),
-        c.ErrorCompile => return c.toStr("CompileError"),
-        c.ErrorPanic => return c.toStr("PanicError"),
-        c.ErrorUnknown => return c.toStr("UnknownError"),
+        C.Success => return C.toStr("Success"),
+        C.ErrorCompile => return C.toStr("CompileError"),
+        C.ErrorPanic => return C.toStr("PanicError"),
+        C.ErrorUnknown => return C.toStr("UnknownError"),
         else => fatal(),
     }
 }
 
 var tempBuf: [1024]u8 align(8) = undefined;
 
-export fn clNewLastErrorSummary(vm: *cy.VM) c.Str {
-    if (vm.last_res == c.ErrorCompile) {
+export fn clNewLastErrorSummary(vm: *cy.VM) C.Str {
+    if (vm.last_res == C.ErrorCompile) {
         return clNewErrorReportSummary(vm);
-    } else if (vm.last_res == c.ErrorPanic) {
+    } else if (vm.last_res == C.ErrorPanic) {
         return clNewPanicSummary(vm);
     } else {
-        return c.NullStr;
+        return C.NullStr;
     }
 }
 
-export fn clNewErrorReportSummary(vm: *cy.VM) c.Str {
+export fn clNewErrorReportSummary(vm: *cy.VM) C.Str {
     if (vm.compiler.reports.items.len == 0) {
         cy.panic("No report.");
     }
     const str = cy.debug.allocReportSummary(vm.compiler, vm.compiler.reports.items[0]) catch fatal();
-    return c.toStr(str);
+    return C.toStr(str);
 }
 
-export fn clNewPanicSummary(vm: *const cy.VM) c.Str {
-    if (vm.config.backend == c.BackendVM) {
+export fn clNewPanicSummary(vm: *const cy.VM) C.Str {
+    if (vm.config.backend == C.BackendVM) {
         const summary = cy.debug.allocLastUserPanicError(vm) catch fatal();
-        return c.toStr(summary);
+        return C.toStr(summary);
     } else {
         const dupe = vm.alloc.dupe(u8, vm.lastExeError) catch fatal();
-        return c.toStr(dupe);
+        return C.toStr(dupe);
     }
 }
 
-export fn clReportApiError(vm: *const cy.VM, msg: c.Str) void {
-    vm.setApiError(c.fromStr(msg)) catch fatal();
+export fn clReportApiError(vm: *const cy.VM, msg: C.Str) void {
+    vm.setApiError(C.fromStr(msg)) catch fatal();
 }
 
-export fn clGetResolver(vm: *cy.VM) c.ResolverFn {
+export fn clGetResolver(vm: *cy.VM) C.ResolverFn {
     return vm.compiler.moduleResolver;
 }
 
-export fn clSetResolver(vm: *cy.VM, resolver: c.ResolverFn) void {
+export fn clSetResolver(vm: *cy.VM, resolver: C.ResolverFn) void {
     vm.compiler.moduleResolver = resolver;
 }
 
-export fn clResolve(vm: *cy.VM, uri: c.Str) c.Str {
+export fn clResolve(vm: *cy.VM, uri: C.Str) C.Str {
     var buf: [4096]u8 = undefined;
-    const r_uri_temp = cy.compiler.resolveModuleUri(vm.compiler, &buf, c.fromStr(uri)) catch fatal();
+    const r_uri_temp = cy.compiler.resolveModuleUri(vm.compiler, &buf, C.fromStr(uri)) catch fatal();
     const r_uri = vm.alloc.dupe(u8, r_uri_temp) catch fatal();
-    return c.toStr(r_uri);
+    return C.toStr(r_uri);
 }
 
-export fn clGetModuleLoader(vm: *cy.VM) c.ModuleLoaderFn {
+export fn clGetModuleLoader(vm: *cy.VM) C.ModuleLoaderFn {
     return vm.compiler.moduleLoader;
 }
 
-export fn clSetModuleLoader(vm: *cy.VM, loader: c.ModuleLoaderFn) void {
+export fn clSetModuleLoader(vm: *cy.VM, loader: C.ModuleLoaderFn) void {
     vm.compiler.moduleLoader = loader;
 }
 
-export fn clGetPrinter(vm: *cy.VM) c.PrintFn {
+export fn clGetPrinter(vm: *cy.VM) C.PrintFn {
     return vm.print;
 }
 
-export fn clSetPrinter(vm: *cy.VM, print: c.PrintFn) void {
+export fn clSetPrinter(vm: *cy.VM, print: C.PrintFn) void {
     vm.print = print;
 }
 
-export fn clGetErrorPrinter(vm: *cy.VM) c.PrintErrorFn {
+export fn clGetErrorPrinter(vm: *cy.VM) C.PrintErrorFn {
     return vm.print_err;
 }
 
-export fn clSetErrorPrinter(vm: *cy.VM, print: c.PrintErrorFn) void {
+export fn clSetErrorPrinter(vm: *cy.VM, print: C.PrintErrorFn) void {
     vm.print_err = print;
 }
 
-pub export var clLog: c.LogFn = cy.log.defaultLog;
+pub export var clLog: C.LogFn = cy.log.defaultLog;
 
-export fn clPerformGC(vm: *cy.VM) c.GCResult {
-    const res = cy.arc.performGC(vm) catch cy.fatal();
+export fn clCollectCycles(vm: *cy.VM) C.GCResult {
+    const res = cy.arc.collectCycles(vm) catch cy.fatal();
     return .{
-        .numCycFreed = res.numCycFreed,
-        .numObjFreed = res.numObjFreed,
+        .num_obj_freed = res.num_obj_freed,
     };
 }
 
-export fn clDeclareFuncDyn(mod: c.Sym, name: [*:0]const u8, numParams: u32, funcPtr: c.FuncFn) void {
+export fn clDeclareFuncDyn(mod: C.Sym, name: [*:0]const u8, numParams: u32, funcPtr: C.FuncFn) void {
     const modSym = cy.Sym.fromC(mod);
     var symName: []const u8 = std.mem.sliceTo(name, 0);
     var nameOwned = false;
@@ -423,7 +422,7 @@ export fn clDeclareFuncDyn(mod: c.Sym, name: [*:0]const u8, numParams: u32, func
     }
 }
 
-export fn clDeclareFunc(mod: c.Sym, name: [*:0]const u8, params: [*]const cy.TypeId, numParams: usize, retType: cy.TypeId, funcPtr: c.FuncFn) void {
+export fn clDeclareFunc(mod: C.Sym, name: [*:0]const u8, params: [*]const *cy.Type, numParams: usize, retType: *cy.Type, funcPtr: C.FuncFn) void {
     const modSym = cy.Sym.fromC(mod);
     var symName: []const u8 = std.mem.sliceTo(name, 0);
     var nameOwned = false;
@@ -672,12 +671,12 @@ export fn clSetModuleConfig(vm: *cy.VM, mod: C.Module, config: *C.ModuleConfig) 
 }
 
 export fn clNewHostObject(vm: *cy.VM, typeId: cy.TypeId, size: usize) Value {
-    const ptr = cy.heap.allocHostCycObject(vm, typeId, size) catch cy.fatal();
-    return Value.initHostCycPtr(ptr);
+    const ptr = cy.heap.allocHostObject(vm, typeId, size) catch cy.fatal();
+    return Value.initHostPtr(ptr);
 }
 
 export fn clNewHostObjectPtr(vm: *cy.VM, typeId: cy.TypeId, size: usize) *anyopaque {
-    return cy.heap.allocHostCycObject(vm, typeId, size) catch cy.fatal();
+    return cy.heap.allocHostObject(vm, typeId, size) catch cy.fatal();
 }
 
 export fn clNewInstance(vm: *cy.VM, type_id: cy.TypeId, fields: [*]const c.FieldInit, nfields: usize) cy.Value {

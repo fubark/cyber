@@ -53,9 +53,9 @@ func choicetag[T](choice T) T.Tag:
 --| Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors](#unexpected-errors).
 @host func panic(err any) dyn
 
---| Runs the garbage collector once to detect reference cycles and abandoned objects.
+--| Runs the cycle detector once to detect strong reference cycles and abandoned objects.
 --| Returns the statistics of the run in a map value.
-@host func performGC() Map
+@host func collectCycles() Map
 
 func ptrcast[D, S](D type, val S) *D:
     return ptrcast_(D, typeid[S], val)

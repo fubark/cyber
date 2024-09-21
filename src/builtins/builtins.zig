@@ -45,7 +45,7 @@ const funcs = [_]C.HostFuncEntry{
     func("isNone",         isNone),
     func("must",           zErrFunc(must)),
     func("panic",          zErrFunc(panic)),
-    func("performGC",      zErrFunc(performGC)),
+    func("collectCycles",  zErrFunc(collectCycles)),
     func("ptrcast_",       zErrFunc(ptrcast)),
     func("print",          print),
     func("refcast",        zErrFunc(refcast)),
@@ -791,14 +791,11 @@ pub fn getObjectRc(vm: *cy.VM) anyerror!Value {
     }
 }
 
-pub fn performGC(vm: *cy.VM) anyerror!Value {
-    const res = try cy.arc.performGC(vm);
+pub fn collectCycles(vm: *cy.VM) anyerror!Value {
+    const res = try cy.arc.collectCycles(vm);
     const map = try vm.allocEmptyMap();
-    const cycKey = try vm.retainOrAllocAstring("numCycFreed");
-    const objKey = try vm.retainOrAllocAstring("numObjFreed");
-    const num_cyc_freed = try vm.allocInt(@intCast(res.numCycFreed));
-    try map.asHeapObject().map.setConsume(vm, cycKey, num_cyc_freed);
-    const num_obj_freed = try vm.allocInt(@intCast(res.numObjFreed));
+    const objKey = try vm.retainOrAllocAstring("num_obj_freed");
+    const num_obj_freed = try vm.allocInt(@intCast(res.num_obj_freed));
     try map.asHeapObject().map.setConsume(vm, objKey, num_obj_freed);
     return map;
 }

@@ -15,13 +15,17 @@ const build_options = @import("build_options");
 const log_mem = build_options.log_mem;
 
 pub fn release(vm: *cy.VM, val: cy.Value) void {
+    release2(vm, val, false, {});
+}
+
+pub fn release2(vm: *cy.VM, val: cy.Value, comptime gc: bool, res: if (gc) *c.GCResult else void) void {
     if (cy.Trace) {
         vm.c.trace.numReleaseAttempts += 1;
     }
     if (val.isPointer()) {
         const obj = val.asHeapObject();
         if (cy.TraceRC) {
-            log.tracevIf(log_mem, "{} -1 release: {s}, {*}", .{obj.head.rc, vm.getTypeName(val.getTypeId()), obj});
+            log.tracevIf(log_mem, "{} -1, {s}{s}, {*}", .{obj.head.rc, obj.getRtTypePrefix(), vm.getTypeName(val.getTypeId()), obj});
         }
         if (cy.Trace) {
             checkDoubleFree(vm, obj);
@@ -41,7 +45,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) void {
         }
         if (obj.head.rc == 0) {
             // Free children and the object.
-            @call(.never_inline, cy.heap.freeObject, .{vm, obj, false});
+            @call(.never_inline, cy.heap.freeObject, .{vm, obj, gc, res});
 
             if (cy.Trace) {
                 if (vm.countFrees) {
@@ -82,11 +86,15 @@ pub fn checkDoubleFree(vm: *cy.VM, obj: *cy.HeapObject) void {
 }
 
 pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) void {
+    releaseObject2(vm, obj, false, {});
+}
+
+pub fn releaseObject2(vm: *cy.VM, obj: *cy.HeapObject, comptime gc: bool, res: if (gc) *c.GCResult else void) void {
     if (cy.Trace) {
         checkDoubleFree(vm, obj);
     }
     if (cy.TraceRC) {
-        log.tracevIf(log_mem, "{} -1 release: {s}", .{obj.head.rc, vm.getTypeName(obj.getTypeId())});
+        log.tracevIf(log_mem, "{} -1 release: {s}, {*}", .{obj.head.rc, vm.getTypeName(obj.getTypeId()), obj});
     }
     obj.head.rc -= 1;
     if (cy.TrackGlobalRC) {
@@ -97,7 +105,7 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) void {
         vm.c.trace.numReleaseAttempts += 1;
     }
     if (obj.head.rc == 0) {
-        @call(.never_inline, cy.heap.freeObject, .{vm, obj, false});
+        @call(.never_inline, cy.heap.freeObject, .{vm, obj, gc, res});
     }
 }
 
@@ -136,7 +144,7 @@ pub inline fn retainObject(self: *cy.VM, obj: *cy.HeapObject) void {
     obj.head.rc += 1;
     if (cy.Trace) {
         checkRetainDanglingPointer(self, obj);
-        log.tracevIf(log_mem, "{} +1 retain: {s}", .{obj.head.rc, self.getTypeName(obj.getTypeId())});
+        log.tracevIf(log_mem, "{} +1, {s}, {*}", .{obj.head.rc, self.getTypeName(obj.getTypeId()), obj});
     }
     if (cy.TrackGlobalRC) {
         self.c.refCounts += 1;
@@ -252,6 +260,7 @@ pub const VmExt = struct {
     pub const retainLayout = Root.retainLayout;
     pub const releaseLayout = Root.releaseLayout;
     pub const release = Root.release;
+    pub const release2 = Root.release2;
 };
 
 pub fn checkRetainDanglingPointer(vm: *cy.VM, obj: *cy.HeapObject) void {
@@ -277,7 +286,7 @@ pub inline fn retain(self: *cy.VM, val: cy.Value) void {
         const obj = val.asHeapObject();
         if (cy.Trace) {
             checkRetainDanglingPointer(self, obj);
-            log.tracevIf(log_mem, "{} +1 retain: {s}", .{obj.head.rc, self.getTypeName(obj.getTypeId())});
+            log.tracevIf(log_mem, "{} +1, {s}{s}, {*}", .{obj.head.rc, obj.getRtTypePrefix(), self.getTypeName(obj.getTypeId()), obj});
         }
         obj.head.rc += 1;
         if (cy.TrackGlobalRC) {
@@ -297,7 +306,7 @@ pub inline fn retainInc(self: *cy.VM, val: cy.Value, inc: u32) void {
         const obj = val.asHeapObject();
         if (cy.Trace) {
             checkRetainDanglingPointer(self, obj);
-            log.tracevIf(log_mem, "{} +{} retain: {s}", .{obj.head.rc, inc, self.getTypeName(obj.getTypeId())});
+            log.tracevIf(log_mem, "{} +{}, {s}, {*}", .{obj.head.rc, inc, self.getTypeName(obj.getTypeId()), obj});
         }
         obj.head.rc += inc;
         if (cy.TrackGlobalRC) {
@@ -328,12 +337,12 @@ pub fn getGlobalRC(self: *const cy.VM) usize {
 ///    If the mark flag is set, reset the flag for the next gc run.
 ///    TODO: Allocate using separate pages for cyclable and non-cyclable objects,
 ///          so only cyclable objects are iterated.
-pub fn performGC(vm: *cy.VM) !c.GCResult {
+pub fn collectCycles(vm: *cy.VM) !c.GCResult {
     log.tracev("Run gc.", .{});
     try performMark(vm);
 
     // Make sure dummy node has mark bit.
-    cy.vm.dummyCyclableHead.typeId = vmc.GC_MARK_MASK | bt.Void;
+    cy.vm.dummyCyclableHead.typeId = vmc.GC_MARK_BIT | bt.Void;
 
     return try performSweep(vm);
 }
@@ -344,23 +353,60 @@ fn performMark(vm: *cy.VM) !void {
 
     // Mark globals.
     for (vm.c.getVarSyms().items()) |sym| {
-        if (sym.value.isCycPointer()) {
+        if (sym.value.isPointer()) {
             markValue(vm, sym.value);
         }
     }
     for (vm.c.getContextVars().items()) |context_var| {
-        if (context_var.value.isCycPointer()) {
+        if (context_var.value.isPointer()) {
             markValue(vm, context_var.value);
         }
     }
+
+    // Mark compile-time template args values.
+    // TODO: Perhaps template args should be converted to unmanaged data to avoid marking.
+    for (vm.compiler.chunks.items) |chunk| {
+        for (chunk.syms.items) |sym| {
+            if (sym.type == .template) {
+                const template = sym.cast(.template);
+                for (template.variants.items) |variant| {
+                    for (variant.args) |arg| {
+                        if (arg.isPointer()) {
+                            markValue(vm, arg);
+                        }
+                    }
+                    if (variant.type == .ct_val) {
+                        if (variant.data.ct_val.ct_val.isPointer()) {
+                            markValue(vm, variant.data.ct_val.ct_val);
+                        }
+                    }
+                }
+            } else if (sym.type == .func_template) {
+                const template = sym.cast(.func_template);
+                for (template.variants.items) |variant| {
+                    for (variant.args) |arg| {
+                        if (arg.isPointer()) {
+                            markValue(vm, arg);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for (vm.staticObjects.items()) |obj| {
+        markValue(vm, obj);
+    }
 }
 
+// TODO: This should only be looking at cyclable objects.
+//       Cyclable objects should be allocated from separate heap pages.
 fn performSweep(vm: *cy.VM) !c.GCResult {
     log.tracev("Perform sweep.", .{});
-    // Collect cyc nodes and release their children (child cyc nodes are skipped).
-    // TODO: Report `num_freed` after flattening recursive release.
-    const num_freed: u32 = 0;
-    var num_cyc_freed: u32 = 0;
+    // Collect cyc nodes and release their children.
+    var res = c.GCResult{
+        .num_obj_freed = 0,
+    };
 
     log.tracev("Sweep heap pages.", .{});
     for (vm.heapPages.items()) |page| {
@@ -368,7 +414,7 @@ fn performSweep(vm: *cy.VM) !c.GCResult {
         while (i < page.objects.len) {
             const obj = &page.objects[i];
             if (obj.freeSpan.typeId != cy.NullId) {
-                if (obj.isNoMarkCyc()) {
+                if (!obj.isGcMarked()) {
                     log.tracev("gc free: {s}, rc={}", .{vm.getTypeName(obj.getTypeId()), obj.head.rc});
                     if (cy.Trace) {
                         checkDoubleFree(vm, obj);
@@ -376,9 +422,12 @@ fn performSweep(vm: *cy.VM) !c.GCResult {
                     if (cy.TrackGlobalRC) {
                         vm.c.refCounts -= obj.head.rc;
                     }
-                    cy.heap.freeObject(vm, obj, true);
-                    num_cyc_freed += 1;
-                } else if (obj.isGcMarked()) {
+
+                    // Inc ref-count to ensure cycles do not free it again.
+                    obj.head.rc += 1;
+                    if (cy.Trace) vm.c.refCounts += 1;
+                    cy.heap.freeObject(vm, obj, true, &res);
+                } else {
                     obj.resetGcMarked();
                 }
                 i += 1;
@@ -393,11 +442,17 @@ fn performSweep(vm: *cy.VM) !c.GCResult {
     log.tracev("Sweep non-pool cyc nodes.", .{});
     var mbNode: ?*cy.heap.DListNode = vm.cyclableHead;
     while (mbNode) |node| {
-        // Obtain next before node is freed.
+        // Obtain next before this node is freed.
         mbNode = node.next;
 
         const obj = node.getHeapObject();
-        if (obj.isNoMarkCyc()) {
+        if (obj.head.typeId & vmc.TYPE_MASK == cy.NullId & vmc.TYPE_MASK) {
+            // Marked free from a previous `freeObject`.
+            // Actually free it this time without corrupting the list.
+            cy.heap.freeExternalObject(vm, obj, obj.head.rc, false);
+            continue;
+        }
+        if (!obj.isGcMarked()) {
             log.tracev("gc free: {s}, rc={}", .{vm.getTypeName(obj.getTypeId()), obj.head.rc});
             if (cy.Trace) {
                 checkDoubleFree(vm, obj);
@@ -405,22 +460,16 @@ fn performSweep(vm: *cy.VM) !c.GCResult {
             if (cy.TrackGlobalRC) {
                 vm.c.refCounts -= obj.head.rc;
             }
-            cy.heap.freeObject(vm, obj, true);
-            num_cyc_freed += 1;
-        } else if (obj.isGcMarked()) {
+            obj.head.rc += 1;
+            if (cy.Trace) vm.c.refCounts += 1;
+            cy.heap.freeObject(vm, obj, true, &res);
+            cy.heap.freeExternalObject(vm, obj, obj.head.rc, false);
+        } else {
             obj.resetGcMarked();
         }
     }
 
-    if (cy.Trace) {
-        vm.c.trace.numCycFrees += num_cyc_freed;
-    }
-
-    const res = c.GCResult{
-        .numCycFreed = num_cyc_freed,
-        .numObjFreed = num_freed,
-    };
-    log.tracev("gc result: num cyc {}, num obj {}", .{res.numCycFreed, res.numObjFreed});
+    log.tracev("gc result: num_obj_freed={}", .{res.num_obj_freed});
     return res;
 }
 
@@ -448,7 +497,7 @@ fn markMainStackRoots(vm: *cy.VM) !void {
                 } else {
                     log.tracev("mark slot: {}", .{vm.unwind_slots[cur.idx]});
                     const v = fp[vm.unwind_slots[cur.idx]];
-                    if (v.isCycPointer()) {
+                    if (v.isPointer()) {
                         markValue(vm, v);
                     }
                     cur = vm.unwind_slot_prevs[cur.idx];
@@ -483,10 +532,10 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
             const map = obj.map.map();
             var iter = map.iterator();
             while (iter.next()) |entry| {
-                if (entry.key.isCycPointer()) {
+                if (entry.key.isPointer()) {
                     markValue(vm, entry.key);
                 }
-                if (entry.value.isCycPointer()) {
+                if (entry.value.isPointer()) {
                     markValue(vm, entry.value);
                 }
             }
@@ -503,36 +552,43 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
             // TODO: Visit other fiber stacks.
         },
         else => {
-            // Assume caller used isCycPointer and obj is cyclable.
-            const entry = vm.c.types[typeId];
-            if (entry.kind == .object) {
-                // User type.
-                const members = obj.object.getValuesConstPtr()[0..entry.data.object.numFields];
-                for (members) |m| {
-                    if (m.isCycPointer()) {
-                        markValue(vm, m);
-                    }
-                }
-            } else if (entry.kind == .trait) {
-                markValue(vm, obj.trait.impl);
-            } else if (entry.kind == .func_union) {
-                const vals = obj.func_union.getCapturedValuesPtr()[0..obj.func_union.data.closure.numCaptured];
-                for (vals) |val| {
-                    // TODO: Can this be assumed to always be a Box value?
-                    if (val.isCycPointer()) {
-                        markValue(vm, val);
-                    }
-                }
-            } else {
-                // Custom object type.
-                if (entry.sym.cast(.hostobj_t).getChildrenFn) |getChildren| {
-                    const children = getChildren(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
-                    for (cy.Value.fromSliceC(children)) |child| {
-                        if (child.isCycPointer()) {
-                            markValue(vm, child);
+            const type_ = vm.getType(typeId);
+            switch (type_.kind()) {
+                .struct_t => {
+                    const size = type_.cast(.struct_t).size;
+                    // User type.
+                    const members = obj.object.getValuesConstPtr()[0..size];
+                    for (members) |m| {
+                        if (m.isPointer()) {
+                            markValue(vm, m);
                         }
                     }
-                }
+                },
+                .trait => {
+                    markValue(vm, obj.trait.impl);
+                },
+                .func_union => {
+                    const vals = obj.func_union.getCapturedValuesPtr()[0..obj.func_union.data.closure.numCaptured];
+                    for (vals) |val| {
+                        // TODO: Can this be assumed to always be a Box value?
+                        if (val.isPointer()) {
+                            markValue(vm, val);
+                        }
+                    }
+                },
+                .hostobj => {
+                    // Custom object type.
+                    const hostobj_t = type_.cast(.hostobj);
+                    if (hostobj_t.getChildrenFn) |getChildren| {
+                        const children = getChildren(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
+                        for (cy.Value.fromSliceC(children)) |child| {
+                            if (child.isPointer()) {
+                                markValue(vm, child);
+                            }
+                        }
+                    }
+                },
+                else => {},
             }
         },
     }
@@ -588,7 +644,7 @@ pub fn dumpObjectAllocTrace(vm: *cy.VM, obj: *cy.HeapObject, allocPc: u32) !void
     var buf: [256]u8 = undefined;
     const typeId = obj.getTypeId();
     const typeName = vm.getTypeName(typeId);
-    const valStr = try vm.bufPrintValueShortStr(&vm.tempBuf, cy.Value.initNoCycPtr(obj));
+    const valStr = try vm.bufPrintValueShortStr(&vm.tempBuf, cy.Value.initPtr(obj), true);
     const msg = try std.fmt.bufPrint(&buf, "{*}, type: {s}, rc: {} at pc: {}\nval={s}", .{
         obj, typeName, obj.head.rc, allocPc, valStr,
     });

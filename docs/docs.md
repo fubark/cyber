@@ -2717,7 +2717,7 @@ By default `bindLib` returns an anonymous object with the binded C-functions as 
 
 ### Finalizer.
 The resulting object of `bindLib` holds a reference to an internal TCCState which owns the loaded JIT code.
-Once the object is released by ARC, the TCCState is also released which removes the JIT code from memory.
+Once the object is released, the TCCState is also released which removes the JIT code from memory.
 
 ## Mappings.
 When using `cfunc` or `cbind` declarations, [symbols](#symbols) are used to represent default type mappings from Cyber to C and back:
@@ -3890,7 +3890,7 @@ CLValueSlice myNodeGetChildren(CLVM* vm, void* obj) {
 ```
 
 ### `finalizer`
-A type finalizer is optional since the memory and children of an instance will be freed automatically by ARC.
+A type finalizer is optional and gets invoked before the memory is reclaimed by ARC.
 However, it can be useful to perform additional cleanup tasks for instances that contain external resources.
 ```c
 void myNodeFinalizer(CLVM* vm, void* obj) {
@@ -3902,6 +3902,21 @@ void myNodeFinalizer(CLVM* vm, void* obj) {
 
 <table><tr>
 <td valign="top">
+
+* [Automatic memory.](#automatic-memory)
+  * [ARC.](#arc)
+  * [Retain optimizations.](#retain-optimizations)
+  * [Object destructor.](#object-destructor)
+  * [Closures.](#closures-1)
+  * [Fibers.](#fibers-1)
+  * [Dynamic containers.](#dynamic-containers)
+  * [Default allocator.](#default-allocator)
+  * [Weak references.](#weak-references)
+  * [Cycle detector.](#cycle-detector)
+* [Manual memory.](#manual-memory)
+  * [Memory allocations.](#memory-allocations)
+  * [Runtime memory checks.](#runtime-memory-checks)
+</td><td valign="top">
 
 * [Structured memory.](#structured-memory)
   * [Value ownership.](#value-ownership)
@@ -3918,29 +3933,107 @@ void myNodeFinalizer(CLVM* vm, void* obj) {
   * [Shared ownership.](#shared-ownership)
   * [Deinitializer.](#deinitializer)
   * [Pointer interop.](#pointer-interop)
-</td><td valign="top">
-
-* [Automatic memory.](#automatic-memory)
-  * [ARC.](#arc)
-  * [Object destructor.](#object-destructor)
-  * [Retain optimizations.](#retain-optimizations)
-  * [Closures.](#closures-1)
-  * [Fibers.](#fibers-1)
-  * [Heap objects.](#heap-objects)
-  * [GC.](#gc)
-* [Manual memory.](#manual-memory)
-  * [Memory allocations.](#memory-allocations)
-  * [Runtime memory checks.](#runtime-memory-checks)
 </td>
 </tr></table>
 
 [^top](#table-of-contents)
 
-Cyber provides memory safety by default with structured and automatic memory.
+Cyber provides memory safety by default with ARC.
 Manual memory is also supported but discouraged.
 
+## Automatic memory.
+By default, objects (values that were allocated on the heap) are safely managed by ARC. Objects can be explicitly or implicitly allocated when [referencing values](#references).
+
+### ARC.
+ARC, also known as automatic reference counting, has several advantages over a tracing GC:
+* **Deterministic**. It can be useful to reproduce the same result from the same input or state.
+* **Granular**. Smaller and distributed updates reduce pauses. This can be suitable for realtime applications. Although modern tracing GCs have more throughput, they often come at the cost of higher memory spikes and longer pauses. Furthermore, if throughput is important, [structured memory](#structured-memory) and arenas should be used. In the case of AOT, unsafe [manual memory](#manual-memory) is available.
+* **Destructors**. It may be desirable to free resources the moment they are no longer used. The inherent nature of a tracing GC can delay finalizers or in some cases, skip them entirely. Although GCs can clean up reference cycles, they operate under the assumption that all objects are simple objects (they don't have destructor logic). In Cyber, a strong reference cycle is considered a bug. There would be no deterministic way to deinitalize the objects in the cycle. For this reason, [weak references](#weak-references) are supported as a complement to strong references.
+* **Compatibility**. It can be simpler to interop with FFI and external libraries when objects do not suddenly become invalidated by a GC cycle. Libraries written in a GC language are harder to consume by external code.
+* **Minimalistic**. Modern GCs can be quite large and complex and that may not be desirable.
+
+Each object has its own reference counter. Upon creating the object, it receives a reference count of 1. When a new reference to the object is created, it's **retained** and the reference count increments by 1.
+When a reference is no longer alive, the object is **released** and the reference count decrements by 1.
+This can occur when replacing a reference with another reference or when a reference goes out of scope on the stack.
+
+Once the reference count reaches 0, the object begins its [destruction](#object-destructor) procedure.
+
+### Retain optimizations.
+When the lifetime of a reference is known on the stack, a large amount of retain/release ops can be avoided.
+For example, calling a function with a reference doesn't need a retain since it is guaranteed to be alive when the function returns.
+This leaves only cases where a reference must retain to ensure correctness such as escaping the stack.
+
+### Object destructor.
+An object's destructor invoked from ARC performs the following in order:
+1. Release child objects thereby decrementing their reference counts by 1. If any child reference counts reach 0, their destructors are invoked.
+2. If the object has a finalizer, it's invoked.
+3. The object is freed from memory.
+
+A strong reference cycle is not destructed since there is no correct procedure to deinitialize them. Without the use of weak references, strong cycles can eventually leak memory. Cyber addresses this by providing soft and hard memory limits and a [cycle detector](#cycle-detector) that runs at the end of the program.
+
+### Closures.
+When primitive variables are captured by a [closure](#closures), they are boxed and allocated on the heap.
+This means they are managed by ARC and cleaned up when there are no more references to them.
+
+### Fibers.
+[Fibers](#fibers) are freed by ARC just like any other object.
+Once there are no references to the fiber, it begins to release it's child objects by unwinding it's call stack.
+
+### Dynamic containers.
+Dynamic types such as `dyn` and `any` can hold any value or reference. Since the type of the runtime value is not known at compile-time, it must be managed by ARC.
+
+### Default allocator.
+Currently, `mimalloc` is used as the default heap allocator, but it can be swapped with libc `malloc` or a custom allocator.
+
+### Weak references.
+> _Planned Feature_
+
+### Cycle detector.
+Cyber comes with a supplemental cycle detector that can optionally run at the end of the program to surface any strong cycles.
+
+The cycle detector can also be invoked manually with `collectCycles`: *Incomplete Feature: Only the main fiber stack is cleaned up at the moment.*
+```cy
+func foo():
+    -- Create a reference cycle.
+    var a = List[dyn]{}
+    var b = List[dyn]{}
+    a.append(b)
+    b.append(a)
+
+    -- Cycle still alive in the current stack so no cleanup is done.
+    var res = collectCycles()
+    print res['numCycFreed']    -- Output: 0
+    print res['numObjFreed']    -- Output: 0
+
+foo()
+-- `a` and `b` are no longer reachable, so the GC does work.
+var res = collectCycles()
+print res['numCycFreed']      -- Output: 2
+print res['numObjFreed']      -- Output: 2
+```
+Currently, it can collect cycles but in the future it will be reduced to detecting cycles only. This feature is not meant to be used to behave like a GC but rather as a tool to surface strong cycles.
+
+## Manual memory.
+> _Planned Feature_
+
+### Memory allocations.
+> _Planned Feature_
+
+### Runtime memory checks.
+*Planned Feature*
+When runtime memory checks are enabled, the compiler will insert traps and runtime logic to prevent the following unsafe uses of pointers and memory allocations:
+* Use after free.
+* Double free.
+* Out of bounds memory access.
+* Null pointer access.
+* Misaligned pointer access.
+* Unfreed memory.
+
+With these checks in place, using manual memory will be much less error prone at the cost of some runtime performance and memory cost. Pointers will occupy an extra word size and the runtime will maintain an allocation table that contains the raw pointer and metadata.
+
+
 ## Structured memory.
-*Structured memory is very much incomplete. It will be centered around single value ownership but the semantics are subject to change.*
+*NOTE: Automatic memory is the default memory model in Cyber. Structured memory is how Cyber will provide fast and safe access to memory as an alternative to manual memory. It will most likely be postponed until after a 1.0 release. It will be centered around single value ownership but the semantics are subject to change.*
 Cyber uses single value ownership and variable scopes to determine the lifetime of values and borrows.
 When lifetimes are known at compile-time, the memory occupied by values do not need to be manually managed which prevents memory bugs such as:
 * Use after free.
@@ -4251,89 +4344,6 @@ print p.sum()     --> 3
 
 ### Pointer interop.
 > _Planned Feature_
-
-## Automatic memory.
-Cyber uses an ARC/GC hybrid to automatically manage objects instantiated from object types. Value types typically do not need to be automatically managed unless they were lifted by a [closure](#closures-1) or a dynamic container.
-
-### ARC.
-ARC also known as automatic reference counting is deterministic and has less overhead compared to a tracing garbage collector. Reference counting distributes memory management, which reduces GC pauses and makes ARC suitable for realtime applications. One common issue in ARC implementations is reference cycles which Cyber addresses with a [GC](#gc) supplement when it is required.
-
-Objects are managed by ARC. Each object has its own reference counter. Upon creating a new object, it receives a reference count of 1. When the object is copied, it's **retained** and the reference count increments by 1. When an object value is removed from it's parent or is no longer reachable in the current stack frame, it is **released** and the reference count decrements by 1.
-
-Once the reference count reaches 0 the object begins its [destruction](#object-destructor) procedure. 
-
-### Object destructor.
-An object's destructor invoked from ARC performs the following in order:
-1. Release child references thereby decrementing their reference counts by 1. If any child reference counts reach 0, their destructors are invoked.
-2. If the object has a finalizer, it's invoked.
-3. The object is freed from memory.
-
-If the destructor is invoked by the GC instead of ARC, cyclable child references are not released in step 1.
-Since objects freed by the GC either belongs to a reference cycle or branched from one, the GC will still end up invoking the destructor of all unreachable objects.
-This implies that the destructor order is not reliable, but destructors are guaranteed to be invoked for all unreachable objects.
-
-### Retain optimizations.
-When the lifetime of an object's reference is known on the stack, a large amount of retain/release ops can be avoided.
-For example, calling a function with an object doesn't need a retain since it is guaranteed to be alive when the function returns.
-This leaves only cases where an object must retain to ensure correctness such as escaping the stack.
-
-When using dynamic types, the compiler can omit retain/release ops when it can infer the actual type even though they are dynamically typed to the user.
-
-### Closures.
-When primitive variables are captured by a [closure](#closures), they are boxed and allocated on the heap. This means they are managed by ARC and cleaned up when there are no more references to them.
-
-### Fibers.
-[Fibers](#fibers) are freed by ARC just like any other object. Once there are no references to the fiber, it begins to release it's child references by unwinding it's call stack.
-
-### Heap objects.
-Many object types are small enough to be at or under 40 bytes. To take advantage of this, object pools are reserved to quickly allocate and free these small objects with very little bookkeeping. Bigger objects are allocated and managed by `mimalloc` which has proven to be a fast and reliable general-purpose heap allocator.
-
-### GC.
-The garbage collector is only used if the program may contain objects that form reference cycles. This property is statically determined by the compiler. Since ARC frees most objects, the GC's only responsibility is to free abandoned objects that form reference cycles.
-This reduces the amount of work for GC marking since only cyclable objects (objects that may contain a reference cycle) are considered.
-
-Weak references are not supported for object types because objects are intended to behave like GC objects (the user should not be concerned with reference cycles). If weak references do get supported in the future, they will be introduced as a `Weak[T]` type that is used with an explicit reference counted `Rc[T]` type.
-
-Currently, the GC can be manually invoked. However, the plan is for this to be automatic by either running in a separate thread or per virtual thread by running the GC incrementally.
-
-To invoke the GC, call the builtin function: `performGC`. *Incomplete Feature: Only the main fiber stack is cleaned up at the moment.*
-```cy
-func foo():
-    -- Create a reference cycle.
-    var a = List[dyn]{}
-    var b = List[dyn]{}
-    a.append(b)
-    b.append(a)
-
-    -- Cycle still alive in the current stack so no cleanup is done.
-    var res = performGC()
-    print res['numCycFreed']    -- Output: 0
-    print res['numObjFreed']    -- Output: 0
-
-foo()
--- `a` and `b` are no longer reachable, so the GC does work.
-var res = performGC()
-print res['numCycFreed']      -- Output: 2
-print res['numObjFreed']      -- Output: 2
-```
-
-## Manual memory.
-> _Planned Feature_
-
-### Memory allocations.
-> _Planned Feature_
-
-### Runtime memory checks.
-*Planned Feature*
-When runtime memory checks are enabled, the compiler will insert traps and runtime logic to prevent the following unsafe uses of pointers and memory allocations:
-* Use after free.
-* Double free.
-* Out of bounds memory access.
-* Null pointer access.
-* Misaligned pointer access.
-* Unfreed memory.
-
-With these checks in place, using manual memory will be much less error prone at the cost of some runtime performance and memory cost. Pointers will occupy an extra word size and the runtime will maintain an allocation table that contains the raw pointer and metadata.
 
 # CLI.
 

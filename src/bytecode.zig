@@ -17,6 +17,9 @@ pub const ByteCodeBuffer = struct {
     ops: std.ArrayListUnmanaged(Inst),
     consts: std.ArrayListUnmanaged(cy.Value),
 
+    /// Whether a const is boxed.
+    consts_boxed: std.ArrayListUnmanaged(bool),
+
     /// Const map for deduping.
     constMap: std.AutoHashMapUnmanaged(u64, u32),
 
@@ -56,6 +59,7 @@ pub const ByteCodeBuffer = struct {
             .ops = .{},
             .vm = vm,
             .consts = .{},
+            .consts_boxed = .{},
             .constMap = .{},
             .debugTable = .{},
             .unwind_table = .{},
@@ -75,6 +79,7 @@ pub const ByteCodeBuffer = struct {
     pub fn deinit(self: *ByteCodeBuffer) void {
         self.ops.deinit(self.alloc);
         self.consts.deinit(self.alloc);
+        self.consts_boxed.deinit(self.alloc);
         self.constMap.deinit(self.alloc);
         self.debugTable.deinit(self.alloc);
         self.unwind_table.deinit(self.alloc);
@@ -95,6 +100,7 @@ pub const ByteCodeBuffer = struct {
         self.main_pc = 0;
         self.ops.clearRetainingCapacity();
         self.consts.clearRetainingCapacity();
+        self.consts_boxed.clearRetainingCapacity();
         self.debugTable.clearRetainingCapacity();
         self.unwind_table.clearRetainingCapacity();
         self.debugMarkers.clearRetainingCapacity();
@@ -114,14 +120,16 @@ pub const ByteCodeBuffer = struct {
         return self.ops.items.len;
     }
 
-    pub fn getOrPushConst(self: *ByteCodeBuffer, val: cy.Value) !u32 {
+    pub fn getOrPushConst(self: *ByteCodeBuffer, boxed: bool, val: cy.Value) !u32 {
         const res = try self.constMap.getOrPut(self.alloc, val.val);
         if (res.found_existing) {
             return res.value_ptr.*;
         } else {
             const idx: u32 = @intCast(self.consts.items.len);
+            try self.consts_boxed.resize(self.alloc, self.consts.items.len + 1);
             try self.consts.resize(self.alloc, self.consts.items.len + 1);
             self.consts.items[idx] = val;
+            self.consts_boxed.items[idx] = boxed;
             res.key_ptr.* = val.val;
             res.value_ptr.* = idx;
             return idx;
@@ -290,14 +298,14 @@ pub const ByteCodeBuffer = struct {
     pub fn getOrPushStaticStringConst(self: *ByteCodeBuffer, str: []const u8) !u32 {
         const val = try self.getOrPushStaticStringValue(str);
         // TODO: Reuse the same const.
-        return self.getOrPushConst(val);
+        return self.getOrPushConst(true, val);
     }
 
     pub fn getOrPushStaticUstring(self: *ByteCodeBuffer, str: []const u8) !cy.Value {
         var allocated: bool = undefined;
         const val = try cy.heap.getOrAllocUstring(self.vm, str, &allocated);
         if (allocated) {
-            try self.vm.staticObjects.append(self.alloc, @ptrCast(val.asHeapObject()));
+            try self.vm.staticObjects.append(self.alloc, val);
         }
         return val;
     }
@@ -306,7 +314,7 @@ pub const ByteCodeBuffer = struct {
         var allocated: bool = undefined;
         const val = try cy.heap.getOrAllocAstring(self.vm, str, &allocated);
         if (allocated) {
-            try self.vm.staticObjects.append(self.alloc, @ptrCast(val.asHeapObject()));
+            try self.vm.staticObjects.append(self.alloc, val);
         }
         return val;
     }

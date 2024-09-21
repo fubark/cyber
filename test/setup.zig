@@ -21,7 +21,7 @@ pub const Config = struct {
     checkGlobalRc: bool = true,
     check_object_count: bool = true,
 
-    // Whether to performGC at end of eval.
+    // Whether to collectCycles at end of eval.
     cleanupGC: bool = false,
 
     preEval: ?*const fn (run: *VMrunner) void = null,

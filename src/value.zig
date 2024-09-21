@@ -14,11 +14,6 @@ const vmc = @import("vm_c.zig");
 
 const SignMask: u64 = 1 << 63;
 const TaggedValueMask: u64 = 0x7ffc000000000000;
-const UpperPlaceholderMask: u64 = vmc.UPPER_PLACEHOLDER_MASK;
-const TaggedPlaceholderMask: u64 = vmc.TAGGED_PLACEHOLDER_MASK;
-const TaggedUpperValueMask: u64 = vmc.TAGGED_UPPER_VALUE_MASK;
-const EnumMask: u64 = vmc.ENUM_MASK;
-const TaggedEnumMask: u64 = vmc.TAGGED_ENUM_MASK;
 
 const BooleanMask: u64 = TaggedValueMask | (@as(u64, TagBoolean) << 32);
 const FalseMask: u64 = BooleanMask;
@@ -28,10 +23,11 @@ const VoidMask: u64 = TaggedValueMask | (@as(u64, TagVoid) << 32);
 const ErrorMask: u64 = TaggedValueMask | (@as(u64, TagError) << 32);
 const SymbolMask: u64 = TaggedValueMask | (@as(u64, TagSymbol) << 32);
 
-const TagMask: u32 = (1 << 3) - 1;
-const PrimitiveMask: u64 = TaggedValueMask | (@as(u64, TagMask) << 32) | UpperPlaceholderMask | EnumMask;
-const TaggedPrimitiveMask = TaggedValueMask | PrimitiveMask;
-const BeforeTagMask: u32 = 0x7fff << 3;
+const TagMask: u32 = vmc.TAG_MASK;
+const TaggedPrimitiveMask: u64 = vmc.TAGGED_PRIMITIVE_MASK;
+const TaggedUpperMask: u64 = vmc.TAGGED_UPPER_MASK;
+const MinPtrMask: u64 = vmc.MIN_PTR_MASK;
+const PtrPayloadMask: u64 = vmc.PTR_PAYLOAD_MASK;
 
 /// The tag id is also the primitive type id.
 const TagId = u3;
@@ -251,11 +247,7 @@ pub const Value = packed union {
     }
 
     pub inline fn isPointer(self: *const Value) bool {
-        return self.val >= vmc.NOCYC_POINTER_MASK;
-    }
-
-    pub inline fn isCycPointer(self: *const Value) bool {
-        return self.val >= vmc.CYC_POINTER_MASK;
+        return self.val >= MinPtrMask;
     }
 
     pub inline fn isObjectType(self: *const Value, typeId: cy.TypeId) bool {
@@ -282,27 +274,24 @@ pub const Value = packed union {
         return self.isPointer() and self.asHeapObject().getTypeId() == bt.Closure;
     }
 
-    pub fn isGcConfirmedCyc(self: *const Value) bool {
-        if (self.isCycPointer()) {
-            return self.asHeapObject().isGcConfirmedCyc();
-        }
-        return false;
-    }
-
     pub inline fn castHostObject(self: *const Value, comptime T: type) T {
-        return @ptrFromInt(@as(usize, @intCast(self.val & ~vmc.POINTER_MASK)) + 8);
+        return @ptrFromInt(@as(usize, @intCast(self.val & PtrPayloadMask)) + 8);
     }
 
     pub inline fn asHeapObject(self: *const Value) *cy.HeapObject {
-        return @ptrFromInt(@as(usize, @intCast(self.val & ~vmc.POINTER_MASK)));
+        return @ptrFromInt(@as(usize, @intCast(self.val & PtrPayloadMask)));
     }
 
     pub inline fn castHeapObject(self: *const Value, comptime Ptr: type) Ptr {
-        return @ptrFromInt(@as(usize, @intCast(self.val & ~vmc.POINTER_MASK)));
+        return @ptrFromInt(@as(usize, @intCast(self.val & PtrPayloadMask)));
     }
 
     pub inline fn asAnyOpaque(self: *const Value) ?*anyopaque {
-        return @ptrFromInt(@as(usize, @intCast(self.val & ~vmc.POINTER_MASK)));
+        return @ptrFromInt(@as(usize, @intCast(self.val & PtrPayloadMask)));
+    }
+
+    pub inline fn isVoid(self: *const Value) bool {
+        return self.val == VoidMask;
     }
 
     pub inline fn asBool(self: *const Value) bool {
@@ -329,7 +318,7 @@ pub const Value = packed union {
         return self.val & TaggedPrimitiveMask == BooleanMask;
     }
 
-    pub inline fn getTag(self: *const Value) u3 {
+    pub inline fn getTag(self: *const Value) u4 {
         return @intCast(@as(u32, @intCast(self.val >> 32)) & TagMask);
     }
 
@@ -390,29 +379,12 @@ pub const Value = packed union {
         }
     }
 
-    pub inline fn initHostNoCycPtr(ptr: ?*anyopaque) Value {
-        return .{ .val = vmc.NOCYC_POINTER_MASK | ((@intFromPtr(ptr) & vmc.POINTER_PAYLOAD_MASK) - 8) };
-    }
-
-    pub inline fn initHostCycPtr(ptr: ?*anyopaque) Value {
-        return .{ .val = vmc.CYC_POINTER_MASK | ((@intFromPtr(ptr) & vmc.POINTER_PAYLOAD_MASK) - 8) };
+    pub inline fn initHostPtr(ptr: ?*anyopaque) Value {
+        return .{ .val = MinPtrMask | ((@intFromPtr(ptr)-8) & PtrPayloadMask) };
     }
 
     pub inline fn initPtr(ptr: ?*anyopaque) Value {
-        const obj: *cy.HeapObject = @ptrCast(@alignCast(ptr));
-        if (obj.isCyclable()) {
-            return .{ .val = vmc.CYC_POINTER_MASK | (@intFromPtr(obj) & vmc.POINTER_PAYLOAD_MASK) };
-        } else {
-            return .{ .val = vmc.NOCYC_POINTER_MASK | (@intFromPtr(obj) & vmc.POINTER_PAYLOAD_MASK) };
-        }
-    }
-
-    pub inline fn initNoCycPtr(ptr: ?*anyopaque) Value {
-        return .{ .val = vmc.NOCYC_POINTER_MASK | (@intFromPtr(ptr) & vmc.POINTER_PAYLOAD_MASK) };
-    }
-
-    pub inline fn initCycPtr(ptr: ?*anyopaque) Value {
-        return .{ .val = vmc.CYC_POINTER_MASK | (@intFromPtr(ptr) & vmc.POINTER_PAYLOAD_MASK) };
+        return .{ .val = MinPtrMask | (@intFromPtr(ptr) & PtrPayloadMask) };
     }
 
     pub inline fn floatIsSpecial(val: f64) bool {
@@ -557,7 +529,7 @@ test "value internals." {
     try t.eq(Value.True.val, 0x7FFC000200000001);
     try t.eq(Value.False.val, 0x7FFC000200000000);
     try t.eq(Value.Interrupt.val, 0x7ffc00030000ffff);
-    try t.eq(vmc.POINTER_MASK, 0xFFFE000000000000);
+    try t.eq(vmc.MIN_PTR_MASK, 0xFFFC000000000000);
     try t.eq(Value.initInt(0).val, 0);
 
     // Check Zig/C struct compat.

@@ -85,7 +85,7 @@ pub const HeapStringBuilder = struct {
     }
 
     pub fn growTotalCapacityPrecise(self: *HeapStringBuilder, newCap: usize) !void {
-        const new_obj = try cy.heap.allocExternalObject(self.vm, 12 + newCap, false);
+        const new_obj = try cy.heap.allocExternalObject(self.vm, 12 + newCap);
         new_obj.string = .{
             .typeId = bt.String,
             .rc = 1,

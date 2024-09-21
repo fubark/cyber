@@ -153,7 +153,7 @@ pub const VM = struct {
 
     /// Static heap values are retained until the end of execution.
     /// Retains each value by +1.
-    staticObjects: cy.List(*cy.heap.HeapObject),
+    staticObjects: cy.List(cy.Value),
 
     u8Buf: cy.ListAligned(u8, 8),
 
@@ -316,7 +316,7 @@ pub const VM = struct {
             .ready_tasks = std.fifo.LinearFifo(cy.heap.AsyncTask, .Dynamic).init(alloc),
             .vtables = .{},
         };
-        self.c.mainFiber.typeId = bt.Fiber | vmc.CYC_TYPE_MASK;
+        self.c.mainFiber.typeId = bt.Fiber;
         self.c.mainFiber.rc = 1;
         self.c.mainFiber.panicType = vmc.PANIC_NONE;
         self.c.curFiber = &self.c.mainFiber;
@@ -371,6 +371,7 @@ pub const VM = struct {
         for (self.c.getContextVars().items()) |context_var| {
             self.release(context_var.value);
         }
+        self.c.getContextVars().clearRetainingCapacity();
 
         logger.tracev("release varSyms", .{});
         for (self.c.getVarSyms().items(), 0..) |vsym, i| {
@@ -402,8 +403,9 @@ pub const VM = struct {
         logger.tracev("release static objects {}", .{self.staticObjects.len});
         for (self.staticObjects.items()) |obj| {
             logger.tracevIf(build_options.log_mem, "release static object", .{});
-            cy.arc.releaseObject(self, obj);
+            cy.arc.release(self, obj);
         }
+        self.staticObjects.clearRetainingCapacity();
         logger.tracev("release static objects end", .{});
 
         // No need to release `emptyString` since it is owned by `staticObjects`.
@@ -708,7 +710,6 @@ pub const VM = struct {
                 self.c.trace.numReleaseAttempts = 0;
                 self.c.trace.numRetains = 0;
                 self.c.trace.numRetainAttempts = 0;
-                self.c.trace.numCycFrees = 0;
             }
 
             tt = cy.debug.timer();
@@ -3144,8 +3145,8 @@ fn zDumpEvalOp(vm: *VM, pc: [*]const cy.Inst, fp: [*]const cy.Value) callconv(.C
 }
 
 pub fn zFreeObject(vm: *cy.VM, obj: *HeapObject) callconv(.C) void {
-    cy.heap.freeObject(vm, obj, false);
-}
+    cy.heap.freeObject(vm, obj, false, {});
+} 
 
 fn zEnd(vm: *cy.VM, pc: [*]const cy.Inst) callconv(.C) void {
     vm.endLocal = pc[1].val;
@@ -3446,8 +3447,8 @@ fn zCall(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8, nu
     };
 }
 
-fn zAllocExternalCycObject(vm: *cy.VM, size: usize) callconv(.C) vmc.HeapObjectResult {
-    const obj = cy.heap.allocExternalObject(vm, size, true) catch {
+fn zAllocPoolObject(vm: *cy.VM) callconv(.C) vmc.HeapObjectResult {
+    const obj = cy.heap.allocPoolObject(vm) catch {
         return .{
             .obj = undefined,
             .code = vmc.RES_CODE_UNKNOWN,
@@ -3460,7 +3461,7 @@ fn zAllocExternalCycObject(vm: *cy.VM, size: usize) callconv(.C) vmc.HeapObjectR
 }
 
 fn zAllocExternalObject(vm: *cy.VM, size: usize) callconv(.C) vmc.HeapObjectResult {
-    const obj = cy.heap.allocExternalObject(vm, size, false) catch {
+    const obj = cy.heap.allocExternalObject(vm, size) catch {
         return .{
             .obj = undefined,
             .code = vmc.RES_CODE_UNKNOWN,
@@ -3599,7 +3600,6 @@ comptime {
         @export(zPanicFmt, .{ .name = "zPanicFmt", .linkage = .strong });
         @export(zOtherToF64, .{ .name = "zOtherToF64", .linkage = .strong });
         @export(zAllocExternalObject, .{ .name = "zAllocExternalObject", .linkage = .strong });
-        @export(zAllocExternalCycObject, .{ .name = "zAllocExternalCycObject", .linkage = .strong });
         @export(zAllocPoolObject, .{ .name = "zAllocPoolObject", .linkage = .strong });
         @export(zAllocObjectSmall, .{ .name = "zAllocObjectSmall", .linkage = .strong });
         @export(zAllocFiber, .{ .name = "zAllocFiber", .linkage = .strong });
@@ -3651,7 +3651,7 @@ pub var dummyCyclableHead = DummyCyclableNode{
     .next = null,
     // This will be marked automatically before sweep, so it's never considered as a cyc object.
     .len = if (cy.Malloc == .zig) 0 else {},
-    .typeId = vmc.GC_MARK_MASK | bt.Void,
+    .typeId = vmc.GC_MARK_BIT | bt.Void,
 };
 
 pub fn defaultPrint(_: ?*cc.VM, _: cc.Str) callconv(.C) void {

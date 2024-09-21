@@ -421,14 +421,14 @@ pub fn stringReplace(vm: *cy.VM) Value {
             return val;
         } else {
             vm.retainObject(@ptrCast(obj));
-            return Value.initNoCycPtr(obj);
+            return Value.initPtr(obj);
         }
     } else {
         if (ustringReplace(vm, str, needle, replace)) |val| {
             return val;
         } else {
             vm.retainObject(@ptrCast(obj));
-            return Value.initNoCycPtr(obj);
+            return Value.initPtr(obj);
         }
     }
 }
@@ -512,14 +512,14 @@ pub fn repeat(vm: *cy.VM) Value {
             dst += @intCast(str.len);
         }
 
-        return Value.initNoCycPtr(new);
+        return Value.initPtr(new);
     } else {
         if (un == 0) {
             vm.retain(vm.emptyString);
             return vm.emptyString;
         } else {
             vm.retainObject(@ptrCast(obj));
-            return Value.initNoCycPtr(obj);
+            return Value.initPtr(obj);
         }
     }
 }

@@ -483,16 +483,12 @@ void clRetain(CLVM* vm, CLValue val);
 
 // Stats of a GC run.
 typedef struct CLGCResult {
-    // Objects freed that were part of a reference cycle.
-    uint32_t numCycFreed;
-
     // Total number of objects freed.
-    // NOTE: This is only available if built with `trace` enabled.
-    uint32_t numObjFreed;
+    uint32_t num_obj_freed;
 } CLGCResult;
 
 // Run the reference cycle detector once and return statistics.
-CLGCResult clPerformGC(CLVM* vm);
+CLGCResult clCollectCycles(CLVM* vm);
 
 // Get's the current global reference count.
 // NOTE: This will panic if the lib was not built with `TrackGlobalRC`.

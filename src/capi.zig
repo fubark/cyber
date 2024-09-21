@@ -299,8 +299,8 @@ pub const ZVM = struct {
         c.clTraceDumpLiveObjects(@ptrCast(self));
     }
 
-    pub fn performGC(self: *ZVM) GCResult {
-        return c.clPerformGC(@ptrCast(self));
+    pub fn collectCycles(self: *ZVM) GCResult {
+        return c.clCollectCycles(@ptrCast(self));
     }
 
     pub fn countObjects(self: *ZVM) usize {

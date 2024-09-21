@@ -629,7 +629,6 @@ pub const RtType = extern struct {
     has_get_method: bool = false,
     has_set_method: bool = false,
     has_init_pair_method: bool = false,
-    cyclable: bool = true,
 
     info: TypeInfo,
 

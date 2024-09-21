@@ -62,11 +62,11 @@ pub fn UserVM_new(vm: *cy.VM) anyerror!cy.Value {
     C.setPrinter(@ptrCast(new), C.getPrinter(@ptrCast(vm)));
     C.setErrorPrinter(@ptrCast(new), C.getErrorPrinter(@ptrCast(vm)));
 
-    const uvm: *UserVM = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, core_data.VMT, @sizeOf(UserVM))));
+    const uvm: *UserVM = @ptrCast(@alignCast(try cy.heap.allocHostObject(vm, core_data.VMT.id(), @sizeOf(UserVM))));
     uvm.* = .{
         .vm = new,
     };
-    return cy.Value.initHostNoCycPtr(uvm);
+    return cy.Value.initHostPtr(uvm);
 }
 
 pub fn UserVM_getErrorSummary(vm: *cy.VM) anyerror!cy.Value {
@@ -130,7 +130,7 @@ pub fn UserVM_eval(vm: *cy.VM) anyerror!cy.Value {
     var res: C.Value = @bitCast(cy.Value.Void);
     const code = C.eval(@ptrCast(uvm.vm), C.toStr(src), &res);
 
-    const value: *UserValue = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, core_data.ValueT, @sizeOf(UserValue))));
+    const value: *UserValue = @ptrCast(@alignCast(try cy.heap.allocHostObject(vm, core_data.ValueT.id(), @sizeOf(UserValue))));
     vm.retain(vm.getValue(0));
     value.vm = vm.getValue(0);
     if (code == C.Success) {
@@ -139,12 +139,12 @@ pub fn UserVM_eval(vm: *cy.VM) anyerror!cy.Value {
         value.val = @bitCast(cy.Value.Void);
     }
 
-    const eval_res: *EvalResult = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, core_data.EvalResultT, @sizeOf(EvalResult))));
+    const eval_res: *EvalResult = @ptrCast(@alignCast(try cy.heap.allocHostObject(vm, core_data.EvalResultT.id(), @sizeOf(EvalResult))));
     eval_res.* = .{
         .code = cy.Value.initInt(@intCast(code)),
-        .value = cy.Value.initHostNoCycPtr(value),
+        .value = cy.Value.initHostPtr(value),
     };
-    return cy.Value.initHostNoCycPtr(eval_res);
+    return cy.Value.initHostPtr(eval_res);
 }
 
 pub fn UserVM_evalExt(vm: *cy.VM) anyerror!cy.Value {
@@ -166,17 +166,17 @@ pub fn UserVM_evalExt(vm: *cy.VM) anyerror!cy.Value {
     var res: C.Value = @bitCast(cy.Value.Void);
     const code = C.evalExt(@ptrCast(uvm.vm), C.toStr(uri), C.toStr(src), config_c, &res);
 
-    const value: *UserValue = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, core_data.ValueT, @sizeOf(UserValue))));
+    const value: *UserValue = @ptrCast(@alignCast(try cy.heap.allocHostObject(vm, core_data.ValueT.id(), @sizeOf(UserValue))));
     vm.retain(vm.getValue(0));
     value.vm = vm.getValue(0);
     value.val = @bitCast(res);
 
-    const eval_res: *EvalResult = @ptrCast(@alignCast(try cy.heap.allocHostNoCycObject(vm, core_data.EvalResultT, @sizeOf(EvalResult))));
+    const eval_res: *EvalResult = @ptrCast(@alignCast(try cy.heap.allocHostObject(vm, core_data.EvalResultT.id(), @sizeOf(EvalResult))));
     eval_res.* = .{
         .code = cy.Value.initInt(@intCast(code)),
-        .value = cy.Value.initHostNoCycPtr(value),
+        .value = cy.Value.initHostPtr(value),
     };
-    return cy.Value.initHostNoCycPtr(eval_res);
+    return cy.Value.initHostPtr(eval_res);
 }
 
 pub fn UserVM_finalizer(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) void {

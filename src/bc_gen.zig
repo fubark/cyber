@@ -1933,12 +1933,29 @@ fn genLocalReg(c: *Chunk, reg: SlotId, slot_t: *cy.Type, cstr: Cstr, node: *ast.
         }
         const inst = try bc.selectForDstInst(c, cstr, slot_t, retain_src, node);
 
-        try c.pushCode(.up_value, &.{ reg, inst.dst }, node);
-        if (retain_src) {
-            try c.pushCode(.retain, &.{ inst.dst }, node);
-        }
+        if (slot_t.kind() == .struct_t) {
+            const struct_t = slot_t.cast(.struct_t);
+            const size: u8 = @intCast(struct_t.size);
+            const start = c.buf.ops.items.len;
+            const has_retain_layout = slot_t.retain_layout != null;
+            try c.pushFCode(.deref_obj, &.{ reg, 0, 0, 0, size, @intFromBool(has_retain_layout), inst.dst}, node);
+            c.buf.setOpArgU16(start + 2, @intCast(slot_t.id()));
+            return finishDstInst(c, inst, true);
+        } else if (slot_t.kind() == .array) {
+            const start = c.buf.ops.items.len;
+            const has_retain_layout = slot_t.retain_layout != null;
+            const array_t = slot_t.cast(.array);
+            const nelems: u8 = @intCast(array_t.n);
+            const elem_t = array_t.elem_t;
+            const size = elem_t.size() * nelems;
 
-        return finishDstInst(c, inst, retain_src);
+            try c.pushFCode(.deref_obj, &.{ reg, 0, 0, 0, @intCast(size), @intFromBool(has_retain_layout), inst.dst }, node);
+            c.buf.setOpArgU16(start + 2, @intCast(slot_t.id()));
+            return finishDstInst(c, inst, true);
+        } else {
+            try c.pushCode(.deref, &.{ reg, 0, @intFromBool(retain_src), inst.dst }, node);
+            return finishDstInst(c, inst, retain_src);
+        }
     }
 }
 
@@ -2112,7 +2129,12 @@ fn reserveFuncSlots(c: *Chunk, maxIrLocals: u8, numParamCopies: u8, params: []al
             if (param.lifted) {
                 // Retain param and box.
                 try c.buf.pushOp1(.retain, nextReg);
-                try c.pushFCode(.up, &.{nextReg, slot}, c.curBlock.debugNode);
+
+                const is_struct = isStructLikeType(c, param.declType);
+                const has_retain_layout = param.declType.retain_layout != null;
+                const start = c.buf.ops.items.len;
+                try c.pushFCode(.lift, &.{nextReg, @intFromBool(is_struct), 0, 0, @intFromBool(has_retain_layout), slot}, c.curBlock.debugNode);
+                c.buf.setOpArgU16(start + 3, @intCast(param.declType.id())); 
             } else {
                 try c.pushCode(.copyRetainSrc, &.{ nextReg, slot }, c.curBlock.debugNode);
             }
@@ -2199,12 +2221,12 @@ fn declareLocalInit(c: *Chunk, idx: u32, node: *ast.Node) !SlotId {
         try c.buf.pushOp2Ext(.constIntV8, 0, slot, null);
     }
 
-    const cstr = Cstr.toLocal(slot, false);
-    const val = try genExpr(c, data.init, cstr);
-
+    const cstr = Cstr.toLocal(slot);
+    var val: GenValue = undefined;
     if (data.lifted) {
-        try c.pushOptionalDebugSym(node);
-        try c.buf.pushOp2(.up, slot, slot);
+        val = try genLift(c, data.init, cstr, node);
+    } else {
+        val = try genExpr(c, data.init, cstr);
     }
 
     const local = getSlot(c, slot);
@@ -2779,9 +2801,22 @@ fn genToExactDesc(c: *Chunk, src: GenValue, dst: Cstr, node: *ast.Node, extraIdx
                 try c.pushCode(.retain, &.{ src.reg }, node);
             }
 
-            const release: u8 = @intFromBool(lifted.rcCandidate);
-            try c.pushCodeExt(.set_up_value, &.{ lifted.reg, src.reg, release }, node, extraIdx);
-            return GenValue.initRetained(src.retained);
+            const dst_s = getSlot(c, lifted.reg);
+            if (dst_s.val_t.kind() == .struct_t) {
+                const has_retain_layout = dst_s.val_t.retain_layout != null;
+                const pc = c.buf.len();
+                try c.pushCodeExt(.set_s, &.{ lifted.reg, 0, 0, 0, @intCast(dst_s.val_t.size()), @intFromBool(has_retain_layout), src.reg }, node, extraIdx);
+                c.buf.setOpArgU16(pc + 2, @intCast(dst_s.val_t.id()));
+
+                // Ownership was moved.
+                try consumeTempValue(c, src, node);
+
+                return GenValue.initRetained(src.retained);
+            } else {
+                const release: u8 = @intFromBool(lifted.rcCandidate);
+                try c.pushCodeExt(.set, &.{ lifted.reg, 0, release, src.reg }, node, extraIdx);
+                return GenValue.initRetained(src.retained);
+            }
         },
         .varSym => {
             const src_s = getSlot(c, src.reg);

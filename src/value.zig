@@ -264,10 +264,6 @@ pub const Value = packed union {
         return self.isPointer() and self.asHeapObject().getTypeId() == bt.List;
     }
 
-    pub inline fn isUpValue(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().getTypeId() == bt.UpValue;
-    }
-
     pub inline fn isClosure(self: *const Value) bool {
         return self.isPointer() and self.asHeapObject().getTypeId() == bt.Closure;
     }

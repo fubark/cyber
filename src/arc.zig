@@ -543,11 +543,6 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
         bt.MapIter => {
             markValue(vm, obj.mapIter.map);
         },
-        bt.UpValue => {
-            if (obj.up.val.isCycPointer()) {
-                markValue(vm, obj.up.val);
-            }
-        },
         bt.Fiber => {
             // TODO: Visit other fiber stacks.
         },

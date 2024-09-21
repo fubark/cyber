@@ -383,7 +383,7 @@ enum {
     TYPE_STRING = 21,
     TYPE_EXPRTYPE = 22,
     TYPE_FIBER = 23,
-    TYPE_UPVALUE = 24,
+    TYPE_PLACEHOLDER1 = 24,
     TYPE_TCC_STATE = 25,
     TYPE_PLACEHOLDER3 = 26,
     TYPE_RANGE = 27,
@@ -539,12 +539,6 @@ typedef struct ValueMap {
     u32 padding;
 } ValueMap;
 
-typedef struct UpValue {
-    TypeId typeId;
-    uint32_t rc;
-    Value val;
-} UpValue;
-
 #define FUNC_PTR_BC 0
 #define FUNC_PTR_HOST 1
 
@@ -663,7 +657,6 @@ typedef union HeapObject {
     FuncPtr func_ptr;
     FuncUnion func_union;
     FuncSym func_sym;
-    UpValue up;
     Map map;
     List list;
     Tuple tuple;

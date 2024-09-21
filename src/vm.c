@@ -377,20 +377,7 @@ static inline ValueResult allocFuncSym(VM* vm, TypeId sym_t, void* func) {
         .rc = 1,
         .func = func,
     };
-    return (ValueResult){ .val = VALUE_NOCYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
-}
-
-static inline ValueResult allocUpValue(VM* vm, Value val) {
-    HeapObjectResult res = zAllocPoolObject(vm);
-    if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
-        return (ValueResult){ .code = res.code };
-    }
-    res.obj->up = (UpValue){
-        .typeId = TYPE_UPVALUE | CYC_TYPE_MASK,
-        .rc = 1,
-        .val = val,
-    };
-    return (ValueResult){ .val = VALUE_CYC_PTR(res.obj), .code = RES_CODE_SUCCESS };
+    return (ValueResult){ .val = VALUE_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
 static inline ValueResult allocExprType(VM* vm, uint32_t type_id) {
@@ -1946,13 +1933,7 @@ beginSwitch:
         }
 #endif
         Value up = closureGetCapturedValuesPtr(&VALUE_AS_HEAPOBJECT(closure)->func_union)[pc[2]];
-#if TRACE
-        if (!VALUE_IS_UPVALUE(up)) {
-            TRACEV("Expected box value.");
-            zFatal();
-        }
-#endif
-        Value val = VALUE_AS_HEAPOBJECT(up)->up.val;
+        Value val = VALUE_AS_HEAPOBJECT(up)->object.firstValue;
         bool retain_flag = pc[3];
         if (retain_flag) {
             retain(vm, val);
@@ -1971,11 +1952,8 @@ beginSwitch:
 #endif
         Value up = closureGetCapturedValuesPtr(&VALUE_AS_HEAPOBJECT(closure)->func_union)[pc[2]];
         HeapObject* obj = VALUE_AS_HEAPOBJECT(up);
-#if TRACE
-        ASSERT(OBJ_TYPEID(obj) == TYPE_UPVALUE);
-#endif
-        release(vm, obj->up.val);
-        obj->up.val = stack[pc[3]];
+        release(vm, obj->object.firstValue);
+        obj->object.firstValue = stack[pc[3]];
         pc += 4;
         NEXT();
     }

@@ -395,11 +395,6 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const dst = pc[4].val;
             len += try fmt.printCount(w, "%{} = closure(%{})[{}], retain={}", &.{v(dst), v(closure), v(varIdx), v(retain)});
         },
-        .up_value => {
-            const local = pc[1].val;
-            const dst = pc[2].val;
-            len += try fmt.printCount(w, "local={}, dst={}", &.{v(local), v(dst)});
-        },
         .negFloat,
         .negInt => {
             const child = pc[1].val;
@@ -501,15 +496,9 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             len += try fmt.printCount(w, "ret={}, nret={}, pc={}", &.{v(ret), v(numRet), v(pcPtr)});
         },
         .call => {
-            const startLocal = pc[1].val;
+            const ret = pc[1].val;
             const numArgs = pc[2].val;
-            const numRet = pc[3].val;
-            len += try fmt.printCount(w, "ret={}, narg={}, nret={}", &.{v(startLocal), v(numArgs), v(numRet)});
-        },
-        .set_up_value => {
-            const up = pc[1].val;
-            const rhs = pc[2].val;
-            len += try printInstArgs(w, &.{"up", "rhs"}, &.{v(up), v(rhs)});
+            len += try fmt.printCount(w, "%{} = %{}(%{}..%{})", &.{v(ret), v(ret + 4), v(ret + 5), v(ret + 5 + numArgs)});
         },
         .lambda => {
             const func_id = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
@@ -1056,8 +1045,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .future_value,
         .coyield,
         .coresume,
-        .up,
-        .up_value,
         .none,
         .tag_lit,
         .context,
@@ -1316,8 +1303,6 @@ pub const OpCode = enum(u8) {
     lift = vmc.CodeLift,
     ref = vmc.CodeRef,
 
-    set_up_value = vmc.CodeSetUpValue,
-    up_value = vmc.CodeUpValue,
     captured = vmc.CodeCaptured,
     setCaptured = vmc.CodeSetCaptured,
     tag_lit = vmc.CodeTagLit,

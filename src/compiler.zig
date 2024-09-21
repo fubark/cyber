@@ -994,7 +994,7 @@ fn reserveCoreTypes(self: *Compiler) !void {
         bt.String,
         bt.ExprType,
         bt.Fiber,
-        bt.UpValue,
+        bt.Placeholder1,
         bt.TccState,
         bt.Placeholder3,
         bt.Range,
@@ -1008,16 +1008,7 @@ fn reserveCoreTypes(self: *Compiler) !void {
     }
 
     std.debug.assert(self.sema.types.items.len == cy.types.BuiltinEnd);
-
-    self.sema.types.items[bt.UpValue].kind = .bare;
-    self.sema.types.items[bt.UpValue].sym = @ptrCast(&UpValueType);
-    self.sema.types.items[bt.UpValue].info = .{};
 }
-
-pub var UpValueType = cy.sym.DummyType{
-    .head = cy.Sym.init(.dummy_t, null, "UpValue"),
-    .type = bt.UpValue,
-};
 
 fn createDynMethodIds(self: *Compiler) !void {
     self.indexMID = try self.vm.ensureMethod("$index");

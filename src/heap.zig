@@ -1241,11 +1241,6 @@ pub fn allocClosure(
     };
     const dst = obj.func_union.getCapturedValuesPtr();
     for (captured, 0..) |local, i| {
-        if (cy.Trace) {
-            if (!fp[local.val].isUpValue()) {
-                cy.panic("Expected up value.");
-            }
-        }
         self.retain(fp[local.val]);
         dst[i] = fp[local.val];
     }
@@ -1630,17 +1625,7 @@ pub fn allocAstringSlice(self: *cy.VM, slice: []const u8, parent: *HeapObject) !
         .buf = slice.ptr,
         .parent = parent,
     };
-    return Value.initNoCycPtr(obj);
-}
-
-pub fn allocBox(vm: *cy.VM, val: Value) !Value {
-    const obj = try allocPoolObject(vm);
-    obj.box = .{
-        .typeId = bt.Box | vmc.CYC_TYPE_MASK,
-        .rc = 1,
-        .val = val,
-    };
-    return Value.initCycPtr(obj);
+    return Value.initPtr(obj);
 }
 
 pub fn allocExternFunc(self: *cy.VM, cyFunc: Value, funcPtr: *anyopaque, tccState: Value) !Value {
@@ -2018,13 +2003,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                 cy.panicFmt("release fiber: {}", .{err});
             };
             cy.fiber.freeFiberPanic(vm, @ptrCast(obj));
-            freeExternalObject(vm, obj, @sizeOf(vmc.Fiber), true);
-        },
-        bt.UpValue => {
-            if (!skip_cyc_children or !obj.up.val.isCycPointer()) {
-                cy.arc.release(vm, obj.up.val);
-            }
-            freePoolObject(vm, obj);
+            freeExternalObject(vm, obj, @sizeOf(vmc.Fiber), gc);
         },
         bt.ExternFunc => {
             cy.arc.releaseObject2(vm, obj.externFunc.tccState.asHeapObject(), gc, res);

@@ -884,18 +884,15 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
 }
 
 fn loadCtBuiltins(self: *Compiler) !void {
-    const bc = try self.alloc.create(cy.Chunk);
-    const ct_builtins_uri = try self.alloc.dupe(u8, "ct");
-    try bc.init(self, cy.NullId, ct_builtins_uri, "");
-    bc.sym = try bc.createChunkSym(ct_builtins_uri);
-    self.ct_builtins_chunk = bc;
+    const ctb = try createModuleUnmanaged(self, "ct", "");
+    self.ct_builtins_chunk = ctb;
 
-    _ = try bc.declareBoolType(@ptrCast(bc.sym), "bool_t", null, null);
-    _ = try bc.declareIntType(@ptrCast(bc.sym), "int64_t", 64, null, null);
-    _ = try bc.declareIntType(@ptrCast(bc.sym), "int8_t", 8, null, null);
-    _ = try bc.declareFloatType(@ptrCast(bc.sym), "float64_t", 64, null, null);
+    // TODO: This used to load the basic types #int64_t, #bool_t, etc.
+    //       Now that those are removed, is there a need for ct builtins?
 }
 
+/// Since core types are declared in the same builtins.cy,
+/// Reserve them upfront so that other types do not occupy them first.
 fn reserveCoreTypes(self: *Compiler) !void {
     log.tracev("Reserve core types", .{});
 

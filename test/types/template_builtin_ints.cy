@@ -1,6 +1,6 @@
 use test
 
-type Foo[T type] #int64_t:
+type Foo[T type] int:
     func get(self, a T) T:
         return a
 

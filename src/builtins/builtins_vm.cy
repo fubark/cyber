@@ -99,7 +99,7 @@ def typeid[T type] int:
 
 @host type void _
 
-@host type bool #bool_t
+@host type bool _
 
 --| Converts any value to either `true` or `false`.
 --| Integers and floats equal to 0 return false.
@@ -107,10 +107,10 @@ def typeid[T type] int:
 --| Otherwise, returns true.
 @host func bool.$call(val any) bool
 
-@host type symbol #int64_t
+@host type symbol int
 
 @host
-type error #int64_t:
+type error int:
     --| Return the underlying `symbol`.
     @host func sym(self) symbol
 
@@ -118,7 +118,7 @@ type error #int64_t:
 @host func error.$call(val any) error
 
 @host
-type byte #int8_t:
+type byte _:
     @host func '$prefix~'(self) byte
     @host func '$infix<'(self, o byte) bool
     @host func '$infix<='(self, o byte) bool
@@ -146,7 +146,7 @@ type byte #int8_t:
     @host func $call(b byte) byte
 
 @host
-type int #int64_t:
+type int _:
     @host func '$prefix~'(self) int
     @host func '$prefix-'(self) int
     @host func '$infix<'(self, o int) bool
@@ -191,7 +191,7 @@ type NumberFormat enum:
 @host func int.$call(val any) int
 
 @host
-type float #float64_t:
+type float _:
     @host func '$prefix-'(self) float
     @host func '$infix<'(self, o float) bool
     @host func '$infix<='(self, o float) bool
@@ -381,7 +381,7 @@ func List.fill[T](val T, n int) List[T]:
 type Tuple _:
     @host func $index(self, idx int) any
 
-@host type FuncSig #int64_t
+@host type FuncSig int
 
 -- Function pointer.
 @host type funcptr_t[SIG FuncSig] _
@@ -669,9 +669,7 @@ type Range struct:
 
 @host type TccState _
 
-type Option[T type] enum:
-    case none
-    case some T 
+@host type Option[T type] _
 
 @host type Future[T type] _
 
@@ -695,7 +693,8 @@ func FutureResolver.new[T](T type) FutureResolver[T]:
 
 @host -func FutureResolver.new_[T](T type, future_t int, ret_t int) FutureResolver[T]
 
-type Ref[T type] #int64_t
+@host
+type ref[T type] _
 
 type Slice[T type]:
     ptr ^T

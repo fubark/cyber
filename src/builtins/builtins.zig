@@ -266,81 +266,127 @@ const funcs = [_]C.HostFuncEntry{
 const types = [_]C.HostTypeEntry{
 };
 
-const htype = C.hostTypeEntry;
-const vm_types = [_]C.HostTypeEntry{
-    htype("void",           C.CORE_TYPE(bt.Void)),
-    htype("bool",           C.DECL_TYPE(bt.Boolean)),
-    htype("symbol",         C.DECL_TYPE(bt.Symbol)),
-    htype("error",          C.DECL_TYPE(bt.Error)),
-    htype("int",            C.DECL_TYPE(bt.Integer)),
-    htype("float",          C.DECL_TYPE(bt.Float)), 
-    htype("placeholder2",   C.CORE_TYPE(bt.Placeholder2)), 
-    htype("placeholder3",   C.CORE_TYPE(bt.Placeholder3)), 
-    htype("byte",           C.DECL_TYPE(bt.Byte)), 
-    htype("taglit",         C.CORE_TYPE(bt.TagLit)), 
-    htype("dyn",            C.CORE_TYPE(bt.Dyn)),
-    htype("any",            C.CORE_TYPE(bt.Any)),
-    htype("type",           C.CORE_TYPE(bt.Type)),
-    htype("ExprType",       C.DECL_TYPE(bt.ExprType)),
-    htype("List",           C.CREATE_TYPE(createListType)),
-    htype("ListIterator",   C.CREATE_TYPE(createListIterType)),
-    htype("Tuple",          C.CORE_TYPE(bt.Tuple)),
-    htype("Table",          C.DECL_TYPE(bt.Table)),
-    htype("Map",            C.CORE_TYPE(bt.Map)),
-    htype("MapIterator",    C.CORE_TYPE(bt.MapIter)),
-    htype("String",         C.CORE_TYPE(bt.String)),
-    htype("ExternFunc",     C.CORE_TYPE(bt.ExternFunc)),
-    htype("Fiber",          C.CORE_TYPE(bt.Fiber)),
-    htype("Range",          C.DECL_TYPE(bt.Range)),
-    htype("TccState",       C.CORE_TYPE(bt.TccState)),
-    htype("Future",         C.HOST_OBJECT(null, futureGetChildren, null)),
-    htype("FutureResolver", C.HOST_OBJECT(null, futureResolverGetChildren, null)),
-    htype("Memory",         C.DECL_TYPE(bt.Memory)),
-    htype("array_t",        C.CREATE_TYPE(createArrayType)),
-    htype("FuncSig",        C.DECL_TYPE(bt.FuncSig)), 
-    htype("funcptr_t",      C.CREATE_TYPE(createFuncPtrType)),
-    htype("funcunion_t",    C.CREATE_TYPE(createFuncUnionType)),
-    htype("Func",           C.CORE_TYPE(bt.Func)),
-    htype("funcsym_t",      C.CREATE_TYPE(createFuncSymType)),
-};
-
-fn createFuncSymType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) C.Sym {
+fn createFuncSymType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) *C.Type {
+    _ = decl;
     _ = vm;
     const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
     const c = chunk_sym.chunk;
 
     var ctx = cy.sema.getResolveContext(c);
     const sig: cy.sema.FuncSigId = @intCast(ctx.ct_params.get("SIG").?.asBoxInt());
-    const type_id = c.sema.pushType() catch @panic("error");
-    const sym = c.createFuncSymType(@ptrCast(chunk_sym), "funcsym", type_id, sig, C.fromNode(decl)) catch @panic("error");
-    return @as(*cy.Sym, @ptrCast(sym)).toC();
+
+    const new_t = c.sema.createType(.func_sym, .{ .sig = sig }) catch @panic("error");
+    return @ptrCast(new_t);
 }
 
-fn createFuncUnionType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) C.Sym {
+fn createFuncUnionType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) *C.Type {
+    _ = decl;
     _ = vm;
     const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
     const c = chunk_sym.chunk;
 
     var ctx = cy.sema.getResolveContext(c);
     const sig: cy.sema.FuncSigId = @intCast(ctx.ct_params.get("SIG").?.asBoxInt());
-    const type_id = c.sema.pushType() catch @panic("error");
-    const sym = c.createFuncUnionType(@ptrCast(chunk_sym), "Func", type_id, sig, C.fromNode(decl)) catch @panic("error");
-    return @as(*cy.Sym, @ptrCast(sym)).toC();
+
+    const new_t = c.sema.createType(.func_union, .{ .sig = sig }) catch @panic("error");
+    return @ptrCast(new_t);
 }
 
-fn createFuncPtrType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) C.Sym {
+fn createFuncPtrType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) *C.Type {
+    _ = decl;
     _ = vm;
     const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
     const c = chunk_sym.chunk;
 
     var ctx = cy.sema.getResolveContext(c);
     const sig: cy.sema.FuncSigId = @intCast(ctx.ct_params.get("SIG").?.asBoxInt());
-    const type_id = c.sema.pushType() catch @panic("error");
-    const sym = c.createFuncPtrType(@ptrCast(chunk_sym), "funcptr", type_id, sig, C.fromNode(decl)) catch @panic("error");
-    return @as(*cy.Sym, @ptrCast(sym)).toC();
+
+    const new_t = c.sema.createType(.func_ptr, .{ .sig = sig }) catch @panic("error");
+    return @ptrCast(new_t);
 }
 
-fn createArrayType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) C.Sym {
+fn createRefType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) *C.Type {
+    _ = decl;
+    _ = vm;
+    const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
+    const c = chunk_sym.chunk;
+    var ctx = cy.sema.getResolveContext(c);
+    const child_t = ctx.ct_params.get("T").?.castHeapObject(*cy.heap.Type).type;
+
+    const new_t = c.sema.createType(.pointer, .{ .ref = true, .child_t = c.sema.getType(child_t) }) catch @panic("error");
+    return @ptrCast(new_t);
+}
+
+fn createPointerType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) *C.Type {
+    _ = decl;
+    _ = vm;
+    const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
+    const c = chunk_sym.chunk;
+    var ctx = cy.sema.getResolveContext(c);
+    const child_t = ctx.ct_params.get("T").?.castHeapObject(*cy.heap.Type).type;
+
+    const new_t = c.sema.createType(.pointer, .{ .ref = false, .child_t = c.sema.getType(child_t) }) catch @panic("error");
+    return @ptrCast(new_t);
+}
+
+fn createIntType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) *C.Type {
+    _ = vm;
+    _ = decl;
+    const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
+    const c = chunk_sym.chunk;
+
+    const new_t = c.sema.createTypeWithId(.int, bt.Integer, .{ .bits = 64 }) catch @panic("error");
+    c.sema.int_t = new_t;
+    return @ptrCast(new_t);
+}
+
+fn createFloatType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) *C.Type {
+    _ = vm;
+    _ = decl;
+    const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
+    const c = chunk_sym.chunk;
+
+    const new_t = c.sema.createTypeWithId(.float, bt.Float, .{ .bits = 64 }) catch @panic("error");
+    c.sema.float_t = new_t;
+    return @ptrCast(new_t);
+}
+
+fn createByteType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) *C.Type {
+    _ = vm;
+    _ = decl;
+    const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
+    const c = chunk_sym.chunk;
+
+    const new_t = c.sema.createTypeWithId(.int, bt.Byte, .{ .bits = 8 }) catch @panic("error");
+    c.sema.byte_t = new_t;
+    return @ptrCast(new_t);
+}
+
+fn createBoolType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) *C.Type {
+    _ = vm;
+    _ = decl;
+    const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
+    const c = chunk_sym.chunk;
+
+    const new_t = c.sema.createTypeWithId(.bool, bt.Boolean, .{}) catch @panic("error");
+    c.sema.bool_t = new_t;
+    return @ptrCast(new_t);
+}
+
+fn createOptionType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) *C.Type {
+    _ = decl;
+    _ = vm;
+    const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
+    const c = chunk_sym.chunk;
+
+    var ctx = cy.sema.getResolveContext(c);
+    const child_t = ctx.ct_params.get("T").?.castHeapObject(*cy.heap.Type).type;
+
+    const new_t = c.sema.createType(.option, .{ .child_t = c.sema.getType(child_t) }) catch @panic("error");
+    return @ptrCast(new_t);
+}
+
+fn createArrayType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) *C.Type {
     _ = decl;
     _ = vm;
     const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
@@ -349,69 +395,40 @@ fn createArrayType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) C.Sym {
     var ctx = cy.sema.getResolveContext(c);
     const n: usize = @intCast(ctx.ct_params.get("N").?.asBoxInt());
     const elem_t = ctx.ct_params.get("T").?.castHeapObject(*cy.heap.Type).type;
-    const type_id = c.sema.pushType() catch @panic("error");
-    const sym = c.createArrayType(@ptrCast(chunk_sym), "array_t", type_id, n, elem_t) catch @panic("error");
-    return @as(*cy.Sym, @ptrCast(sym)).toC();
+
+    const new_t = c.sema.createType(.array, .{ .n = n, .elem_t = c.sema.getType(elem_t) }) catch @panic("error");
+    return @ptrCast(new_t);
 }
 
-fn createListType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) C.Sym {
+fn createListType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) *C.Type {
+    _ = decl;
     _ = vm;
     const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
     const c = chunk_sym.chunk;
 
     var ctx = cy.sema.getResolveContext(c);
     const child_t = ctx.ct_params.get("T").?.castHeapObject(*cy.heap.Type).type;
-    if (child_t == bt.Dyn) {
-        const sym = c.createHostObjectType(@ptrCast(chunk_sym), "List", @ptrCast(C.fromNode(decl))) catch @panic("error");
-        cy.sema.resolveHostObjectType(c, sym,
-            listGetChildren,
-            listFinalizer,
-            bt.ListDyn,
-            false,
-            false,
-        ) catch @panic("error");
-        return @as(*cy.Sym, @ptrCast(sym)).toC();
-    } else {
-        const sym = c.createHostObjectType(@ptrCast(chunk_sym), "List", @ptrCast(C.fromNode(decl))) catch @panic("error");
-        cy.sema.resolveHostObjectType(c, sym,
-            listGetChildren,
-            listFinalizer,
-            null,
-            false,
-            false,
-        ) catch @panic("error");
-        return @as(*cy.Sym, @ptrCast(sym)).toC();
-    }
+    _ = child_t;
+    const new_t = c.sema.createType(.hostobj, .{
+        .getChildrenFn = listGetChildren,
+        .finalizerFn = listFinalizer,
+    }) catch @panic("error");
+    return @ptrCast(new_t);
 }
 
-fn createListIterType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) C.Sym {
+fn createListIterType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) *C.Type {
+    _ = decl;
     _ = vm;
     const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
     const c = chunk_sym.chunk;
 
     var ctx = cy.sema.getResolveContext(c);
     const child_t = ctx.ct_params.get("T").?.castHeapObject(*cy.heap.Type).type;
-    if (child_t == bt.Dyn) {
-        const sym = c.createHostObjectType(@ptrCast(chunk_sym), "ListIterator", @ptrCast(C.fromNode(decl))) catch @panic("error");
-        cy.sema.resolveHostObjectType(c, sym,
-            listIterGetChildren,
-            null,
-            bt.ListIterDyn,
-            false,
-            false,
-        ) catch @panic("error");
-        return @as(*cy.Sym, @ptrCast(sym)).toC();
-    } else {
-        const sym = c.createHostObjectType(@ptrCast(chunk_sym), "ListIterator", @ptrCast(C.fromNode(decl))) catch @panic("error");
-        cy.sema.resolveHostObjectType(c, sym,
-            listIterGetChildren,
-            null,
-            null,
-            false,
-            false,
-        ) catch @panic("error");
-        return @as(*cy.Sym, @ptrCast(sym)).toC();
-    }
+    _ = child_t;
+    const new_t = c.sema.createType(.hostobj, .{
+        .getChildrenFn = listIterGetChildren,
+    }) catch @panic("error");
+    return @ptrCast(new_t);
 }
 
 pub const BuiltinsData = struct {
@@ -429,6 +446,50 @@ pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
     const src = if (aot) C.toStr(Src) else C.toStr(VmSrc);
     const mod = C.createModule(@ptrCast(vm), C.toStr(r_uri), src);
 
+    const htype = C.hostTypeEntry;
+    const vm_types = [_]C.HostTypeEntry{
+        htype("void",           CS.RESERVE_HOBJ_TYPE(bt.Void, &vm.sema.void_t)),
+        htype("bool",           C.CREATE_TYPE(createBoolType)),
+        htype("symbol",         CS.RESERVE_DECL_TYPE(bt.Symbol, &vm.sema.symbol_t)),
+        htype("error",          CS.RESERVE_DECL_TYPE(bt.Error, &vm.sema.error_t)),
+        htype("int",            C.CREATE_TYPE(createIntType)),
+        htype("float",          C.CREATE_TYPE(createFloatType)), 
+        htype("placeholder1",   CS.RESERVE_HOBJ_TYPE(bt.Placeholder1, &vm.sema.placeholder1_t)), 
+        htype("placeholder2",   CS.RESERVE_HOBJ_TYPE(bt.Placeholder2, &vm.sema.placeholder2_t)), 
+        htype("placeholder3",   CS.RESERVE_HOBJ_TYPE(bt.Placeholder3, &vm.sema.placeholder3_t)), 
+        htype("placeholder4",   CS.RESERVE_HOBJ_TYPE(bt.Placeholder4, &vm.sema.placeholder4_t)), 
+        htype("placeholder5",   CS.RESERVE_HOBJ_TYPE(bt.Placeholder5, &vm.sema.placeholder5_t)), 
+        htype("byte",           C.CREATE_TYPE(createByteType)), 
+        htype("taglit",         CS.RESERVE_HOBJ_TYPE(bt.TagLit, &vm.sema.taglit_t)), 
+        htype("dyn",            CS.RESERVE_HOBJ_TYPE(bt.Dyn, &vm.sema.dyn_t)),
+        htype("any",            CS.RESERVE_HOBJ_TYPE(bt.Any, &vm.sema.any_t)),
+        htype("type",           CS.RESERVE_HOBJ_TYPE(bt.Type, &vm.sema.type_t)),
+        htype("ExprType",       CS.RESERVE_DECL_TYPE(bt.ExprType, &vm.sema.exprtype_t)),
+        htype("List",           C.CREATE_TYPE(createListType)),
+        htype("ListIterator",   C.CREATE_TYPE(createListIterType)),
+        htype("Tuple",          CS.RESERVE_HOBJ_TYPE(bt.Tuple, &vm.sema.tuple_t)),
+        htype("Table",          CS.RESERVE_DECL_TYPE(bt.Table, &vm.sema.table_t)),
+        htype("Map",            CS.RESERVE_HOBJ_TYPE(bt.Map, &vm.sema.map_t)),
+        htype("MapIterator",    CS.RESERVE_HOBJ_TYPE(bt.MapIter, null)),
+        htype("String",         CS.RESERVE_HOBJ_TYPE(bt.String, &vm.sema.string_t)),
+        htype("ExternFunc",     CS.RESERVE_HOBJ_TYPE(bt.ExternFunc, null)),
+        htype("Fiber",          CS.RESERVE_HOBJ_TYPE(bt.Fiber, &vm.sema.fiber_t)),
+        htype("Range",          CS.RESERVE_DECL_TYPE(bt.Range, &vm.sema.range_t)),
+        htype("TccState",       CS.RESERVE_HOBJ_TYPE(bt.TccState, null)),
+        htype("Future",         CS.HOBJ_TYPE(null, futureGetChildren, null)),
+        htype("FutureResolver", CS.HOBJ_TYPE(null, futureResolverGetChildren, null)),
+        htype("Memory",         CS.RESERVE_DECL_TYPE(bt.Memory, &vm.sema.memory_t)),
+        htype("Array",          C.CREATE_TYPE(createArrayType)),
+        htype("pointer",        C.CREATE_TYPE(createPointerType)),
+        htype("ref",            C.CREATE_TYPE(createRefType)),
+        htype("FuncSig",        CS.RESERVE_DECL_TYPE(bt.FuncSig, null)), 
+        htype("funcptr_t",      C.CREATE_TYPE(createFuncPtrType)),
+        htype("funcunion_t",    C.CREATE_TYPE(createFuncUnionType)),
+        htype("Func",           CS.RESERVE_HOBJ_TYPE(bt.Func, null)),
+        htype("funcsym_t",      C.CREATE_TYPE(createFuncSymType)),
+        htype("Option",         C.CREATE_TYPE(createOptionType)),
+    };
+
     var config = C.ModuleConfig{
         .types = if (aot) C.toSlice(C.HostTypeEntry, &types) else C.toSlice(C.HostTypeEntry, &vm_types),
         .funcs = C.toSlice(C.HostFuncEntry, &funcs),
@@ -438,72 +499,75 @@ pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
     return mod;
 }
 
-fn onLoad(vm_: ?*C.VM, mod: C.Sym) callconv(.C) void {
+fn onLoad(vm: ?*C.VM, mod: C.Sym) callconv(.C) void {
+    onLoadZ(@ptrCast(@alignCast(vm)), cy.Sym.fromC(mod)) catch @panic("error");
+}
+
+fn onLoadZ(vm: *cy.VM, mod: *cy.Sym) !void {
     log.tracev("builtins: on load", .{});
-    const ivm: *cy.VM = @ptrCast(@alignCast(vm_));
-    const vm: *C.ZVM = @ptrCast(vm_);
-    const chunk_sym = cy.Sym.fromC(mod).cast(.chunk);
-    const b = bindings.ModuleBuilder.init(ivm.compiler, @ptrCast(chunk_sym));
+    const chunk_sym = mod.cast(.chunk);
+    const b = bindings.ModuleBuilder.init(vm.compiler, @ptrCast(chunk_sym));
     if (cy.Trace) {
-        b.declareFuncSig("traceRetains", &.{}, bt.Integer, traceRetains) catch cy.fatal();
-        b.declareFuncSig("traceReleases", &.{}, bt.Integer, traceRetains) catch cy.fatal();
+        try b.declareFuncSig("traceRetains", &.{}, vm.sema.int_t, traceRetains);
+        try b.declareFuncSig("traceReleases", &.{}, vm.sema.int_t, traceRetains);
     }
 
-    const data = ivm.getData(*BuiltinsData, "builtins");
+    const data = vm.getData(*BuiltinsData, "builtins");
 
-    const option_tmpl = chunk_sym.getMod().getSym("Option").?.toC();
+    const option_tmpl = chunk_sym.getMod().getSym("Option").?.cast(.template);
 
     const assert = std.debug.assert;
+    _ = assert;
 
-    const int_t = vm.newType(bt.Integer);
+    const int_t = try vm.allocType(bt.Integer);
     defer vm.release(int_t);
-    assert(vm.expandTemplateType(option_tmpl, &.{int_t}, &data.OptionInt));
+    data.OptionInt = (try vm.expandTemplateType(option_tmpl, &.{int_t})).?;
 
-    const any_t = vm.newType(bt.Any);
+    const any_t = try vm.allocType(bt.Any);
     defer vm.release(any_t);
-    assert(vm.expandTemplateType(option_tmpl, &.{any_t}, &data.OptionAny));
+    data.OptionAny = (try vm.expandTemplateType(option_tmpl, &.{any_t})).?;
 
-    const tuple_t = vm.newType(bt.Tuple);
+    const tuple_t = try vm.allocType(bt.Tuple);
     defer vm.release(tuple_t);
-    assert(vm.expandTemplateType(option_tmpl, &.{tuple_t}, &data.OptionTuple));
+    data.OptionTuple = (try vm.expandTemplateType(option_tmpl, &.{tuple_t})).?;
 
-    const map_t = vm.newType(bt.Map);
+    const map_t = try vm.allocType(bt.Map);
     defer vm.release(map_t);
-    assert(vm.expandTemplateType(option_tmpl, &.{map_t}, &data.OptionMap));
+    data.OptionMap = (try vm.expandTemplateType(option_tmpl, &.{map_t})).?;
 
-    const string_t = vm.newType(bt.String);
+    const string_t = try vm.allocType(bt.String);
     defer vm.release(string_t);
-    assert(vm.expandTemplateType(option_tmpl, &.{string_t}, &data.OptionString));
+    data.OptionString = (try vm.expandTemplateType(option_tmpl, &.{string_t})).?;
 
-    const pointer_tmpl = chunk_sym.getMod().getSym("pointer").?.toC();
+    const pointer_tmpl = chunk_sym.getMod().getSym("pointer").?.cast(.template);
 
-    const void_t = vm.newType(bt.Void);
+    const void_t = try vm.allocType(bt.Void);
     defer vm.release(void_t);
-    assert(vm.expandTemplateType(pointer_tmpl, &.{void_t}, &data.PtrVoid));
+    data.PtrVoid = (try vm.expandTemplateType(pointer_tmpl, &.{void_t})).?;
 
-    const list_tmpl = chunk_sym.getMod().getSym("List").?.toC();
+    const list_tmpl = chunk_sym.getMod().getSym("List").?.cast(.template);
 
-    const dynamic_t = vm.newType(bt.Dyn);
+    const dynamic_t = try vm.allocType(bt.Dyn);
     defer vm.release(dynamic_t);
-    var temp: cy.TypeId = undefined;
-    assert(vm.expandTemplateType(list_tmpl, &.{dynamic_t}, &temp));
+    var temp: *cy.Type = undefined;
+    temp = (try vm.expandTemplateType(list_tmpl, &.{dynamic_t})).?;
 
-    const list_iter_tmpl = chunk_sym.getMod().getSym("ListIterator").?.toC();
-    assert(vm.expandTemplateType(list_iter_tmpl, &.{dynamic_t}, &temp));
+    const list_iter_tmpl = chunk_sym.getMod().getSym("ListIterator").?.cast(.template);
+    temp = (try vm.expandTemplateType(list_iter_tmpl, &.{dynamic_t})).?;
 
-    const ptr_slice_tmpl = chunk_sym.getMod().getSym("PtrSlice").?.toC();
-    const byte_t = vm.newType(bt.Byte);
+    const ptr_slice_tmpl = chunk_sym.getMod().getSym("PtrSlice").?.cast(.template);
+    const byte_t = try vm.allocType(bt.Byte);
     defer vm.release(byte_t);
-    assert(vm.expandTemplateType(ptr_slice_tmpl, &.{byte_t}, &data.PtrSliceByte));
+    data.PtrSliceByte = (try vm.expandTemplateType(ptr_slice_tmpl, &.{byte_t})).?;
 
     // Verify all core types have been initialized.
     if (cy.Trace) {
-        if (ivm.sema.types.items[0].kind != .null) {
+        if (vm.sema.types.items[0].kind() != .null) {
             cy.panicFmt("Expected null type.", .{});
         }
         for (1..cy.types.BuiltinEnd) |i| {
-            const type_e = ivm.sema.types.items[i];
-            if (type_e.kind == .null) {
+            const type_e = vm.sema.types.items[i];
+            if (type_e.kind() == .null) {
                 cy.panicFmt("Type {} is uninited.", .{i});
             }
         }

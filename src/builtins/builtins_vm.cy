@@ -433,8 +433,8 @@ type Map _:
 
 @host
 type MapIterator _:
-    @host func next(self) ?any
-  
+    @host func next(self) ?dyn
+
 @host
 type String _:
     --| Returns the rune at byte index `idx`. The replacement character (0xFFFD) is returned for an invalid UTF-8 rune.

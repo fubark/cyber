@@ -359,7 +359,7 @@ if (!aot) {
     run.case("vars/use_global_panic.cy");
 
     run.case("control_flow/for_iter.cy");
-    run.case("control_flow/for_iter_unsupported_panic.cy");
+    run.case("control_flow/for_iter_unsupported_error.cy");
     run.case("control_flow/for_range.cy");
     run.case("control_flow/if_expr.cy");
     run.case("control_flow/if_expr_error.cy");

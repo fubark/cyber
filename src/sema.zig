@@ -364,12 +364,14 @@ pub fn semaStmt(c: *cy.Chunk, node: *ast.Node) !void {
             try pushBlock(c, node);
             {
                 const iterable_n: *ast.Node = @ptrCast(stmt.iterable);
-                const iterable_init = try c.semaExprCstr(stmt.iterable, bt.Dyn);
-                const iterable_v = try declareHiddenLocal(c, "$iterable", bt.Dyn, iterable_init, iterable_n);
+                const iterable_init = try c.semaExpr(stmt.iterable, .{});
+                const iterable_v = try declareHiddenLocal(c, "$iterable", iterable_init.type, iterable_init, iterable_n);
                 const iterable = try semaLocal(c, iterable_v.id, node);
 
-                const iterator_init = try c.semaCallObjSym0(iterable.irIdx, "iterator", iterable_n);
-                const iterator_v = try declareHiddenLocal(c, "$iterator", bt.Dyn, iterator_init, iterable_n);
+                const iterator_sym = try c.mustFindSym(@ptrCast(iterable_init.type.sym()), "iterator", iterable_n);
+                var func_sym = try requireFuncSym(c, iterator_sym, iterable_n);
+                const iterator_init = try c.semaCallFuncSymRec(func_sym, iterable_n, iterable, &.{}, .any, iterable_n);
+                const iterator_v = try declareHiddenLocal(c, "$iterator", iterator_init.type, iterator_init, iterable_n);
                 const iterator = try semaLocal(c, iterator_v.id, node);
 
                 const counter_init = try c.semaInt(-1, node);
@@ -394,13 +396,13 @@ pub fn semaStmt(c: *cy.Chunk, node: *ast.Node) !void {
                             const data: *ClosureData = @ptrCast(@alignCast(data_));
                             if (data.stmt.count) |count| {
                                 // $counter += 1
-                                const int_t = c_.sema.getTypeSym(bt.Integer);
-                                const sym = try c_.mustFindSym(int_t, "$infix+", @ptrCast(data.stmt));
-                                const func_sym = try requireFuncSym(c_, sym, @ptrCast(data.stmt));
+                                const int_t = c_.sema.int_t.sym();
+                                const sym = try c_.mustFindSym(@ptrCast(int_t), "$infix+", @ptrCast(data.stmt));
+                                const func_sym_ = try requireFuncSym(c_, sym, @ptrCast(data.stmt));
                                 const one = try c_.semaInt(1, @ptrCast(data.stmt));
 
                                 const counter_ = try semaLocal(c_, data.counterv.id, @ptrCast(data.stmt));
-                                const right = try c_.semaCallFuncSymRec2(func_sym, @ptrCast(data.stmt), counter_, 
+                                const right = try c_.semaCallFuncSymRec2(func_sym_, @ptrCast(data.stmt), counter_, 
                                     &.{one}, &.{ @ptrCast(data.stmt) }, .any, @ptrCast(data.stmt));
                                 const irStart = try c_.ir.pushEmptyStmt(c_.alloc, .setLocal, @ptrCast(data.stmt));
                                 const info = c_.varStack.items[data.counterv.id].inner.local;
@@ -418,10 +420,13 @@ pub fn semaStmt(c: *cy.Chunk, node: *ast.Node) !void {
                             _ = try c_.ir.pushStmt(c_.alloc, .contStmt, @ptrCast(data.stmt), {});
                         }
                     }; 
-                    const next = try c.semaCallObjSym0(iterator.irIdx, "next", node);
-                    const opt = try c.semaOptionExpr2(next, node);
 
-                    try semaIfUnwrapStmt2(c, opt, node, stmt.each, S.body, &closure_data, &.{}, @ptrCast(stmt));
+
+                    const next_sym = try c.mustFindSym(@ptrCast(iterator.type.sym()), "next", iterable_n);
+                    func_sym = try requireFuncSym(c, next_sym, iterable_n);
+                    const next = try c.semaCallFuncSymRec(func_sym, iterable_n, iterator, &.{}, .any, iterable_n);
+
+                    try semaIfUnwrapStmt2(c, next, node, stmt.each, S.body, &closure_data, &.{}, @ptrCast(stmt));
                 }
                 const block = try popBlock(c);
                 c.ir.setStmtData(loop_stmt, .loopStmt, .{

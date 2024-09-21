@@ -67,8 +67,8 @@ const VMC = extern struct {
     context_vars_cap: usize,
     context_vars_len: usize,
 
-    /// Types.
-    types: [*]const types.Type,
+    /// TODO: Create compact runtime types from sema types.
+    types: [*]const *cy.Type,
     types_len: usize,
 
     trace: *vmc.TraceInfo,
@@ -379,13 +379,13 @@ pub const VM = struct {
             switch (sym.type) {
                 .userVar => {
                     const user_var = sym.cast(.userVar);
-                    if (!self.sema.isUnboxedType(user_var.type)) {
+                    if (user_var.type.isBoxed()) {
                         do_release = true;
                     }
                 },
                 .hostVar => {
                     const host_var = sym.cast(.hostVar);
-                    if (!self.sema.isUnboxedType(host_var.type)) {
+                    if (host_var.type.isBoxed()) {
                         do_release = true;
                     }
                 },
@@ -807,10 +807,10 @@ pub const VM = struct {
     }
 
     pub fn getTypeName(vm: *const cy.VM, typeId: cy.TypeId) []const u8 {
-        if (typeId == cy.NullId >> 3) {
+        if (typeId == cy.NullId & vmc.TYPE_MASK) {
             return "danglingObject";
         }
-        return vm.compiler.sema.types.items[typeId].sym.name();
+        return vm.compiler.sema.types.items[typeId].name();
     }
 
     pub fn popStackFrameCold(self: *VM, comptime numRetVals: u2) void {
@@ -870,8 +870,6 @@ pub const VM = struct {
         self.c.ops_len = buf.ops.items.len;
         self.c.consts = buf.mconsts.ptr;
         self.c.consts_len = buf.mconsts.len;
-        self.c.types = self.compiler.sema.types.items.ptr;
-        self.c.types_len = self.compiler.sema.types.items.len;
     }
 
     pub fn evalByteCode(self: *VM, buf: *cy.ByteCodeBuffer) !Value {
@@ -984,7 +982,7 @@ pub const VM = struct {
         const ret_v = vm.c.framePtr[final_ret];
         const ret_t = vm.c.framePtr[1].call_info.payload & 0x7fffffff;
         var res: Value = undefined;
-        if (vm.sema.isUnboxedType(ret_t)) {
+        if (!vm.getType(ret_t).isBoxed()) {
             res = zBox(vm, ret_v, ret_t);
         } else {
             res = ret_v;
@@ -996,7 +994,7 @@ pub const VM = struct {
         return res;
     }
 
-    pub fn addAnonymousStruct(self: *VM, parent: *cy.Sym, baseName: []const u8, uniqId: u32, fields: []const []const u8) !cy.TypeId {
+    pub fn addAnonymousStruct(self: *VM, parent: *cy.Sym, baseName: []const u8, uniqId: u32, fields: []const []const u8) !*cy.Type {
         const mod = parent.getMod().?;
         const c = mod.chunk;
 
@@ -1015,7 +1013,7 @@ pub const VM = struct {
             const field_sym = c.declareField(@ptrCast(sym), field, @intCast(i), self.sema.any_t, null) catch return error.Unexpected;
             infos[i] = .{
                 .sym = @ptrCast(field_sym),
-                .type = bt.Any,
+                .type = self.sema.any_t,
                 .offset = 0,
             };
         }
@@ -1034,9 +1032,9 @@ pub const VM = struct {
         // };
 
         // Update vm types view.
-        self.c.types = c.sema.types.items.ptr;
-        self.c.types_len = c.sema.types.items.len;
-        return sym.type;
+        self.c.types = self.sema.types.items.ptr;
+        self.c.types_len = self.sema.types.items.len;
+        return @ptrCast(struct_t);
     }
 
     pub fn getSymbolName(self: *const VM, id: u32) []const u8 {
@@ -1106,12 +1104,12 @@ pub const VM = struct {
         }
     }
 
-    pub fn addTypeField(self: *VM, type_id: cy.TypeId, field_id: u32, offset: u16, field_t: types.TypeId) !void {
-        const key = rt.FieldTableKey.initFieldTableKey(type_id, field_id);
+    pub fn addTypeField(self: *VM, type_: *cy.Type, field_id: u32, offset: u16, field_t: *cy.Type) !void {
+        const key = rt.FieldTableKey.initFieldTableKey(type_.id(), field_id);
         try self.type_field_map.putNoClobber(self.alloc, key, .{
-            .boxed = !self.sema.isUnboxedType(field_t),
+            .boxed = field_t.isBoxed(),
             .offset = offset,
-            .type_id = field_t,
+            .type_id = field_t.id(),
         });
     }
 
@@ -1127,9 +1125,9 @@ pub const VM = struct {
         return cur_id;
     }
 
-    pub fn setMethodGroup(self: *VM, type_id: cy.TypeId, name: []const u8, group: rt.FuncGroupId) !void {
+    pub fn setMethodGroup(self: *VM, type_: *cy.Type, name: []const u8, group: rt.FuncGroupId) !void {   
         const method = try self.ensureMethod(name);
-        const key = rt.TypeMethodKey.initTypeMethodKey(type_id, method);
+        const key = rt.TypeMethodKey.initTypeMethodKey(type_.id(), method);
         try self.type_method_map.put(self.alloc, key, group);
     }
 
@@ -1476,9 +1474,9 @@ pub const VM = struct {
 
         for (args, 0..) |arg, i| {
             const target_t = target_params[i];
-            const arg_t = arg.getTypeId();
-            if (!types.isTypeSymCompat(self.compiler, arg_t, target_t.type)) {
-                if (!@call(.never_inline, canInferArg, .{ self, arg, target_t.type })) {
+            const arg_t = self.sema.getType(arg.getTypeId());
+            if (!types.isTypeCompat(self.compiler, arg_t, target_t)) {
+                if (!@call(.never_inline, canInferArg, .{self, arg, target_t})) {
                     return false;
                 }
             }
@@ -1496,8 +1494,8 @@ pub const VM = struct {
         }
 
         for (args, target_params) |val, target_t| {
-            const valTypeId = val.getTypeId();
-            if (!types.isTypeSymCompat(self.compiler, valTypeId, target_t.type)) {
+            const val_t = self.sema.getType(val.getTypeId());
+            if (!types.isTypeCompat(self.compiler, val_t, target_t)) {
                 return false;
             }
         }
@@ -2064,74 +2062,112 @@ fn dumpEvalOp(vm: *VM, pc: [*]const cy.Inst, fp: [*]const cy.Value) !void {
         else => {},
     }
 
-    fmt.printStderr("{}", &.{fmt.repeat(' ', vm.c.trace_indent * 2)});
+    fmt.printStderr("{}", &.{fmt.repeat(' ', vm.c.trace_indent * 4)});
     try cy.bytecode.dumpInst(vm, offset, pc[0].opcode(), pc, .{ .extra = extra });
 }
 
 fn box(vm: *VM, val: Value, type_id: cy.TypeId) !cy.Value {
     if (cy.Trace) {
-        if (!vm.sema.isUnboxedType(type_id)) {
+        if (vm.c.types[type_id].isBoxed()) {
             @panic("Unsupported.");
         }
     }
     if (type_id == bt.Void) {
         return cy.Value.Void;
+    } else if (type_id == bt.Boolean) {
+        return cy.Value.initBoxBool(val.asBool());
+    } else if (type_id == bt.Float) {
+        return val;
     }
     return vm.allocBoxValue(type_id, val.val);
 }
 
-pub fn unbox(vm: *VM, val: Value, type_id: cy.TypeId) cy.Value {
+pub fn unbox2(vm: *const VM, val: Value) Value {
+    const val_t = val.getTypeId();
+    switch (val_t) {
+        bt.Void => {
+            return Value.initRaw(0);
+        },
+        bt.Boolean => {
+            return cy.Value.initRaw(@intFromBool(val.asBoxBool()));
+        },
+        bt.Float => {
+            return val;
+        },
+        bt.Integer => {
+            return @bitCast(val.asBoxInt());
+        },
+        bt.Error => {
+            return val;
+        },
+        else => {
+            const type_ = vm.getType(val_t);
+            if (type_.kind() == .enum_t) {
+                return @bitCast(val.asBoxInt());
+            }
+            return val;
+        },
+    }
+}
+
+pub fn unbox(vm: *const VM, val: Value, type_id: cy.TypeId) cy.Value {
     if (cy.Trace) {
-        if (!vm.sema.isUnboxedType(type_id)) {
+        if (vm.c.types[type_id].isBoxed()) {
             @panic("Unsupported.");
         }
     }
     if (type_id == bt.Void) {
         return cy.Value.initRaw(0);
+    } else if (type_id == bt.Boolean) {
+        return cy.Value.initRaw(@intFromBool(val.asBoxBool()));
+    } else if (type_id == bt.Float) {
+        return val;
     }
     return val.asHeapObject().object.firstValue;
 }
 
-fn canInferArg(vm: *VM, arg: Value, target_t: cy.TypeId) bool {
+fn canInferArg(vm: *VM, arg: Value, target_t: *cy.Type) bool {
     if (arg.getTypeId() == bt.TagLit) {
-        const type_e = vm.c.types[target_t];
-        if (type_e.kind == .enum_t) {
+        if (target_t.kind() == .enum_t) {
             const name = vm.syms.buf[arg.asSymbolId()].name;
-            if (type_e.sym.cast(.enum_t).getMemberTag(name)) |value| {
+            if (target_t.cast(.enum_t).getCaseTag(name)) |value| {
                 _ = value;
 
                 return true;
             }
-        } else if (target_t == bt.Symbol) {
+        } else if (target_t.id() == bt.Symbol) {
             return true;
         }
     }
     return false;
 }
 
-fn inferArg(vm: *VM, arg: Value, target_t: cy.TypeId) ?Value {
-    if (arg.getTypeId() == bt.TagLit) {
-        const type_e = vm.c.types[target_t];
-        if (type_e.kind == .enum_t) {
+fn inferArg(vm: *VM, arg: Value, target_t: *cy.Type) ?Value {
+    const shape_t = arg.getTypeId();
+    if (shape_t == bt.TagLit) {
+        if (target_t.kind() == .enum_t) {
             const name = vm.syms.buf[arg.asSymbolId()].name;
-            if (type_e.sym.cast(.enum_t).getMemberTag(name)) |value| {
-                return Value.initEnum(target_t, @intCast(value));
+            if (target_t.cast(.enum_t).getCaseTag(name)) |value| {
+                return Value.initInt(@intCast(value));
             }
-        } else if (target_t == bt.Symbol) {
+        } else if (target_t.id() == bt.Symbol) {
             return Value.initSymbol(arg.asSymbolId());
         }
     }
     return null;
 }
 
-fn preCallDyn(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, final_ret: u8, func_stack_size: u16, req_type_check: bool, sig_id: sema.FuncSigId, cont: bool) !cy.TypeId {
+/// TODO: Attempt to merge this with preCallObjSym
+fn preCallDyn(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, final_ret: u8, func_stack_size: u16,
+    req_type_check: bool, sig_id: sema.FuncSigId, cont: bool) !*cy.Type {
+
     const sig = vm.compiler.sema.getFuncSig(sig_id);
 
     // Setup call frame to return to the next inst.
     fp[ret + 1] = buildDynFrameInfo(cont, cy.bytecode.CallInstLen + cy.bytecode.RetDynLen, final_ret - ret);
     // Save ret box type.
-    var ret_type_mask = sig.ret;
-    if (vm.sema.isUnboxedType(sig.ret)) {
+    var ret_type_mask = sig.ret.id();
+    if (!sig.ret.isBoxed()) {
         ret_type_mask = ret_type_mask | 0x80000000;
     }
     fp[ret + 1].call_info.payload = ret_type_mask;
@@ -2150,17 +2186,17 @@ fn preCallDyn(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, final_r
         // Perform type check on args.
         for (args, 0..) |arg, i| {
             const cstrType = sig.params_ptr[i];
-            const argType = arg.getTypeId();
-            if (!types.isTypeSymCompat(vm.compiler, argType, cstrType.type)) {
-                const final_arg = @call(.never_inline, inferArg, .{ vm, arg, cstrType.type }) orelse {
+            const argType = vm.sema.getType(arg.getTypeId());
+            if (!types.isTypeCompat(vm.compiler, argType, cstrType)) {
+                const final_arg = @call(.never_inline, inferArg, .{vm, arg, cstrType}) orelse {
                     return panicIncompatibleLambdaSig(vm, args, sig_id);
                 };
                 args[i] = final_arg;
                 final_args[i] = final_arg;
                 continue;
             }
-            if (vm.sema.isUnboxedType(cstrType.type)) {
-                const final_arg = @call(.never_inline, unbox, .{ vm, arg, argType });
+            if (!cstrType.isBoxed()) {
+                const final_arg = @call(.never_inline, unbox, .{vm, arg, argType.id()});
                 final_args[i] = final_arg;
                 continue;
             }
@@ -2185,8 +2221,8 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
     if (obj.getTypeId() == bt.Func) {
         return callFuncUnion(vm, pc, framePtr, callee, ret, numArgs, cont, &obj.func);
     }
-    const type_e = vm.c.types[obj.getTypeId()];
-    if (type_e.kind == .func_ptr) {
+    const type_e = vm.getType(obj.getTypeId());
+    if (type_e.kind() == .func_ptr) {
         switch (obj.func_ptr.kind) {
             .bc => {
                 if (numArgs != obj.func_ptr.numParams) {
@@ -2207,6 +2243,9 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                 };
             },
             .host => {
+                defer if (cy.Trace) {
+                    vm.c.trace_indent -= 1;
+                };
                 if (numArgs != obj.func_ptr.numParams) {
                     logger.tracev("hostfunc params/args mismatch {} {}", .{ numArgs, obj.func_ptr.numParams });
                     return vm.interruptThrowSymbol(.InvalidSignature);
@@ -2235,7 +2274,7 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
                 };
             },
         }
-    } else if (type_e.kind == .func_union) {
+    } else if (type_e.kind() == .func_union) {
         return callFuncUnion(vm, pc, framePtr, callee, ret, numArgs, cont, &obj.func_union);
     } else {
         return vm.interruptThrowSymbol(.InvalidArgument);
@@ -2285,6 +2324,9 @@ fn callFuncUnion(vm: *VM, pc: [*]cy.Inst, framePtr: [*]cy.Value, callee: cy.Valu
             };
         },
         .host => {
+            defer if (cy.Trace) {
+                vm.c.trace_indent -= 1;
+            };
             if (numArgs != func.numParams) {
                 logger.tracev("hostfunc params/args mismatch {} {}", .{ numArgs, func.numParams });
                 return vm.interruptThrowSymbol(.InvalidSignature);
@@ -2329,12 +2371,29 @@ fn panicCastError(vm: *cy.VM, val: Value, expTypeId: cy.TypeId) !void {
     });
 }
 
+fn allocValueTypes(vm: *cy.VM, vals: []const Value) ![]const *cy.Type {
+    const typeIds = try vm.alloc.alloc(*cy.Type, vals.len);
+    for (vals, 0..) |val, i| {
+        typeIds[i] = vm.sema.getType(val.getTypeId());
+    }
+    return typeIds;
+}
+
 fn allocValueTypeIds(vm: *cy.VM, vals: []const Value) ![]const cy.TypeId {
     const typeIds = try vm.alloc.alloc(cy.TypeId, vals.len);
     for (vals, 0..) |val, i| {
         typeIds[i] = val.getTypeId();
     }
     return typeIds;
+}
+
+fn allocMethodCallTypes(vm: *cy.VM, rec_t: *cy.Type, vals: []const Value) ![]const *cy.Type {
+    const types_ = try vm.alloc.alloc(*cy.Type, vals.len + 1);
+    types_[0] = rec_t;
+    for (vals, 1..) |val, i| {
+        types_[i] = vm.sema.getType(val.getTypeId());
+    }
+    return types_;
 }
 
 fn allocMethodCallTypeIds(vm: *cy.VM, rec_t: cy.TypeId, vals: []const Value) ![]const cy.TypeId {
@@ -2365,7 +2424,7 @@ fn panicIncompatibleFieldType(vm: *cy.VM, fieldSemaTypeId: types.TypeId, rightv:
 fn panicIncompatibleLambdaSig(vm: *cy.VM, args: []const Value, cstrFuncSigId: sema.FuncSigId) error{ Panic, OutOfMemory } {
     const cstrFuncSigStr = vm.compiler.sema.allocFuncSigStr(cstrFuncSigId, true, null) catch return error.OutOfMemory;
     defer vm.alloc.free(cstrFuncSigStr);
-    const argTypes = try allocValueTypeIds(vm, args);
+    const argTypes = try allocValueTypes(vm, args);
     defer vm.alloc.free(argTypes);
     const argsSigStr = vm.compiler.sema.allocTypesStr(argTypes, null) catch return error.OutOfMemory;
     defer vm.alloc.free(argsSigStr);
@@ -2390,7 +2449,7 @@ fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Va
     // vm.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
     // return error.Panic;
 
-    const arg_types = try allocValueTypeIds(vm, args);
+    const arg_types = try allocValueTypes(vm, args);
     defer vm.alloc.free(arg_types);
 
     const call_args_str = vm.compiler.sema.allocTypesStr(arg_types, null) catch return error.OutOfMemory;
@@ -2426,13 +2485,13 @@ fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Va
 fn panicIncompatibleMethodSig(vm: *cy.VM, method_id: rt.MethodId, recv: Value, args: []const Value) error{ Panic, OutOfMemory } {
     const typeId = recv.getTypeId();
 
-    const typeIds = try allocMethodCallTypeIds(vm, typeId, args);
+    const typeIds = try allocMethodCallTypes(vm, vm.sema.getType(typeId), args);
     defer vm.alloc.free(typeIds);
 
     // Lookup `func_entry`.
     const method = vm.methods.buf[method_id];
     const name = rt.getName(vm, method.name);
-    const typeName = vm.c.types[typeId].sym.name();
+    const typeName = vm.c.types[typeId].name();
     const group_id = vm.getTypeMethod(typeId, method_id) orelse {
         return vm.panicFmt("The method `{}` can not be found in `{}`.", &.{
             v(name), v(typeName),
@@ -2706,13 +2765,13 @@ fn getFuncSigIdOfSym(vm: *const VM, symId: SymbolId) sema.FuncSigId {
 pub const CallArgStart: u8 = vmc.CALL_ARG_START;
 pub const CalleeStart: u8 = vmc.CALLEE_START;
 
-fn preCallObjSym(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, final_ret: u8, func_stack_size: u8, req_type_check: bool, sig_id: sema.FuncSigId) !cy.TypeId {
+fn preCallObjSym(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, final_ret: u8, func_stack_size: u8, req_type_check: bool, sig_id: sema.FuncSigId) !*cy.Type {
     const sig = vm.compiler.sema.getFuncSig(sig_id);
     // Setup call frame to return to the next inst.
     fp[ret + 1] = buildDynFrameInfo(true, cy.bytecode.CallObjSymInstLen + cy.bytecode.RetDynLen, final_ret - ret);
     // Save ret box type.
-    var ret_type_mask = sig.ret;
-    if (vm.sema.isUnboxedType(sig.ret)) {
+    var ret_type_mask = sig.ret.id();
+    if (!sig.ret.isBoxed()) {
         ret_type_mask = ret_type_mask | 0x80000000;
     }
     fp[ret + 1].call_info.payload = ret_type_mask;
@@ -2735,15 +2794,15 @@ fn preCallObjSym(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, fina
 
             // Arguments are already type checked when matching methods.
             if (arg.getTypeId() == bt.TagLit) {
-                const final_arg = @call(.never_inline, inferArg, .{ vm, arg, cstrType.type }) orelse {
+                const final_arg = @call(.never_inline, inferArg, .{vm, arg, cstrType}) orelse {
                     return panicIncompatibleLambdaSig(vm, args, sig_id);
                 };
                 args[i] = final_arg;
                 final_args[i] = final_arg;
                 continue;
             }
-            if (vm.sema.isUnboxedType(cstrType.type)) {
-                const final_arg = @call(.never_inline, unbox, .{ vm, arg, argType });
+            if (!cstrType.isBoxed()) {
+                const final_arg = @call(.never_inline, unbox, .{vm, arg, argType});
                 final_args[i] = final_arg;
                 continue;
             }
@@ -2861,15 +2920,15 @@ fn zCopyStruct(vm: *VM, obj: *HeapObject) callconv(.C) vmc.ValueResult {
 
 pub fn copyStruct(vm: *VM, obj: *HeapObject) !cy.Value {
     const type_id = obj.getTypeId();
-    const type_e = vm.c.types[type_id];
+    const type_ = vm.getType(type_id);
 
     const values = obj.object.getValuesPtr();
-    const nfields = type_e.data.struct_t.nfields;
+    const struct_t = type_.cast(.struct_t);
     var res: cy.Value = undefined;
-    if (nfields <= 4) {
+    if (struct_t.size <= 4) {
         res = try vm.allocEmptyObjectSmall(type_id);
     } else {
-        res = try vm.allocEmptyObject(type_id, nfields);
+        res = try vm.allocEmptyObject(type_id, struct_t.size);
     }
 
     const dst = res.castHeapObject(*cy.heap.Object).getValuesPtr();
@@ -3167,8 +3226,8 @@ fn zPopFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, retValue: Val
 }
 
 fn zFutureValue(vm: *cy.VM, mb_future: Value) callconv(.C) vmc.Value {
-    const type_s = vm.c.types[mb_future.getTypeId()].sym;
-    if (type_s.getVariant()) |variant| {
+    const type_ = vm.sema.getType(mb_future.getTypeId());
+    if (type_.sym().variant) |variant| {
         if (variant.getSymTemplate() == vm.sema.future_tmpl) {
             const future = mb_future.castHostObject(*cy.heap.Future);
             vm.retain(future.val);
@@ -3180,8 +3239,8 @@ fn zFutureValue(vm: *cy.VM, mb_future: Value) callconv(.C) vmc.Value {
 }
 
 fn zAwait(vm: *cy.VM, value: Value) callconv(.C) vmc.ResultCode {
-    const type_s = vm.c.types[value.getTypeId()].sym;
-    if (type_s.getVariant()) |variant| {
+    const type_s = vm.sema.getType(value.getTypeId()).sym();
+    if (type_s.variant) |variant| {
         if (variant.getSymTemplate() == vm.sema.future_tmpl) {
             const future = value.castHostObject(*cy.heap.Future);
             if (future.completed) {
@@ -3451,7 +3510,11 @@ comptime {
         @export(zOpMatch, .{ .name = "zOpMatch", .linkage = .strong });
         @export(zOpCodeName, .{ .name = "zOpCodeName", .linkage = .strong });
         @export(zLog, .{ .name = "zLog", .linkage = .strong });
-        @export(zGetTypeName, .{ .name = "zGetTypeName", .linkage = .strong });
+        @export(zGetTypeBaseName, .{ .name = "zGetTypeBaseName", .linkage = .strong });
+        @export(zFree, .{ .name = "zFree", .linkage = .strong });
+        @export(zAllocRtTypeName, .{ .name = "zAllocRtTypeName", .linkage = .strong });
+        @export(zRetainLayout, .{ .name = "zRetainLayout", .linkage = .strong });
+        @export(zReleaseLayout, .{ .name = "zReleaseLayout", .linkage = .strong });
         @export(zFreeObject, .{ .name = "zFreeObject", .linkage = .strong });
         @export(zDumpValue, .{ .name = "zDumpValue", .linkage = .strong });
         @export(zDumpEvalOp, .{ .name = "zDumpEvalOp", .linkage = .strong });
@@ -3488,16 +3551,20 @@ pub fn defaultPrintError(_: ?*cc.VM, _: cc.Str) callconv(.C) void {
     // Default is a nop.
 }
 
-fn zGetTypeName(vm: *VM, id: cy.TypeId) callconv(.C) vmc.Str {
-    if (cy.Trace) {
-        if ((id & vmc.TYPE_MASK) == vmc.TYPE_MASK) {
-            return vmc.Str{ .ptr = "DanglingObject", .len = "DanglingObject".len };
-        }
-        if (vm.c.types[id].kind == .null) {
-            cy.panicFmt("Type `{}` is uninited.", .{id});
-        }
-    }
-    const name = vm.c.types[id].sym.name();
+fn zFree(vm: *VM, bytes: vmc.Str) callconv(.C) void {
+    vm.alloc.free(bytes.ptr[0..bytes.len]);
+}
+
+fn zAllocRtTypeName(vm: *VM, id: u32) callconv(.C) vmc.Str {
+    const name = vm.sema.allocRtTypeName(id) catch @panic("error");
+    return vmc.Str{
+        .ptr = name.ptr,
+        .len = name.len,
+    };
+}
+
+fn zGetTypeBaseName(vm: *VM, id: cy.TypeId) callconv(.C) vmc.Str {
+    const name = cc.toStr(vm.getTypeName(id));
     return vmc.Str{
         .ptr = name.ptr,
         .len = name.len,

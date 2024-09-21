@@ -351,36 +351,48 @@ pub const ZVM = struct {
         return c.clNewEmptyMap(@ptrCast(self));
     }
 
-    pub fn newFunc(self: *ZVM, params: []const Type, ret_t: Type, ptr: FuncFn) Value {
-        return c.clNewFunc(@ptrCast(self), params.ptr, params.len, ret_t, ptr);
+    pub fn newFuncUnion(self: *ZVM, union_t: *cy.Type, ptr: FuncFn) Value {
+        return c.clNewFuncUnion(@ptrCast(self), @ptrCast(union_t), ptr);
     }
 
-    pub fn newType(self: *ZVM, type_id: Type) Value {
-        return c.clNewType(@ptrCast(self), type_id);
+    pub fn newTypeById(self: *ZVM, type_id: TypeId) Value {
+        return c.clNewTypeById(@ptrCast(self), type_id);
+    }
+
+    pub fn newType(self: *ZVM, type_: *ZType) Value {
+        return c.clNewType(@ptrCast(self), @ptrCast(type_));
     }
 
     pub fn newValueDump(self: *ZVM, val: Value) []const u8 {
         return fromStr(c.clNewValueDump(@ptrCast(self), val));
     }
 
-    pub fn newInstance(self: *ZVM, type_id: Type, fields: []const FieldInit) Value {
-        return c.clNewInstance(@ptrCast(self), type_id, fields.ptr, fields.len);
+    pub fn newInstance(self: *ZVM, type_: *ZType, fields: []const FieldInit) Value {
+        return c.clNewInstance(@ptrCast(self), @ptrCast(type_), fields.ptr, fields.len);
     }
 
-    pub fn newChoice(self: *ZVM, choice_t: Type, name: []const u8, val: Value) Value {
-        return c.clNewChoice(@ptrCast(self), choice_t, toStr(name), val);
+    pub fn newNone(self: *ZVM, option_t: *ZType) Value {
+        return @bitCast(c.clNewNone(@ptrCast(self), @ptrCast(option_t)));
     }
 
-    pub fn newList(self: *ZVM, list_t: Type, vals: []const Value) Value {
-        return c.clNewList(@ptrCast(self), list_t, vals.ptr, vals.len);
+    pub fn newSome(self: *ZVM, option_t: *ZType, val: Value) !Value {
+        return @bitCast(c.clNewSome(@ptrCast(self), @ptrCast(option_t), @bitCast(val)));
+    }
+
+    pub fn newChoice(self: *ZVM, choice_t: *ZType, name: []const u8, val: Value) Value {
+        return c.clNewChoice(@ptrCast(self), @ptrCast(choice_t), toStr(name), val);
+    }
+
+    pub fn newList(self: *ZVM, list_t: *ZType, vals: []const Value) Value {
+        return c.clNewList(@ptrCast(self), @ptrCast(list_t), vals.ptr, vals.len);
     }
 
     pub fn listAppend(self: *ZVM, list: Value, val: Value) void {
         c.clListAppend(@ptrCast(self), list, val);
     }
 
-    pub fn findType(self: *ZVM, path: []const u8) Type {
-        return c.clFindType(@ptrCast(self), toStr(path));
+    pub fn findType(self: *ZVM, spec: []const u8) ?*ZType {
+        return @ptrCast(@alignCast(c.clFindType(@ptrCast(self), toStr(spec))));
     }
 
     pub fn getField(self: *ZVM, rec: Value, name: []const u8) Value {
@@ -391,8 +403,8 @@ pub const ZVM = struct {
         return c.clUnwrapChoice(@ptrCast(self), choice, toStr(name));
     }
 
-    pub fn expandTemplateType(self: *ZVM, template: Sym, args: []const Value, res: *Type) bool {
-        return c.clExpandTemplateType(@ptrCast(self), template, args.ptr, args.len, res);
+    pub fn expandTemplateType(self: *ZVM, template: Sym, args: []const Value) ?*ZType {
+        return @ptrCast(@alignCast(c.clExpandTemplateType(@ptrCast(self), template, args.ptr, args.len)));
     }
 
     pub fn free(self: *ZVM, bytes: []const u8) void {
@@ -426,7 +438,14 @@ pub const BackendTCC = c.CL_TCC;
 pub const BackendCC = c.CL_CC;
 pub const BackendLLVM = c.CL_LLVM;
 
+pub const ZType = struct {
+    pub fn id(self: *ZType) TypeId {
+        return c.clTypeId(@ptrCast(self));
+    }
+};
+
 pub const Type = c.CLType;
+pub const TypeId = c.CLTypeId;
 pub const TypeNull = c.CL_TYPE_NULL;
 pub const TypeVoid = c.CL_TYPE_VOID;
 pub const TypeBoolean = c.CL_TYPE_BOOLEAN;

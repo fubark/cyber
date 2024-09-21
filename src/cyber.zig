@@ -26,6 +26,7 @@ pub const ir = @import("ir.zig");
 
 pub const types = @import("types.zig");
 pub const TypeId = types.TypeId;
+pub const Type = types.Type;
 
 pub const module = @import("module.zig");
 pub const Module = module.Module;

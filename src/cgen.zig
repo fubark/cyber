@@ -302,8 +302,8 @@ const Chunk = struct {
         return c.syms.get(ptr).?.name();
     }
 
-    fn cTypeName(c: *Chunk, id: cy.TypeId) !TypeName {
-        return switch (id) {
+    fn cTypeName(c: *Chunk, type_: *cy.Type) !TypeName {
+        return switch (type_.id()) {
             // bt.Pointer,
             // bt.Fiber,
             // bt.MetaType,
@@ -318,16 +318,12 @@ const Chunk = struct {
             // // bt.Undefined,
             bt.Boolean => TypeName.init("bool"),
             else => {
-                if (id > bt.Type) {
-                    const sym = c.sema.getTypeSym(id);
+                if (type_.id() > bt.Type) {
+                    const sym = type_.sym();
                     const name = c.cSymName(sym);
-                    if (sym.type == .object_t) {
-                        return TypeName.initPtr(name);
-                    } else {
-                        return TypeName.init(name);
-                    }
+                    return TypeName.init(name);
                 } else {
-                    rt.errZFmt(c.sema.compiler.vm, "Unsupported sym type: {}\n", .{id});
+                    rt.errZFmt(c.sema.compiler.vm, "Unsupported sym type: {}\n", .{type_});
                     return error.TODO;
                 }
             },
@@ -468,8 +464,10 @@ pub fn gen(self: *cy.Compiler) !cy.compiler.AotCompileResult {
                 },
                 .type => {
                     const type_sym = sym.cast(.type);
-                    const type_e = self.sema.getType(type_sym.type);
-                    switch (type_e.kind) {
+                    switch (type_sym.type.kind()) {
+                        .struct_t => {
+                            try compiler.genSymName(sym, sym.name());
+                        },
                         .bool => {
                             try compiler.genSymName(sym, sym.name());
                         },
@@ -682,8 +680,8 @@ fn genHead(c: *Compiler, w: std.ArrayListUnmanaged(u8).Writer, chunks: []Chunk) 
             switch (sym.type) {
                 .type => {
                     const type_sym = sym.cast(.type);
-                    const type_e = chunk.sema.getType(type_sym.type);
-                    switch (type_e.kind) {
+                    const type_ = type_sym.type;
+                    switch (type_.kind()) {
                         .bool => {
                             const c_name = chunk.cSymName(sym);
                             const name = try cStringLit(chunk, sym.name());
@@ -718,7 +716,7 @@ fn genHead(c: *Compiler, w: std.ArrayListUnmanaged(u8).Writer, chunks: []Chunk) 
                 const params = base.sema.getFuncSig(func.funcSigId).params();
                 if (params.len > 0) {
                     for (params) |param| {
-                        try w.print(", {}", .{try chunk.cTypeName(param.type)});
+                        try w.print(", {}", .{ try chunk.cTypeName(param) });
                     }
                 }
                 try w.writeAll(");\n");
@@ -730,7 +728,7 @@ fn genHead(c: *Compiler, w: std.ArrayListUnmanaged(u8).Writer, chunks: []Chunk) 
                 const params = funcSig.params();
                 if (params.len > 0) {
                     for (params) |param| {
-                        try w.print(", {}", .{try chunk.cTypeName(param.type)});
+                        try w.print(", {}", .{ try chunk.cTypeName(param) });
                     }
                 }
                 try w.writeAll(");\n");
@@ -1157,14 +1155,14 @@ fn genInt(c: *Chunk, loc: usize, cstr: Cstr, node: *ast.Node) !Value {
     return Value{};
 }
 
-fn reserveLocal(c: *Chunk, ir_id: u8, name: []const u8, declType: cy.TypeId, lifted: bool) void {
+fn reserveLocal(c: *Chunk, ir_id: u8, name: []const u8, declType: *cy.Type, lifted: bool) void {
     c.localStack.items[c.proc().localStart + ir_id] = .{ .some = .{
         .name = name,
         .owned = true,
-        .rcCandidate = c.sema.isRcCandidateType(declType),
+        .rcCandidate = declType.isBoxed(),
         .lifted = lifted,
-        .type = declType,
-    } };
+        .type = declType.id(),
+    }};
 }
 
 fn setLocal(c: *Chunk, loc: usize, node: *ast.Node) !void {
@@ -1197,19 +1195,18 @@ fn setField(c: *Chunk, loc: usize, node: *ast.Node) !void {
     const start = c.bufStart();
     _ = try genExpr(c, field_data.rec, Cstr.init());
 
-    const rec_t = c.ir.getExprType(field_data.rec).id;
-    const rec_sym = c.sema.getTypeSym(rec_t);
-    if (rec_sym.type == .object_t) {
-        try c.bufPush("->");
-        const obj_t = c.sema.getTypeSym(rec_t).cast(.object_t);
-        const field = obj_t.fields[field_data.idx];
-        try c.bufPush(field.sym.head.name());
-    } else {
+    const rec_t = c.ir.getExprType(field_data.rec);
+    // if (rec_sym.type == .object_t) {
+    //     try c.bufPush("->");
+    //     const obj_t = c.sema.getTypeSym(rec_t).cast(.object_t);
+    //     const field = obj_t.fields[field_data.idx];
+    //     try c.bufPush(field.sym.head.name());
+    // } else {
         try c.bufPush(".");
-        const struct_t = c.sema.getTypeSym(rec_t).cast(.struct_t);
-        const field = struct_t.fields[field_data.idx];
+        const struct_t = rec_t.cast(.struct_t);
+        const field = struct_t.fields_ptr[field_data.idx];
         try c.bufPush(field.sym.head.name());
-    }
+    // }
 
     // try pushUnwindValue(c, recv);
 
@@ -1225,14 +1222,14 @@ fn setField(c: *Chunk, loc: usize, node: *ast.Node) !void {
 
 fn setIndex(c: *Chunk, loc: usize, node: *ast.Node) !void {
     const data = c.ir.getStmtData(loc, .setIndex).index;
-    if (data.recvT != bt.ListDyn and data.recvT != bt.Map) {
+    if (data.recvT.id() != bt.Map) {
         return error.Unexpected;
     }
 
     const start = c.bufStart();
-    const sym = c.sema.getTypeSym(data.recvT);
+    const sym = data.recvT.sym();
     try c.bufPushFmt("{s}(rt, ", .{
-        c.cSymName(sym.getMod().?.getFirstFunc("$setIndex").?),
+        c.cSymName(sym.getMod().getFirstFunc("$setIndex").?),
     });
 
     _ = try genExpr(c, data.rec, Cstr.init());
@@ -1270,7 +1267,7 @@ fn forRangeStmt(c: *Chunk, loc: usize, node: *ast.Node) !void {
     try c.pushSpanEnd("; i += 1) {");
 
     if (data.eachLocal) |var_id| {
-        reserveLocal(c, var_id, "i", bt.Integer, false);
+        reserveLocal(c, var_id, "i", c.sema.int_t, false);
     }
 
     c.pushBlock();
@@ -1286,7 +1283,7 @@ fn exprStmt(c: *Chunk, loc: usize, node: *ast.Node) !void {
 
     const b = c.proc();
 
-    const expr_t = c.ir.getExprType(data.expr).id;
+    const expr_t = c.ir.getExprType(data.expr);
     const start = c.bufStart();
     try c.bufPushFmt("{} tmp{} = ", .{
         try c.cTypeName(expr_t), b.nextTemp(),
@@ -1316,8 +1313,8 @@ fn genBox(c: *Chunk, loc: usize, cstr: Cstr, node: *ast.Node) !Value {
     _ = node;
 
     const data = c.ir.getExprData(loc, .box);
-    const expr_t = c.ir.getExprType(data.expr).id;
-    try c.bufPushBoxMacro(expr_t);
+    const expr_t = c.ir.getExprType(data.expr);
+    try c.bufPushBoxMacro(expr_t.id());
     _ = try genExpr(c, data.expr, Cstr.init());
     try c.bufPush(")");
     return Value{};
@@ -1331,8 +1328,7 @@ fn genObjectInit(c: *Chunk, loc: usize, cstr: Cstr, node: *ast.Node) !Value {
     const args = c.ir.getArray(data.args, u32, data.numArgs);
     _ = args;
 
-    const typ = c.sema.types.items[data.typeId];
-    switch (typ.kind) {
+    switch (data.shape_t.kind()) {
         .struct_t => {
             return error.TODO;
         },
@@ -1379,21 +1375,20 @@ fn genField(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !Value {
 
     const data = c.ir.getExprData(idx, .field);
 
-    const rec_t = c.ir.getExprType(data.rec).id;
+    const rec_t = c.ir.getExprType(data.rec);
     _ = try genExpr(c, data.rec, Cstr.init());
 
-    const rec_sym = c.sema.getTypeSym(rec_t);
-    if (rec_sym.type == .object_t) {
-        try c.bufPush("->");
-        const obj_t = c.sema.getTypeSym(rec_t).cast(.object_t);
-        const field = obj_t.fields[data.idx];
-        try c.bufPush(field.sym.head.name());
-    } else {
+    // if (rec_sym.type == .object_t) {
+    //     try c.bufPush("->");
+    //     const obj_t = c.sema.getTypeSym(rec_t).cast(.object_t);
+    //     const field = obj_t.fields[data.idx];
+    //     try c.bufPush(field.sym.head.name());
+    // } else {
         try c.bufPush(".");
-        const struct_t = c.sema.getTypeSym(rec_t).cast(.struct_t);
-        const field = struct_t.fields[data.idx];
+        const struct_t = rec_t.cast(.struct_t);
+        const field = struct_t.fields()[data.idx];
         try c.bufPush(field.sym.head.name());
-    }
+    // }
 
     return Value{};
 }
@@ -1519,9 +1514,9 @@ fn funcBlock(c: *Chunk, loc: usize, node: *ast.Node) !void {
                 .some = .{
                     .name = param.name(),
                     .owned = false,
-                    .rcCandidate = c.sema.isRcCandidateType(param.declType),
+                    .rcCandidate = param.declType.isBoxed(),
                     .lifted = false,
-                    .type = param.declType,
+                    .type = param.declType.id(),
                 },
             };
         }
@@ -1582,7 +1577,7 @@ fn ifStmt(c: *Chunk, loc: usize, node: *ast.Node) !void {
     try c.bufPush("if (");
 
     const cond_t = c.ir.getExprType(data.cond);
-    if (cond_t.id == bt.Any) {
+    if (cond_t.id() == bt.Any) {
         try c.bufPush("TRY_UNBOX_BOOL(");
     }
 
@@ -1591,7 +1586,7 @@ fn ifStmt(c: *Chunk, loc: usize, node: *ast.Node) !void {
 
     try c.beginLine(node);
     try c.pushSpan(c.bufPop(start));
-    if (cond_t.id == bt.Any) {
+    if (cond_t.id() == bt.Any) {
         try c.pushSpan(")");
     }
     try c.pushSpanEnd(") {");
@@ -1672,12 +1667,12 @@ fn genBinOp(c: *Chunk, loc: usize, cstr: Cstr, opts: BinOpOptions, node: *ast.No
 
     switch (data.op) {
         .index => {
-            if (data.leftT == bt.ListDyn) {
-                const sym = c.sema.getTypeSym(bt.ListDyn);
-                try c.bufPushFmt("{s}(rt, ", .{
-                    c.cSymName(sym.getMod().?.getFirstFunc("$index").?),
-                });
-            }
+            // if (data.leftT.id() == bt.ListDyn) {
+            //     const sym = c.sema.list_dyn_t.sym();
+            //     try c.bufPushFmt("{s}(rt, ", .{
+            //         c.cSymName(sym.getMod().getFirstFunc("$index").?),
+            //     });
+            // }
         },
         else => {},
     }
@@ -1693,13 +1688,17 @@ fn genBinOp(c: *Chunk, loc: usize, cstr: Cstr, opts: BinOpOptions, node: *ast.No
     var retained = false;
     switch (data.op) {
         .index => {
-            if (data.leftT == bt.ListDyn) {
-                try c.bufPush(", ");
-                // } else if (data.leftT == bt.Tuple) {
-                //     try pushInlineBinExpr(c, .indexTuple, leftv.local, rightv.local, inst.dst, node);
-                // } else if (data.leftT == bt.Map) {
-                //     try pushInlineBinExpr(c, .indexMap, leftv.local, rightv.local, inst.dst, node);
-            } else return error.TODO;
+            // if (data.leftT.id() == bt.ListDyn) {
+            //     try c.bufPush(", ");
+            // } else if (data.leftT == bt.Tuple) {
+            //     try pushInlineBinExpr(c, .indexTuple, leftv.local, rightv.local, inst.dst, node);
+            // } else if (data.leftT == bt.Map) {
+            //     try pushInlineBinExpr(c, .indexMap, leftv.local, rightv.local, inst.dst, node);
+            // } else {
+                {
+                return error.TODO;
+                }
+            // }
             retained = true;
         },
         .bitwiseAnd, .bitwiseOr, .bitwiseXor, .bitwiseLeftShift, .bitwiseRightShift => {
@@ -1708,15 +1707,24 @@ fn genBinOp(c: *Chunk, loc: usize, cstr: Cstr, opts: BinOpOptions, node: *ast.No
             // } else return error.Unexpected;
             return error.TODO;
         },
-        .greater, .greater_equal, .less, .less_equal, .star, .slash, .percent, .caret, .plus, .minus => {
-            if (data.leftT == bt.Float) {
-                if (data.rightT == bt.Float) {
+        .greater,
+        .greater_equal,
+        .less,
+        .less_equal,
+        .star,
+        .slash,
+        .percent,
+        .caret,
+        .plus,
+        .minus => {
+            if (data.leftT.id() == bt.Float) {
+                if (data.rightT.id() == bt.Float) {
                     try c.bufPush(cBinOpLit(data.op));
                 } else {
                     return error.TODO;
                 }
-            } else if (data.leftT == bt.Integer) {
-                if (data.rightT == bt.Integer) {
+            } else if (data.leftT.id() == bt.Integer) {
+                if (data.rightT.id() == bt.Integer) {
                     try c.bufPush(cBinOpLit(data.op));
                 } else {
                     return error.TODO;
@@ -1744,9 +1752,9 @@ fn genBinOp(c: *Chunk, loc: usize, cstr: Cstr, opts: BinOpOptions, node: *ast.No
 
     switch (data.op) {
         .index => {
-            if (data.leftT == bt.ListDyn) {
-                try c.bufPush(")");
-            }
+            // if (data.leftT.id() == bt.ListDyn) {
+            //     try c.bufPush(")");
+            // }
         },
         else => {},
     }

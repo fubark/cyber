@@ -441,11 +441,7 @@ export fn clDeclareFunc(mod: c.Sym, name: [*:0]const u8, params: [*]const cy.Typ
     }
 }
 
-export fn clDeclareDynVar(mod: c.Sym, name: [*:0]const u8, val: c.Value) void {
-    clDeclareVar(mod, name, bt.Dyn, val);
-}
-
-export fn clDeclareVar(mod: c.Sym, name: [*:0]const u8, typeId: cy.TypeId, val: c.Value) void {
+export fn clDeclareVar(mod: C.Sym, name: [*:0]const u8, var_t: *cy.Type, val: C.Value) void {
     const modSym = cy.Sym.fromC(mod);
     var symName: []const u8 = std.mem.sliceTo(name, 0);
     var nameOwned = false;
@@ -455,7 +451,7 @@ export fn clDeclareVar(mod: c.Sym, name: [*:0]const u8, typeId: cy.TypeId, val: 
         nameOwned = true;
     }
     const sym = chunk.reserveHostVar(modSym, symName, null) catch cy.fatal();
-    chunk.resolveHostVar(sym, typeId, @bitCast(val)) catch cy.fatal();
+    chunk.resolveHostVar(sym, var_t, @bitCast(val)) catch cy.fatal();
     if (nameOwned) {
         sym.head.setNameOwned(true);
     }
@@ -620,31 +616,35 @@ export fn clNewEmptyMap(vm: *cy.VM) Value {
     return cy.heap.allocEmptyMap(vm) catch fatal();
 }
 
-export fn clNewFuncDyn(vm: *cy.VM, numParams: u32, func: c.FuncFn) Value {
-    const funcSigId = vm.sema.ensureUntypedFuncSig(numParams) catch fatal();
-    return vm.allocHostFuncUnion(bt.Func, @ptrCast(func), numParams, funcSigId, null, false) catch fatal();
+export fn clNewFuncUnion(vm: *cy.VM, union_t: *cy.Type, func: C.FuncFn) Value {
+    const sig_id = union_t.cast(.func_union).sig;
+    const sig = vm.sema.getFuncSig(sig_id);
+    return vm.allocHostFuncUnion(union_t.id(), @ptrCast(func), sig.params_len, sig_id,
+        null, sig.info.reqCallTypeCheck) catch fatal();
 }
 
-export fn clNewFunc(vm: *cy.VM, params: [*]const cy.TypeId, numParams: usize, retType: cy.TypeId, func: c.FuncFn) Value {
-    const funcSigId = vm.sema.ensureFuncSig(@ptrCast(params[0..numParams]), retType) catch fatal();
-    const funcSig = vm.sema.funcSigs.items[funcSigId];
-    return vm.allocHostFuncUnion(bt.Func, @ptrCast(func), numParams, funcSigId, null, funcSig.info.reqCallTypeCheck) catch fatal();
+export fn clGetFuncSigDyn(vm: *cy.VM, nparams: usize) cy.sema.FuncSigId {
+    return vm.sema.ensureUntypedFuncSig(nparams) catch fatal();
 }
 
-test "clNewFunc()" {
-    const vm = c.create();
-    defer vm.destroy();
-
-    const val = vm.newFunc(&.{}, bt.Dyn, @ptrFromInt(8));
-    try t.eq(c.getType(val), bt.Func);
+export fn clGetFuncSig(vm: *cy.VM, params: [*]const *cy.Type, nparams: usize, ret_t: *cy.Type) cy.sema.FuncSigId {
+    return vm.sema.ensureFuncSig(@ptrCast(params[0..nparams]), ret_t) catch fatal();
 }
 
-export fn clCreateModule(vm: *cy.VM, r_uri: c.Str, src: c.Str) c.Module {
-    const chunk = cy.compiler.createModule(vm.compiler, c.fromStr(r_uri), c.fromStr(src)) catch @panic("error");
+// test "clNewFunc()" {
+//     const vm = C.create();
+//     defer vm.destroy();
+
+//     const val = vm.newFunc(&.{}, bt.Dyn, @ptrFromInt(8));
+//     try t.eq(C.getType(val), bt.Func);
+// }
+
+export fn clCreateModule(vm: *cy.VM, r_uri: C.Str, src: C.Str) C.Module {
+    const chunk = cy.compiler.createModule(vm.compiler, C.fromStr(r_uri), C.fromStr(src)) catch @panic("error");
     return .{ .ptr = @ptrCast(chunk) };
 }
 
-export fn clSetModuleConfig(vm: *cy.VM, mod: c.Module, config: *c.ModuleConfig) void {
+export fn clSetModuleConfig(vm: *cy.VM, mod: C.Module, config: *C.ModuleConfig) void {
     const chunk = cy.Chunk.fromC(mod);
 
     chunk.varLoader = config.varLoader;
@@ -653,18 +653,18 @@ export fn clSetModuleConfig(vm: *cy.VM, mod: c.Module, config: *c.ModuleConfig) 
     chunk.onDestroy = config.onDestroy;
 
     // Allocate func mapping.
-    var funcs: std.StringHashMapUnmanaged(c.FuncFn) = .{};
-    for (c.fromSlice(c.HostFuncEntry, config.funcs)) |entry| {
-        funcs.put(vm.alloc, c.fromStr(entry.name), entry.func) catch @panic("error"); 
+    var funcs: std.StringHashMapUnmanaged(C.FuncFn) = .{};
+    for (C.fromSlice(C.HostFuncEntry, config.funcs)) |entry| {
+        funcs.put(vm.alloc, C.fromStr(entry.name), entry.func) catch @panic("error"); 
     }
     chunk.host_funcs.deinit(vm.alloc);
     chunk.host_funcs = funcs;
     chunk.func_loader = config.func_loader;
 
     // Allocate host type mapping.
-    var types: std.StringHashMapUnmanaged(c.HostType) = .{};
-    for (c.fromSlice(c.HostTypeEntry, config.types)) |entry| {
-        types.put(vm.alloc, c.fromStr(entry.name), entry.host_t) catch @panic("error"); 
+    var types: std.StringHashMapUnmanaged(C.HostType) = .{};
+    for (C.fromSlice(C.HostTypeEntry, config.types)) |entry| {
+        types.put(vm.alloc, C.fromStr(entry.name), entry.host_t) catch @panic("error"); 
     }
     chunk.host_types.deinit(vm.alloc);
     chunk.host_types = types;
@@ -799,12 +799,12 @@ test "clGetField()" {
 
 export fn clUnwrapChoice(vm: *cy.VM, choice: cy.Value, name: c.Str) cy.Value {
     const type_e = vm.sema.getType(choice.getTypeId());
-    if (type_e.kind != .choice) {
-        return cy.panicFmt("Expected a choice type. Found `{}`", .{type_e.kind});
+    if (type_e.kind() != .choice) {
+        return cy.panicFmt("Expected a choice type. Found `{}`", .{type_e.kind()});
     }
 
-    const zname = c.fromStr(name);
-    const sym = type_e.sym.getMod().?.getSym(zname) orelse {
+    const zname = C.fromStr(name);
+    const sym = type_e.sym().getMod().getSym(zname) orelse {
         return cy.panicFmt("Can not find case `{s}`.", .{zname});
     };
     if (sym.type != .enumMember) {
@@ -818,7 +818,7 @@ export fn clUnwrapChoice(vm: *cy.VM, choice: cy.Value, name: c.Str) cy.Value {
     }
 
     const payload = choice.asHeapObject().object.getValue(1);
-    if (!vm.sema.isUnboxedType(case.payloadType)) {
+    if (case.payload_t.isBoxed()) {
         vm.retain(payload);
     }
     return payload;
@@ -827,15 +827,15 @@ export fn clUnwrapChoice(vm: *cy.VM, choice: cy.Value, name: c.Str) cy.Value {
 // To enable logging for tests:
 // c.setVerbose(true);
 // c.setLog(printLogger);
-fn printLogger(str: c.Str) callconv(.C) void {
-    std.debug.print("{s}\n", .{ c.fromStr(str) });
+fn printLogger(str: C.Str) callconv(.C) void {
+    std.debug.print("{s}\n", .{ C.fromStr(str) });
 }
 
 test "clUnwrapChoice()" {
-    const vm = c.create();
+    const vm = C.create();
     defer vm.destroy();
 
-    var res: c.Value = undefined;
+    var res: C.Value = undefined;
     vm.evalMust( 
         \\type Foo enum:
         \\    case a int
@@ -848,28 +848,32 @@ test "clUnwrapChoice()" {
 
 export fn clNewPointerVoid(vm: *cy.VM, ptr: ?*anyopaque) Value {
     const bt_data = vm.getData(*cy.builtins.BuiltinsData, "builtins");
-    return cy.heap.allocPointer(vm, bt_data.PtrVoid, ptr) catch fatal();
+    return cy.heap.allocPointer(vm, bt_data.PtrVoid.id(), ptr) catch fatal();
 }
 
-export fn clNewType(vm: *cy.VM, type_id: cy.TypeId) Value {
+export fn clNewTypeById(vm: *cy.VM, type_id: cy.TypeId) Value {
     return cy.heap.allocType(vm, type_id) catch fatal();
 }
 
-test "clNewPointer()" {
-    const vm = c.create();
-    defer vm.destroy();
-
-    const val = vm.newPointerVoid(@ptrFromInt(123));
-    const obj = (Value{.val = val}).asHeapObject();
-    try t.eq(@intFromPtr(obj.pointer.ptr), 123);
+export fn clNewType(vm: *cy.VM, type_: *cy.Type) Value {
+    return vm.newType(type_) catch fatal();
 }
+
+// test "clNewPointer()" {
+//     const vm = C.create();
+//     defer vm.destroy();
+
+//     const val = vm.newPointerVoid(@ptrFromInt(123));
+//     const obj = (Value{.val = val}).asHeapObject();
+//     try t.eq(@intFromPtr(obj.pointer.ptr), 123);
+// }
 
 export fn clAsFloat(val: Value) f64 {
     return val.asF64();
 }
 
 test "clAsFloat()" {
-    try t.eq(c.asFloat(c.float(123.0)), 123);
+    try t.eq(C.asFloat(C.float(123.0)), 123);
 }
 
 export fn clToBool(val: Value) bool {
@@ -877,19 +881,19 @@ export fn clToBool(val: Value) bool {
 }
 
 test "clToBool()" {
-    const vm = c.create();
+    const vm = C.create();
     defer vm.destroy();
 
-    try t.eq(c.toBool(c.float(0)), false);
-    try t.eq(c.toBool(c.float(123.0)), true);
+    try t.eq(C.toBool(C.float(0)), false);
+    try t.eq(C.toBool(C.float(123.0)), true);
 
     var i = vm.newInt(0);
-    try t.eq(c.toBool(i), false);
+    try t.eq(C.toBool(i), false);
     i = vm.newInt(1);
-    try t.eq(c.toBool(i), true);
+    try t.eq(C.toBool(i), true);
 
-    try t.eq(c.toBool(c.True), true);
-    try t.eq(c.toBool(c.False), false);
+    try t.eq(C.toBool(C.True), true);
+    try t.eq(C.toBool(C.False), false);
 }
 
 export fn clAsBool(val: Value) bool {

@@ -464,10 +464,10 @@ pub fn isHostFunc(vm: *cy.VM, val: Value) bool {
     if (type_id == bt.Func) {
         return val.asHeapObject().func.kind == .host;
     }
-    const type_e = vm.c.types[type_id];
-    if (type_e.kind == .func_ptr) {
+    const type_e = vm.getType(type_id);
+    if (type_e.kind() == .func_ptr) {
         return val.asHeapObject().func_ptr.kind == .host;
-    } else if (type_e.kind == .func_union) {
+    } else if (type_e.kind() == .func_union) {
         return val.asHeapObject().func_union.kind == .host;
     } else {
         return false;
@@ -475,7 +475,7 @@ pub fn isHostFunc(vm: *cy.VM, val: Value) bool {
 }
 
 pub fn shallowCopy(vm: *cy.VM, type_id: cy.TypeId, val: Value) anyerror!Value {
-    if (vm.sema.isUnboxedType(type_id)) {
+    if (!vm.sema.getType(type_id).isBoxed()) {
         return val;
     }
     const obj = val.asHeapObject();
@@ -504,8 +504,8 @@ pub fn shallowCopy(vm: *cy.VM, type_id: cy.TypeId, val: Value) anyerror!Value {
             fmt.panic("Unsupported copy tcc state.", &.{});
         },
         else => {
-            const entry = &@as(*const cy.VM, @ptrCast(vm)).c.types[obj.getTypeId()];
-            switch (entry.kind) {
+            const type_ = @as(*const cy.VM, @ptrCast(vm)).getType(obj.getTypeId());
+            switch (type_.kind()) {
                 .int => {
                     return vm.allocInt(obj.integer.val);
                 },
@@ -524,7 +524,7 @@ pub fn shallowCopy(vm: *cy.VM, type_id: cy.TypeId, val: Value) anyerror!Value {
                     return new;
                 },
                 else => {
-                    fmt.panic("Unsupported copy host object. {}", &.{fmt.v(entry.kind)});
+                    fmt.panic("Unsupported copy host object. {}", &.{fmt.v(type_.kind())});
                 },
             }
         },

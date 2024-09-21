@@ -5,6 +5,7 @@ const stdx = @import("stdx");
 const fatal = cy.fatal;
 const cy = @import("../cyber.zig");
 const C = @import("../capi.zig");
+const CS = @import("../capi_shim.zig");
 const Value = cy.Value;
 const bindings = @import("bindings.zig");
 const cy_mod = @import("cy.zig");
@@ -21,10 +22,10 @@ const VmSrc = @embedFile("builtins_vm.cy");
 const Src = @embedFile("builtins.cy");
 
 pub const CoreData = struct {
-    ValueT: cy.TypeId,
-    VMT: cy.TypeId,
-    EvalResultT: cy.TypeId,
-    EvalConfigT: cy.TypeId,
+    ValueT: *cy.Type,
+    VMT: *cy.Type,
+    EvalResultT: *cy.Type,
+    EvalConfigT: *cy.Type,
 };
 
 const func = cy.hostFuncEntry;
@@ -432,13 +433,13 @@ fn createListIterType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) *C.Ty
 }
 
 pub const BuiltinsData = struct {
-    OptionInt: cy.TypeId,
-    OptionAny: cy.TypeId,
-    OptionTuple: cy.TypeId,
-    OptionMap: cy.TypeId,
-    OptionString: cy.TypeId,
-    PtrVoid: cy.TypeId,
-    PtrSliceByte: cy.TypeId,
+    OptionInt: *cy.Type,
+    OptionAny: *cy.Type,
+    OptionTuple: *cy.Type,
+    OptionMap: *cy.Type,
+    OptionString: *cy.Type,
+    PtrVoid: *cy.Type,
+    PtrSliceByte: *cy.Type,
 };
 
 pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
@@ -653,12 +654,14 @@ pub fn ptrcast(vm: *cy.VM) anyerror!Value {
 }
 
 pub fn bitcast(vm: *cy.VM) anyerror!Value {
-    const dst_t: cy.TypeId = @intCast(vm.getInt(0));
-    const src_t: cy.TypeId = @intCast(vm.getInt(2));
-    if (vm.c.types[src_t].kind != .int or vm.c.types[dst_t].kind != .int) {
+    const dst_tid: cy.TypeId = @intCast(vm.getInt(0));
+    const src_tid: cy.TypeId = @intCast(vm.getInt(2));
+    const dst_t = vm.getType(dst_tid);
+    const src_t = vm.getType(src_tid);
+    if (src_t.kind() != .int or dst_t.kind() != .int) {
         return error.InvalidArgument;
     }
-    if (vm.c.types[src_t].data.int.bits != vm.c.types[dst_t].data.int.bits) {
+    if (src_t.cast(.int).bits != dst_t.cast(.int).bits) {
         return error.InvalidArgument;
     }
     return vm.getValue(1);
@@ -748,7 +751,7 @@ pub fn isDigit(vm: *cy.VM) Value {
 pub fn isNone(vm: *cy.VM) Value {
     const val = vm.getValue(0);
     const type_e = vm.c.types[val.getTypeId()];
-    if (type_e.kind != .option) {
+    if (type_e.kind() != .option) {
         return Value.False;
     }
     const is_none = val.asHeapObject().object.getValue(0).asInt() == 0;
@@ -861,9 +864,9 @@ pub fn queueTask(vm: *cy.VM) anyerror!Value {
 
 pub fn sizeof(vm: *cy.VM) Value {
     const type_id: cy.TypeId = @intCast(vm.getInt(0));
-    const type_e = vm.c.types[type_id];
-    if (type_e.kind == .struct_t) {
-        return Value.initInt(8 * type_e.data.struct_t.nfields);
+    const type_ = vm.getType(type_id);
+    if (type_.kind() == .struct_t) {
+        return Value.initInt(8 * type_.cast(.struct_t).size);
     } else {
         return Value.initInt(8);
     }
@@ -873,253 +876,204 @@ pub fn allTypes(ivm: *cy.VM) !Value {
     const vm: *C.ZVM = @ptrCast(ivm);
 
     const list_tmpl = ivm.sema.list_tmpl.head.toC();
-    const type_v = vm.newType(bt.Type);
+    const type_v = vm.newTypeById(bt.Type);
     defer vm.release(type_v);
-    var list_t: cy.TypeId = undefined;
-    _ = vm.expandTemplateType(list_tmpl, &.{type_v}, &list_t);
+    const list_t = vm.expandTemplateType(list_tmpl, &.{type_v}).?;
 
     const list_v = vm.newList(list_t, &.{});
-    for (1..ivm.sema.types.items.len) |id| {
-        const type_e = ivm.sema.types.items[id];
-        if (type_e.kind == .bare or type_e.kind == .ct_ref) {
+    for (1..ivm.c.types_len) |id| {
+        const type_ = ivm.getType(@intCast(id));
+        if (type_.kind() == .bare or type_.kind() == .ct_ref) {
             continue;
         }
-        const elem = vm.newType(@intCast(id));
+        const elem = vm.newTypeById(@intCast(id));
         vm.listAppend(list_v, elem);
         vm.release(elem);
     }
     return @bitCast(list_v);
 }
 
-pub fn typeInfo(ivm: *cy.VM) !Value {
-    const type_id = ivm.getObject(*cy.heap.Type, 0).type;
+pub fn typeInfo(vm: *cy.VM) !Value {
+    const type_id = vm.getObject(*cy.heap.Type, 0).type;
 
-    const vm: *C.ZVM = @ptrCast(ivm);
-    const info_t = vm.findType("TypeInfo");
+    const info_t = (try vm.findType("TypeInfo")).?;
     switch (type_id) {
         bt.Void => {
-            return @bitCast(vm.newChoice(info_t, "void_t", C.Void));
+            return vm.newChoice(info_t, "void_t", Value.Void);
         },
         bt.Type => {
-            return @bitCast(vm.newChoice(info_t, "type_t", C.Void));
+            return vm.newChoice(info_t, "type_t", Value.Void);
         },
         bt.Error => {
-            return @bitCast(vm.newChoice(info_t, "error_t", C.Void));
+            return vm.newChoice(info_t, "error_t", Value.Void);
         },
         else => {
-            const type_e = ivm.sema.getType(type_id);
-            switch (type_e.kind) {
+            const type_ = vm.getType(type_id);
+            switch (type_.kind()) {
                 .float => {
-                    const bits = type_e.data.float.bits;
-                    const float_info_t = vm.findType("FloatInfo");
-                    const float_info = vm.newInstance(float_info_t, &.{
-                        C.toFieldInit("bits", bits),
+                    const bits = type_.cast(.float).bits;
+                    const float_info_t = (try vm.findType("FloatInfo")).?;
+                    const float_info = try vm.newInstance(float_info_t, &.{
+                        CS.toFieldInit("bits", Value.initInt(bits)),
                     });
-                    return @bitCast(vm.newChoice(info_t, "float_t", float_info));
+                    return vm.newChoice(info_t, "float_t", float_info);
+                },
+                .pointer => {
+                    const ptr_info_t = (try vm.findType("PointerInfo")).?;
+                    const pointer = type_.cast(.pointer);
+                    const child_t = try vm.newType(pointer.child_t);
+                    const ptr_info = try vm.newInstance(ptr_info_t, &.{
+                        CS.toFieldInit("child", child_t),
+                        CS.toFieldInit("ref", Value.initBool(pointer.ref)),
+                    });
+                    return vm.newChoice(info_t, "ptr_t", ptr_info);
                 },
                 .int => {
-                    if (type_e.sym.getVariant()) |variant| {
-                        if (variant.data.sym.template == ivm.sema.pointer_tmpl) {
-                            const ptr_info_t = vm.findType("PointerInfo");
-                            const elem_t = type_e.sym.getVariant().?.args[0];
-                            vm.retain(@bitCast(elem_t));
-                            const ptr_info = vm.newInstance(ptr_info_t, &.{
-                                C.toFieldInit("elem", @bitCast(elem_t)),
-                            });
-                            return @bitCast(vm.newChoice(info_t, "ptr_t", ptr_info));
-                        }
-                    }
-                    const bits = type_e.data.int.bits;
-                    const int_info_t = vm.findType("IntInfo");
-                    const int_info = vm.newInstance(int_info_t, &.{
-                        C.toFieldInit("sign", C.bool_(type_id != bt.Byte)),
-                        C.toFieldInit("bits", bits),
+                    const bits = type_.cast(.int).bits;
+                    const int_info_t = (try vm.findType("IntInfo")).?;
+                    const int_info = try vm.newInstance(int_info_t, &.{
+                        CS.toFieldInit("sign", Value.initBool(type_id != bt.Byte)),
+                        CS.toFieldInit("bits", Value.initInt(bits)),
                     });
-                    return @bitCast(vm.newChoice(info_t, "int_t", int_info));
+                    return vm.newChoice(info_t, "int_t", int_info);
                 },
                 .bool => {
-                    return @bitCast(vm.newChoice(info_t, "bool_t", C.Void));
+                    return vm.newChoice(info_t, "bool_t", Value.Void);
                 },
                 .trait => {
-                    const name = type_e.sym.name();
-                    const trait_info_t = vm.findType("TraitInfo");
-                    const trait_info = vm.newInstance(trait_info_t, &.{
-                        C.toFieldInit("name", vm.newString(name)),
+                    const name = type_.name();
+                    const trait_info_t = (try vm.findType("TraitInfo")).?;
+                    const trait_info = try vm.newInstance(trait_info_t, &.{
+                        CS.toFieldInit("name", try vm.newString(name)),
                     });
-                    return @bitCast(vm.newChoice(info_t, "trait_t", trait_info));
+                    return vm.newChoice(info_t, "trait_t", trait_info);
                 },
                 .array => {
-                    const n = type_e.data.array.n;
-                    const elem_t = type_e.data.array.elem_t;
-                    const array_info_t = vm.findType("ArrayInfo");
-                    const array_info = vm.newInstance(array_info_t, &.{
-                        C.toFieldInit("len", C.int(@intCast(n))),
-                        C.toFieldInit("elem", vm.newType(elem_t)),
+                    const array_t = type_.cast(.array);
+                    const array_info_t = (try vm.findType("ArrayInfo")).?;
+                    const array_info = try vm.newInstance(array_info_t, &.{
+                        CS.toFieldInit("len", Value.initInt(@intCast(array_t.n))),
+                        CS.toFieldInit("elem", try vm.newType(array_t.elem_t)),
                     });
-                    return @bitCast(vm.newChoice(info_t, "array_t", array_info));
+                    return vm.newChoice(info_t, "array_t", array_info);
                 },
                 .option => {
-                    const opt_info_t = vm.findType("OptionInfo");
-                    const elem_t = type_e.sym.getVariant().?.args[0];
+                    const opt_info_t = (try vm.findType("OptionInfo")).?;
+                    const elem_t = type_.sym().variant.?.args[0];
                     vm.retain(@bitCast(elem_t));
-                    const opt_info = vm.newInstance(opt_info_t, &.{
-                        C.toFieldInit("elem", @bitCast(elem_t)),
+                    const opt_info = try vm.newInstance(opt_info_t, &.{
+                        CS.toFieldInit("elem", @bitCast(elem_t)),
                     });
-                    return @bitCast(vm.newChoice(info_t, "opt_t", opt_info));
+                    return vm.newChoice(info_t, "opt_t", opt_info);
                 },
                 .choice => {
-                    const choice_info_t = vm.findType("ChoiceInfo");
-                    const list_tmpl = ivm.sema.list_tmpl.head.toC();
-                    const choice_case_t = vm.findType("ChoiceCase");
-                    const choice_case_tv = vm.newType(choice_case_t);
-                    defer vm.release(choice_case_tv);
-                    var list_t: cy.TypeId = undefined;
-                    _ = vm.expandTemplateType(list_tmpl, &.{choice_case_tv}, &list_t);
-                    const list_v = vm.newList(list_t, &.{});
-                    for (type_e.sym.cast(.enum_t).members()) |member| {
-                        const case = vm.newInstance(choice_case_t, &.{
-                            C.toFieldInit("name", vm.newString(member.head.name())),
-                            C.toFieldInit("type", vm.newType(member.payloadType)),
+                    const choice_t = type_.cast(.choice);
+                    const choice_info_t = (try vm.findType("ChoiceInfo")).?;
+                    const choice_case_t = (try vm.findType("ChoiceCase")).?;
+                    const list_t = (try vm.findType("List[ChoiceCase]")).?;
+                    const list_v = try vm.newList(list_t, &.{});
+                    for (choice_t.cases()) |case| {
+                        const case_v = try vm.newInstance(choice_case_t, &.{
+                            CS.toFieldInit("name", try vm.newString(case.head.name())),
+                            CS.toFieldInit("type", try vm.newType(case.payload_t)),
                         });
-                        vm.listAppend(list_v, case);
-                        vm.release(case);
+                        try vm.listAppend(list_v, case_v);
                     }
-                    const name = type_e.sym.name();
-                    const namev = try StringSome(ivm, @bitCast(vm.newString(name)));
-                    const choice_info = vm.newInstance(choice_info_t, &.{
-                        C.toFieldInit("name", @bitCast(namev)),
-                        C.toFieldInit("cases", list_v),
+                    const name = type_.name();
+                    const namev = try StringSome(vm, try vm.newString(name));
+                    const choice_info = try vm.newInstance(choice_info_t, &.{
+                        CS.toFieldInit("name", namev),
+                        CS.toFieldInit("cases", list_v),
                     });
-                    return @bitCast(vm.newChoice(info_t, "choice_t", choice_info));
+                    return vm.newChoice(info_t, "choice_t", choice_info);
                 },
                 .enum_t => {
-                    const enum_info_t = vm.findType("EnumInfo");
-                    const list_tmpl = ivm.sema.list_tmpl.head.toC();
-                    const enum_case_t = vm.findType("EnumCase");
-                    const enum_case_tv = vm.newType(enum_case_t);
-                    defer vm.release(enum_case_tv);
-                    var list_t: cy.TypeId = undefined;
-                    _ = vm.expandTemplateType(list_tmpl, &.{enum_case_tv}, &list_t);
-                    const list_v = vm.newList(list_t, &.{});
-                    for (type_e.sym.cast(.enum_t).members()) |member| {
-                        const case = vm.newInstance(enum_case_t, &.{
-                            C.toFieldInit("name", vm.newString(member.head.name())),
+                    const enum_t = type_.cast(.enum_t);
+                    const enum_info_t = (try vm.findType("EnumInfo")).?;
+                    const enum_case_t = (try vm.findType("EnumCase")).?;
+                    const list_t = (try vm.findType("List[EnumCase]")).?;
+                    const list_v = try vm.newList(list_t, &.{});
+                    for (enum_t.cases()) |case| {
+                        const case_v = try vm.newInstance(enum_case_t, &.{
+                            CS.toFieldInit("name", try vm.newString(case.head.name())),
                         });
-                        vm.listAppend(list_v, case);
-                        vm.release(case);
+                        try vm.listAppend(list_v, case_v);
                     }
-                    const name = type_e.sym.name();
-                    const namev = try StringSome(ivm, @bitCast(vm.newString(name)));
-                    const enum_info = vm.newInstance(enum_info_t, &.{
-                        C.toFieldInit("name", @bitCast(namev)),
-                        C.toFieldInit("cases", list_v),
+                    const name = type_.name();
+                    const namev = try StringSome(vm, try vm.newString(name));
+                    const enum_info = try vm.newInstance(enum_info_t, &.{
+                        CS.toFieldInit("name", namev),
+                        CS.toFieldInit("cases", list_v),
                     });
-                    return @bitCast(vm.newChoice(info_t, "enum_t", enum_info));
+                    return vm.newChoice(info_t, "enum_t", enum_info);
                 },
-                .host_object => {
-                    const hostobj_info_t = vm.findType("HostObjectInfo");
-                    const name = type_e.sym.name();
-                    const hostobj_info = vm.newInstance(hostobj_info_t, &.{
-                        C.toFieldInit("name", vm.newString(name)),
+                .hostobj => {
+                    const hostobj_info_t = (try vm.findType("HostObjectInfo")).?;
+                    const name = type_.name();
+                    const hostobj_info = try vm.newInstance(hostobj_info_t, &.{
+                        CS.toFieldInit("name", try vm.newString(name)),
                     });
-                    return @bitCast(vm.newChoice(info_t, "hostobj_t", hostobj_info));
-                },
-                .object => {
-                    const object_info_t = vm.findType("ObjectInfo");
-                    const list_tmpl = ivm.sema.list_tmpl.head.toC();
-                    const field_t = vm.findType("ObjectField");
-                    const field_tv = vm.newType(field_t);
-                    defer vm.release(field_tv);
-                    var list_t: cy.TypeId = undefined;
-                    _ = vm.expandTemplateType(list_tmpl, &.{field_tv}, &list_t);
-                    const list_v = vm.newList(list_t, &.{});
-                    for (type_e.sym.cast(.object_t).getFields()) |field| {
-                        const f = vm.newInstance(field_t, &.{
-                            C.toFieldInit("name", vm.newString(field.sym.head.name())),
-                            C.toFieldInit("type", vm.newType(field.type)),
-                        });
-                        vm.listAppend(list_v, f);
-                        vm.release(f);
-                    }
-                    const name = type_e.sym.name();
-                    const namev = try StringSome(ivm, @bitCast(vm.newString(name)));
-                    const object_info = vm.newInstance(object_info_t, &.{
-                        C.toFieldInit("name", @bitCast(namev)),
-                        C.toFieldInit("fields", list_v),
-                    });
-                    return @bitCast(vm.newChoice(info_t, "object_t", object_info));
+                    return vm.newChoice(info_t, "hostobj_t", hostobj_info);
                 },
                 .struct_t => {
-                    const struct_info_t = vm.findType("StructInfo");
-                    const list_tmpl = ivm.sema.list_tmpl.head.toC();
-                    const field_t = vm.findType("StructField");
-                    const field_tv = vm.newType(field_t);
-                    defer vm.release(field_tv);
-                    var list_t: cy.TypeId = undefined;
-                    _ = vm.expandTemplateType(list_tmpl, &.{field_tv}, &list_t);
-                    const list_v = vm.newList(list_t, &.{});
-                    for (type_e.sym.cast(.struct_t).getFields()) |field| {
-                        const f = vm.newInstance(field_t, &.{
-                            C.toFieldInit("name", vm.newString(field.sym.head.name())),
-                            C.toFieldInit("type", vm.newType(field.type)),
-                            C.toFieldInit("offset", C.int(@intCast(field.offset))),
+                    const struct_t = type_.cast(.struct_t);
+                    const struct_info_t = (try vm.findType("StructInfo")).?;
+                    const field_t = (try vm.findType("StructField")).?;
+                    const list_t = (try vm.findType("List[StructField]")).?;
+                    const list_v = try vm.newList(list_t, &.{});
+                    for (struct_t.fields()) |field| {
+                        const f = try vm.newInstance(field_t, &.{
+                            CS.toFieldInit("name", try vm.newString(field.sym.head.name())),
+                            CS.toFieldInit("type", try vm.newType(field.type)),
+                            CS.toFieldInit("offset", Value.initInt(@intCast(field.offset))),
                         });
-                        vm.listAppend(list_v, f);
-                        vm.release(f);
+                        try vm.listAppend(list_v, f);
                     }
-                    const name = type_e.sym.name();
-                    const namev = try StringSome(ivm, @bitCast(vm.newString(name)));
-                    const struct_info = vm.newInstance(struct_info_t, &.{
-                        C.toFieldInit("name", @bitCast(namev)),
-                        C.toFieldInit("fields", list_v),
+                    const name = type_.name();
+                    const namev = try StringSome(vm, try vm.newString(name));
+                    const struct_info = try vm.newInstance(struct_info_t, &.{
+                        CS.toFieldInit("name", @bitCast(namev)),
+                        CS.toFieldInit("fields", list_v),
                     });
-                    return @bitCast(vm.newChoice(info_t, "struct_t", struct_info));
+                    return vm.newChoice(info_t, "struct_t", struct_info);
                 },
                 .func_ptr => {
-                    const func_info = newFuncInfo(ivm, 0, type_e);
-                    return @bitCast(vm.newChoice(info_t, "func_t", func_info));
+                    const func_info = try newFuncInfo(vm, 0, type_.cast(.func_ptr).sig);
+                    return vm.newChoice(info_t, "func_t", func_info);
                 },
                 .func_union => {
-                    const func_info = newFuncInfo(ivm, 1, type_e);
-                    return @bitCast(vm.newChoice(info_t, "func_t", func_info));
+                    const func_info = try newFuncInfo(vm, 1, type_.cast(.func_union).sig);
+                    return vm.newChoice(info_t, "func_t", func_info);
                 },
                 .func_sym => {
-                    const func_info = newFuncInfo(ivm, 2, type_e);
-                    return @bitCast(vm.newChoice(info_t, "func_t", func_info));
+                    const func_info = try newFuncInfo(vm, 2, type_.cast(.func_sym).sig);
+                    return vm.newChoice(info_t, "func_t", func_info);
                 },
                 else => {
-                    std.debug.panic("Unsupported: {}", .{type_e.kind});
+                    std.debug.panic("Unsupported: {}", .{type_.kind()});
                 }
             }
         },
     }
 }
 
-fn newFuncInfo(ivm: *cy.VM, kind: u8, type_e: cy.types.Type) C.Value {
-    const vm: *C.ZVM = @ptrCast(ivm);
-    const func_info_t = vm.findType("FuncInfo");
-    const list_tmpl = ivm.sema.list_tmpl.head.toC();
-    const param_t = vm.findType("FuncParam");
-    const param_tv = vm.newType(param_t);
-    defer vm.release(param_tv);
-    var list_t: cy.TypeId = undefined;
-    _ = vm.expandTemplateType(list_tmpl, &.{param_tv}, &list_t);
-    const list_v = vm.newList(list_t, &.{});
-    const sig = ivm.sema.getFuncSig(type_e.data.func_ptr.sig);
+fn newFuncInfo(vm: *cy.VM, kind: u8, sig_id: cy.sema.FuncSigId) !Value {
+    const func_info_t = (try vm.findType("FuncInfo")).?;
+    const param_t = (try vm.findType("FuncParam")).?;
+    const list_t = (try vm.findType("List[FuncParam]")).?;
+    const list_v = try vm.newList(list_t, &.{});
+    const sig = vm.sema.getFuncSig(sig_id);
     for (sig.params()) |param| {
-        const p = vm.newInstance(param_t, &.{
-            C.toFieldInit("type", vm.newType(param.type)),
+        const p = try vm.newInstance(param_t, &.{
+            CS.toFieldInit("type", try vm.newType(param)),
         });
-        vm.listAppend(list_v, p);
-        vm.release(p);
+        try vm.listAppend(list_v, p);
     }
 
-    const func_kind_t = vm.findType("FuncKind");
-    const kind_v = cy.Value.initEnum(@intCast(func_kind_t), kind);
     return vm.newInstance(func_info_t, &.{
-        C.toFieldInit("kind", @bitCast(kind_v)),
-        C.toFieldInit("ret", vm.newType(sig.ret)),
-        C.toFieldInit("params", list_v),
+        CS.toFieldInit("kind", Value.initInt(kind)),
+        CS.toFieldInit("ret", try vm.newType(sig.ret)),
+        CS.toFieldInit("params", list_v),
     });
 }
 
@@ -1225,7 +1179,7 @@ pub fn DefaultMemory_alloc(vm: *cy.VM) anyerror!Value {
     const ptr_v = Value.initRaw(@intCast(@intFromPtr(ptr)));
 
     const data = vm.getData(*BuiltinsData, "builtins");
-    return vm.allocObjectSmall(data.PtrSliceByte, &.{ ptr_v, Value.initInt(@intCast(size)) });
+    return vm.allocObjectSmall(data.PtrSliceByte.id(), &.{ ptr_v, Value.initInt(@intCast(size)) });
 }
 
 pub fn DefaultMemory_free(vm: *cy.VM) anyerror!Value {
@@ -1693,14 +1647,15 @@ fn pointerSetIndex(vm: *cy.VM) anyerror!Value {
     const idx: usize = @intCast(vm.getInt(2));
     const val = vm.getValue(3);
 
-    const elem_te = vm.sema.getType(elem_t);
-    if (elem_te.kind == .struct_t) {
-        const n = elem_te.data.struct_t.nfields;
-        const dst = ptr[idx*n..idx*n+n];
-        const src = val.asHeapObject().object.getValuesPtr()[0..n];
+    const elem_te = vm.getType(elem_t);
+    if (elem_te.kind() == .struct_t) {
+        const struct_t = elem_te.cast(.struct_t);
+        const elem_size = struct_t.size;
+        const dst = ptr[idx*elem_size..idx*elem_size+elem_size];
+        const src = val.asHeapObject().object.getValuesPtr()[0..elem_size];
         @memcpy(dst, src);
     } else {
-        if (vm.sema.isUnboxedType(elem_t)) {
+        if (!elem_te.isBoxed()) {
             vm.release(ptr[idx]);
             vm.retain(val);
         }
@@ -1734,7 +1689,7 @@ fn pointerGet(vm: *cy.VM) anyerror!Value {
             const addr: usize = @intFromPtr(ptr) + @as(usize, @intCast(uoff));
             const val = @as(*?*anyopaque, @ptrFromInt(addr)).*;
             const data = vm.getData(*BuiltinsData, "builtins");
-            return vm.allocPointer(data.PtrVoid, val);
+            return vm.allocPointer(data.PtrVoid.id(), val);
         },
         else => {
             return error.InvalidArgument;
@@ -1769,7 +1724,7 @@ fn pointerSet(vm: *cy.VM) anyerror!Value {
                     return Value.Void;
                 },
                 else => {
-                    if (vm.c.types[valT].kind == .int) {
+                    if (vm.getType(valT).isPointer()) {
                         const addr: usize = @intFromPtr(ptr) + idx;
                         const right_addr: usize = @intCast(val.asBoxInt());
                         @as(*?*anyopaque, @ptrFromInt(addr)).* = @ptrFromInt(right_addr);

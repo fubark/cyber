@@ -172,6 +172,19 @@ static inline uint32_t stackOffset(VM* vm, Value* stack) {
     return ((uintptr_t)stack - (uintptr_t)vm->c.stackPtr) >> 3;
 }
 
+static inline bool isRtTypeCompat(u32 typeId, u32 cstr_rt) {
+    if (typeId == cstr_rt) {
+        return true;
+    }
+    if ((cstr_rt & REF_TYPE_BIT) == 0) {
+        TypeId cstr_t = cstr_rt & TYPE_MASK;
+        if (cstr_t == TYPE_ANY || cstr_t == TYPE_DYN) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static inline bool isTypeCompat(TypeId typeId, TypeId cstrType) {
     if (typeId == cstrType) {
         return true;
@@ -451,25 +464,37 @@ static inline void panicUnexpectedChoice(VM* vm, i48 tag, i48 exp) {
     }, 2);
 }
 
+static void panicIncompatibleRtType(VM* vm, u32 act_rt, u32 exp_rt) {
+    Str act_name = zAllocRtTypeName(vm, act_rt);
+    Str exp_name = zAllocRtTypeName(vm, exp_rt);
+    zPanicFmt(vm, "Expected type `{}`, found `{}`.", (FmtValue[]){
+        FMT_STR(exp_name), FMT_STR(act_name)
+    }, 2);
+    zFree(vm, act_name);
+    zFree(vm, exp_name);
+}
+
 static void panicIncompatibleType(VM* vm, TypeId actType, TypeId expType) {
-    Str actTypeName = zGetTypeName(vm, actType);
-    Str expTypeName = zGetTypeName(vm, expType);
+    Str actTypeName = zGetTypeBaseName(vm, actType);
+    Str expTypeName = zGetTypeBaseName(vm, expType);
     zPanicFmt(vm, "Expected type `{}`, found `{}`.", (FmtValue[]){
         FMT_STR(expTypeName), FMT_STR(actTypeName)
     }, 2);
 }
 
-static void panicIncompatibleFieldType(VM* vm, TypeId fieldTypeId, TypeId rightTypeId) {
-    Str fieldTypeName = zGetTypeName(vm, fieldTypeId);
-    Str rightTypeName = zGetTypeName(vm, rightTypeId);
+static void panicIncompatibleFieldRtType(VM* vm, u32 field_rt, u32 right_rt) {
+    Str field_name = zAllocRtTypeName(vm, field_rt);
+    Str right_name = zAllocRtTypeName(vm, right_rt);
     zPanicFmt(vm, "Assigning to `{}` field with incompatible type `{}`.", (FmtValue[]){
-        FMT_STR(fieldTypeName), FMT_STR(rightTypeName)
+        FMT_STR(field_name), FMT_STR(right_name)
     }, 2);
+    zFree(vm, field_name);
+    zFree(vm, right_name);
 }
 
 static void panicCastFail(VM* vm, TypeId actTypeId, TypeId expTypeId) {
-    Str actName = zGetTypeName(vm, actTypeId);
-    Str expName = zGetTypeName(vm, expTypeId);
+    Str actName = zGetTypeBaseName(vm, actTypeId);
+    Str expName = zGetTypeBaseName(vm, expTypeId);
     zPanicFmt(vm, "Can not cast `{}` to `{}`.", (FmtValue[]){
         FMT_STR(actName), FMT_STR(expName),
     }, 2);
@@ -814,9 +839,8 @@ beginSwitch:
         // Check that src is actually a value type.
         Value src = stack[pc[1]];
         TypeId typeId = getTypeId(src);
-        TypeEntry entry = vm->c.typesPtr[typeId];
-        if (entry.kind == TYPE_KIND_STRUCT) {
-            u8 numFields = (u8)entry.data.object.numFields;
+        TypeBase* type = vm->c.typesPtr[typeId];
+        if (type->kind == TYPE_KIND_STRUCT) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(src);
             ValueResult res = zCopyStruct(vm, obj);
             if (res.code != RES_CODE_SUCCESS) {
@@ -835,7 +859,7 @@ beginSwitch:
         Value right = stack[pc[3]];
         HeapObject* listo = VALUE_AS_HEAPOBJECT(listv);
 
-        _BitInt(48) idx = VALUE_AS_INTEGER(index);
+        i64 idx = VALUE_AS_INTEGER(index);
         if (idx >= 0 && idx < listo->list.list.len) {
             Value existing = ((Value*)listo->list.list.buf)[idx];
             release(vm, existing);
@@ -867,7 +891,7 @@ beginSwitch:
         Value index = stack[pc[2]];
         HeapObject* listo = VALUE_AS_HEAPOBJECT(listv);
 
-        _BitInt(48) idx = VALUE_AS_INTEGER(index);
+        i64 idx = VALUE_AS_INTEGER(index);
         if (idx >= 0 && idx < listo->list.list.len) {
             Value val = ((Value*)listo->list.list.buf)[idx];
             retain(vm, val);
@@ -884,7 +908,7 @@ beginSwitch:
         Value index = stack[pc[2]];
         Tuple* tuple = (Tuple*)VALUE_AS_HEAPOBJECT(tuplev);
 
-        _BitInt(48) idx = VALUE_AS_INTEGER(index);
+        i64 idx = VALUE_AS_INTEGER(index);
         if (idx < 0) {
             // Reverse index.
             idx = tuple->len + idx;
@@ -1293,21 +1317,21 @@ beginSwitch:
     }
     CASE(TypeCheck): {
         Value val = stack[pc[1]];
-        TypeId expType = (TypeId)READ_U16(2);
-        TypeId actType = getTypeId(val);
-        if (!isTypeCompat(actType, expType)) {
-            panicIncompatibleType(vm, actType, expType);
+        TypeId exp_rt = (TypeId)READ_U32(2);
+        TypeId act_rt = getRtTypeId(val);
+        if (!isRtTypeCompat(act_rt, exp_rt)) {
+            panicIncompatibleRtType(vm, act_rt, exp_rt);
             RETURN(RES_CODE_PANIC);
         }
-        stack[pc[4]] = val;
-        pc += 5;
+        stack[pc[6]] = val;
+        pc += 7;
         NEXT();
     }
     CASE(TypeCheckOption): {
         Value val = stack[pc[1]];
         TypeId typeId = getTypeId(val);
-        TypeEntry entry = vm->c.typesPtr[typeId];
-        if (entry.kind != TYPE_KIND_OPTION) {
+        TypeBase* type = vm->c.typesPtr[typeId];
+        if (type->kind != TYPE_KIND_OPTION) {
             panicStaticMsg(vm, "Expected `Option` type.");
             RETURN(RES_CODE_PANIC);
         }
@@ -1523,7 +1547,11 @@ beginSwitch:
     }
     CASE(Unbox): {
         u16 type_id = READ_U16(2);
-        TypeId act_t = getTypeId(stack[pc[1]]);
+        u32 act_rt = getRtTypeId(stack[pc[1]]);
+        if (act_rt != type_id) {
+            panicIncompatibleRtType(vm, act_rt, type_id);
+            RETURN(RES_CODE_PANIC);
+        }
         stack[pc[4]] = zUnbox(vm, stack[pc[1]], type_id);
         pc += 5;
         NEXT();
@@ -1638,11 +1666,11 @@ beginSwitch:
             TypeField res = zGetTypeField(vm, OBJ_TYPEID(obj), fieldId);
             Value val = stack[pc[4]];
             if (res.offset != NULL_U16) {
-                TypeId rightTypeId = getTypeId(val);
+                u32 right_rt = getRtTypeId(val);
                 if (res.type_id != TYPE_DYN) {
                     // Must perform type check on rhs.
-                    if (!isTypeCompat(rightTypeId, res.type_id)) {
-                        panicIncompatibleFieldType(vm, res.type_id, rightTypeId);
+                    if (!isRtTypeCompat(right_rt, res.type_id)) {
+                        panicIncompatibleFieldRtType(vm, res.type_id, right_rt);
                         RETURN(RES_CODE_PANIC);
                     }
                 }
@@ -1658,7 +1686,7 @@ beginSwitch:
 
                 pc[0] = CodeSetFieldDynIC;
                 WRITE_U16(5, OBJ_TYPEID(obj));
-                WRITE_U16(7, rightTypeId);
+                WRITE_U16(7, right_rt);
                 pc[9] = (u8)res.offset;
             } else {
                 SAVE_STATE();
@@ -1681,7 +1709,7 @@ beginSwitch:
         if (VALUE_IS_POINTER(recv)) {
             Value val = stack[pc[4]];
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
-            if ((OBJ_TYPEID(obj) == READ_U16(5)) && (getTypeId(val) == READ_U16(7))) {
+            if ((OBJ_TYPEID(obj) == READ_U16(5)) && (getRtTypeId(val) == READ_U16(7))) {
                 Value* lastValue = objectGetFieldPtr((Object*)obj, pc[9]);
                 release(vm, *lastValue);
                 *lastValue = val;

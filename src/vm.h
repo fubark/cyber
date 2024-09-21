@@ -702,11 +702,69 @@ typedef struct ZList {
     size_t cap;
 } ZList;
 
-#define TYPE_KIND_STRUCT 8
-#define TYPE_KIND_OPTION 9
-#define TYPE_KIND_FUNC_UNION 16
+#define TYPE_KIND_NULL 0
+#define TYPE_KIND_BOOL 1
+#define TYPE_KIND_INT 2
+#define TYPE_KIND_FLOAT 3
+#define TYPE_KIND_HOSTOBJ 4
+#define TYPE_KIND_ENUM 5
+#define TYPE_KIND_CHOICE 6
+#define TYPE_KIND_STRUCT 7
+#define TYPE_KIND_OPTION 8
+#define TYPE_KIND_TRAIT 9
+#define TYPE_KIND_BARE 10
+#define TYPE_KIND_CTREF 11
+#define TYPE_KIND_ARRAY 12
+#define TYPE_KIND_FUNC_PTR 13
+#define TYPE_KIND_FUNC_UNION 14
+#define TYPE_KIND_FUNC_SYM 15
+#define TYPE_KIND_PTR 16
 
-typedef struct TypeEntry {
+typedef struct TypeBase {
+    u8 kind;
+    void* sym;
+    TypeId id;
+
+    u8 info;
+    bool has_get_method;
+    bool has_set_method;
+    bool has_init_pair_method;
+
+    void* retain_layout;
+    bool retain_layout_owned;
+} TypeBase;
+
+typedef struct BoxedEntry {
+    u32 offset;
+} BoxedEntry;
+
+typedef struct StructType {
+    TypeBase base;
+
+    void* fields_ptr;
+    u32 fields_len;
+    bool fields_owned;
+
+    u32 size;
+
+    void* impls_ptr;
+    u32 impls_len;
+
+    bool cstruct;
+    bool tuple;
+
+    bool resolving_struct;
+} StructType;
+
+typedef struct ArrayType {
+    TypeBase base;
+
+    size_t n;
+    TypeBase* elem_t;
+} ArrayType;
+
+// NOTE: Keep for reference when designing the compact type entry.
+typedef struct TypeEntryOld {
     void* sym;
     u8 kind;
     bool has_get_method;
@@ -727,6 +785,10 @@ typedef struct TypeEntry {
 
             bool* fields;
         } struct_t;
+        struct {
+            size_t n;
+            TypeId elem_t;
+        } array;
         struct {
             void* getChildrenFn;
             void* finalizerFn;
@@ -844,7 +906,7 @@ typedef struct VMC {
 
     ZCyList context_vars; // ContextVar
 
-    TypeEntry* typesPtr;
+    TypeBase** typesPtr;
     size_t typesLen;
 
     TraceInfo* trace;
@@ -957,7 +1019,9 @@ void zCheckRetainDanglingPointer(VM* vm, HeapObject* obj);
 void zPanicFmt(VM* vm, const char* format, FmtValue* args, size_t numArgs);
 Value zValueMapGet(ValueMap* map, Value key, bool* found);
 ResultCode zMapSet(VM* vm, Map* map, Value key, Value val);
-Str zGetTypeName(VM* vm, TypeId id);
+void zFree(VM* vm, Str bytes);
+Str zGetTypeBaseName(VM* vm, TypeId id);
+Str zAllocRtTypeName(VM* vm, TypeId id);
 ResultCode zEnsureListCap(VM* vm, ZCyList* list, size_t cap);
 void zTraceRetain(VM* vm, Value v);
 Value zBox(VM* vm, Value v, TypeId type_id);

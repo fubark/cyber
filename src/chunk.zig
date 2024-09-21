@@ -63,7 +63,7 @@ pub const Chunk = struct {
     listDataStack: std.ArrayListUnmanaged(ListData),
 
     /// Stack for building func signatures. (eg. for nested func calls)
-    typeStack: std.ArrayListUnmanaged(types.TypeId),
+    typeStack: std.ArrayListUnmanaged(*types.Type),
 
     valueStack: std.ArrayListUnmanaged(cy.Value),
 
@@ -594,14 +594,14 @@ pub const Chunk = struct {
             const params = self.getProcParams(sproc);
             for (params) |svar| {
                 rt.printFmt(self.vm, "{} (param), local: {}, dyn: {}, type: {}, lifted: {}\n", &.{
-                    v(svar.name()), v(svar.local), v(svar.decl_t == bt.Dyn), v(svar.decl_t),
+                    v(svar.name()), v(svar.local), v(svar.decl_t.id() == bt.Dyn), v(svar.decl_t),
                     v(svar.inner.local.lifted),
                 });
             }
             const vars = self.getProcVars(sproc);
             for (vars) |svar| {
                 rt.printFmt(self.vm, "{}, local: {}, dyn: {}, type: {}, lifted: {}\n", &.{
-                    v(svar.name()), v(svar.local), v(svar.decl_t == bt.Dyn), v(svar.decl_t),
+                    v(svar.name()), v(svar.local), v(svar.decl_t.id() == bt.Dyn), v(svar.decl_t),
                     v(svar.inner.local.lifted),
                 });
             }

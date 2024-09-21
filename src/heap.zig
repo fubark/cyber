@@ -2,7 +2,7 @@
 
 /// Heap objects, object allocation and deinitializers.
 const cy = @import("cyber.zig");
-const cc = @import("capi.zig");
+const c = @import("capi.zig");
 const vmc = cy.vmc;
 const rt = cy.rt;
 const bt = cy.types.BuiltinTypes;
@@ -1102,7 +1102,8 @@ pub fn allocTuple(vm: *cy.VM, elems: []const Value) !Value {
 
 /// Reuse `Object` so that address_of refers to the first element for both structs and arrays.
 pub fn allocArray(vm: *cy.VM, type_id: cy.TypeId, elems: []const Value) !Value {
-    const child_t = vm.c.types[elems[0].getTypeId()];
+    const type_e = vm.getType(type_id);
+    const child_t = type_e.cast(.array).elem_t;
     var size = elems.len;
     if (child_t.kind == .struct_t) {
         size = child_t.data.struct_t.nfields * elems.len;
@@ -2099,14 +2100,14 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
 
                 // Check range.
                 if (typeId >= vm.c.types_len) {
-                    log.tracev("unsupported struct type {}", .{typeId});
+                    log.tracev("unsupported type {}", .{typeId});
                     cy.fatal();
                 }
             }
             // TODO: Determine isHostObject from object to avoid extra read from `rt.Type`
             // TODO: Use a dispatch table for host objects only.
-            const entry = vm.c.types[typeId];
-            switch (entry.kind) {
+            const entry = vm.getType(typeId);
+            switch (entry.kind()) {
                 .option => {
                     const child = obj.object.getValuesConstPtr()[1];
                     if (!skip_cyc_children or !child.isCycPointer()) {

@@ -69,9 +69,10 @@ enum {
     CL_TYPE_TABLE,
     CL_TYPE_MEMORY,
 };
-typedef uint32_t CLType;
+typedef uint32_t CLTypeId;
+typedef struct CLType CLType;
 
-typedef uint32_t CLFuncSigId;
+typedef uint32_t CLFuncSig;
 
 // Cyber deals with string slices internally for efficiency.
 // Some API functions may require you to use slices rather than a null terminated string.
@@ -221,30 +222,27 @@ typedef void (*CLFinalizerFn)(CLVM* vm, void* obj);
 typedef struct CLHostType {
     union {
         struct {
-            // The reserved `typeId` is used for the new type.
-            CLType type_id;
-            // Pointer to callback or null.
-            CLGetChildrenFn get_children;
-            // Pointer to callback or null.
-            CLFinalizerFn finalizer;
-            bool load_all_methods;
-        } core_custom;
-        struct {
-            // If not null, the created runtime type id will be written to `outTypeId`.
-            // This typeId is then used to allocate a new instance of the object.
-            // Defaults to null.
-            CLType* out_type_id;
+            // If `CL_NULLID`, a new type id is generated and written to a non-null `out_type`.
+            CLTypeId type_id;
+
+            // If not `NULL`, the created runtime type id will be written to `out_type`.
+            // This type is then used to allocate a new instance of the object.
+            // Defaults to `NULL`.
+            CLType** out_type;
+
             // If `true`, invokes finalizer before visiting children.
             bool pre;
+
             // Pointer to callback or null.
             CLGetChildrenFn get_children;
+
             // Pointer to callback or null.
             CLFinalizerFn finalizer;
         } hostobj;
         struct {
-            // If `CL_NULLID`, a new type id is generated and written to a non-null `out_type_id`.
-            CLType type_id;
-            CLType* out_type_id;
+            // If `CL_NULLID`, a new type id is generated and written to a non-null `out_type`.
+            CLTypeId type_id;
+            CLType** out_type;
         } decl;
         struct {
             // Pointer to callback.
@@ -465,11 +463,10 @@ void clSetModuleConfig(CLVM* vm, CLModule mod, CLModuleConfig* config);
 
 // Declares a function in a module.
 void clDeclareFuncDyn(CLSym mod, const char* name, uint32_t numParams, CLFuncFn fn);
-void clDeclareFunc(CLSym mod, const char* name, const CLType* params, size_t numParams, CLType retType, CLFuncFn fn);
+void clDeclareFunc(CLSym mod, const char* name, const CLType** params, size_t numParams, CLType* retType, CLFuncFn fn);
 
 // Declares a variable in a module.
-void clDeclareDynVar(CLSym mod, const char* name, CLType type, CLValue val);
-void clDeclareVar(CLSym mod, const char* name, CLType type, CLValue val);
+void clDeclareVar(CLSym mod, const char* name, CLType* type, CLValue val);
 
 // Expand type template for given arguments.
 bool clExpandTemplateType(CLVM* vm, CLSym type_t, const CLValue* args, size_t nargs, CLType* res);
@@ -563,28 +560,31 @@ CLStr clToTempString(CLVM* vm, CLValue val);  // Conversion from value to a basi
 CLValue clNewTuple(CLVM* vm, const CLValue* vals, size_t len);
 
 // Functions.
-CLValue clNewFuncDyn(CLVM* vm, uint32_t numParams, CLFuncFn func);
-CLValue clNewFunc(CLVM* vm, const CLType* params, size_t numParams, CLType retType, CLFuncFn func);
+CLFuncSig clGetFuncSig(CLVM* vm, const CLType* params, size_t nparams, CLType ret_t);
+CLFuncSig clGetFuncSigDyn(CLVM* vm, size_t nparams);
+CLValue clNewFuncUnion(CLVM* vm, CLType* union_t, CLFuncFn func);
 
 // Pointers.
 CLValue clNewPointerVoid(CLVM* vm, void* ptr);
 
 // Types.
-CLValue clNewType(CLVM* vm, CLType type_id);
-CLType clGetType(CLValue val);
+CLValue clNewType(CLVM* vm, CLType* type);
+CLValue clNewTypeById(CLVM* vm, CLTypeId type_id);
+CLType* clGetType(CLValue val);
+CLTypeId clTypeId(CLType* type);
 
 // Instantiating a `@host type` requires the `typeId` obtained from `CLTypeLoader` and
 // the number of bytes the object will occupy. Objects of the same type can have different sizes.
 // A `CLValue` which contains the object pointer is returned. Call `clAsHostObject` to obtain the pointer
 // or use `clNewHostObjectPtr` to instantiate instead.
-CLValue clNewHostObject(CLVM* vm, CLType typeId, size_t n);
+CLValue clNewHostObject(CLVM* vm, CLTypeId typeId, size_t n);
 void* clAsHostObject(CLValue val);
 
 // Like `clNewHostObject` but returns the object's pointer. Wrap it into a value with `clHostObject`.
-void* clNewHostObjectPtr(CLVM* vm, CLType typeId, size_t n);
+void* clNewHostObjectPtr(CLVM* vm, CLTypeId typeId, size_t n);
 
 // Returns a new instance of `type` with a list of field initializers.
-CLValue clNewInstance(CLVM* vm, CLType type, const CLFieldInit* fields, size_t nfields);
+CLValue clNewInstance(CLVM* vm, CLType* type, const CLFieldInit* fields, size_t nfields);
 
 // Returns the field value of the receiver object `rec`.
 CLValue clGetField(CLVM* vm, CLValue rec, CLStr name);
@@ -594,7 +594,7 @@ CLValue clHostObject(void* ptr);
 CLValue clVmObject(void* ptr);
 
 // Returns a new choice of a given case name and value.
-CLValue clNewChoice(CLVM* vm, CLType choice_t, CLStr name, CLValue val);
+CLValue clNewChoice(CLVM* vm, CLType* choice_t, CLStr name, CLValue val);
 
 // Returns the unwrapped value of a choice.
 CLValue clUnwrapChoice(CLVM* vm, CLValue choice, CLStr name);
@@ -602,9 +602,8 @@ CLValue clUnwrapChoice(CLVM* vm, CLValue choice, CLStr name);
 bool clIsFuture(CLVM* vm, CLValue val);
 
 // List[T], `list_t` should be obtained from `clExpandTemplateType`.
-// TODO: It should also be possible to obtain `list_t` from `clFindType("List[T]")`.
-CLValue clNewEmptyList(CLVM* vm, CLType list_t);
-CLValue clNewList(CLVM* vm, CLType list_t, const CLValue* vals, size_t len);
+// TODO: It should also be possible to obtain `list_t` from `clResolveType("List[T]")`.
+CLValue clNewList(CLVM* vm, CLType* list_t, const CLValue* vals, size_t len);
 
 // List ops.
 size_t clListLen(CLValue list);

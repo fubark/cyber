@@ -62,7 +62,7 @@ pub fn eq(vm: *cy.VM) Value {
             rt.errFmt(vm, "actual: {} != {}\n", &.{v(rt.getTypeName(vm, act_t)), v(rt.getTypeName(vm, exp_t))});
             return cy.builtins.prepThrowZError(vm, error.AssertError, null);
         }
-        if (vm.sema.isUnboxedType(act_t)) {
+        if (!vm.getType(act_t).isBoxed()) {
             act = cy.vm.unbox(vm, act, act_t);
             exp = cy.vm.unbox(vm, exp, act_t);
         }
@@ -194,14 +194,14 @@ fn eq2(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) bool {
                 }
             },
             bt.Type => {
-                const actv = act.asHeapObject().type;
-                const expv = exp.asHeapObject().type;
-                if (actv.type == expv.type) {
+                const act_t = c.sema.getType(act.asHeapObject().type.type);
+                const exp_t = c.sema.getType(exp.asHeapObject().type.type);
+                if (act_t == exp_t) {
                     return true;
                 } else {
-                    const act_name = c.sema.allocTypeName(actv.type) catch @panic("");
+                    const act_name = c.sema.allocTypeName(act_t) catch @panic("");
                     defer c.alloc.free(act_name);
-                    const exp_name = c.sema.allocTypeName(expv.type) catch @panic("");
+                    const exp_name = c.sema.allocTypeName(exp_t) catch @panic("");
                     defer c.alloc.free(exp_name);
                     rt.errFmt(c, "actual: {} != {}\n", &.{v(act_name), v(exp_name)});
                     return false;
@@ -222,7 +222,8 @@ fn eq2(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) bool {
                 if (type_id < cy.types.BuiltinEnd) {
                     cy.panicFmt("Unsupported type {}", .{type_id});
                 } else {
-                    switch (c.c.types[type_id].kind) {
+                    const type_ = c.getType(type_id);
+                    switch (type_.kind()) {
                         .int => {
                             const act_v = act.asInt();
                             const exp_v = exp.asInt();

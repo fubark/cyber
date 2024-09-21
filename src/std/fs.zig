@@ -376,12 +376,12 @@ pub fn fileOrDirStat(vm: *cy.VM) anyerror!Value {
 
     const obj = vm.getValue(0).asHeapObject();
     const typeId = obj.getTypeId();
-    if (typeId == cli_data.FileT) {
+    if (typeId == cli_data.FileT.id()) {
         const file = vm.getHostObject(*File, 0);
         if (file.closed) {
             return rt.prepThrowError(vm, .Closed);
         }
-    } else if (typeId == cli_data.DirT) {
+    } else if (typeId == cli_data.DirT.id()) {
         const dir = vm.getHostObject(*Dir, 0);
         if (dir.closed) {
             return rt.prepThrowError(vm, .Closed);

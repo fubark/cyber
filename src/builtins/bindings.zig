@@ -408,7 +408,7 @@ pub fn listResize(vm: *cy.VM) !Value {
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     const size: u32 = @intCast(vm.getInt(2));
     if (inner.len < size) {
-        if (elem_t != bt.Dyn) {
+        if (vm.getType(elem_t).isBoxed() and elem_t != bt.Float) {
             return error.InvalidArgument;
         }
         const oldLen = inner.len;
@@ -758,8 +758,8 @@ pub const ModuleBuilder = struct {
         try self.getMod().setTypedVar(self.compiler, name, typeId, val);
     }
 
-    pub fn declareFuncSig(self: *const ModuleBuilder, name: [*:0]const u8, params: []const types.TypeId, ret: types.TypeId, ptr: cy.ZHostFuncFn) !void {
-        cc.declareFunc(self.sym.toC(), name, params.ptr, params.len, ret, @ptrCast(ptr));
+    pub fn declareFuncSig(self: *const ModuleBuilder, name: [*:0]const u8, params: []const *cy.Type, ret: *cy.Type, ptr: cy.ZHostFuncFn) !void {
+        cc.declareFunc(self.sym.toC(), name, @ptrCast(@constCast(params.ptr)), params.len, @ptrCast(ret), @ptrCast(ptr));
     }
 
     pub fn ensureMethodGroup(self: *const ModuleBuilder, name: []const u8) !vmc.MethodGroupId {

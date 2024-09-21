@@ -57,8 +57,8 @@ pub const Argument = struct {
         ct: cte.CtValue,
         template: cte.CtValue,
         incompat: struct {
-            target_t: cy.TypeId,
-            res_t: cy.TypeId,
+            target_t: *cy.Type,
+            res_t: *cy.Type,
         },
     },
     node: *ast.Node,
@@ -353,7 +353,7 @@ fn matchOverloadedFunc(c: *cy.Chunk, func: *cy.Func, arg_start: usize, nargs: us
 
         if (final_arg.resolve_t == .rt) {
             // Runtime arg.
-            has_dyn_arg = has_dyn_arg or final_arg.res.rt.type == bt.Dyn;
+            has_dyn_arg = has_dyn_arg or final_arg.res.rt.type.id() == bt.Dyn;
             c.ir.setArrayItem(args_loc, u32, rt_arg_idx, final_arg.res.rt.irIdx);
             rt_arg_idx += 1;
         } else if (final_arg.resolve_t == .incompat) {
@@ -381,7 +381,7 @@ fn matchOverloadedFunc(c: *cy.Chunk, func: *cy.Func, arg_start: usize, nargs: us
     }
 }
 
-fn resolveRtArg(c: *cy.Chunk, arg: Argument, node: *ast.Node, opt_target_t: ?cy.TypeId, single_func: bool) !sema.ExprResult {
+fn resolveRtArg(c: *cy.Chunk, arg: Argument, node: *ast.Node, opt_target_t: ?*cy.Type, single_func: bool) !sema.ExprResult {
     if (arg.resolve_t == .rt) {
         return arg.res.rt;
     }
@@ -463,7 +463,7 @@ const MatchConfig = struct {
     ct_call: bool,
 };
 
-fn getFuncTemplateParamType(c: *cy.Chunk, template: *cy.sym.FuncTemplate, ctx: *sema.ResolveContext, idx: usize) !cy.TypeId {
+fn getFuncTemplateParamType(c: *cy.Chunk, template: *cy.sym.FuncTemplate, ctx: *sema.ResolveContext, idx: usize) !*cy.Type {
     if (idx == 0 and std.mem.eql(u8, c.ast.nodeString(template.func_params[idx].name_type), "self")) {
         return template.head.parent.?.getStaticType().?;
     } else {
@@ -498,7 +498,7 @@ fn matchTemplateArg(c: *cy.Chunk, arg: Argument, template: *cy.sym.FuncTemplate,
         return new_arg;
     }
 
-    var target_t: ?cy.TypeId = null;
+    var target_t: ?*cy.Type = null;
     if (!param.sema_infer_tparam) {
         target_t = try getFuncTemplateParamType(template_c, template, template_ctx, idx);
     }
@@ -512,8 +512,8 @@ fn matchTemplateArg(c: *cy.Chunk, arg: Argument, template: *cy.sym.FuncTemplate,
         target_t = res.type;
     }
 
-    const ct_compat = cy.types.isTypeSymCompat(c.compiler, res.type, target_t.?);
-    const rt_compat = res.type == bt.Dyn;
+    const ct_compat = cy.types.isTypeCompat(c.compiler, res.type, target_t.?);
+    const rt_compat = res.type.id() == bt.Dyn;
     if (!ct_compat and !rt_compat) {
         return sema.reportIncompatType(c, target_t.?, res.type, arg.node);
     }
@@ -531,7 +531,7 @@ fn matchTemplateArg(c: *cy.Chunk, arg: Argument, template: *cy.sym.FuncTemplate,
     return resolved_arg;
 }
 
-fn matchArg(c: *cy.Chunk, arg: Argument, param: sema.FuncParam, config: MatchConfig) !Argument {
+fn matchArg(c: *cy.Chunk, arg: Argument, param_t: *cy.Type, config: MatchConfig) !Argument {
     if (config.ct_call) {
         // Compile-time param.
         const ct_value = (try cte.resolveCtValueOpt(c, arg.node)) orelse {
@@ -541,18 +541,18 @@ fn matchArg(c: *cy.Chunk, arg: Argument, param: sema.FuncParam, config: MatchCon
             var new_arg = arg;
             new_arg.resolve_t = .incompat;
             new_arg.res = .{ .incompat = .{
-                .res_t = cy.NullId,
-                .target_t = param.type,
+                .res_t = &cy.types.NullType,
+                .target_t = param_t,
             }};
             return new_arg;
         };
-        if (ct_value.type != param.type) {
+        if (ct_value.type != param_t) {
             c.vm.release(ct_value.value);
             var new_arg = arg;
             new_arg.resolve_t = .incompat;
             new_arg.res = .{ .incompat = .{
                 .res_t = ct_value.type,
-                .target_t = param.type,
+                .target_t = param_t,
             }};
             return new_arg;
         }
@@ -562,17 +562,17 @@ fn matchArg(c: *cy.Chunk, arg: Argument, param: sema.FuncParam, config: MatchCon
         return new_arg;
     }
 
-    const target_t = param.type;
+    const target_t = param_t;
     var res = try resolveRtArg(c, arg, arg.node, target_t, config.single_func);
 
-    const ct_compat = cy.types.isTypeSymCompat(c.compiler, res.type, target_t);
-    const rt_compat = res.type == bt.Dyn;
+    const ct_compat = cy.types.isTypeCompat(c.compiler, res.type, target_t);
+    const rt_compat = res.type.id() == bt.Dyn;
     if (!ct_compat and !rt_compat) {
         var new_arg = arg;
         new_arg.resolve_t = .incompat;
         new_arg.res = .{ .incompat = .{
             .res_t = res.type,
-            .target_t = param.type,
+            .target_t = param_t,
         }};
         return new_arg;
     }
@@ -597,7 +597,7 @@ fn reportIncompatCallFuncSym(c: *cy.Chunk, sym: *cy.sym.FuncSym, arg_start: usiz
     const args = c.arg_stack.items[arg_start..];
     for (args) |arg| {
         if (arg.resolve_t == .null) {
-            try c.typeStack.append(c.alloc, cy.NullId);
+            try c.typeStack.append(c.alloc, &cy.types.NullType);
         } else if (arg.resolve_t == .rt) {
             try c.typeStack.append(c.alloc, arg.res.rt.type);
         } else if (arg.resolve_t == .ct) {
@@ -610,14 +610,14 @@ fn reportIncompatCallFuncSym(c: *cy.Chunk, sym: *cy.sym.FuncSym, arg_start: usiz
     return sema.reportIncompatCallFuncSym2(c, sym, types, ret_cstr, node);
 }
 
-fn reportIncompatCallFunc(c: *cy.Chunk, func: *cy.Func, arg_start: usize, ret_cstr: cy.types.ReturnCstr, node: *ast.Node) anyerror {
+pub fn reportIncompatCallFunc(c: *cy.Chunk, func: *cy.Func, arg_start: usize, ret_cstr: cy.types.ReturnCstr, node: *ast.Node) anyerror {
     const type_start = c.typeStack.items.len;
     defer c.typeStack.items.len = type_start;
 
     const args = c.arg_stack.items[arg_start..];
     for (args) |arg| {
         if (arg.resolve_t == .null) {
-            try c.typeStack.append(c.alloc, cy.NullId);
+            try c.typeStack.append(c.alloc, &cy.types.NullType);
         } else if (arg.resolve_t == .rt) {
             try c.typeStack.append(c.alloc, arg.res.rt.type);
         } else if (arg.resolve_t == .ct) {
@@ -644,14 +644,14 @@ fn expectTypeFromTemplate(c: *cy.Chunk, type_id: cy.TypeId, exp: *cy.sym.Templat
 }
 
 /// CtInfer types are extracted from `arg_t`.
-fn inferCtArgs(c: *cy.Chunk, arg_t: cy.TypeId, template: *cy.sym.FuncTemplate, template_c: *cy.Chunk, template_n: *ast.Node, node: *ast.Node) !void {
+fn inferCtArgs(c: *cy.Chunk, arg_t: *cy.Type, template: *cy.sym.FuncTemplate, template_c: *cy.Chunk, template_n: *ast.Node, node: *ast.Node) !void {
     switch (template_n.type()) {
         .ident => {
             const name = template_c.ast.nodeString(template_n);
             if (template.indexOfParam(name) != null) {
                 const ctx = sema.getResolveContext(template_c);
                 if (!ctx.ct_params.contains(name)) {
-                    const targ = try c.vm.allocType(arg_t);
+                    const targ = try c.vm.allocType(arg_t.id());
                     try ctx.setCtParam(c.alloc, name, targ);
                     return;
                 }
@@ -684,7 +684,7 @@ fn inferCtArgs(c: *cy.Chunk, arg_t: cy.TypeId, template: *cy.sym.FuncTemplate, t
         .array_expr => {
             // Infer nested. (e.g. `A[T]`)
             const array_expr = template_n.cast(.array_expr);
-            const variant = c.sema.getTypeSym(arg_t).getVariant() orelse {
+            const variant = arg_t.sym().variant orelse {
                 const name = try c.sema.allocTypeName(arg_t);
                 defer c.alloc.free(name);
                 return c.reportErrorFmt("Expected `{}` to be an expanded type.", &.{v(name)}, node);
@@ -736,17 +736,22 @@ fn inferCtArgValue(c: *cy.Chunk, arg: cy.Value, template: *cy.sym.FuncTemplate, 
 
 fn assertValueEq(c: *cy.Chunk, exp: cy.Value, act: cy.Value, node: *ast.Node) !void {
     if (exp.getTypeId() != act.getTypeId()) {
-        return sema.reportIncompatType(c, exp.getTypeId(), act.getTypeId(), node);
+        const exp_t = c.sema.getType(exp.getTypeId());
+        const act_t = c.sema.getType(act.getTypeId());
+        return sema.reportIncompatType(c, exp_t, act_t, node);
     }
 
     switch (exp.getTypeId()) {
         bt.Type => {
             if (exp.asHeapObject().type.type != act.asHeapObject().type.type) {
-                return sema.reportIncompatType(c, exp.asHeapObject().type.type, act.asHeapObject().type.type, node);
+                const exp_t = c.sema.getType(exp.asHeapObject().type.type);
+                const act_t = c.sema.getType(act.asHeapObject().type.type);
+                return sema.reportIncompatType(c, exp_t, act_t, node);
             }
         },
         else => {
-            const type_name = try c.sema.allocTypeName(exp.getTypeId());
+            const exp_t = c.sema.getType(exp.getTypeId());
+            const type_name = try c.sema.allocTypeName(exp_t);
             defer c.alloc.free(type_name);
             return c.reportErrorFmt("Unsupport value type: `{s}`", &.{v(type_name)}, node);
         }

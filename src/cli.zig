@@ -40,12 +40,12 @@ const stdMods = std.StaticStringMap(*const fn (*cy.VM, r_uri: []const u8) C.Modu
 });
 
 pub const CliData = struct {
-    FileT: cy.TypeId,
-    DirT: cy.TypeId,
-    DirIterT: cy.TypeId,
-    CArrayT: cy.TypeId,
-    CDimArrayT: cy.TypeId,
-    FFIT: cy.TypeId,
+    FileT: *cy.Type,
+    DirT: *cy.Type,
+    DirIterT: *cy.Type,
+    CArrayT: *cy.Type,
+    CDimArrayT: *cy.Type,
+    FFIT: *cy.Type,
 };
 
 comptime {

@@ -214,7 +214,7 @@ pub const Compiler = struct {
         self.reports.clearRetainingCapacity();
     }
 
-    pub fn newTypes(self: *Compiler) []cy.types.Type {
+    pub fn newTypes(self: *Compiler) []*cy.Type {
         return self.sema.types.items[self.type_start..];
     }
 
@@ -256,15 +256,8 @@ pub const Compiler = struct {
 
         if (!self.cont) {
             try reserveCoreTypes(self);
+
             try loadCtBuiltins(self);
-            try self.context_vars.put(self.alloc, "mem", .{
-                .type = bt.Memory,
-                .idx = 0,
-            });
-            try self.context_vars.put(self.alloc, "test_int", .{
-                .type = bt.Integer,
-                .idx = 1,
-            });
         }
 
         // TODO: Types and symbols should be loaded recursively for single-threaded.
@@ -319,8 +312,17 @@ pub const Compiler = struct {
                 const sym = e.value_ptr.*;
 
                 const resolved = switch (sym.type) {
-                    .object_t => sym.cast(.object_t).isResolved(),
-                    .struct_t => sym.cast(.struct_t).isResolved(),
+                    .type => b: {
+                        const type_sym = sym.cast(.type);
+                        switch (type_sym.type.kind()) {
+                            .struct_t => {
+                                break :b type_sym.type.cast(.struct_t).isResolved();
+                            },
+                            else => {
+                                break :b true;
+                            },
+                        }
+                    },
                     .func => sym.cast(.func).isResolved(),
                     else => true,
                 };
@@ -345,6 +347,68 @@ pub const Compiler = struct {
         // All symbols are reserved by loading all modules and looking at the declarations.
         try reserveSyms(self, core_sym);
 
+        // Resolve core builtin types first, since they are needed by sema.
+        if (!self.cont) {
+            const mod = core_sym.getMod();
+            const c = core_sym.chunk;
+            try resolveSym(c, mod.getSym("error").?);
+            try resolveSym(c, mod.getSym("bool").?);
+            try resolveSym(c, mod.getSym("symbol").?);
+            try resolveSym(c, mod.getSym("placeholder1").?);
+            try resolveSym(c, mod.getSym("placeholder2").?);
+            try resolveSym(c, mod.getSym("placeholder3").?);
+            try resolveSym(c, mod.getSym("placeholder4").?);
+            try resolveSym(c, mod.getSym("placeholder5").?);
+            try resolveSym(c, mod.getSym("FuncSig").?);
+            try resolveSym(c, mod.getSym("ExprType").?);
+            try resolveSym(c, @ptrCast(c.sema.option_tmpl));
+
+            const int_t = try c.vm.newType(self.sema.int_t);
+            defer c.vm.release(int_t);
+            c.sema.option_int_t = (try c.vm.expandTemplateType(self.sema.option_tmpl, &.{ int_t })).?;
+
+            // Verify all builtin types have loaded.
+            for (1..cy.types.BuiltinEnd) |i| {
+                if (self.sema.types.items[i].kind() == .null) {
+                    std.debug.panic("Builtin type {} was not initialized.", .{i});
+                }
+            }
+            // Verify builtin types were binded to the state.
+            std.debug.assert(self.sema.any_t.id() == bt.Any);
+            std.debug.assert(self.sema.dyn_t.id() == bt.Dyn);
+            std.debug.assert(self.sema.table_t.id() == bt.Table);
+            std.debug.assert(self.sema.bool_t.id() == bt.Boolean);
+            std.debug.assert(self.sema.int_t.id() == bt.Integer);
+            std.debug.assert(self.sema.byte_t.id() == bt.Byte);
+            std.debug.assert(self.sema.float_t.id() == bt.Float);
+            std.debug.assert(self.sema.string_t.id() == bt.String);
+            std.debug.assert(self.sema.map_t.id() == bt.Map);
+            std.debug.assert(self.sema.void_t.id() == bt.Void);
+            std.debug.assert(self.sema.type_t.id() == bt.Type);
+            std.debug.assert(self.sema.error_t.id() == bt.Error);
+            std.debug.assert(self.sema.symbol_t.id() == bt.Symbol);
+            std.debug.assert(self.sema.taglit_t.id() == bt.TagLit);
+            std.debug.assert(self.sema.exprtype_t.id() == bt.ExprType);
+            std.debug.assert(self.sema.fiber_t.id() == bt.Fiber);
+            std.debug.assert(self.sema.range_t.id() == bt.Range);
+            std.debug.assert(self.sema.memory_t.id() == bt.Memory);
+            std.debug.assert(self.sema.tuple_t.id() == bt.Tuple);
+            std.debug.assert(self.sema.placeholder1_t.id() == bt.Placeholder1);
+            std.debug.assert(self.sema.placeholder2_t.id() == bt.Placeholder2);
+            std.debug.assert(self.sema.placeholder3_t.id() == bt.Placeholder3);
+            std.debug.assert(self.sema.placeholder4_t.id() == bt.Placeholder4);
+            std.debug.assert(self.sema.placeholder5_t.id() == bt.Placeholder5);
+            
+            try self.context_vars.put(self.alloc, "mem", .{
+                .type = self.sema.memory_t,
+                .idx = 0,
+            });
+            try self.context_vars.put(self.alloc, "test_int", .{
+                .type = self.sema.int_t,
+                .idx = 1,
+            });
+        }
+
         // Resolve symbols:
         // - Variable types are resolved.
         // - Function signatures are resolved.
@@ -352,25 +416,23 @@ pub const Compiler = struct {
         try resolveSyms(self);
 
         // Pass through type syms.
-        for (self.newTypes()) |*type_e| {
-            if (type_e.sym.getMod()) |mod| {
-                if (mod.getSym("$get") != null) {
-                    type_e.has_get_method = true;
-                }
-                if (mod.getSym("$set") != null) {
-                    type_e.has_set_method = true;
-                }
-                if (mod.getSym("$initPair") != null) {
-                    type_e.has_init_pair_method = true;
-                }
+        for (self.newTypes()) |type_| {
+            const mod = type_.sym().getMod();
+            if (mod.getSym("$get") != null) {
+                type_.has_get_method = true;
             }
-            switch (type_e.sym.type) {
-                .object_t => {
-                    const object_t = type_e.sym.cast(.object_t);
-                    const impls = object_t.impls();
+            if (mod.getSym("$set") != null) {
+                type_.has_set_method = true;
+            }
+            if (mod.getSym("$initPair") != null) {
+                type_.has_init_pair_method = true;
+            }
+            switch (type_.kind()) {
+                .struct_t => {
+                    const struct_t = type_.cast(.struct_t);
+                    const impls = struct_t.impls();
                     if (impls.len > 0) {
-                        const decl = object_t.decl.?.cast(.objectDecl);
-                        const mod = object_t.getMod();
+                        const decl = type_.sym().decl.?.cast(.struct_decl);
 
                         for (impls) |*impl| {
                             const trait_members = impl.trait.members();
@@ -381,7 +443,9 @@ pub const Compiler = struct {
                                 const func = mod.getTraitMethodImpl(self, member) orelse {
                                     const sig_str = try self.sema.allocFuncSigStr(member.func.funcSigId, true, mod.chunk);
                                     defer self.alloc.free(sig_str);
-                                    return mod.chunk.reportErrorFmt("`{}` does not implement `func {}{}` from `{}`.", &.{v(object_t.head.name()), v(member.func.name()), v(sig_str), v(impl.trait.head.name()) }, @ptrCast(decl.impl_withs[i].trait));
+                                    return mod.chunk.reportErrorFmt("`{}` does not implement `func {}{}` from `{}`.", &.{
+                                        v(type_.name()), v(member.func.name()), v(sig_str), 
+                                        v(impl.trait.base.name()) }, @ptrCast(decl.impl_withs[i].trait));
                                 };
                                 funcs[i] = func;
                             }
@@ -528,7 +592,7 @@ pub const AotCompileResult = struct {
 
 /// Tokenize and parse.
 /// Parser pass collects static declaration info.
-fn performChunkParse(self: *Compiler, chunk: *cy.Chunk) !void {
+pub fn performChunkParse(self: *Compiler, chunk: *cy.Chunk) !void {
     _ = self;
     var tt = cy.debug.timer();
 
@@ -600,7 +664,7 @@ fn performChunkSemaDecls(c: *cy.Chunk) !void {
 fn performChunkInitSema(self: *Compiler, c: *cy.Chunk) !void {
     log.tracev("Perform init sema. {} {s}", .{c.id, c.srcUri});
 
-    const funcSigId = try c.sema.ensureFuncSig(&.{}, bt.Void);
+    const funcSigId = try c.sema.ensureFuncSig(&.{}, self.sema.void_t);
 
     const name = try c.parser.ast.genSpanNode(self.alloc, .ident, "$init");
     const decl = try c.parser.ast.newNode(.funcDecl, .{
@@ -757,7 +821,7 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                         const decl = node.cast(.trait_decl);
                         const sym = try sema.reserveTraitType(chunk, decl);
 
-                        const members = try self.alloc.alloc(cy.sym.TraitMember, decl.funcs.len);
+                        const members = try self.alloc.alloc(cy.types.TraitMember, decl.funcs.len);
                         errdefer self.alloc.free(members);
                         for (decl.funcs, 0..) |func_decl, i| {
                             const func = try sema.reserveImplicitTraitMethod(chunk, @ptrCast(sym), func_decl, i, false);
@@ -766,8 +830,9 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                             };
                         }
 
-                        sym.members_ptr = members.ptr;
-                        sym.members_len = @intCast(members.len);
+                        const trait_t = sym.type.cast(.trait);
+                        trait_t.members_ptr = members.ptr;
+                        trait_t.members_len = @intCast(members.len);
                     },
                     .enumDecl => {
                         _ = try sema.reserveEnum(chunk, node.cast(.enumDecl));
@@ -834,7 +899,7 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                 self.sema.pointer_tmpl = core.getSym("pointer").?.cast(.template);
                 self.sema.ref_tmpl = core.getSym("ref").?.cast(.template);
                 self.sema.list_tmpl = core.getSym("List").?.cast(.template);
-                self.sema.table_type = core.getSym("Table").?.cast(.object_t);
+                self.sema.table_type = core.getSym("Table").?.cast(.type);
                 self.sema.ptr_slice_tmpl = core.getSym("PtrSlice").?.cast(.template);
                 self.sema.func_sym_tmpl = core.getSym("funcsym_t").?.cast(.template);
                 self.sema.ref_slice_tmpl = core.getSym("Slice").?.cast(.template);
@@ -938,7 +1003,7 @@ fn reserveCoreTypes(self: *Compiler) !void {
     };
 
     for (type_ids) |type_id| {
-        const id = try self.sema.pushType();
+        const id = try self.sema.reserveType();
         std.debug.assert(id == type_id);
     }
 
@@ -999,6 +1064,60 @@ fn createDynMethodIds(self: *Compiler) !void {
 //     object_t.rt_size = size;
 // }
 
+fn resolveSym(c: *cy.Chunk, sym: *cy.Sym) !void {
+    log.tracev("resolve: {s} {}", .{sym.name(), sym.type});
+    switch (sym.type) {
+        .context_var => {
+            try sema.resolveContextVar(c, @ptrCast(sym));
+        },
+        .userVar => {
+            // Delay resolving user vars since they are typically only
+            // referenced when resolving runtime code.
+        },
+        .hostVar => {
+            try sema.resolveHostVar(c, @ptrCast(sym));
+        },
+        .func => {},
+        .type => {
+            const type_sym = sym.cast(.type);
+            if (type_sym.type.kind() == .struct_t) {
+                const struct_t = type_sym.type.cast(.struct_t);
+                try sema.resolveStructType(c, struct_t, @ptrCast(type_sym.decl.?));
+            } else if (type_sym.type.kind() == .enum_t) {
+                const enum_t = type_sym.type.cast(.enum_t);
+                try sema.resolveEnumType(c, enum_t, @ptrCast(type_sym.decl));
+            } else if (type_sym.type.kind() == .choice) {
+                const choice_t = type_sym.type.cast(.choice);
+                try sema.resolveChoiceType(c, choice_t, @ptrCast(type_sym.decl));
+            } else if (type_sym.type.kind() == .array) {
+                const array_t = type_sym.type.cast(.array);
+                try sema.resolveArrayType(c, array_t, @ptrCast(type_sym.decl));
+            }
+        },
+        .distinct_t => {
+            _ = try sema.resolveDistinctType(c, @ptrCast(sym));
+        },
+        .use_alias => {
+            const use_alias = sym.cast(.use_alias);
+            if (!use_alias.resolved) {
+                if (use_alias.decl.?.type() == .use_alias) {
+                    try sema.resolveUseAlias(c, @ptrCast(sym));
+                }
+            }
+        },
+        .typeAlias => {
+            try sema.resolveTypeAlias(c, @ptrCast(sym));
+        },
+        .template => {
+            try sema.ensureResolvedTemplate(c, @ptrCast(sym));
+        },
+        .func_template => {
+            try sema.ensureResolvedFuncTemplate(c, @ptrCast(sym));
+        },
+        else => {},
+    }
+}
+
 fn resolveSyms(self: *Compiler) !void {
     log.tracev("Resolve syms.", .{});
     defer log.tracev("Resolve syms. Done.", .{});
@@ -1007,55 +1126,7 @@ fn resolveSyms(self: *Compiler) !void {
         var i: u32 = 0;
         while (i < chunk.syms.items.len) : (i += 1) {
             const sym = chunk.syms.items[i];
-            log.tracev("resolve: {s}", .{sym.name()});
-            switch (sym.type) {
-                .context_var => {
-                    try sema.resolveContextVar(chunk, @ptrCast(sym));
-                },
-                .userVar => {
-                    // Delay resolving user vars since they are typically only
-                    // referenced when resolving runtime code.
-                },
-                .hostVar => {
-                    try sema.resolveHostVar(chunk, @ptrCast(sym));
-                },
-                .func => {},
-                .struct_t => {
-                    const struct_t = sym.cast(.struct_t);
-                    try sema.resolveObjectLikeType(chunk, sym, @ptrCast(struct_t.decl.?));
-                },
-                .object_t => {
-                    const object_t = sym.cast(.object_t);
-                    const decl = object_t.decl.?;
-                    try sema.resolveObjectLikeType(chunk, sym, decl.cast(.objectDecl));
-                },
-                .enum_t => {
-                    const enum_t = sym.cast(.enum_t);
-                    try sema.resolveEnumType(chunk, @ptrCast(sym), enum_t.decl);
-                },
-                .distinct_t => {
-                    _ = try sema.resolveDistinctType(chunk, @ptrCast(sym));
-                },
-                .use_alias => {
-                    const use_alias = sym.cast(.use_alias);
-                    if (!use_alias.resolved) {
-                        if (use_alias.decl.?.type() == .use_alias) {
-                            try sema.resolveUseAlias(chunk, @ptrCast(sym));
-                        }
-                    }
-                },
-                .typeAlias => {
-                    try sema.resolveTypeAlias(chunk, @ptrCast(sym));
-                },
-                .template => {
-                    try sema.ensureResolvedTemplate(chunk, @ptrCast(sym));
-                },
-                .func_template => {
-                    try sema.ensureResolvedFuncTemplate(chunk, @ptrCast(sym));
-                },
-                .trait_t => {},
-                else => {},
-            }
+            try resolveSym(chunk, sym);
         }
 
         for (chunk.funcs.items) |func| {
@@ -1222,7 +1293,7 @@ pub fn resolveModuleUri(self: *cy.Compiler, buf: []u8, uri: []const u8) ![]const
 }
 
 const ContextVar = struct {
-    type: cy.TypeId,
+    type: *cy.Type,
     idx: u8,
 };
 

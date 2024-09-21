@@ -275,7 +275,7 @@ const StaticAny = extern struct {
 
 pub fn getTypeName(c: Context, type_h: TypeHandle) []const u8 {
     if (build_options.rt == .vm) {
-        return c.c.types[type_h].sym.name();
+        return c.getType(type_h).name();
     } else {
         return std.mem.span(type_h.name);
     }

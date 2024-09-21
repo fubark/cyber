@@ -637,50 +637,30 @@ pub fn dumpValue(vm: *cy.VM, w: anytype, val: cy.Value, config: DumpValueConfig)
     try dumpValue2(vm, &state, w, val, config);
 }
 
-fn getTypeName(vm: *cy.VM, type_id: cy.TypeId) []const u8 {
-    return vm.sema.getTypeBaseName(type_id);
-}
-
 fn dumpValue2(vm: *cy.VM, state: *DumpValueState, w: anytype, val: cy.Value, config: DumpValueConfig) !void {
-    const type_id = val.getTypeId();
-    switch (type_id) {
-        bt.Map => {
-            try w.writeByte('<');
-            const name = getTypeName(vm, type_id);
-            _ = try w.writeAll(name);
-            _ = try w.print("[{}]> ", .{val.asHeapObject().map.map().size});
-        },
-        bt.Table => {
-            if (state.depth == 1 or config.force_types) {
-                try w.writeByte('<');
-                const name = getTypeName(vm, type_id);
-                _ = try w.writeAll(name);
-                _ = try w.print("[{}]> ", .{val.asHeapObject().table.map().size});
-            }
-        },
-        bt.ListDyn => {
-            if (state.depth == 1 or config.force_types) {
-                try w.writeByte('<');
-                const name = getTypeName(vm, type_id);
-                _ = try w.writeAll(name);
-                _ = try w.print("[{}]> ", .{val.asHeapObject().list.list.len});
-            }
-        },
+    const val_t = vm.sema.getType(val.getTypeId());
+    switch (val_t.id()) {
+        bt.Map,
+        bt.Table,
         bt.Error,
         bt.String,
         bt.Integer,
         bt.Float => {
             if (state.depth == 1 or config.force_types) {
-                const name = getTypeName(vm, type_id);
                 try w.writeByte('<');
-                _ = try w.writeAll(name);
+                _ = try w.writeAll(val_t.name());
                 _ = try w.writeAll("> ");
             }
         },
         else => {
             try w.writeByte('<');
-            _ = try vm.sema.writeTypeName(w, type_id, null);
-            if (type_id == bt.Void) {
+            if (val.isPointer()) {
+                if (val.asHeapObject().isRef()) {
+                    try w.writeByte('^');
+                }
+            }
+            _ = try vm.sema.writeTypeName(w, val_t, null);
+            if (val_t.id() == bt.Void) {
                 _ = try w.writeAll(">");
             } else {
                 _ = try w.writeAll("> ");
@@ -688,7 +668,7 @@ fn dumpValue2(vm: *cy.VM, state: *DumpValueState, w: anytype, val: cy.Value, con
         },
     }
 
-    switch (type_id) {
+    switch (val_t.id()) {
         bt.Boolean => try w.print("{}", .{val.asBool()}),
         bt.Integer => try w.print("{}", .{val.asBoxInt()}),
         bt.Float => {
@@ -706,6 +686,9 @@ fn dumpValue2(vm: *cy.VM, state: *DumpValueState, w: anytype, val: cy.Value, con
         bt.Symbol => {
             try w.print(".{}", .{val.asSymbolId()});
         },
+        bt.Type => {
+            try vm.sema.writeTypeName(w, val_t, null);
+        },
         else => {
             if (val.isPointer()) {
                 const obj = val.asHeapObject();
@@ -718,6 +701,7 @@ fn dumpValue2(vm: *cy.VM, state: *DumpValueState, w: anytype, val: cy.Value, con
                 switch (val_t.id()) {
                     bt.Table => {
                         const size = obj.table.map().size;
+                        _ = try w.print("[{}] ", .{size});
                         if (state.depth < config.max_depth) {
                             state.depth += 1;
                             _ = try w.writeAll("{");
@@ -737,6 +721,7 @@ fn dumpValue2(vm: *cy.VM, state: *DumpValueState, w: anytype, val: cy.Value, con
                     },
                     bt.Map => {
                         const size = obj.map.map().size;
+                        _ = try w.print("[{}] ", .{size});
                         if (state.depth < config.max_depth) {
                             state.depth += 1;
                             _ = try w.writeAll("{");
@@ -764,11 +749,13 @@ fn dumpValue2(vm: *cy.VM, state: *DumpValueState, w: anytype, val: cy.Value, con
                         }
                     },
                     else => {
-                        const type_e = vm.sema.getType(type_id);
-                        if (type_e.sym.getVariant()) |variant| {
-                            if (variant.getSymTemplate() == vm.sema.pointer_tmpl) {
-                                try w.print("0x{x}", .{obj.object.firstValue.val});
-                            }
+                        switch (val_t.kind()) {
+                            .pointer => {
+                                if (!val_t.cast(.pointer).ref) {
+                                    try w.print("0x{x}", .{obj.object.firstValue.val});
+                                }
+                            },
+                            else => {},
                         }
                     },
                 }

@@ -143,15 +143,15 @@ pub const ExprCode = enum(u8) {
 };
 
 pub const ExprType = packed struct {
-    id: u31,
+    type: u63,
     throws: bool,
 
-    pub fn init(id: cy.TypeId) ExprType {
-        return .{ .id = @truncate(id), .throws = false };
+    pub fn init(type_: *cy.Type) ExprType {
+        return .{ .type = @truncate(@intFromPtr(type_)), .throws = false };
     }
 
-    pub fn initThrows(id: cy.TypeId) ExprType {
-        return .{ .id = @truncate(id), .throws = true };
+    pub fn initThrows(type_: *cy.Type) ExprType {
+        return .{ .type = @truncate(@intFromPtr(type_)), .throws = true };
     }
 };
 
@@ -172,8 +172,8 @@ pub const Deref = struct {
 
 pub const Trait = struct {
     expr: Loc,
-    expr_t: cy.TypeId,
-    trait_t: cy.TypeId,
+    expr_t: *cy.Type,
+    trait_t: *cy.Type,
 };
 
 pub const Box = struct {
@@ -186,7 +186,7 @@ pub const Unbox = struct {
 
 pub const TypeCheck = struct {
     expr: Loc,
-    exp_type: cy.TypeId,
+    exp_type: *cy.Type,
 };
 
 pub const TypeCheckOption = struct {
@@ -272,7 +272,7 @@ pub const Error = struct {
 
 pub const Cast = struct {
     expr: Loc,
-    typeId: TypeId,
+    type: *cy.Type,
     isRtCast: bool,
 };
 
@@ -306,7 +306,7 @@ pub const SetField = struct {
 };
 
 pub const ObjectInit = struct {
-    typeId: TypeId,
+    shape_t: *cy.Type,
     args: Loc,
     numArgs: u8,
     ref: bool,
@@ -353,7 +353,7 @@ pub const FuncBlock = struct {
     params: Loc,
 
     // For methods only.
-    parentType: cy.TypeId,
+    parentType: ?*cy.Type,
 
     /// Mark a func block to skip generation.
     /// Useful for removing temporary compile-time functions.
@@ -372,7 +372,7 @@ pub const MainBlock = struct {
 pub const FuncParam = struct {
     namePtr: [*]const u8,
     nameLen: u16,
-    declType: TypeId,
+    declType: *cy.Type,
     isCopy: bool,
     lifted: bool,
 
@@ -384,7 +384,7 @@ pub const FuncParam = struct {
 pub const DeclareLocalInit = struct {
     namePtr: [*]const u8,
     nameLen: u16,
-    declType: TypeId,
+    declType: *cy.Type,
     id: u8,
     lifted: bool,
 
@@ -392,7 +392,7 @@ pub const DeclareLocalInit = struct {
     /// the memory must be zeroed so unwinding doesn't end up using an undefined value.
     zeroMem: bool,
     init: Loc,
-    initType: TypeId,
+    initType: *cy.Type,
 
     pub fn name(self: DeclareLocalInit) []const u8 {
         return self.namePtr[0..self.nameLen];
@@ -402,7 +402,7 @@ pub const DeclareLocalInit = struct {
 pub const DeclareLocal = struct {
     namePtr: [*]const u8,
     nameLen: u16,
-    declType: TypeId,
+    declType: *cy.Type,
     id: u8,
     lifted: bool,
 
@@ -428,15 +428,15 @@ pub const Prepare = union {
 };
 
 pub const Slice = struct {
-    recvT: TypeId,
+    recvT: *cy.Type,
     rec: Loc,
     left: Loc,
     right: Loc,
 };
 
 pub const BinOp = struct {
-    leftT: TypeId,
-    rightT: TypeId,
+    leftT: *cy.Type,
+    rightT: *cy.Type,
     op: cy.BinaryExprOp,
     left: Loc,
     right: Loc,
@@ -464,8 +464,8 @@ pub const SetCallObjSymTern = struct {
 };
 
 pub const SetGeneric = struct {
-    left_t: TypeId,
-    right_t: TypeId,
+    left_t: *cy.Type,
+    right_t: *cy.Type,
     left: Loc,
     right: Loc,
 };
@@ -476,7 +476,7 @@ pub const SetLocal = struct {
 };
 
 pub const SetIndex = struct {
-    recvT: TypeId,
+    recvT: *cy.Type,
     rec: Loc,
     index: Loc,
     right: Loc,
@@ -502,7 +502,7 @@ pub const VarSym = struct {
 };
 
 pub const EnumMemberSym = struct {
-    type: TypeId,
+    type: *cy.Type,
     val: u8,
 };
 
@@ -515,7 +515,7 @@ pub const FuncUnion = struct {
 };
 
 pub const Type = struct {
-    typeId: TypeId,
+    type: *cy.Type,
     expr_type: bool = false,
 };
 
@@ -604,7 +604,7 @@ pub const String = struct {
 
 pub const UnOp = struct {
     expr: Loc,
-    childT: TypeId,
+    childT: *cy.Type,
     op: cy.UnaryOp,
 };
 
@@ -748,16 +748,16 @@ pub const Buffer = struct {
 
     pub fn setExprData(self: *Buffer, idx: usize, comptime code: ExprCode, data: ExprData(code)) void {
         const bytes = std.mem.toBytes(data);
-        @memcpy(self.buf.items[idx+1+8+4..idx+1+8+4+bytes.len], &bytes);
+        @memcpy(self.buf.items[idx+1+8+8..idx+1+8+8+bytes.len], &bytes);
     }
 
     pub fn getExprData(self: *Buffer, idx: usize, comptime code: ExprCode) ExprData(code) {
-        const data = self.buf.items[idx+1+8+4..][0..@sizeOf(ExprData(code))];
+        const data = self.buf.items[idx+1+8+8..][0..@sizeOf(ExprData(code))];
         return std.mem.bytesToValue(ExprData(code), data);
     }
 
     pub fn getExprDataPtr(self: *Buffer, idx: usize, comptime code: ExprCode) *align(1) ExprData(code) {
-        const data = self.buf.items[idx+1+8+4..][0..@sizeOf(ExprData(code))];
+        const data = self.buf.items[idx+1+8+8..][0..@sizeOf(ExprData(code))];
         return std.mem.bytesAsValue(ExprData(code), data);
     }
 
@@ -785,7 +785,7 @@ pub const Buffer = struct {
     }
 
     pub fn advanceExpr(_: *Buffer, idx: usize, comptime code: ExprCode) usize {
-        return idx + 1 + 8 + 4 + @sizeOf(ExprData(code));
+        return idx + 1 + 8 + 8 + @sizeOf(ExprData(code));
     }
 
     pub fn advanceStmt(_: *Buffer, idx: usize, comptime code: StmtCode) usize {
@@ -810,7 +810,7 @@ pub const Buffer = struct {
     pub fn pushEmptyExpr(self: *Buffer, comptime code: ExprCode, alloc: std.mem.Allocator, expr_t: ExprType, node_id: *ast.Node) !u32 {
         log.tracev("irPushExpr: {} at {}", .{code, self.buf.items.len});
         const start = self.buf.items.len;
-        try self.buf.resize(alloc, self.buf.items.len + 1 + 8 + 4 + @sizeOf(ExprData(code)));
+        try self.buf.resize(alloc, self.buf.items.len + 1 + 8 + 8 + @sizeOf(ExprData(code)));
         self.buf.items[start] = @intFromEnum(code);
         self.setNode(start, node_id);
         self.setExprType2(start, expr_t);
@@ -838,8 +838,8 @@ pub const Buffer = struct {
         return std.mem.bytesAsSlice(T, data);
     }
 
-    pub fn pushExpr(self: *Buffer, comptime code: ExprCode, alloc: std.mem.Allocator, type_id: cy.TypeId, node: *ast.Node, data: ExprData(code)) !u32 {
-        const expr_t = ExprType.init(type_id);
+    pub fn pushExpr(self: *Buffer, comptime code: ExprCode, alloc: std.mem.Allocator, type_: *cy.Type, node: *ast.Node, data: ExprData(code)) !u32 {
+        const expr_t = ExprType.init(type_);
         const loc = try self.pushEmptyExpr(code, alloc, expr_t, node);
         self.setExprData(loc, code, data);
         return loc;
@@ -872,8 +872,8 @@ pub const Buffer = struct {
         @as(*align(1) ExprType, @ptrCast(self.buf.items.ptr + loc + 1 + 8)).* = expr_t;
     }
 
-    pub fn setExprType(self: *Buffer, loc: usize, type_id: cy.TypeId) void {
-        const expr_t = ExprType.init(type_id);
+    pub fn setExprType(self: *Buffer, loc: usize, type_: *cy.Type) void {
+        const expr_t = ExprType.init(type_);
         @as(*align(1) ExprType, @ptrCast(self.buf.items.ptr + loc + 1 + 8)).* = expr_t;
     }
 
@@ -882,8 +882,8 @@ pub const Buffer = struct {
         @as(*align(1) ExprType, @ptrCast(self.buf.items.ptr + loc + 1 + 8)).* = expr_t;
     }
 
-    pub fn getExprType(self: *Buffer, loc: usize) ExprType {
-        return @as(*align(1) ExprType, @ptrCast(self.buf.items.ptr + loc + 1 + 8)).*;
+    pub fn getExprType(self: *Buffer, loc: usize) *cy.Type {
+        return @as(*align(1) *cy.Type, @ptrCast(self.buf.items.ptr + loc + 1 + 8)).*;
     }
 
     pub fn setStmtNext(self: *Buffer, idx: usize, nextIdx: u32) void {

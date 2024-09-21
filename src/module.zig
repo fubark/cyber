@@ -88,7 +88,7 @@ pub const Module = struct {
         return m.symMap.get(name);
     }
 
-    pub fn getTraitMethodImpl(m: *Module, c: *cy.Compiler, member: cy.sym.TraitMember) ?*cy.Func {
+    pub fn getTraitMethodImpl(m: *Module, c: *cy.Compiler, member: cy.types.TraitMember) ?*cy.Func {
         const sym = m.getSym(member.func.name()) orelse return null;
         if (sym.type != .func) {
             return null;
@@ -104,7 +104,7 @@ pub const Module = struct {
         const trait_params = trait_sig.params()[1..];
         const func_params = func_sig.params()[1..];
         for (trait_params, 0..) |trait_param, i| {
-            if (trait_param.type != func_params[i].type) {
+            if (trait_param != func_params[i]) {
                 return null;
             }
         }
@@ -244,7 +244,7 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn resolveHostVar(c: *cy.Chunk, sym: *cy.sym.HostVar, type_id: cy.TypeId, value: cy.Value) !void {
+    pub fn resolveHostVar(c: *cy.Chunk, sym: *cy.sym.HostVar, var_t: *cy.Type, value: cy.Value) !void {
         const mod = sym.head.parent.?.getMod().?;
         if (value.isPointer()) {
             const retainIdx = mod.retainedVars.items.len;
@@ -252,7 +252,7 @@ pub const ChunkExt = struct {
             try mod.retainedVars.append(c.alloc, @ptrCast(sym));
             sym.retainedIdx = @intCast(retainIdx);
         }
-        sym.type = type_id;
+        sym.type = var_t;
         sym.val = value;
     } 
 
@@ -263,9 +263,9 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn resolveUserVarType(c: *cy.Chunk, sym: *cy.sym.UserVar, type_id: cy.TypeId) void {
+    pub fn resolveUserVarType(c: *cy.Chunk, sym: *cy.sym.UserVar, type_: *cy.Type) void {
         _ = c;
-        sym.type = type_id;
+        sym.type = type_;
     }
 
     pub fn reserveContextVar(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *ast.ContextDecl) !*cy.sym.ContextVar {
@@ -275,9 +275,9 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn resolveContextVar(c: *cy.Chunk, sym: *cy.sym.ContextVar, type_id: cy.TypeId, idx: u8) void {
+    pub fn resolveContextVar(c: *cy.Chunk, sym: *cy.sym.ContextVar, type_: *cy.Type, idx: u8) void {
         _ = c;
-        sym.type = type_id;
+        sym.type = type_;
         sym.idx = idx;
     }
 
@@ -295,56 +295,17 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn declareField(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, idx: usize, typeId: cy.TypeId, decl: ?*ast.Node) !*cy.sym.Field {
-        const sym = try c.createField(parent, name, idx, typeId);
+    pub fn declareField(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, idx: usize, type_: *cy.Type, decl: ?*ast.Node) !*cy.sym.Field {
+        const sym = try c.createField(parent, name, idx, type_);
         const mod = parent.getMod().?;
         _ = try addUniqueSym(c, mod, name, @ptrCast(sym), decl);
         return sym;
     }
 
-    pub fn reserveStructType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, cstruct: bool, decl: *ast.ObjectDecl) !*cy.sym.ObjectType {
-        const sym = try c.createStructType(parent, name, cstruct, decl);
+    pub fn reserveTypeSym(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, type_: *cy.Type, decl: ?*ast.Node) !*cy.sym.TypeSym {
+        const sym = try c.createTypeSym(parent, name, type_, decl);
         const mod = parent.getMod().?;
         _ = try addUniqueSym(c, mod, name, @ptrCast(sym), @ptrCast(decl));
-        return sym;
-    }
-
-    pub fn reserveEnumType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, isChoiceType: bool, decl: *ast.EnumDecl) !*cy.sym.EnumType {
-        const sym = try c.createEnumType(parent, name, isChoiceType, decl);
-        _ = try addUniqueSym(c, parent.getMod().?, name, @ptrCast(sym), @ptrCast(decl));
-        return sym;
-    }
-
-    pub fn reserveTraitType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *ast.TraitDecl) !*cy.sym.TraitType {
-        const sym = try c.createTraitType(parent, name, decl);
-        _ = try addUniqueSym(c, parent.getMod().?, name, @ptrCast(sym), @ptrCast(decl));
-        return sym;
-    }
-
-    pub fn reserveObjectType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *ast.Node) !*cy.sym.ObjectType {
-        const sym = try c.createObjectType(parent, name, decl);
-        _ = try addUniqueSym(c, parent.getMod().?, name, @ptrCast(sym), decl);
-        return sym;
-    }
-
-    pub fn declareFloatType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, bits: u8, opt_type_id: ?types.TypeId, decl: ?*ast.Node) !*cy.sym.TypeSym {
-        const sym = try c.createFloatType(parent, name, bits, opt_type_id);
-        const mod = parent.getMod().?;
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), decl);
-        return sym;
-    }
-
-    pub fn declareIntType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, bits: u8, opt_type_id: ?types.TypeId, decl: ?*ast.Node) !*cy.sym.TypeSym {
-        const sym = try c.createIntType(parent, name, bits, opt_type_id);
-        const mod = parent.getMod().?;
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), decl);
-        return sym;
-    }
-
-    pub fn declareBoolType(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, opt_type_id: ?types.TypeId, decl: ?*ast.Node) !*cy.sym.TypeSym {
-        const sym = try c.createBoolType(parent, name, opt_type_id);
-        const mod = parent.getMod().?;
-        _ = try addUniqueSym(c, mod, name, @ptrCast(sym), decl);
         return sym;
     }
 
@@ -537,11 +498,6 @@ pub const ChunkExt = struct {
             .userVar,
             .hostVar,
             .type,
-            .struct_t,
-            .object_t,
-            .hostobj_t,
-            .trait_t,
-            .enum_t,
             .chunk,
             .distinct_t,
             .func_template,
@@ -615,12 +571,6 @@ pub const ChunkExt = struct {
             .userVar,
             .hostVar,
             .type,
-            .struct_t,
-            .object_t,
-            .trait_t,
-            .hostobj_t,
-            .dummy_t,
-            .enum_t,
             .chunk,
             .distinct_t,
             .func_template,

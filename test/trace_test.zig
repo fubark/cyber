@@ -423,7 +423,7 @@ test "Multiple evals persisting state." {
         fn onLoad(vm_: ?*c.VM, mod: c.Sym) callconv(.C) void {
             const vm: *cy.VM = @ptrCast(@alignCast(vm_));
             const g = cy.ptrAlignCast(*cy.Value, vm.userData).*;
-            c.declareVar(mod, "g", bt.Dyn, @bitCast(g));
+            c.declareVar(mod, "g", @ptrCast(vm.sema.dyn_t), @bitCast(g));
         }
         fn loader(vm: ?*c.VM, spec: c.Str, res: ?*c.Module) callconv(.C) bool {
             if (std.mem.eql(u8, c.fromStr(spec), "mod")) {

@@ -32,7 +32,7 @@ test.eq(b != none, false)
 
 -- Wrap none, explicitly.
 var b2 = Option[Foo].none
-test.eq(b2 == none, true)
+test.assert(isNone(b2))
 
 -- Unwrap or default.
 b = none

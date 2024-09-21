@@ -87,7 +87,8 @@ test.eq(res, 234)
 -- Unwrapping payload.
 var rect = Rectangle{width=123, height=234}
 s = Shape.rectangle(rect)
-test.assert(s.!rectangle == rect)
+test.eq(s.!rectangle.width, rect.width)
+test.eq(s.!rectangle.height, rect.height)
 
 -- Builtin choicetag.
 s = Shape.line(123)

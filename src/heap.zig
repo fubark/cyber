@@ -2059,14 +2059,16 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             const entry = vm.getType(typeId);
             switch (entry.kind()) {
                 .option => {
-                    const child = obj.object.getValuesConstPtr()[1];
-                    if (!skip_cyc_children or !child.isCycPointer()) {
-                        cy.arc.release(vm, child);
+                    const option_t = entry.cast(.option);
+                    if (entry.retain_layout) |layout| {
+                        const vals = obj.object.getValuesConstPtr();
+                        vm.releaseLayout(vals, 0, layout, gc, res);
                     }
-                    freePoolObject(vm, obj);
-                },
-                .int => {
-                    freePoolObject(vm, obj);
+                    if (option_t.size <= 4) {
+                        freePoolObject(vm, obj);
+                    } else {
+                        freeExternalObject(vm, obj, (1 + option_t.size) * @sizeOf(Value), gc);
+                    }
                 },
                 .struct_t => {
                     const struct_t = entry.cast(.struct_t);
@@ -2140,9 +2142,9 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                     freePoolObject(vm, obj);
                 },
                 .choice => {
-                    const value = obj.object.getValuesConstPtr()[1];
-                    if (!skip_cyc_children or !value.isCycPointer()) {
-                        cy.arc.release(vm, value);
+                    if (entry.retain_layout) |layout| {
+                        const vals = obj.object.getValuesConstPtr();
+                        vm.releaseLayout(vals, 0, layout, gc, res);
                     }
                     freePoolObject(vm, obj);
                 },

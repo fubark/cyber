@@ -1256,16 +1256,11 @@ pub const VM = struct {
             const res = self.getTypeField(obj.getTypeId(), field_id);
             if (res.offset != cy.NullU16) {
                 return obj.object.getValue(res.offset);
-            } else {
-                const field = self.c.fields[field_id];
-                return self.getFieldFallback(obj, field.name_id);
             }
-        } else {
-            return self.getFieldMissingSymbolError();
         }
+        return self.getFieldMissingSymbolError();
     }
 
-    /// Does not invoke `getFieldFallback`.
     pub fn getFieldName(self: *VM, rec: cy.Value, field: []const u8) !Value {
         const field_id = try self.ensureField(field);
         const obj = rec.asHeapObject();
@@ -1303,45 +1298,8 @@ pub const VM = struct {
         }
     }
 
-    fn getFieldFallback(self: *VM, obj: *HeapObject, nameId: vmc.NameId) !Value {
-        const name = rt.getName(self, nameId);
-        const rec_t = obj.getTypeId();
-        const type_e = self.c.types[rec_t];
-        if (type_e.kind == .option) {
-            const enum_t = type_e.sym.cast(.enum_t);
-            const member = enum_t.getMember(name) orelse {
-                return self.prepPanic("Missing member from choice type.");
-            };
-            const active_tag: u32 = @intCast(obj.object.getValue(0).asInt());
-            if (active_tag != member.val) {
-                return self.prepPanic("Tag is not active.");
-            }
-            const value = obj.object.getValue(1);
-            if (self.sema.isUnboxedType(member.payloadType)) {
-                return try box(self, value, member.payloadType);
-            } else {
-                self.retain(value);
-                return value;
-            }
-        }
-        if (!type_e.has_get_method) {
-            return self.prepPanic("Missing field in object.");
-        }
-
-        const rec_arg = Value.initPtr(obj);
-        const name_arg = try self.allocString(name);
-        defer self.release(name_arg);
-
-        var args: [2]Value = .{ rec_arg, name_arg };
-        const func = self.getCompatMethodFunc(rec_t, self.compiler.getMID, args[1..]) orelse {
-            return error.Unexpected;
-        };
-
-        const func_val = try cy.heap.allocFunc(self, func);
-        defer self.release(func_val);
-        const result = try self.callFunc(func_val, &args, .{ .from_external = false });
-
-        return result;
+    pub fn getType(self: *const VM, id: cy.TypeId) *cy.Type {
+        return self.c.types[id];
     }
 
     /// Assumes overloaded function. Finds first matching function at runtime.
@@ -3480,13 +3438,6 @@ pub fn zDumpValue(vm: *VM, val: Value) callconv(.C) void {
     cy.rt.log(fbuf.getWritten());
 }
 
-fn zGetFieldFallback(vm: *VM, obj: *HeapObject, field_id: rt.FieldId) callconv(.C) Value {
-    const name_id = vm.c.fields[field_id].name_id;
-    return vm.getFieldFallback(obj, name_id) catch {
-        return Value.Interrupt;
-    };
-}
-
 fn zSetFieldFallback(vm: *VM, obj: *HeapObject, field_id: rt.FieldId, val: cy.Value) callconv(.C) vmc.ResultCode {
     const name_id = vm.c.fields[field_id].name_id;
     vm.setFieldFallback(obj, name_id, val) catch |err| {
@@ -3593,7 +3544,6 @@ comptime {
         @export(zFutureValue, .{ .name = "zFutureValue", .linkage = .strong });
         @export(zPopFiber, .{ .name = "zPopFiber", .linkage = .strong });
         @export(zPushFiber, .{ .name = "zPushFiber", .linkage = .strong });
-        @export(zGetFieldFallback, .{ .name = "zGetFieldFallback", .linkage = .strong });
         @export(zSetFieldFallback, .{ .name = "zSetFieldFallback", .linkage = .strong });
         @export(zMapSet, .{ .name = "zMapSet", .linkage = .strong });
         @export(zValueMapGet, .{ .name = "zValueMapGet", .linkage = .strong });

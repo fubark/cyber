@@ -1415,13 +1415,8 @@ beginSwitch:
             pc[8] = res.boxed;
             WRITE_U16(9, res.type_id);
         } else {
-            SAVE_STATE();
-            Value res = zGetFieldFallback(vm, obj, field_id);
-            if (res == VALUE_INTERRUPT) {
-                RESTORE_STATE();
-                RETURN(RES_CODE_PANIC);
-            }
-            stack[dst] = res;
+            panicFieldMissing(vm);
+            RETURN(RES_CODE_PANIC);
         }
         pc += 11;
         NEXT();

@@ -8,7 +8,7 @@ dyn c = Choice.A(123)
 var a = c.A
 
 --cytest: error
---panic: Missing field in object.
+--panic: Field not found in value.
 --
 --main:8:11 main:
 --var a = c.A

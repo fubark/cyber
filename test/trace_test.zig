@@ -500,7 +500,7 @@ test "Stack trace unwinding." {
         \\1 + a.foo
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, c.ErrorPanic,
-            \\panic: Missing field in object.
+            \\panic: Field not found in value.
             \\
             \\main:3:7 main:
             \\1 + a.foo
@@ -527,7 +527,7 @@ test "Stack trace unwinding." {
         \\foo()
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, c.ErrorPanic,
-            \\panic: Missing field in object.
+            \\panic: Field not found in value.
             \\
             \\main:4:16 foo:
             \\  return 1 + a.foo

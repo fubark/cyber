@@ -9,7 +9,7 @@ const Value = cy.Value;
 const t = stdx.testing;
 const log = cy.log.scoped(.lib);
 const bt = cy.types.BuiltinTypes;
-const c = @import("capi.zig");
+const C = @import("capi.zig");
 const vmc = cy.vmc;
 
 const cli = @import("cli.zig");
@@ -30,8 +30,14 @@ export fn clCreate() *cy.VM {
     return @ptrCast(vm);
 }
 
-export fn clDeinit(vm: *cy.VM) void {
+export fn clDeinitObjects(vm: *cy.VM, gc: bool) void {
+    // Deinit runtime objects.
     vm.deinitRtObjects();
+    if (gc) {
+        _ = clCollectCycles(vm);
+    }
+
+    // Deinit compiler objects last since debugging may need to print template arg objects.
     vm.compiler.deinitValues();
 }
 

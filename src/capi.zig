@@ -255,8 +255,8 @@ pub const Value = c.CLValue;
 pub const VM = c.CLVM;
 pub const ZVM = struct {
 
-    pub fn deinit(self: *ZVM) void {
-        c.clDeinit(@ptrCast(self));
+    pub fn deinitObjects(self: *ZVM, gc: bool) void {
+        c.clDeinitObjects(@ptrCast(self), gc);
     }
 
     pub fn destroy(self: *ZVM) void {

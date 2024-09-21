@@ -128,7 +128,7 @@ test "ARC for static variable declarations." {
         \\t.eq(a[0], 123)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
-        run.vm.deinit();
+        run.vm.deinitObjects(false);
         const trace = run.getTrace();
         try t.eq(trace.numRetainAttempts, 3);
         try t.eq(trace.numRetains, 2);

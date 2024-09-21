@@ -370,9 +370,12 @@ extern CLLogFn clLog;
 
 CLVM* clCreate(void);
 
-// Deinitialize static objects so that reference counts can be verified.
+// Deinitialize static objects, compile-time objects, and lingering objects,
+// so that reference counts can be verified.
 // Afterwards, call `clDestroy` or perform a check on `clCountObjects`.
-void clDeinit(CLVM* vm);
+// When `gc` is true, the cycle detector will run at the end to free leaked cycles
+// (only relevant when using the VM `gc` flag).
+void clDeinitObjects(CLVM* vm, bool gc);
 
 // Deinitializes the VM and frees all memory associated with it. Any operation on `vm` afterwards is undefined.
 void clDestroy(CLVM* vm);

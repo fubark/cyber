@@ -83,7 +83,7 @@ pub const VMrunner = struct {
 
     pub fn deinit(self: *VMrunner) void {
         clDeinitCLI(@ptrCast(self.vm));
-        self.vm.deinit();
+        self.vm.deinitObjects(false);
         self.vm.destroy();
     }
 
@@ -251,12 +251,7 @@ pub const VMrunner = struct {
         }
 
         // Deinit, so global objects from builtins are released.
-        vm.deinit();
-
-        // Run GC after runtime syms are released.
-        if (config.cleanupGC) {
-            _ = vm.performGC();
-        }
+        vm.deinitObjects(config.cleanupGC);
 
         if (config.checkGlobalRc) {
             const grc = vm.getGlobalRC();

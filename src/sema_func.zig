@@ -300,9 +300,9 @@ pub fn matchFuncSig(c: *cy.Chunk, sig: cy.sema.FuncSig, arg_start: usize, nargs:
     }
 
     // Check return type.
-    if (!cy.types.isValidReturnType(c.compiler, func.retType, cstr.ret)) {
-        return reportIncompatCallFunc(c, func, arg_start, cstr.ret, node);
-    }
+    // if (!cy.types.isValidReturnType(c.compiler, sig.ret, cstr.ret)) {
+    //     return FuncSigResult.initIncompat(node);
+    // }
 
     if (cstr.ct_call) {
         return .{

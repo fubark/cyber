@@ -69,7 +69,6 @@ for worlds -> w:
 * [Zero values.](#zero-values)
 * [Type casting.](#type-casting)
 * [Comments.](#comments)
-* [CYON.](#cyon)
 </td>
 </tr></table>
 
@@ -495,22 +494,6 @@ A single line comment starts with two hyphens and ends at the end of the line.
 var a = 123   -- This is a comment on the same line as a statement.
 ```
 There will be multi-line comments in Cyber but the syntax has not been determined.
-
-## CYON.
-CYON or the Cyber object notation is similar to JSON. The format uses the same literal value semantics as Cyber.
-```cy
-{
-    name  = 'John Doe',
-    'age' = 25,
-
-    -- This is a comment
-    cities = {
-        'New York',
-        'San Francisco',
-        'Tokyo',
-    },
-}
-```
 
 # Basic Types.
 

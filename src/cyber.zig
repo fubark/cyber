@@ -99,17 +99,6 @@ pub const Inst = bytecode.Inst;
 pub const DebugSym = bytecode.DebugSym;
 pub const getInstLenAt = bytecode.getInstLenAt;
 
-const cyon = @import("cyon.zig");
-pub const encodeCyon = cyon.encode;
-pub const decodeCyonTable = cyon.decodeTable;
-pub const decodeCyon = cyon.decode;
-pub const EncodeValueContext = cyon.EncodeValueContext;
-pub const EncodeTableContext = cyon.EncodeTableContext;
-pub const EncodeListContext = cyon.EncodeListContext;
-pub const DecodeTableIR = cyon.DecodeTableIR;
-pub const DecodeListIR = cyon.DecodeListIR;
-pub const DecodeValueIR = cyon.DecodeValueIR;
-
 pub const simd = @import("simd.zig");
 
 pub const isFreestanding = builtin.os.tag == .freestanding;

@@ -3,35 +3,39 @@
 
 --| Returns whether two values are equal.
 --| Panics with `error.AssertError` if types or values do not match up.
-func eq[T](a T, b T) bool:
-    return eq_(typeid[T], a, b)
+func eq[T](a T, b T) void:
+    if !eq_(typeid[T], a, b):
+        throw error.AssertError
 
 @host -func eq_[T](t int, a T, b T) bool
 
+func eqCheck[T](a T, b T) bool:
+    return eq_(typeid[T], a, b)
+
+--| TODO: Remove after `Slice` is fully implemented.
 --| Returns `true` if two lists have the same size and the elements are equal
 --| as if `eq` was called on those corresponding elements.
-func eqList[T](a List[T], b List[T]) bool:
+func eqList[T](a List[T], b List[T]) void:
     if a.len() != b.len():
-        eprint("Length mismatch: $(a.len()) != $(b.len())")
-        return false
+        fail("Length mismatch: ${a.len()} != ${b.len()}")
     for a -> a_elem, i:
-        if !eq(a_elem, b[i]):
-            return false
-    return true
+        if !eqCheck(a_elem, b[i]):
+            fail("Expected ${b[i]}, found ${a_elem}.\nAt element ${i}.")
 
 --| Returns `true` if two slices have the same size and the elements are equal
 --| as if `eq` was called on those corresponding elements.
-func eqSlice[T](a []T, b []T) bool:
+func eqSlice[T](a []T, b []T) void:
     if a.len() != b.len():
-        eprint("Length mismatch: $(a.len()) != $(b.len())")
-        return false
+        fail("Length mismatch: ${a.len()} != ${b.len()}")
     for a -> a_elem, i:
-        if !eq(a_elem, b[i]):
-            return false
-    return true
+        if !eqCheck(a_elem, b[i]):
+            fail("Expected ${b[i]}, found ${a_elem}.\nAt element ${i}.")
 
 --| Returns `true` if two numbers are near each other within epsilon 1e-5.
-@host func eqNear[T](a T, b T) bool
+func eqNear[T](a T, b T) bool:
+    return eqNear_(typeid[T], a, b)
+
+@host func eqNear_[T](t int, a T, b T) bool
 
 func fail():
     throw error.AssertError
@@ -46,4 +50,4 @@ func throws(fn any, err error):
     if type(res) != error:
         fail('Expected error.')
     if res != err:
-        fail("Expected `$(err)`, found `$(res)`.")
+        fail("Expected `${err}`, found `${res}`.")

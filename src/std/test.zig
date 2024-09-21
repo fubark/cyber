@@ -68,20 +68,12 @@ pub fn eq(vm: *cy.VM) Value {
         }
         type_id = act_t;
     }
-    const res = eq_c(vm, type_id, act, exp);
-    if (res.hasError()) {
-        return Value.Interrupt;
-    }
-    return Value.initBool(res.val);
+    return eq_c(vm, type_id, act, exp);
 }
 
-pub fn eq_c(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) callconv(.C) rt.ErrorUnion(bool) {
-    if (eq2(c, type_id, act, exp)) {
-        return rt.wrapErrorValue(bool, true);
-    } else {
-        const err = cy.builtins.prepThrowZError2(c, error.AssertError, null);
-        return rt.wrapError(bool, err);
-    }
+pub fn eq_c(c: cy.Context, type_id: cy.TypeId, act: rt.Any, exp: rt.Any) callconv(.C) Value {
+    const res = eq2(c, type_id, act, exp);
+    return cy.Value.initBool(res);
 }
 
 /// Assumes unboxed values.
@@ -272,26 +264,19 @@ pub fn assert(vm: *cy.VM) anyerror!Value {
 }
 
 pub fn eqNear(vm: *cy.VM) anyerror!Value {
-    const act = vm.getValue(0);
-    const exp = vm.getValue(1);
+    const type_id: cy.TypeId = @intCast(vm.getInt(0));
+    const act = vm.getValue(1);
+    const exp = vm.getValue(2);
 
-    const actType = act.getTypeId();
-    const expType = exp.getTypeId();
-    if (actType == expType) {
-        if (actType == bt.Float) {
-            if (std.math.approxEqAbs(f64, act.asF64(), exp.asF64(), 1e-5)) {
-                return Value.True;
-            } else {
-                rt.errFmt(vm, "actual: {} != {}\n", &.{v(act.asF64()), v(exp.asF64())});
-                return rt.prepThrowError(vm, .AssertError);
-            }
+    if (type_id == bt.Float) {
+        if (std.math.approxEqAbs(f64, act.asF64(), exp.asF64(), 1e-5)) {
+            return Value.True;
         } else {
-            rt.errFmt(vm, "Expected float, actual: {}\n", &.{v(actType)});
+            rt.errFmt(vm, "actual: {} != {}\n", &.{v(act.asF64()), v(exp.asF64())});
             return rt.prepThrowError(vm, .AssertError);
         }
     } else {
-        rt.errFmt(vm, "Types do not match:\n", &.{});
-        rt.errFmt(vm, "actual: {} != {}\n", &.{v(rt.getTypeName(vm, actType)), v(rt.getTypeName(vm, expType))});
+        rt.errFmt(vm, "Expected float, actual: {}\n", &.{v(type_id)});
         return rt.prepThrowError(vm, .AssertError);
     }
 }

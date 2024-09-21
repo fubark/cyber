@@ -5,9 +5,9 @@ t.eq(123, 234)
 --cytest: error
 --panic: error.AssertError
 --
---test:7:12 eq:
---    return eq_(typeid[T], a, b)
---           ^
+--test:8:9 eq:
+--        throw error.AssertError
+--        ^
 --main:3:3 main:
 --t.eq(123, 234)
 --  ^

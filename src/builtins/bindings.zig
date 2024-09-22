@@ -256,23 +256,26 @@ pub fn listSetIndex(vm: *cy.VM) Value {
 
 pub fn List_slice(vm: *cy.VM) anyerror!Value {
     const list = vm.getValue(0).asHeapObject();
-    const range = vm.getValue(1).castHeapObject(*cy.heap.Range);
+    const start = vm.getInt(1);
+    const end = vm.getInt(2);
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
-    if (range.start < 0) {
+    if (start < 0) {
         return error.OutOfBounds;
     }
-    if (range.end > inner.len) {
+    if (end > inner.len) {
         return error.OutOfBounds;
     }
-    if (range.end < range.start) {
+    if (end < start) {
         return error.OutOfBounds;
     }
 
-    const elems = inner.buf[@intCast(range.start)..@intCast(range.end)];
+    const elems = inner.buf[@intCast(start)..@intCast(end)];
     for (elems) |elem| {
         vm.retain(elem);
     }
-    return cy.heap.allocListDyn(vm, elems);
+
+    const list_t = vm.getValue(0).getTypeId();
+    return cy.heap.allocList(vm, list_t, elems);
 }
 
 pub fn ListValue_slice(vm: *cy.VM) anyerror!Value {

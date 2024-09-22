@@ -314,8 +314,10 @@ type OptionInfo struct:
 
     @host func $index(self, idx int) T
 
-    @host='List.$indexRange'
-    func $index(self, range Range) List[T]
+    func $slice(self, start int, end int, has_end bool) List[T]:
+        return self.slice(start, if (has_end) end else self.len())
+
+    @host -func slice(self, start int, end int) List[T]
 
     @host func $setIndex(self, idx int, val T) void
 
@@ -406,7 +408,7 @@ type Table:
 
     @host func $get(self, name String) dyn
 
-    @host func $set(self, name String, value any)
+    @host func $set(self, name String, value any) void
 
     @host func $index(self, key any) dyn
 
@@ -444,8 +446,7 @@ type String _:
     @host func $index(self, idx int) int
 
     --| Returns a slice into this string from a `Range` with `start` (inclusive) to `end` (exclusive) byte indexes.
-    @host='String.$indexRange'
-    func $index(self, range Range) String
+    @host func $slice(self, start int, end int, has_end bool) String
 
     --| Returns a new string that concats this string and `str`.
     @host func '$infix+'(self, str String) String
@@ -562,6 +563,7 @@ type String _:
 --| Converts a value to a string.
 @host func String.$call(val any) String
 
+<<<<<<< HEAD
 type StringIterator:
     str String
     idx int
@@ -580,11 +582,11 @@ type Array[N int, T type] _:
 
     @host -func indexAddr(self, n int, elem_t int, idx int) *T
 
-    -- --| Returns a slice into this array from a `Range` with `start` (inclusive) to `end` (exclusive) indexes.
-    -- func $index(self, range Range) []T:
-    --     return self.indexRange(([]T).id(), range)
+    --| Returns a slice into this array from a `Range` with `start` (inclusive) to `end` (exclusive) indexes.
+    func $slice(self, start int, end int, has_end bool) []T:
+        return self.slice(typeid[[]T], N, start, if (has_end) end else N)
 
-    -- @host -func indexRange(self, slice_t int, range Range) []T
+    @host -func slice(self, slice_t int, n int, start int, end int) []T
 
     -- @host func '$infix+'(self, o Array[#M, T]) Array[N + M, T]
 
@@ -606,16 +608,17 @@ type Array[N int, T type] _:
     -- --| Returns a new array with this array repeated `n` times.
     -- @host func repeat(self, #M int) Array[N * M, T]
 
-type pointer[T type] #int64_t:
-    func $index(self, idx int) *T:
-        return self.index(typeid[T], idx)
+@host
+type pointer[T type] _:
+    func $indexAddr(self Self, idx int) *T:
+        return self.indexAddr(typeid[T], idx)
 
-    @host -func index(self, elem_t int, idx int) *T
+    @host -func indexAddr(self Self, elem_t int, idx int) *T
 
-    func $index(self, range Range) [*]T:
-        return self.indexRange(typeid[[*]T], range)
+    func $slice(self Self, start int, end int, has_end bool) [*]T:
+        return self.slice(typeid[[*]T], start, end)
 
-    @host -func indexRange(self, slice_t int, range Range) [*]T
+    @host -func slice(self Self, slice_t int, start int, end int) [*]T
 
     func $setIndex(self Self, idx int, val T) void:
         self.setIndex(typeid[T], idx, val)
@@ -703,12 +706,12 @@ type Slice[T type]:
     ptr ^T
     n   int
 
-    func $index(self, idx int) &T:
-        return refcast(T, self.ptr[idx])
+    func $indexAddr(self Self, idx int) *T:
+        return pointer.fromRef(self.ptr)[idx]
 
-    func $index(self, range Range) []T:
-        var ptr_slice = self.ptr[range.start..range.end]
-        return .{ ptr=ptr_slice.ptr, n=ptr_slice.n }
+    -- func $index(self, range Range) []T:
+    --     var ptr_slice = self.ptr[range.start..range.end]
+    --     return .{ ptr=ptr_slice.ptr, n=ptr_slice.n }
 
     func $setIndex(self Self, idx int, val T) void:
         pointer.fromRef(self.ptr)[idx] = val
@@ -755,11 +758,11 @@ type PtrSlice[T type] struct:
     ptr *T
     n   int
 
-    func $index(self, idx int) *T:
+    func $indexAddr(self Self, idx int) *T:
         return self.ptr[idx]
 
-    func $index(self, range Range) [*]T:
-        return self.ptr[range.start..range.end]
+    func $slice(self Self, start int, end int, has_end bool) [*]T:
+        return self.ptr[start..(if (has_end) end else self.n)]
 
     func $setIndex(self Self, idx int, val T) void:
         self.ptr[idx] = val

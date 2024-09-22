@@ -51,19 +51,26 @@ pub fn sliceFn(vm: *cy.VM) Value {
     const str = obj.getSlice();
     const parent = obj.getParentByType(stype);
 
-    const range = vm.getObject(*cy.heap.Range, 1);
-    if (range.start < 0) {
+    const start = vm.getInt(1);
+    var end: i64 = undefined;
+    const has_end = vm.getBool(3);
+    if (!has_end) {
+        end = @intCast(str.len);
+    } else {
+        end = vm.getInt(2);
+    }
+    if (start < 0) {
         return rt.prepThrowError(vm, .OutOfBounds);
     }
-    if (range.end > str.len) {
+    if (end > str.len) {
         return rt.prepThrowError(vm, .OutOfBounds);
     }
-    if (range.end < range.start) {
+    if (end < start) {
         return rt.prepThrowError(vm, .OutOfBounds);
     }
 
-    const ustart: u32 = @intCast(range.start);
-    const uend: u32 = @intCast(range.end);
+    const ustart: u32 = @intCast(start);
+    const uend: u32 = @intCast(end);
     if (stype.isAstring()) {
         vm.retainObject(parent);
         return vm.allocAstringSlice(str[ustart..uend], parent) catch fatal();

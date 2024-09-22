@@ -123,7 +123,7 @@ const funcs = [_]C.HostFuncEntry{
 
     // List
     func("List.$index",      bindings.listIndex),
-    func("List.$indexRange", zErrFunc(bindings.List_slice)),
+    func("List.slice",       zErrFunc(bindings.List_slice)),
     func("List.$setIndex",   bindings.listSetIndex),
     func("List.append",      zErrFunc(bindings.listAppend)),
     func("List.appendAll",   zErrFunc(bindings.listAppendAll)),
@@ -207,7 +207,7 @@ const funcs = [_]C.HostFuncEntry{
     func("String.seek",        zErrFunc(string.seek)),
     func("String.sliceAt",     zErrFunc(string.sliceAt)),
     func("String.$index",      zErrFunc(string.runeAt)),
-    func("String.$indexRange", string.sliceFn),
+    func("String.$slice",      string.sliceFn),
     func("String.split",       zErrFunc(string.split)),
     func("String.startsWith",  string.startsWith),
     func("String.trim",        string.trim),
@@ -220,12 +220,13 @@ const funcs = [_]C.HostFuncEntry{
     // func("Array.concat",       arrayConcat),
     // func("Array.insert",       zErrFunc(arrayInsert)),
     // func("Array.repeat",       zErrFunc(arrayRepeat)),
-    func("Array.index",        zErrFunc(arrayIndex)),
-    // func("Array.indexRange",   zErrFunc(arraySlice)),
+    func("Array.indexAddr",    zErrFunc(arrayIndexAddr)),
+    func("Array.slice",        zErrFunc(array_slice)),
 
     // pointer
-    func("pointer.index",      zErrFunc(pointerIndex)),
-    func("pointer.indexRange", zErrFunc(pointerIndexRange)),
+    // func("pointer.init_",      zErrFunc(pointerInit)),
+    func("pointer.indexAddr",  zErrFunc(pointerIndexAddr)),
+    func("pointer.slice",      zErrFunc(pointer_slice)),
     func("pointer.setIndex",   zErrFunc(pointerSetIndex)),
     func("pointer.addr",       pointerAddr),
     func("pointer.asObject",   pointerAsObject),
@@ -1206,25 +1207,33 @@ fn arrayConcat(vm: *cy.VM) Value {
     return vm.allocArrayConcat(slice, rslice) catch fatal();
 }
 
-fn arraySlice(vm: *cy.VM) anyerror!Value {
-    _ = vm;
-    // const arr = vm.getObject(*cy.heap.Object, 0);
-    // const elems = arr.getElemsPtr();
-    // const slice_t: cy.TypeId = @intCast(vm.getInt(1));
+fn array_slice(vm: *cy.VM) anyerror!Value {
+    const arr = vm.getObject(*cy.heap.Object, 0);
+    const elems = arr.getValuesPtr();
+    _ = elems;
+    const slice_t: cy.TypeId = @intCast(vm.getInt(1));
+    const n: usize = @intCast(vm.getInt(2));
 
-    // const range = vm.getObject(*cy.heap.Range, 2);
-    // if (range.start < 0) {
-    //     return error.OutOfBounds;
-    // }
+    const start = vm.getInt(3);
+    if (start < 0) {
+        return error.OutOfBounds;
+    }
 
-    // if (range.end > arr.len) {
-    //     return error.OutOfBounds;
-    // }
-    // if (range.end < range.start) {
-    //     return error.OutOfBounds;
-    // }
+    const end = vm.getInt(4);
+    if (end > n) {
+        return error.OutOfBounds;
+    }
+    if (end < start) {
+        return error.OutOfBounds;
+    }
+
+    // TODO: Can only take a slice at start of array for now. Support internal references.
+    if (start != 0) {
+        return error.Unsupported;
+    }
     // const start: usize = @intCast(range.start);
-    // return vm.allocRefSlice(slice_t, elems + start, @intCast(range.end - range.start));
+    vm.retainObject(@ptrCast(arr));
+    return vm.allocRefSlice(slice_t, @ptrCast(arr), @intCast(end - start));
 }
 
 pub fn intAsIndex(i: i64, len: usize) !usize {
@@ -1299,19 +1308,19 @@ fn String_decode2(vm: *cy.VM) Value {
     }
 }
 
-fn arrayIndex(vm: *cy.VM) anyerror!Value {
+fn arrayIndexAddr(vm: *cy.VM) anyerror!Value {
     const arr = vm.getObject(*cy.heap.Object, 0);
     const n: usize = @intCast(vm.getInt(1));
     const elem_t: cy.TypeId = @intCast(vm.getInt(2));
     const idx = try intAsIndex(vm.getInt(3), n);
 
     const elems = arr.getValuesPtr();
-    if (vm.sema.isUnboxedType(elem_t)) {
+    if (!vm.c.types[elem_t].isBoxed()) {
         // Always an 8 byte stride.
         return Value.initRaw(@intFromPtr(elems + idx));
     } else {
-        const type_e = vm.c.types[elem_t];
-        const elem_size = type_e.data.struct_t.nfields;
+        const type_e = vm.getType(elem_t);
+        const elem_size = type_e.cast(.struct_t).size;
         return Value.initRaw(@intFromPtr(elems + idx * elem_size));
     }
 }
@@ -1609,32 +1618,33 @@ fn pointerAsObject(vm: *cy.VM) Value {
     return Value.initPtr(ptr);
 }
 
-fn pointerIndex(vm: *cy.VM) anyerror!Value {
+fn pointerIndexAddr(vm: *cy.VM) anyerror!Value {
     const ptr: [*]cy.Value = @ptrCast(@alignCast(vm.getPointer(0)));
     const elem_t: cy.TypeId = @intCast(vm.getInt(1));
     const idx: usize = @intCast(vm.getInt(2));
 
-    const elem_te = vm.sema.getType(elem_t);
-    if (elem_te.kind == .struct_t) {
-        const n = elem_te.data.struct_t.nfields;
-        return Value.initRaw(@intCast(@intFromPtr(ptr + idx*n)));
+    const elem_te = vm.getType(elem_t);
+    if (elem_te.kind() == .struct_t) {
+        const elem_size = elem_te.cast(.struct_t).size;
+        return Value.initRaw(@intCast(@intFromPtr(ptr + idx*elem_size)));
     } else {
         // Always an 8 byte stride.
         return Value.initRaw(@intCast(@intFromPtr(ptr + idx)));
     }
 }
 
-fn pointerIndexRange(vm: *cy.VM) anyerror!Value {
+fn pointer_slice(vm: *cy.VM) anyerror!Value {
     const ptr: [*]cy.Value = @ptrCast(@alignCast(vm.getPointer(0)));
     const slice_t: cy.TypeId = @intCast(vm.getInt(1));
-    const range = vm.getObject(*cy.heap.Range, 2);
-    if (range.end < range.start) {
+    const start = vm.getInt(2);
+    const end = vm.getInt(3);
+    if (end < start) {
         return error.InvalidArgument;
     }
-    if (range.start > 0) {
-        return vm.allocSlice(slice_t, ptr + @as(usize, @intCast(range.start)), @intCast(range.end - range.start));
+    if (start > 0) {
+        return vm.allocSlice(slice_t, ptr + @as(usize, @intCast(start)), @intCast(end - start));
     } else {
-        return vm.allocSlice(slice_t, ptr - @as(usize, @intCast(range.start)), @intCast(range.end - range.start));
+        return vm.allocSlice(slice_t, ptr - @as(usize, @intCast(start)), @intCast(end - start));
     }
 }
 

@@ -1068,49 +1068,28 @@ fn semaIndexExpr2(c: *cy.Chunk, left: ExprResult, left_n: *ast.Node, arg0: ExprR
 }
 
 fn semaSliceExpr(c: *cy.Chunk, left: *ast.Node, left_res: ExprResult, range: *ast.Range, node: *ast.Node) !ExprResult {
-    var b: ObjectBuilder = .{ .c = c };
-    try b.begin(bt.Range, 2, @ptrCast(range));
+    var start_res: ExprResult = undefined;
     if (range.start) |start| {
-        const start_res = try c.semaExprCstr(start, bt.Integer);
-        b.pushArg(start_res);
+        start_res = try c.semaExprCstr(start, c.sema.int_t);
     } else {
-        const start_res = try c.semaInt(0, @ptrCast(range));
-        b.pushArg(start_res);
+        start_res = try c.semaInt(0, @ptrCast(range));
     }
+
+    var end_res: ExprResult = undefined;
+    var has_end: ExprResult = undefined;
     if (range.end) |end| {
-        const end_res = try c.semaExprCstr(end, bt.Integer);
-        b.pushArg(end_res);
+        end_res = try c.semaExprCstr(end, c.sema.int_t);
+        has_end = try c.semaTrue(end);
     } else {
-        if (left_res.type == bt.Dyn) {
-            const len_res = try c.semaCallObjSym0(left_res.irIdx, "len", @ptrCast(range));
-            const loc = try c.ir.pushExpr(.unbox, c.alloc, bt.Integer, @ptrCast(range), .{
-                .expr = len_res.irIdx,
-            });
-            b.pushArg(ExprResult.init(loc, bt.Integer));
-        } else {
-            const recTypeSym = c.sema.getTypeSym(left_res.type);
-            const sym = try c.mustFindSym(recTypeSym, "len", @ptrCast(range));
-            const func_sym = try requireFuncSym(c, sym, @ptrCast(range));
-
-            const end_res = try c.semaCallFuncSymRec(func_sym,
-                left, left_res,
-                &.{}, .any, @ptrCast(range));
-            b.pushArg(end_res);
-        }
+        end_res = try c.semaInt(0, @ptrCast(range));
+        has_end = try c.semaFalse(@ptrCast(range));
     }
-    const range_loc = b.end();
-    const range_res = ExprResult.init(range_loc, bt.Range);
 
-    if (left_res.type == bt.Dyn) {
-        return c.semaCallObjSym2(left_res.irIdx, getBinOpName(.index), &.{range_res}, node);
-    } else {
-        const recTypeSym = c.sema.getTypeSym(left_res.type);
-        const sym = try c.mustFindSym(recTypeSym, "$index", node);
-        const func_sym = try requireFuncSym(c, sym, node);
-        return c.semaCallFuncSymRec2(func_sym,
-            left, left_res,
-            &.{range_res}, &.{@ptrCast(range)}, .any, node);
-    }
+    const sym = try c.getSymFromRecType(left_res.type, "$slice", node);
+    const func_sym = try requireFuncSym(c, sym, node);
+    return c.semaCallFuncSymRec2(func_sym,
+        left, left_res,
+        &.{start_res, end_res, has_end}, &.{@ptrCast(range), @ptrCast(range), @ptrCast(range)}, .any, node);
 }
 
 fn semaIndexExpr(c: *cy.Chunk, left: *ast.Node, left_res: ExprResult, expr: Expr) !ExprResult {

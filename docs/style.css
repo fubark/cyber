@@ -349,3 +349,7 @@ table td {
 table tbody tr:nth-child(even) {
     background-color: #111;
 }
+
+strong {
+    color: var(--accent);
+}

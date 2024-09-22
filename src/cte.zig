@@ -432,6 +432,25 @@ pub fn expandValueTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []con
     };
 }
 
+pub fn checkAndExpandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy.Value) !*cy.Type {
+    // Build args types.
+    const typeStart = c.typeStack.items.len;
+    defer c.typeStack.items.len = typeStart;
+    for (args) |arg| {
+        const arg_t = c.vm.sema.getType(arg.getTypeId());
+        try c.typeStack.append(c.alloc, arg_t);
+    }
+    const arg_types = c.typeStack.items[typeStart..];
+
+    // Check against template signature.
+    if (!cy.types.isTypeFuncSigCompat(c.compiler, arg_types, .not_void, template.sigId)) {
+        return error.SigMismatch;
+    }
+
+    const sym = try expandTemplate(c, template, args);
+    return sym.getStaticType().?;
+}
+
 pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy.Value) !*cy.Sym {
     try sema.ensureResolvedTemplate(c, template);
     

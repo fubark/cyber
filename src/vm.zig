@@ -1705,6 +1705,7 @@ pub const VM = struct {
     pub usingnamespace cy.heap.VmExt;
     pub usingnamespace cy.arc.VmExt;
     pub usingnamespace VMGetArgExt;
+    pub usingnamespace VMLibExt;
 };
 
 fn evalCompareBool(left: Value, right: Value) bool {
@@ -3755,7 +3756,185 @@ pub const VMGetArgExt = struct {
     }
 };
 
-pub fn getFuncPtrType(vm: *cy.VM, sig: cy.sema.FuncSigId) !cy.TypeId {
+pub fn getFuncPtrType(vm: *cy.VM, sig: cy.sema.FuncSigId) !*cy.Type {
     const chunk = vm.sema.func_ptr_tmpl.chunk();
     return cy.sema.getFuncPtrType(chunk, sig);
 }
+
+pub const VMLibExt = struct {
+
+    pub fn expandTemplateType(vm: *cy.VM, template: *cy.sym.Template, args: []const cy.Value) !?*cy.Type {
+        _ = vm;
+        const chunk = template.chunk();
+        return cy.cte.checkAndExpandTemplate(chunk, template, args);
+    }
+
+    pub fn newChoice(vm: *cy.VM, choice_t: *cy.Type, tag_name: []const u8, val: cy.Value) !cy.Value {
+        if (choice_t.kind() != .choice) {
+            return cy.panicFmt("Expected choice type. Found `{}`.", .{choice_t.kind()});
+        }
+
+        const sym = choice_t.sym().getMod().getSym(tag_name) orelse {
+            return cy.panicFmt("Can not find case `{s}`.", .{tag_name});
+        };
+        if (sym.type != .choice_case) {
+            return cy.panicFmt("`{s}` is not choice case.", .{tag_name});
+        }
+        const case = sym.cast(.choice_case);
+        if (case.payload_t.isVmObject()) {
+            const payload_size = case.payload_t.size();
+            const new = try vm.allocEmptyObject2(choice_t.id(), 1 + payload_size);
+            const dst = new.asHeapObject().object.getValuesPtr();
+            dst[0] = Value.initInt(@intCast(case.val));
+            @memcpy(dst[1..1+payload_size], val.asHeapObject().object.getValuesPtr()[0..payload_size]);
+            if (case.payload_t.retain_layout) |retain_layout| {
+                vm.retainLayout(dst, 1, retain_layout);
+            }
+            vm.release(val);
+            return new;
+        } else {
+            return cy.heap.allocObjectSmall(vm, choice_t.id(), &.{
+                Value.initInt(@intCast(case.val)),
+                val,
+            });
+        }
+    }
+
+    pub fn newNone(vm: *cy.VM, option_t: *cy.Type) !cy.Value {
+        const new = try vm.allocEmptyObject2(option_t.id(), option_t.size());
+        const dst = new.asHeapObject().object.getValuesPtr();
+        dst[0] = Value.initInt(0);
+        dst[1] = Value.initInt(0);
+        return new;
+    }
+
+    pub fn newSome(vm: *cy.VM, option_t: *cy.Type, val: cy.Value) !cy.Value {
+        const child_t = option_t.cast(.option).child_t;
+        const size = option_t.size();
+        const new = try vm.allocEmptyObject2(option_t.id(), size);
+        const dst = new.asHeapObject().object.getValuesPtr()[0..size];
+        dst[0] = Value.initInt(1);
+
+        if (child_t.isVmObject()) {
+            const src = val.asHeapObject().object.getValuesPtr()[0..size-1];
+            @memcpy(dst[1..], src);
+            if (child_t.retain_layout) |retain_layout| {
+                vm.retainLayout(dst.ptr, 1, retain_layout);
+            }
+            vm.release(val);
+        } else {
+            dst[1] = val;
+        }
+        return new;
+    }
+
+    pub fn newList(vm: *VM, list_t: *cy.Type, elems: []const Value) !Value {
+        return cy.heap.allocList(vm, list_t.id(), elems);
+    }
+
+    pub fn listAppend(vm: *VM, list: Value, val: Value) !void {
+        try list.asHeapObject().list.append(vm.alloc, val);
+    }
+
+    pub fn newString(vm: *VM, str: []const u8) !Value {
+        return vm.allocString(str);
+    }
+
+    pub fn newType(vm: *VM, type_: *cy.Type) !Value {
+        return vm.allocType(type_.id());
+    }
+
+    pub fn newInstance(vm: *VM, type_: *cy.Type, field_inits: []const cc.FieldInit) !Value {
+        if (type_.kind() != .struct_t) {
+            cy.panicFmt("Expected struct type. Found `{}`.", .{type_.kind()});
+        }
+
+        const struct_t = type_.cast(.struct_t);
+        const fields = struct_t.fields();
+
+        const start = vm.compiler.main_chunk.valueStack.items.len;
+        defer vm.compiler.main_chunk.valueStack.items.len = start;
+        try vm.compiler.main_chunk.valueStack.resize(vm.alloc, start + struct_t.size);
+        const args = vm.compiler.main_chunk.valueStack.items[start..];
+        @memset(args, Value.Void);
+
+        const mod = type_.sym().getMod();
+        for (field_inits) |field_init| {
+            const name = cc.fromStr(field_init.name);
+            const sym = mod.getSym(name) orelse {
+                cy.panicFmt("No such field `{s}`.", .{name});
+            };
+            if (sym.type != .field) {
+                cy.panicFmt("`{s}` is not a field.", .{name});
+                return vm.prepPanic("Not a field.");
+            }
+            const field = fields[sym.cast(.field).idx];
+            if (field.type.isVmObject()) {
+                const field_size = field.type.size();
+                const val = @as(Value, @bitCast(field_init.value));
+                const src = val.asHeapObject().object.getValuesPtr();
+                @memcpy(args[field.offset..field.offset+field_size], src[0..field_size]);
+                if (field.type.retain_layout) |layout| {
+                    vm.retainLayout(args.ptr, field.offset, layout);
+                }
+                vm.release(val);
+            } else {
+                args[field.offset] = @bitCast(field_init.value);
+            }
+        }
+
+        return vm.allocObject2(type_.id(), struct_t.size, args);
+    }
+
+    pub fn findType(vm: *cy.VM, spec: []const u8) !?*cy.Type {
+        if (vm.compiler.chunks.items.len == 0) {
+            return null;
+        }
+
+        // First check the cache.
+        if (vm.compiler.find_type_cache.get(spec)) |type_| {
+            return type_;
+        }
+
+        // Look in main first.
+        const main_mod = vm.compiler.main_chunk.sym.getMod();
+        if (main_mod.getSym(spec)) |sym| {
+            if (sym.getStaticType()) |type_| {
+                const spec_dup = try vm.alloc.dupe(u8, spec);
+                try vm.compiler.find_type_cache.put(vm.alloc, spec_dup, type_);
+                return type_;
+            }
+        }
+
+        // Look in builtins.
+        const b_mod = vm.compiler.chunks.items[0].sym.getMod();
+        if (b_mod.getSym(spec)) |sym| {
+            if (sym.getStaticType()) |type_| {
+                const spec_dup = try vm.alloc.dupe(u8, spec);
+                try vm.compiler.find_type_cache.put(vm.alloc, spec_dup, type_);
+                return type_;
+            }
+        }
+
+        // Evaluate compile-time value.
+        // Assumes that there is no dependency on api_chunk's source for subsequent use.
+        const c = vm.compiler.api_chunk;
+        vm.alloc.free(c.src);
+        c.src = try vm.alloc.dupe(u8, spec);
+        try cy.compiler.performChunkParse(vm.compiler, c);
+
+        try cy.sema.pushResolveContext(c, @ptrCast(c.ast.root.?));
+        defer cy.sema.popResolveContext(c);
+
+        const expr_stmt = c.ast.root.?.stmts[0].cast(.exprStmt);
+        const ct_expr = (try cy.cte.resolveCtExprOpt(c, expr_stmt.child)) orelse {
+            return null;
+        };
+        const res = cy.cte.deriveCtExprType2(c, ct_expr) catch {
+            return null;
+        };
+        const spec_dup = try vm.alloc.dupe(u8, spec);
+        try vm.compiler.find_type_cache.put(vm.alloc, spec_dup, res);
+        return res;
+    } 
+};

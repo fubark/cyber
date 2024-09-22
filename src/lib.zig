@@ -505,36 +505,10 @@ test "clFindType()" {
     try t.expect(vm.findType("Foo") != c.TypeNull);
 }
 
-export fn clExpandTemplateType(vm: *cy.VM, ctemplate: c.Sym, args_ptr: [*]const cy.Value, nargs: usize, res: *c.Type) bool {
-    _ = vm;
+export fn clExpandTemplateType(vm: *cy.VM, ctemplate: C.Sym, args_ptr: [*]const cy.Value, nargs: usize) ?*cy.Type {
     const template = cy.Sym.fromC(ctemplate).cast(.template);
     const args = args_ptr[0..nargs];
-    const type_id = clExpandTemplateType2(template, args) catch |err| {
-        log.tracev("{}", .{err});
-        return false;
-    };
-    res.* = type_id;
-    return true;
-}
-
-fn clExpandTemplateType2(template: *cy.sym.Template, args: []const cy.Value) !cy.TypeId {
-    const chunk = template.chunk();
-
-    // Build args types.
-    const typeStart = chunk.typeStack.items.len;
-    defer chunk.typeStack.items.len = typeStart;
-    for (args) |arg| {
-        try chunk.typeStack.append(chunk.alloc, arg.getTypeId());
-    }
-    const arg_types = chunk.typeStack.items[typeStart..];
-
-    // Check against template signature.
-    if (!cy.types.isTypeFuncSigCompat(chunk.compiler, @ptrCast(arg_types), .not_void, template.sigId)) {
-        return error.SigMismatch;
-    }
-
-    const sym = try cy.cte.expandTemplate(chunk, template, args);
-    return sym.getStaticType().?;
+    return vm.expandTemplateType(template, args) catch @panic("error");
 }
 
 export fn clRelease(vm: *cy.VM, val: Value) void {
@@ -589,16 +563,16 @@ export fn clNewInt(vm: *cy.VM, n: i64) Value {
     return vm.allocInt(n) catch fatal();
 }
 
-export fn clNewString(vm: *cy.VM, cstr: c.Str) Value {
-    return vm.allocString(c.fromStr(cstr)) catch fatal();
+export fn clNewString(vm: *cy.VM, cstr: C.Str) Value {
+    return vm.newString(C.fromStr(cstr)) catch fatal();
 }
 
-export fn clNewAstring(vm: *cy.VM, cstr: c.Str) Value {
-    return vm.retainOrAllocAstring(c.fromStr(cstr)) catch fatal();
+export fn clNewAstring(vm: *cy.VM, cstr: C.Str) Value {
+    return vm.retainOrAllocAstring(C.fromStr(cstr)) catch fatal();
 }
 
-export fn clNewUstring(vm: *cy.VM, cstr: c.Str) Value {
-    return vm.retainOrAllocUstring(c.fromStr(cstr)) catch fatal();
+export fn clNewUstring(vm: *cy.VM, cstr: C.Str) Value {
+    return vm.retainOrAllocUstring(C.fromStr(cstr)) catch fatal();
 }
 
 export fn clNewTuple(vm: *cy.VM, ptr: [*]const Value, len: usize) Value {
@@ -685,44 +659,15 @@ export fn clNewHostObjectPtr(vm: *cy.VM, typeId: cy.TypeId, size: usize) *anyopa
     return cy.heap.allocHostObject(vm, typeId, size) catch cy.fatal();
 }
 
-export fn clNewInstance(vm: *cy.VM, type_id: cy.TypeId, fields: [*]const c.FieldInit, nfields: usize) cy.Value {
-    const type_e = vm.c.types[type_id];
-    if (type_e.kind != .object and type_e.kind != .struct_t) {
-        cy.panicFmt("Expected object or struct type. Found `{}`.", .{type_e.kind});
-    }
-
-    const start = vm.compiler.main_chunk.valueStack.items.len;
-    defer vm.compiler.main_chunk.valueStack.items.len = start;
-    const total_fields = if (type_e.kind == .object) type_e.data.object.numFields else type_e.data.struct_t.nfields;
-    vm.compiler.main_chunk.valueStack.resize(vm.alloc, start + total_fields) catch cy.fatal();
-    const args = vm.compiler.main_chunk.valueStack.items[start..];
-    @memset(args, Value.Void);
-
-    const mod = type_e.sym.getMod().?;
-    for (fields[0..nfields]) |field| {
-        const name = c.fromStr(field.name);
-        const sym = mod.getSym(name) orelse {
-            cy.panicFmt("No such field `{s}`.", .{name});
-        };
-        if (sym.type != .field) {
-            cy.panicFmt("`{s}` is not a field.", .{name});
-            return vm.prepPanic("Not a field.");
-        }
-        args[sym.cast(.field).idx] = @bitCast(field.value);
-    }
-
-    if (args.len <= 4) {
-        return cy.heap.allocObjectSmall(vm, type_id, args) catch cy.fatal();
-    } else {
-        return cy.heap.allocObject(vm, type_id, args) catch cy.fatal();
-    }
+export fn clNewInstance(vm: *cy.VM, type_: *cy.Type, fields: [*]const C.FieldInit, nfields: usize) cy.Value {
+    return vm.newInstance(type_, fields[0..nfields]) catch @panic("error");
 }
 
 test "clNewInstance()" {
-    const vm = c.create();
+    const vm = C.create();
     defer vm.destroy();
 
-    var res: c.Value = undefined;
+    var res: C.Value = undefined;
     vm.evalMust( 
         \\type Foo:
         \\    a int
@@ -1030,11 +975,11 @@ export fn clListInsert(vm: *cy.VM, list: Value, idx: usize, val: Value) void {
 
 export fn clListAppend(vm: *cy.VM, list: Value, val: Value) void {
     vm.retain(val);
-    return list.asHeapObject().list.append(vm.alloc, val) catch cy.fatal();
+    vm.listAppend(list, val) catch cy.fatal();
 }
 
 test "List ops." {
-    const vm = c.create();
+    const vm = C.create();
     defer vm.destroy();
 
     var list: C.Value = undefined;

@@ -875,7 +875,12 @@ fn reserveSyms(self: *Compiler, core_sym: *cy.sym.Chunk) !void{
                         trait_t.members_len = @intCast(members.len);
                     },
                     .enumDecl => {
-                        _ = try sema.reserveEnum(chunk, node.cast(.enumDecl));
+                        const decl = node.cast(.enumDecl);
+                        if (decl.isChoiceType) {
+                            _ = try sema.reserveChoice(chunk, node.cast(.enumDecl));
+                        } else {
+                            _ = try sema.reserveEnum(chunk, node.cast(.enumDecl));
+                        }
                     },
                     .typeAliasDecl => {
                         _ = try sema.reserveTypeAlias(chunk, node.cast(.typeAliasDecl));

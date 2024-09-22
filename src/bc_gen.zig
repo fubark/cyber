@@ -223,8 +223,8 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
         .typeAlias,
         .distinct_t,
         .placeholder,
-        .enum_t,
-        .enumMember,
+        .enum_case,
+        .choice_case,
         .use_alias,
         .module_alias => {},
         else => {

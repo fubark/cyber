@@ -229,9 +229,17 @@ pub const ChunkExt = struct {
         sym.params = params;
     } 
 
-    pub fn declareEnumMember(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, typeId: types.TypeId,
-        is_choice_type: bool, val: u32, payloadType: cy.TypeId, decl: *ast.EnumMember) !*cy.sym.EnumMember {
-        const sym = try c.createEnumMember(parent, name, typeId, is_choice_type, val, payloadType);
+    pub fn declareEnumCase(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, type_: *cy.Type,
+        val: u32, decl: *ast.EnumMember) !*cy.sym.EnumCase {
+        const sym = try c.createEnumCase(parent, name, type_, val);
+        const mod = parent.getMod().?;
+        try addUniqueSym(c, mod, name, @ptrCast(sym), @ptrCast(decl));
+        return sym;
+    }
+
+    pub fn declareChoiceCase(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, type_: *cy.Type,
+        val: u32, payload_t: *cy.Type, decl: *ast.Node) !*cy.sym.ChoiceCase {
+        const sym = try c.createChoiceCase(parent, name, type_, val, payload_t);
         const mod = parent.getMod().?;
         try addUniqueSym(c, mod, name, @ptrCast(sym), @ptrCast(decl));
         return sym;
@@ -503,8 +511,8 @@ pub const ChunkExt = struct {
             .func_template,
             .template,
             .placeholder,
-            .dummy_t,
-            .enumMember => {
+            .choice_case,
+            .enum_case => {
                 return sym;
             },
             .module_alias => {
@@ -579,7 +587,8 @@ pub const ChunkExt = struct {
             .use_alias,
             .module_alias,
             .typeAlias,
-            .enumMember => {
+            .choice_case,
+            .enum_case => {
                 return sym;
             },
             .func => {

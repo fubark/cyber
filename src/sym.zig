@@ -21,8 +21,8 @@ pub const SymType = enum(u8) {
     module_alias,
     use_alias,
     chunk,
-    enum_t,
-    enumMember,
+    enum_case,
+    choice_case,
     typeAlias,
 
     /// Unresolved distinct type.
@@ -162,8 +162,14 @@ pub const Sym = extern struct {
                 }
                 alloc.destroy(placeholder);
             },
-            .null,
-            .enumMember,
+            .enum_case => {
+                const impl = self.cast(.enum_case);
+                alloc.destroy(impl);
+            },
+            .choice_case => {
+                const impl = self.cast(.choice_case);
+                alloc.destroy(impl);
+            },
             .field => {
                 const impl = self.cast(.field);
                 alloc.destroy(impl);
@@ -225,7 +231,8 @@ pub const Sym = extern struct {
             .template,
             .distinct_t,
             .field,
-            .enumMember,
+            .enum_case,
+            .choice_case,
             .placeholder,
             .chunk => {
                 return false;
@@ -262,7 +269,8 @@ pub const Sym = extern struct {
             .func_template   => return @ptrCast(&self.cast(.func_template).mod),
             .use_alias,
             .module_alias,
-            .enumMember,
+            .enum_case,
+            .choice_case,
             .func,
             .context_var,
             .userVar,
@@ -302,41 +310,8 @@ pub const Sym = extern struct {
             .field,
             .func_template,
             .template,
-            .enumMember,
-            .func,
-            .module_alias,
-            .chunk,
-            .context_var,
-            .hostVar,
-            .userVar         => return null,
-        }
-    }
-
-    pub fn getFields(self: *Sym) ?[]const FieldInfo {
-        switch (self.type) {
-            .enum_t          => {
-                const enum_t = self.cast(.enum_t);
-                if (enum_t.isChoiceType) {
-                    return &[_]FieldInfo{
-                        .{ .sym = undefined, .type = bt.Integer, .offset = 0 },
-                        .{ .sym = undefined, .type = bt.Any, .offset = 0 }
-                    };
-                }
-                return null;
-            },
-            .struct_t        => return self.cast(.struct_t).getFields(),
-            .object_t        => return self.cast(.object_t).getFields(),
-            .type,
-            .placeholder,
-            .typeAlias,
-            .use_alias,
-            .trait_t,
-            .hostobj_t,
-            .null,
-            .field,
-            .func_template,
-            .template,
-            .enumMember,
+            .enum_case,
+            .choice_case,
             .func,
             .module_alias,
             .chunk,
@@ -397,10 +372,8 @@ fn SymChild(comptime symT: SymType) type {
         .userVar => UserVar,
         .hostVar => HostVar,
         .type => TypeSym,
-        .trait_t => TraitType,
-        .hostobj_t => HostObjectType,
-        .enum_t => EnumType,
-        .enumMember => EnumMember,
+        .enum_case => EnumCase,
+        .choice_case => ChoiceCase,
         .typeAlias => TypeAlias,
         .distinct_t => DistinctType,
         .template => Template,
@@ -805,67 +778,17 @@ pub const TypeSym = extern struct {
     }
 };
 
-pub const EnumType = extern struct {
+pub const EnumCase = extern struct {
     head: Sym,
-    decl: *ast.EnumDecl,
-    type: cy.TypeId,
-    member_ptr: [*]*EnumMember,
-    member_len: u32,
-    mod: vmc.Module,
-
-    variant: ?*Variant,
-
-    isChoiceType: bool,
-
-    pub fn deinit(self: *EnumType, alloc: std.mem.Allocator) void {
-        self.getMod().deinit(alloc);
-        for (self.members()) |m| {
-            alloc.destroy(m);
-        }
-    }
-
-    pub fn isResolved(self: *EnumType) bool {
-        return self.member_len != 0;
-    }
-
-    pub fn getValueSym(self: *EnumType, val: u16) *EnumMember {
-        return self.member_ptr[val];
-    }
-
-    pub fn getMod(self: *EnumType) *cy.Module {
-        return @ptrCast(&self.mod);
-    }
-
-    pub fn getMemberByIdx(self: *EnumType, idx: u32) *EnumMember {
-        return self.member_ptr[idx];
-    }
-
-    pub fn members(self: *EnumType) []*EnumMember {
-        return self.member_ptr[0..self.member_len];
-    }
-
-    pub fn getMember(self: *EnumType, name: []const u8) ?*EnumMember {
-        const mod = self.head.getMod().?;
-        if (mod.getSym(name)) |res| {
-            if (res.type == .enumMember) {
-                return res.cast(.enumMember);
-            }
-        }
-        return null;
-    }
-
-    pub fn getMemberTag(self: *EnumType, name: []const u8) ?u32 {
-        const member = self.getMember(name) orelse return null;
-        return member.val;
-    }
+    type: *cy.Type,
+    val: u32,
 };
 
-pub const EnumMember = extern struct {
+pub const ChoiceCase = extern struct {
     head: Sym,
-    type: cy.TypeId,
+    type: *cy.Type,
     val: u32,
-    payloadType: cy.Nullable(cy.TypeId),
-    is_choice_type: bool,
+    payload_t: *cy.Type,
 };
 
 pub const ModuleAlias = extern struct {
@@ -984,12 +907,9 @@ pub const ChunkExt = struct {
             .context_var => return sym.cast(.context_var).type,
             .userVar    => return sym.cast(.userVar).type,
             .hostVar    => return sym.cast(.hostVar).type,
-            .enumMember => {
-                const member = sym.cast(.enumMember);
-                if (member.payloadType != cy.NullId and member.is_choice_type) {
-                    return null;
-                }
-                return member.type;
+            .enum_case => return null,
+            .choice_case => {
+                return sym.cast(.choice_case).type;
             },
             .use_alias  => return getSymValueType(c, sym.cast(.use_alias).sym),
             .type,
@@ -1065,36 +985,25 @@ pub const ChunkExt = struct {
         return sym;
     }
 
-    pub fn createBoolType(c: *cy.Chunk, parent: *Sym, name: []const u8, opt_type_id: ?cy.TypeId) !*TypeSym {
-        const type_id = opt_type_id orelse try c.sema.pushType();
-        const sym = try createSym(c.alloc, .type, .{
-            .head = Sym.init(.type, parent, name),
-            .type = type_id,
-            .mod = undefined,
-            .variant = null,
+    pub fn createEnumCase(c: *cy.Chunk, parent: *Sym, name: []const u8, type_: *cy.Type, val: u32) !*EnumCase {
+        const sym = try createSym(c.alloc, .enum_case, .{
+            .head = Sym.init(.enum_case, parent, name),
+            .type = type_,
+            .val = val,
         });
         try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
     }
 
-    pub fn createField(c: *cy.Chunk, parent: *Sym, name: []const u8, idx: usize, typeId: cy.TypeId) !*Field {
-        const sym = try createSym(c.alloc, .field, .{
-            .head = Sym.init(.field, parent, name),
-            .idx = @intCast(idx),
-            .type = typeId,
-        });
-        return sym;
-    }
-
-    pub fn createEnumMember(c: *cy.Chunk, parent: *Sym, name: []const u8, typeId: cy.TypeId,
-        is_choice_type: bool, val: u32, payloadType: cy.TypeId) !*EnumMember {
-        const sym = try createSym(c.alloc, .enumMember, .{
-            .head = Sym.init(.enumMember, parent, name),
-            .type = typeId,
+    pub fn createChoiceCase(c: *cy.Chunk, parent: *Sym, name: []const u8, type_: *cy.Type,
+        val: u32, payload_t: *cy.Type) !*ChoiceCase {
+        const sym = try createSym(c.alloc, .choice_case, .{
+            .head = Sym.init(.choice_case, parent, name),
+            .type = type_,
             .val = val,
-            .payloadType = payloadType,
-            .is_choice_type = is_choice_type,
+            .payload_t = payload_t,
         });
+        try c.syms.append(c.alloc, @ptrCast(sym));
         return sym;
     }
 

@@ -729,10 +729,10 @@ export fn clUnwrapChoice(vm: *cy.VM, choice: cy.Value, name: C.Str) cy.Value {
     const sym = type_e.sym().getMod().getSym(zname) orelse {
         return cy.panicFmt("Can not find case `{s}`.", .{zname});
     };
-    if (sym.type != .enumMember) {
+    if (sym.type != .choice_case) {
         return cy.panicFmt("`{s}` is not choice case.", .{zname});
     }
-    const case = sym.cast(.enumMember);
+    const case = sym.cast(.choice_case);
 
     const active_tag = choice.asHeapObject().object.getValue(0).asInt();
     if (active_tag != case.val) {

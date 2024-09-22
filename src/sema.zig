@@ -678,7 +678,7 @@ fn semaIfUnwrapStmt2(c: *cy.Chunk, opt: ExprResult, opt_n: *ast.Node, opt_unwrap
                 } else {
                     return c.reportErrorFmt("Unsupported unwrap declaration: {}", &.{v(unwrap.type())}, unwrap);
                 }
-                const unwrap_init = try semaAccessEnumPayload(c, get_opt, "some", unwrap);
+                const unwrap_init = try semaAccessChoicePayload(c, get_opt, "some", unwrap);
                 const unwrap_v = try declareLocalInit(c, unwrap_name, unwrap_t, unwrap_init, unwrap);
                 const unwrap_local = try semaLocal(c, unwrap_v.id, unwrap);
 
@@ -1144,28 +1144,24 @@ fn semaAccessField(c: *cy.Chunk, rec_n: *ast.Node, rec: ExprResult, field: *ast.
     return semaAccessFieldName(c, rec_n, rec, name, field);
 }
 
-fn semaAccessEnumPayload(c: *cy.Chunk, rec: ExprResult, name: []const u8, node: *ast.Node) !ExprResult {
-    if (rec.type == bt.Dyn) {
-        const loc = try c.ir.pushExpr(.fieldDyn, c.alloc, bt.Any, node, .{
+fn semaAccessChoicePayload(c: *cy.Chunk, rec: ExprResult, name: []const u8, node: *ast.Node) !ExprResult {
+    if (rec.type.id() == bt.Dyn) {
+        const loc = try c.ir.pushExpr(.fieldDyn, c.alloc, c.sema.any_t, node, .{
             .name = name,
             .rec = rec.irIdx,
         });
-        return ExprResult.initCustom(loc, .fieldDyn, bt.Dyn, undefined);
+        return ExprResult.initCustom(loc, .fieldDyn, c.sema.dyn_t, undefined);
     }
-    const type_sym = c.sema.getTypeSym(rec.type);
-    const sym = type_sym.getMod().?.getSym(name) orelse {
-        const type_name = type_sym.name();
-        return c.reportErrorFmt("Enum member `{}` does not exist in `{}`.", &.{v(name), v(type_name)}, node);
+    const sym = rec.type.sym().getMod().getSym(name) orelse {
+        return c.reportErrorFmt("Choice case `{}` does not exist in `{}`.", &.{v(name), v(rec.type.name())}, node);
     };
-    if (sym.type != .enumMember) {
-        const type_name = type_sym.name();
-        return c.reportErrorFmt("Enum `{}` does not have a member named `{}`.", &.{v(type_name), v(name)}, node);
+    if (sym.type != .choice_case) {
+        return c.reportErrorFmt("Choice `{}` does not have a case named `{}`.", &.{v(rec.type.name()), v(name)}, node);
     }
-    const payload_t = sym.cast(.enumMember).payloadType;
+    const payload_t = sym.cast(.choice_case).payload_t;
     const loc = try c.ir.pushExpr(.field, c.alloc, payload_t, node, .{
         .idx = 1,
         .rec = rec.irIdx,
-        .parent_t = rec.type,
     });
     return ExprResult.initCustom(loc, .field, payload_t, undefined);
 }
@@ -1635,48 +1631,138 @@ pub fn declareModuleAlias(c: *cy.Chunk, node: *ast.ImportStmt) !void {
     });
 }
 
-pub fn reserveEnum(c: *cy.Chunk, node: *ast.EnumDecl) !*cy.sym.EnumType {
-    const name = c.ast.nodeString(node.name);
-    const sym = try c.reserveEnumType(@ptrCast(c.sym), name, node.isChoiceType, node);
-    if (node.isChoiceType) {
-        _ = try c.reserveEnumType(@ptrCast(sym), "Tag", false, node);
+pub fn reserveEnum(c: *cy.Chunk, decl: *ast.EnumDecl) !*cy.sym.TypeSym {
+    const name = c.ast.nodeString(decl.name);
+
+    var opt_out_type: ?**cy.Type = null;
+    const type_id = try resolveTypeIdFromDecl(c, name, &.{}, &opt_out_type, @ptrCast(decl));
+    const new_t = try c.sema.createTypeWithId(.enum_t, type_id, .{});
+    const sym = try c.reserveTypeSym(@ptrCast(c.sym), name, new_t, @ptrCast(decl));
+    if (opt_out_type) |out_type| {
+        out_type.* = new_t;
     }
     return sym;
 }
 
-pub fn resolveEnumType(c: *cy.Chunk, sym: *cy.sym.EnumType, decl: *ast.EnumDecl) !void {
-    if (sym.variant != null) {
-        try pushVariantResolveContext(c, sym.variant.?, @ptrCast(decl));
+pub fn reserveChoice(c: *cy.Chunk, decl: *ast.EnumDecl) !*cy.sym.TypeSym {
+    const name = c.ast.nodeString(decl.name);
+
+    var opt_out_type: ?**cy.Type = null;
+    const type_id = try resolveTypeIdFromDecl(c, name, &.{}, &opt_out_type, @ptrCast(decl));
+    const new_t = try c.sema.createTypeWithId(.choice, type_id, .{});
+    const sym = try c.reserveTypeSym(@ptrCast(c.sym), name, new_t, @ptrCast(decl));
+    if (opt_out_type) |out_type| {
+        out_type.* = new_t;
+    }
+
+    const tag_t = try c.sema.createType(.enum_t, .{});
+    _ = try c.reserveTypeSym(@ptrCast(sym), "Tag", tag_t, @ptrCast(decl));
+
+    return sym;
+}
+
+pub fn resolveEnumType(c: *cy.Chunk, enum_t: *cy.types.Enum, decl: *ast.EnumDecl) !void {
+    const sym = enum_t.base.sym();
+    if (sym.variant) |variant| {
+        try pushVariantResolveContext(c, variant, @ptrCast(decl));
     } else {
         try pushResolveContext(c, @ptrCast(decl));
     }
     defer popResolveContext(c);
 
-    try declareEnumMembers(c, sym, decl);
+    try declareEnumCases(c, enum_t, decl);
+}
 
-    if (sym.isChoiceType) {
-        const tag_sym = sym.getMod().getSym("Tag").?.cast(.enum_t);
-        try declareEnumMembers(c, tag_sym, decl);
+pub fn resolveChoiceType(c: *cy.Chunk, choice_t: *cy.types.Choice, decl: *ast.EnumDecl) !void {
+    const sym = choice_t.base.sym();
+    if (sym.variant) |variant| {
+        try pushVariantResolveContext(c, variant, @ptrCast(decl));
+    } else {
+        try pushResolveContext(c, @ptrCast(decl));
+    }
+    defer popResolveContext(c);
+
+    try declareChoiceCases(c, choice_t, decl);
+
+    const tag_t = sym.getMod().getSym("Tag").?.cast(.type).type;
+    try declareEnumCases(c, tag_t.cast(.enum_t), decl);
+}
+
+pub fn declareChoiceCases(c: *cy.Chunk, choice_t: *cy.types.Choice, decl: *ast.EnumDecl) !void {
+    if (choice_t.isResolved()) {
+        return;
+    }
+
+    var max_payload_size: usize = 0;
+    var max_payload_t: *cy.Type = c.sema.void_t;
+
+    var retain_cases: std.ArrayListUnmanaged(?cy.types.RetainCase) = .{};
+    defer retain_cases.deinit(c.alloc);
+    var has_retain_case = false;
+
+    const cases = try c.alloc.alloc(*cy.sym.ChoiceCase, decl.members.len);
+    for (decl.members, 0..) |member, i| {
+        const mName = c.ast.nodeString(member.name);
+        var payload_t: *cy.Type = undefined;
+        if (member.typeSpec != null) {
+            payload_t = try resolveTypeSpecNode(c, member.typeSpec);
+            try ensureCompleteType(c, payload_t, @ptrCast(member.typeSpec));
+        } else {
+            payload_t = c.sema.void_t;
+            try ensureCompleteType(c, payload_t, member.name);
+        }
+
+        const payload_size = payload_t.size();
+        if (payload_size > max_payload_size) {
+            max_payload_size = payload_size;
+            max_payload_t = payload_t;
+        }
+
+        cases[i] = try c.declareChoiceCase(@ptrCast(choice_t.base.sym()), mName, @ptrCast(choice_t), @intCast(i), payload_t, @ptrCast(member));
+
+        if (payload_t.retain_layout) |layout| {
+            try retain_cases.append(c.alloc, cy.types.RetainCase{
+                .layout = layout,
+            });
+            has_retain_case = true;
+        } else if (payload_t.isBoxed()) {
+            try retain_cases.append(c.alloc, cy.types.RetainCase{
+                .layout = null,
+            });
+            has_retain_case = true;
+        } else {
+            try retain_cases.append(c.alloc, null);
+        }
+    }
+    choice_t.cases_ptr = cases.ptr;
+    choice_t.cases_len = @intCast(cases.len);
+    choice_t.size = @intCast(1 + max_payload_size);
+    choice_t.fields_arr[0] = .{ .sym = undefined, .type = c.sema.int_t, .offset = 0 };
+    choice_t.fields_arr[1] = .{ .sym = undefined, .type = max_payload_t, .offset = 1 };
+
+    if (has_retain_case) {
+        const layout = try c.alloc.create(cy.types.RetainLayout);
+        const cases_ = try retain_cases.toOwnedSlice(c.alloc);
+        layout.* = .{ .kind = .union_k, .data = .{ .union_k = .{
+            .ptr = cases_.ptr,
+            .len = cases_.len,
+        }}};
+        choice_t.base.retain_layout = layout;
     }
 }
 
 /// Explicit `decl` node for distinct type declarations. Must belong to `c`.
-pub fn declareEnumMembers(c: *cy.Chunk, sym: *cy.sym.EnumType, decl: *ast.EnumDecl) !void {
-    if (sym.isResolved()) {
+pub fn declareEnumCases(c: *cy.Chunk, enum_t: *cy.types.Enum, decl: *ast.EnumDecl) !void {
+    if (enum_t.isResolved()) {
         return;
     }
-    const members = try c.alloc.alloc(*cy.sym.EnumMember, decl.members.len);
+    const cases = try c.alloc.alloc(*cy.sym.EnumCase, decl.members.len);
     for (decl.members, 0..) |member, i| {
         const mName = c.ast.nodeString(member.name);
-        var payloadType: cy.TypeId = bt.Void;
-        if (sym.isChoiceType and member.typeSpec != null) {
-            payloadType = try resolveTypeSpecNode(c, member.typeSpec);
-        }
-        const modSymId = try c.declareEnumMember(@ptrCast(sym), mName, sym.type, sym.isChoiceType, @intCast(i), payloadType, member);
-        members[i] = modSymId;
+        cases[i] = try c.declareEnumCase(@ptrCast(enum_t.base.sym()), mName, @ptrCast(enum_t), @intCast(i), member);
     }
-    sym.member_ptr = members.ptr;
-    sym.member_len = @intCast(members.len);
+    enum_t.cases_ptr = cases.ptr;
+    enum_t.cases_len = @intCast(cases.len);
 }
 
 /// Only allows binding a predefined host type id (BIND_TYPE_DECL).
@@ -3156,16 +3242,16 @@ fn callSym(c: *cy.Chunk, sym: *Sym, symNode: *ast.Node, args: []*ast.Node, cstr:
         .template => {
             return callNamespaceSym(c, sym, symNode, args, cstr.ret, node);
         },
-        .enumMember => {
-            const member = sym.cast(.enumMember);
-            if (member.payloadType == cy.NullId) {
+        .choice_case => {
+            const case = sym.cast(.choice_case);
+            if (case.payload_t == c.sema.void_t) {
                 return c.reportErrorFmt("Can not initialize choice member without a payload type.", &.{}, symNode);
             }
             if (args.len != 1) {
                 return c.reportErrorFmt("Expected only one payload argument for choice initializer. Found `{}`.", &.{v(args.len)}, symNode);
             }
-            const payload = try c.semaExprCstr(args[0], member.payloadType);
-            return semaInitChoice(c, member, payload, symNode);
+            const payload = try c.semaExprCstr(args[0], case.payload_t);
+            return semaInitChoice(c, case, payload, symNode);
         },
         .userVar,
         .hostVar => {
@@ -3225,17 +3311,17 @@ pub fn symbol(c: *cy.Chunk, sym: *Sym, expr: Expr, prefer_ct_sym: bool) !ExprRes
             const loc = try c.ir.pushExpr(.type, c.alloc, c.sema.type_t, node, .{ .type = static_t });
             return ExprResult.init(loc, c.sema.type_t);
         },
-        .enumMember => {
-            const member = sym.cast(.enumMember);
-            if (member.is_choice_type) {
-                return semaInitChoiceNoPayload(c, member, node);
-            } else {
-                const irIdx = try c.ir.pushExpr(.enumMemberSym, c.alloc, member.type, node, .{
-                    .type = member.type,
-                    .val = @as(u8, @intCast(member.val)),
-                });
-                return ExprResult.init(irIdx, member.type);
-            }
+        .choice_case => {
+            const case = sym.cast(.choice_case);
+            return semaInitChoiceNoPayload(c, case, node);
+        },
+        .enum_case => {
+            const case = sym.cast(.enum_case);
+            const irIdx = try c.ir.pushExpr(.enumMemberSym, c.alloc, case.type, node, .{
+                .type = case.type,
+                .val = @as(u8, @intCast(case.val)),
+            });
+            return ExprResult.init(irIdx, case.type);
         },
         .chunk,
         .func_template,
@@ -4271,10 +4357,8 @@ const SwitchInfo = struct {
             .target = target,
         };
 
-        if (info.exprTypeSym.type == .enum_t) {
-            if (info.exprTypeSym.cast(.enum_t).isChoiceType) {
-                info.exprIsChoiceType = true;
-            }
+        if (info.exprType.kind() == .choice) {
+            info.exprIsChoiceType = true;
         }
         return info;
     }
@@ -4514,18 +4598,18 @@ fn semaSwitchCase(c: *cy.Chunk, info: SwitchInfo, case: *ast.CaseBlock) !u32 {
     return irIdx;
 }
 
-fn semaCaseCond(c: *cy.Chunk, info: SwitchInfo, conds_loc: u32, cond: *ast.Node, cond_idx: usize) !?cy.TypeId {
+fn semaCaseCond(c: *cy.Chunk, info: SwitchInfo, conds_loc: u32, cond: *ast.Node, cond_idx: usize) !?*cy.Type {
     if (info.exprIsChoiceType) {
         if (cond.type() == .dot_lit) {
-            if (info.exprTypeSym.type != .enum_t) {
-                const type_name = info.exprTypeSym.name();
+            if (info.exprType.kind() != .choice) {
+                const type_name = info.exprType.name();
                 return c.reportErrorFmt("Can only match symbol literal for an enum type. Found `{}`.", &.{v(type_name)}, cond);
             }
             const name = c.ast.nodeString(cond);
-            if (info.exprTypeSym.cast(.enum_t).getMember(name)) |member| {
-                const condRes = try c.semaInt(member.val, cond);
+            if (info.exprType.cast(.choice).getCase(name)) |case| {
+                const condRes = try c.semaInt(case.val, cond);
                 c.ir.setArrayItem(conds_loc, u32, cond_idx, condRes.irIdx);
-                return member.payloadType;
+                return case.payload_t;
             } else {
                 const targetTypeName = info.exprTypeSym.name();
                 return c.reportErrorFmt("`{}` is not a member of `{}`", &.{v(name), v(targetTypeName)}, cond);
@@ -4786,34 +4870,23 @@ pub const ChunkExt = struct {
                 }
                 return error.TODO;
             },
-            .enum_t => {
-                return c.reportErrorFmt("Only enum members can be used as initializers.", &.{}, node.left);
+            .enum_case => {
+                const desc = try c.encoder.allocFmt(c.alloc, node.left);
+                defer c.alloc.free(desc);
+                return c.reportErrorFmt("Can not initialize `{}`. It is not a choice type.", &.{v(desc)}, node.left);
             },
-            .enumMember => {
-                const member = sym.cast(.enumMember);
-                const enumSym = member.head.parent.?.cast(.enum_t);
-                // Check if enum is choice type.
-                if (!enumSym.isChoiceType) {
-                    const desc = try c.encoder.allocFmt(c.alloc, node.left);
-                    defer c.alloc.free(desc);
-                    return c.reportErrorFmt("Can not initialize `{}`. It is not a choice type.", &.{v(desc)}, node.left);
+            .choice_case => {
+                const case = sym.cast(.choice_case);
+                if (case.payload_t.id() == bt.Void) {
+                    return c.reportErrorFmt("Expected choice case with a payload type.", &.{}, node.left);
                 }
-
-                if (member.payloadType == cy.NullId) {
-                    return c.reportErrorFmt("Expected enum member with a payload type.", &.{}, node.left);
+                if (case.payload_t.kind() == .struct_t) {
+                    const struct_t = case.payload_t.cast(.struct_t);
+                    const payload = try c.semaObjectInit2(struct_t, null, node.init);
+                    return semaInitChoice(c, case, payload, expr.node);
                 } else {
-                    if (c.sema.isUserObjectType(member.payloadType)) {
-                        const obj = c.sema.getTypeSym(member.payloadType).cast(.object_t);
-                        const payload = try c.semaObjectInit2(obj, node.init);
-                        return semaInitChoice(c, member, payload, expr.node);
-                    } else if (c.sema.isStructType(member.payloadType)) {
-                        const struct_t = c.sema.getTypeSym(member.payloadType).cast(.struct_t);
-                        const payload = try c.semaObjectInit2(struct_t, node.init);
-                        return semaInitChoice(c, member, payload, expr.node);
-                    } else {
-                        const payloadTypeName = c.sema.getTypeBaseName(member.payloadType);
-                        return c.reportErrorFmt("The payload type `{}` can not be initialized with key value pairs.", &.{v(payloadTypeName)}, node.left);
-                    }
+                    const payloadTypeName = case.payload_t.name();
+                    return c.reportErrorFmt("The payload type `{}` can not be initialized with key value pairs.", &.{v(payloadTypeName)}, node.left);
                 }
             },
             .template => {
@@ -5326,14 +5399,14 @@ pub const ChunkExt = struct {
                         return ExprResult.init(irIdx, c.sema.symbol_t);
                     },
                     else => {
-                        if (c.sema.isEnumType(expr.target_t)) {
-                            const sym = c.sema.getTypeSym(expr.target_t).cast(.enum_t);
-                            if (sym.getMemberTag(name)) |tag| {
-                                const irIdx = try c.ir.pushExpr(.enumMemberSym, c.alloc, expr.target_t, node, .{
-                                    .type = expr.target_t,
+                        if (target_t.kind() == .enum_t) {
+                            const enum_t = target_t.cast(.enum_t);
+                            if (enum_t.getCaseTag(name)) |tag| {
+                                const irIdx = try c.ir.pushExpr(.enumMemberSym, c.alloc, target_t, node, .{
+                                    .type = target_t,
                                     .val = @as(u8, @intCast(tag)),
                                 });
-                                return ExprResult.init(irIdx, expr.target_t);
+                                return ExprResult.init(irIdx, target_t);
                             }
                         }
                     }
@@ -6640,29 +6713,29 @@ fn semaWithInitPairs(c: *cy.Chunk, shape_t: *cy.Type, res_t: *cy.Type, init_n: *
     }
     const stmtBlock = try popBlock(c);
     c.ir.getExprDataPtr(expr, .blockExpr).bodyHead = stmtBlock.first;
-    return ExprResult.init(expr, type_id);
+    return ExprResult.init(expr, res_t);
 }
 
-fn semaInitChoice(c: *cy.Chunk, member: *cy.sym.EnumMember, payload: ExprResult, node: *ast.Node) !ExprResult {
+fn semaInitChoice(c: *cy.Chunk, case: *cy.sym.ChoiceCase, payload: ExprResult, node: *ast.Node) !ExprResult {
     var b: ObjectBuilder = .{ .c = c };
-    try b.begin(member.type, 2, node);
-    const tag = try c.semaInt(member.val, node);
+    try b.begin(case.type, 2, node);
+    const tag = try c.semaInt(case.val, node);
     b.pushArg(tag);
     b.pushArg(payload);
     const irIdx = b.end();
-    return ExprResult.init(irIdx, member.type);
+    return ExprResult.init(irIdx, case.type);
 }
 
-fn semaInitChoiceNoPayload(c: *cy.Chunk, member: *cy.sym.EnumMember, node: *ast.Node) !ExprResult {
+fn semaInitChoiceNoPayload(c: *cy.Chunk, case: *cy.sym.ChoiceCase, node: *ast.Node) !ExprResult {
     // No payload type.
     var b: ObjectBuilder = .{ .c = c };
-    try b.begin(member.type, 2, node);
-    const tag = try c.semaInt(member.val, node);
+    try b.begin(case.type, 2, node);
+    const tag = try c.semaInt(case.val, node);
     b.pushArg(tag);
-    const payload = try c.semaZeroInit(bt.Any, node);
+    const payload = try c.semaZeroInit(c.sema.any_t, node);
     b.pushArg(payload);
     const irIdx = b.end();
-    return ExprResult.init(irIdx, member.type);
+    return ExprResult.init(irIdx, case.type);
 }
 
 fn semaStructCompare(c: *cy.Chunk, left: ExprResult, left_id: *ast.Node, op: cy.BinaryExprOp,

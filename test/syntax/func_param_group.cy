@@ -6,7 +6,7 @@ func sum(a, b, c int) int:
 
 test.eq(sum(1, 2, 3), 6)
 
-func compute(a, b int, c, d String) int:
+func compute(a, b int, c, d string) int:
     return a + b + c.len() + d.len()
 
 test.eq(compute(1, 2, 'abc', 'xyz'), 9)
@@ -18,7 +18,7 @@ type T:
     func sum(self, a, b, c int) int:
         return self.i + a + b + c
 
-    func compute(self, a, b int, c, d String) int:
+    func compute(self, a, b int, c, d string) int:
         return self.i + a + b + c.len() + d.len()
 
 var o = T{i=10}
@@ -31,7 +31,7 @@ var sum_fn = func(a, b, c int) int:
 
 test.eq(sum_fn(1, 2, 3), 6)
 
-var compute_fn = func(a, b int, c, d String) int:
+var compute_fn = func(a, b int, c, d string) int:
     return a + b + c.len() + d.len()
 
 test.eq(compute_fn(1, 2, 'abc', 'xyz'), 9)

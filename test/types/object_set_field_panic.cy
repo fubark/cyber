@@ -7,7 +7,7 @@ var o = S{a=123}
 o.a = foo()
 
 --cytest: error
---panic: Expected type `float`, found `String`.
+--panic: Expected type `float`, found `string`.
 --
 --main:7:7 main:
 --o.a = foo()

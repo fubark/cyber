@@ -1,6 +1,6 @@
 use test
 
-type S struct(a int, b String)
+type S struct(a int, b string)
 
 var s = S{123, 'abc'}
 test.eq(s.a, 123)
@@ -19,11 +19,11 @@ test.eq(s.a, 234)
 test.eq(s.b, 'xyz')
 
 -- Struct tuple with functions.
-type S2 struct(a int, b String):
+type S2 struct(a int, b string):
     func foo(self):
         pass
 
-type O(a int, b String)
+type O(a int, b string)
 
 var o = O{123, 'abc'}
 test.eq(o.a, 123)
@@ -42,7 +42,7 @@ test.eq(o.a, 234)
 test.eq(o.b, 'xyz')
 
 -- Object tuple with functions.
-type O2(a int, b String):
+type O2(a int, b string):
     func foo(self):
         pass
 

@@ -3427,7 +3427,7 @@ pub fn semaList(c: *cy.Chunk, list_t: *cy.Type, args_loc: usize, nargs: usize, n
 pub fn semaStringTemplate(c: *cy.Chunk, template: *ast.StringTemplate) !ExprResult {
     const nexprs = template.parts.len / 2;
 
-    // strs as List[String]
+    // strs as List[string]
     const nstrs = nexprs+1;
     const strs_loc = try c.ir.pushEmptyArray(c.alloc, u32, nstrs);
     for (0..nexprs+1) |i| {

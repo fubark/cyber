@@ -1,12 +1,12 @@
 use test
 
 dyn a = 123
-var b String = a
+var b string = a
 
 --cytest: error
---panic: Expected type `String`, found `int`.
+--panic: Expected type `string`, found `int`.
 --
 --main:4:16 main:
---var b String = a
+--var b string = a
 --               ^
 --

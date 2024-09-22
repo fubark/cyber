@@ -12,9 +12,9 @@ var POST_HEADER = '''
 
 var .args = os.parseArgs(.{
     -- Output cy path.
-    { name='o', type=String, default='bindings.cy' },
-    { name='libpath', type=String, default='lib.dll' },
-    { name='stripPrefix', type=String, default='DONT_MATCH' },
+    { name='o', type=string, default='bindings.cy' },
+    { name='libpath', type=string, default='lib.dll' },
+    { name='stripPrefix', type=string, default='DONT_MATCH' },
 })
 
 var existingLibPath = false
@@ -96,7 +96,7 @@ for funcs -> fn:
     var finalParams = List[dyn]{}
     for fn.params as List[dyn] -> param:
         param = ensureBindType(param)
-        if type(param) == String:
+        if type(param) == string:
             finalParams.append(getApiName(param))
         else:
             finalParams.append(param as symbol)
@@ -107,7 +107,7 @@ for funcs -> fn:
         out += "    ffi_.cfunc('${fn.name}', .{${finalParams.join(', ')}}, ${finalRet})\n"
 var libPath = if (existingLibPath) 'libPath' else "'${args['libpath']}'"
 out += "    ffi = ffi_\n"
-out += "    var lib = ffi.bindLib(Option[String].some(${libPath}))\n"
+out += "    var lib = ffi.bindLib(Option[string].some(${libPath}))\n"
 out += "    return lib\n\n"
 
 -- Generate macros.
@@ -135,8 +135,8 @@ var .funcs = List[dyn]{}
 -- var .arrays = List[dyn]{}     -- [n]typeName -> true
 -- var vars = List[dyn]{}            -- varName -> bindingType
 
-func getTranslationUnit(headerPath String) dyn:
-    var rest = (args.rest as List[String])[3..]
+func getTranslationUnit(headerPath string) dyn:
+    var rest = (args.rest as List[string])[3..]
 
     var cargs = os.malloc(8 * rest.len())
     for rest -> arg, i:
@@ -149,8 +149,8 @@ func getTranslationUnit(headerPath String) dyn:
         -- clang.CXTranslationUnit_DetailedPreprocessingRecord | clang.CXTranslationUnit_SkipFunctionBodies | clang.CXTranslationUnit_SingleFileParse)
         clang.CXTranslationUnit_DetailedPreprocessingRecord | clang.CXTranslationUnit_SkipFunctionBodies | clang.CXTranslationUnit_KeepGoing)
 
-func getMacrosTranslationUnit(hppPath String) dyn:
-    var rest = (args.rest as List[String])[3..]
+func getMacrosTranslationUnit(hppPath string) dyn:
+    var rest = (args.rest as List[string])[3..]
 
     var cargs = os.malloc(8 * rest.len())
     for rest -> arg, i:
@@ -381,7 +381,7 @@ func enumVisitor(cursor, parent, state dyn) dyn:
     out += "var .${getApiName(name)} int = ${val}\n"
     return clang.CXChildVisit_Continue
 
-func genMacros(headerPath String):
+func genMacros(headerPath string):
     var absPath = os.realPath(headerPath)
 
     var hpp = ''
@@ -488,7 +488,7 @@ func macrosRootVisitor(cursor, parent, state dyn) dyn:
                 var initT = state.data['type']
 
                 dyn struct = getStruct(initT)
-                var kvs = List[String]{}
+                var kvs = List[string]{}
                 for struct.fieldNames as List[dyn] -> fieldn, i:
                     kvs.append("${fieldn}=${state.data['args'][i]}")
                 out += "var .${finalName} ${initT} = ${initT}{${kvs.join(', ')}}\n"
@@ -504,9 +504,9 @@ func macrosRootVisitor(cursor, parent, state dyn) dyn:
         case clang.CXEval_StrLiteral:
             dyn strz = clang.EvalResult_getAsStr(eval)
             var str = strz.fromCstr(0)
-            out += "var .${finalName} String = \"${str}\"\n"
+            out += "var .${finalName} string = \"${str}\"\n"
         else:
-            print String(kind)
+            print string(kind)
             throw error.Unsupported
 
         clang.EvalResult_dispose(eval)
@@ -515,7 +515,7 @@ func macrosRootVisitor(cursor, parent, state dyn) dyn:
         throw error.Unsupported
     return clang.CXChildVisit_Continue
 
-func fromCXString(cxStr clang.CXString) String:
+func fromCXString(cxStr clang.CXString) string:
     dyn cname = clang.getCString(cxStr)
     return cname.fromCstr(0)
 
@@ -552,7 +552,7 @@ func ensureBindType(val any) dyn:
         return val
     else type(val) == BindArray:
         return val
-    else type(val) == String:
+    else type(val) == string:
         if aliases.contains(val):
             var og = aliases[val]
             if type(og) == symbol:
@@ -636,15 +636,15 @@ type BindArray:
     elem dyn
     n    int
 
-func toBindStr(bind_type dyn) String:
-    if type(bind_type) == String:
+func toBindStr(bind_type dyn) string:
+    if type(bind_type) == string:
         return getApiName(bind_type)
     else type(bind_type) == BindArray:
         return "os.CArray{n=${bind_type.n}, elem=${toBindStr(bind_type.elem)}}"
     else:
         return "${bind_type}"
 
-func getApiName(name String) String:
+func getApiName(name string) string:
     if name.startsWith(args['stripPrefix']):
         name = name[args['stripPrefix'].len()..]
     if name.startsWith('_'):

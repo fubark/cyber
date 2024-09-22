@@ -1,12 +1,12 @@
 use test
 
-def GetType[ID String] type:
+def GetType[ID string] type:
     if ID == 'bool':
         return bool
     else ID == 'int':
         return int
-    else ID == 'String':
-        return String
+    else ID == 'string':
+        return string
     else:
         throw error.Unsupported
 

@@ -166,13 +166,13 @@ if (!cy.isWasm) {
     // // Failed to cast to abstract type at runtime.
     // try eval(.{ .silent = true },
     //     \\let a = 123
-    //     \\print(a as String)
+    //     \\print(a as string)
     // , struct { fn func(run: *VMrunner, res: EvalResult) !void {
     //     try run.expectErrorReport(res, error.Panic,
-    //         \\panic: Can not cast `int` to `String`.
+    //         \\panic: Can not cast `int` to `string`.
     //         \\
     //         \\main:2:9 main:
-    //         \\print(a as String)
+    //         \\print(a as string)
     //         \\        ^
     //         \\
     //     );

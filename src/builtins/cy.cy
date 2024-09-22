@@ -6,8 +6,8 @@ var .ErrorPanic   int = 3
 var .TypeVoid     int = 0
 
 --| Evaluates source code in an isolated VM.
---| If the last statement is an expression, a primitive or a String can be returned.
-func eval(src String) any:
+--| If the last statement is an expression, a primitive or a string can be returned.
+func eval(src string) any:
     var vm = VM.new()  
     var res = vm.eval(src)
     if res.code != Success:
@@ -28,10 +28,10 @@ type ParseResult:
 
 --| Parses Cyber source string into a structured map object.
 --| Currently, only metadata about static declarations is made available but this will be extended to include an AST.
-@host func parse(src String) ParseResult
+@host func parse(src string) ParseResult
 
 --| Starts an isolated REPL session.
---| The callback `read_line(prefix String) String` is responsible for obtaining the input.
+--| The callback `read_line(prefix string) string` is responsible for obtaining the input.
 func repl(read_line any) void:
     var ctx = REPL.new()
     ctx.printIntro()
@@ -62,18 +62,18 @@ type Backend enum:
     value Value
 
 @host type Value _:
-    @host func dump(self) String
+    @host func dump(self) string
     @host func getTypeId(self) int
     @host func toHost(self) any
 
 @host type VM _:
-    @host func eval(self, code String) EvalResult
+    @host func eval(self, code string) EvalResult
 
     @host='VM.eval2'
-    func eval(self, uri String, code String, config EvalConfig) EvalResult
+    func eval(self, uri string, code string, config EvalConfig) EvalResult
 
-    @host func getErrorSummary(self) String
-    @host func getPanicSummary(self) String
+    @host func getErrorSummary(self) string
+    @host func getPanicSummary(self) string
 
 --| Create an isolated VM.
 @host func VM.new() VM
@@ -83,17 +83,17 @@ type REPL:
     indent int
 
     -- Build multi-line input.
-    input_buffer String
+    input_buffer string
 
     func printIntro(self):
         print "${#build_full_version} REPL"
         print "Commands: .exit"
 
-    func read(self, read_line dyn) ?String:
+    func read(self, read_line dyn) ?string:
         while:
             var prefix = self.getPrefix()
             var str_or_future = read_line(prefix)
-            var input = (await str_or_future) as String
+            var input = (await str_or_future) as string
 
             if input == '.exit':
                 return none
@@ -121,7 +121,7 @@ type REPL:
                 self.input_buffer += input
                 continue
 
-    func evalPrint(self, code String) void:
+    func evalPrint(self, code string) void:
         var res = self.vm.eval(code)
         if res.code != Success:
             if res.code == ErrorCompile:
@@ -137,7 +137,7 @@ type REPL:
         if res.value.getTypeId() != TypeVoid:
             print res.value.dump()
 
-    func getPrefix(self) String:
+    func getPrefix(self) string:
         var head = if (self.indent == 0) '> ' else '| '
         var s = ' '.repeat(self.indent * 4)
         return s + head

@@ -1,6 +1,6 @@
 use os 'os'
 
-var libPath ?String = none
+var libPath ?string = none
 if os.system == 'macos':
   -- rdynamic doesn't work atm for MacOS.
   libPath = 'test/ffi/macos_lib.dylib'

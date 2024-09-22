@@ -158,7 +158,7 @@ test "ARC assignments." {
         \\var a = {'abc'}
         \\var b = 'xyz'
         \\a[0] = b
-        \\t.eq(type(a[0]), String)
+        \\t.eq(type(a[0]), string)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
         _ = try res.getValue();
         const trace = run.getTrace();

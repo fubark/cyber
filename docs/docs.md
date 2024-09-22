@@ -162,7 +162,7 @@ var b int = 123.0    --> CompileError. Expected `int`, got `float`.
 
 Any operation afterwards that violates the type constraint of the variable will result in a compile error
 ```cy
-a = 'hello'          --> CompileError. Expected `float`, got `String`.
+a = 'hello'          --> CompileError. Expected `float`, got `string`.
 ```
 
 ### Variable scopes.
@@ -459,7 +459,7 @@ The following shows the zero values of builtin or created types:
 |`boolean`|`false`|
 |`int`|`0`|
 |`float`|`0.0`|
-|`String`|`''`|
+|`string`|`''`|
 |`List[T]`|`List[T]{}`|
 |`Map`|`Map{}`|
 |`type S`|`S{}`|
@@ -473,14 +473,14 @@ The `as` keyword can be used to cast a value to a specific type. Casting lets th
 
 If the compiler knows the cast will always fail at runtime, a compile error is returned instead.
 ```cy
-print('123' as int)       --> CompileError. Can not cast `String` to `int`.
+print('123' as int)       --> CompileError. Can not cast `string` to `int`.
 ```
 
 If the cast fails at runtime, a panic is returned.
 ```cy
 var erased any = 123
 add(1, erased as int)     --> Success.
-print(erased as String)   --> panic: Can not cast `int` to `String`.
+print(erased as string)   --> panic: Can not cast `int` to `string`.
 
 func add(a int, b int):
     return a + b
@@ -613,7 +613,7 @@ var b = float(a)
 > _Planned Feature_
 
 ## Strings.
-The `String` type represents a sequence of UTF-8 codepoints. Each code point is stored internally as 1-4 bytes. See [`type String`](#type-string).
+The `string` type represents a sequence of UTF-8 codepoints. Each code point is stored internally as 1-4 bytes. See [`type string`](#type-string).
 
 Strings are not validated by default. If the codepoint is invalid at a particular index, the replacement character (0xFFFD) is returned instead.
 
@@ -700,7 +700,7 @@ print a[1]          --> 65533
 Since indexing operates at the byte level, it should not be relied upon for iterating runes or rune indexing.
 However, if the string is known to only contain ASCII runes (each rune occupies one byte), indexing will return the expected rune.
 
-`String.seek` will always return the correct byte index for a rune index:
+`string.seek` will always return the correct byte index for a rune index:
 ```cy
 var a = '🐶abcxyz'
 print a.seek(2)         --> 5
@@ -788,21 +788,21 @@ type Option[T type] enum:
 ```
 A type prefixed with `?` is the idiomatic way to create an option type. The following String optional types are equivalent:
 ```cy
-Option[String]
-?String
+Option[string]
+?string
 ```
 
 ### Wrap value.
 A value is automatically wrapped into the inferred optional's `some` case:
 ```cy
-var a ?String = 'abc'
+var a ?string = 'abc'
 print a     --> some(abc)'
 ```
 
 ### Wrap `none`.
 `none` is automatically initialized to the inferred optional's `none` case:
 ```cy
-var a ?String = none
+var a ?string = none
 print a     --> none
 ```
 
@@ -872,7 +872,7 @@ print root?.a?.b?.c?.last
 ### `if` unwrap.
 The `if` statement can be amended to unwrap an optional value using the capture `->` operator:
 ```cy
-var opt ?String = 'abc'
+var opt ?string = 'abc'
 if opt -> v:
     print v     -- Prints 'abc'
 ```
@@ -1182,7 +1182,7 @@ All fields have public visibility. However, when a field is declared with a `-` 
 type Info:
     a       int
     -b      int
-    -secret String
+    -secret string
 ```
 
 ### Default field values.
@@ -1192,7 +1192,7 @@ var node Node = .{value=234}
 print node.next    --> Option.none
 
 type Student:
-    name String
+    name string
     age  int
     gpa  float
 
@@ -1576,9 +1576,9 @@ type MyContainer[T type]:
 ### Expand type template.
 When the type template is invoked with template argument(s), a special version of the type is generated.
 
-In this example, `String` can be used as an argument since it satisfies the `type` parameter constraint:
+In this example, `string` can be used as an argument since it satisfies the `type` parameter constraint:
 ```cy
-var a MyContainer[String] = .{id=123, value='abc'}
+var a MyContainer[string] = .{id=123, value='abc'}
 print a.get()      -- Prints 'abc'
 ```
 Note that invoking the template again with the same argument(s) returns the same generated type. In other words, the generated type is always memoized from the input parameters.
@@ -2210,10 +2210,10 @@ type IntMap[K type, HASH func(K) int]
         var slot = HASH(key) % self.ints.len
         return self.ints[slot]
 
-func my_str_hash(s String) int:
+func my_str_hash(s string) int:
     return s.len()
 
-var m = IntMap[String, my_str_hash]{}
+var m = IntMap[string, my_str_hash]{}
 ```
 
 ## Parameter groups.
@@ -2259,7 +2259,7 @@ r = foo()         -- Calls the function `random`.
 ### Call block syntax.
 The call block appends a lambda to a call expression's last argument:
 ```cy
-func Button(name String, size int, on_click func() void) ButtonConfig:
+func Button(name string, size int, on_click func() void) ButtonConfig:
     return .{
         name = name,
         size = size,
@@ -2361,7 +2361,7 @@ func set[K, V](m Map[K, V], key K, val V):
   * [`type Table`](#type-table)
   * [`type Map`](#type-map)
   * [`type MapIterator`](#type-mapiterator)
-  * [`type String`](#type-string)
+  * [`type string`](#type-string)
   * [`type Array`](#type-array)
   * [`type ArrayIterator`](#type-arrayiterator)
   * [`type pointer`](#type-pointer)
@@ -2622,8 +2622,8 @@ for map -> {k, v}:
 ### `Table ArgOption`
 | key | summary |
 | -- | -- |
-| `'name' -> String` | The name of the option to match excluding the hyphen prefix. eg. `-path` |
-| `'type' -> metatype(String | float | boolean)` | Parse as given value type. |
+| `'name' -> string` | The name of the option to match excluding the hyphen prefix. eg. `-path` |
+| `'type' -> metatype(string | float | boolean)` | Parse as given value type. |
 | `'default' -> any` | Optional: Default value if option is missing. `none` is used if this is not provided. |
 
 ## `mod test`
@@ -3033,7 +3033,7 @@ Futures can hold a result value when they are completed:
 use aio
 
 var f = aio.readFile('foo.txt')
-print f          --> Future(String)
+print f          --> Future(string)
 ```
 
 Futures can be created with a completed value:
@@ -3345,7 +3345,7 @@ Read more about how to use [Tables](#tables).
 
 ## Dynamic inference.
 When the inference tag is used in a dynamic context, it will attempt to resolve its value at runtime.
-In this example, the dynamic value `a` resolves to a `String` at runtime and invokes the typed method `trim`.
+In this example, the dynamic value `a` resolves to a `string` at runtime and invokes the typed method `trim`.
 `.left` then infers to the correct value at runtime:
 ```cy
 print str.trim(.left, ' ')
@@ -3489,7 +3489,7 @@ var m = MyMap{a=123, b=234}
 The `$get` method allows overriding field accesses for **undeclared fields**:
 ```cy
 type Foo:
-    func $get(self, name String):
+    func $get(self, name string):
         return name.len()
 
 var f = Foo{}
@@ -3501,7 +3501,7 @@ print f.hello    --> 5
 The `$set` method allows overriding field assignments for **undeclared fields**:
 ```cy
 type Foo:
-    func $set(self, name String, value any):
+    func $set(self, name string, value any):
         print "setting ${name} ${value}"
 
 var f = Foo{}
@@ -3546,13 +3546,13 @@ See [Type Declarations / Type templates](#type-templates) and [Functions / Funct
 ### Value templates.
 A value template returns a memoized value after being invoked with template arguments at compile-time. It's declared with `def`:
 ```cy
-def StrType[ID String] type:
+def StrType[ID string] type:
     if ID == 'bool':
         return bool
     else ID == 'int':
         return int
-    else ID == 'String':
-        return String
+    else ID == 'string':
+        return string
     else
         throw error.Unsupported
 
@@ -3588,18 +3588,18 @@ Builtin types are used internally by the compiler to define it's own primitive t
 >
 
 ### Builtin functions.
-> `func genLabel(name String)`
+> `func genLabel(name string)`
 >
 >Emits a label during codegen for debugging.
 
 ### Builtin constants.
-> `var modUri String`
+> `var modUri string`
 >
 >Evaluates to the module's URI as a string. See [Module URI](#module-uri).
 
 ## Runtime execution.
 `cy.eval` evaluates source code in an isolated VM.
-If the last statement is an expression, a primitive or String can be returned to the caller:
+If the last statement is an expression, a primitive or string can be returned to the caller:
 ```cy
 use cy
 
@@ -4041,7 +4041,7 @@ print a    --> 123
 ```
 In this case, there is nothing to deinitialize since the value is an integer.
 
-If the value was a `String`, the deinit logic would release (-1) on a reference counted byte buffer since strings are just immutable views over byte buffers:
+If the value was a `string`, the deinit logic would release (-1) on a reference counted byte buffer since strings are just immutable views over byte buffers:
 ```cy
 var a = 'hello'
 print a    --> hello
@@ -4101,7 +4101,7 @@ By default, a declared value type is copyable if all of it's members are also co
 ```cy
 type Foo struct:
     a int
-    b String
+    b string
 
 var a = Foo{a=123, b='hello'}
 var b = a
@@ -4112,7 +4112,7 @@ Since integers and strings are both copyable, `Foo` is also copyable.
 ```cy
 type Foo struct:
     a int
-    b String
+    b string
     c ListValue[int]
 
 var a = Foo{a=123, b='hello'}
@@ -4123,7 +4123,7 @@ var b = a      --> error: Can not copy `Foo`. Can only be moved.
 ```cy
 type Foo struct:
     a int
-    b String
+    b string
     c *Bar
     d [*]float
 ```
@@ -4133,7 +4133,7 @@ type Foo struct:
 type Foo struct:
     with Copyable
     a int
-    b String
+    b string
     c *Bar
     d [*]float
 
@@ -4151,7 +4151,7 @@ Likewise, `Foo` can implement `NonCopyable` which indicates that it can never be
 type Foo struct:
     with NonCopyable
     a int
-    b String
+    b string
 ```
 
 ### Cloning.
@@ -4172,7 +4172,7 @@ A value type can implement `Cloneable` to override the default behavior and defi
 type Foo struct:
     with Cloneable
     a int
-    b String
+    b string
 
     func clone(self) Foo:
         return .{
@@ -4186,7 +4186,7 @@ Likewise, `Foo` can implement `NonCloneable` which indicates that it can never b
 type Foo struct:
     with NonCloneable
     a int
-    b String
+    b string
 ```
 
 ### Moving.

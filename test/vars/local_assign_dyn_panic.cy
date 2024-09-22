@@ -5,7 +5,7 @@ var b = ''
 b = a
 
 --cytest: error
---panic: Expected type `String`, found `int`.
+--panic: Expected type `string`, found `int`.
 --
 --main:5:5 main:
 --b = a

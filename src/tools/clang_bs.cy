@@ -300,5 +300,5 @@ func load(dummy any) Map:
 
     ffi = ffi_
 
-    return ffi.bindLib(Option[String].some('libclang.dylib'))
+    return ffi.bindLib(Option[string].some('libclang.dylib'))
     -- return ffi.bindLib('/Library/Developer/CommandLineTools/usr/lib/libclang.dylib')

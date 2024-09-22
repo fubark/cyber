@@ -1,6 +1,6 @@
 type Choice enum:
     case A int
-    case B String
+    case B string
 
 var c = Choice.A(123)
 c.A

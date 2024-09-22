@@ -3,14 +3,14 @@ use t 'test'
 -- Get runtime type.
 t.eq(type(123), int)
 dyn a = 'abc'
-t.eq(type(a), String)
+t.eq(type(a), string)
 
 -- id() for builtin types.
 t.eq((any).id(), 10)
 t.eq((bool).id(), 2)
 t.eq((float).id(), 8)
 t.eq((int).id(), 7)
-t.eq((String).id(), 21)
+t.eq((string).id(), 21)
 t.eq((symbol).id(), 6)
 t.eq((Map).id(), 15)
 t.eq((error).id(), 3)
@@ -87,18 +87,18 @@ t.eq(struct_t.fields[0].type, int)
 t.eq(struct_t.fields[1].name, 'b')
 t.eq(struct_t.fields[1].type, float)
 
-type FnPtr -> func(int, float) String
+type FnPtr -> func(int, float) string
 var func_t = typeInfo(FnPtr).!func_t
 t.eq(func_t.kind, .ptr)
-t.eq(func_t.ret, String)
+t.eq(func_t.ret, string)
 t.eq(func_t.params.len(), 2)
 t.eq(func_t.params[0].type, int)
 t.eq(func_t.params[1].type, float)
 
-type FnUnion -> Func(int, float) String
+type FnUnion -> Func(int, float) string
 func_t = typeInfo(FnUnion).!func_t
 t.eq(func_t.kind, .union)
-t.eq(func_t.ret, String)
+t.eq(func_t.ret, string)
 t.eq(func_t.params.len(), 2)
 t.eq(func_t.params[0].type, int)
 t.eq(func_t.params[1].type, float)

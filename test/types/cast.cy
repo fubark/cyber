@@ -16,8 +16,8 @@ func foo2(a Foo) bool:
 
 -- Cast to exact string type.
 a = 'abc'
-t.eq(foo3(a as String), true)
-func foo3(a String) bool:
+t.eq(foo3(a as string), true)
+func foo3(a string) bool:
     return true
 
 -- Cast to abstract any type.

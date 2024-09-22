@@ -40,7 +40,7 @@ func eqNear[T](a T, b T) bool:
 func fail():
     throw error.AssertError
 
-func fail(msg String):
+func fail(msg string):
     eprint(msg)
     throw error.AssertError
 

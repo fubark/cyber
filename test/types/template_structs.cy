@@ -25,7 +25,7 @@ type Foo[T type] struct:
 test.eq(Foo[int].foo(123), 123)
 
 -- Infer decl type.
-var f = Foo[String]{a='abc'}
+var f = Foo[string]{a='abc'}
 test.eq(f.a, 'abc')
 
 -- Reassign with infer record syntax.
@@ -33,7 +33,7 @@ f = .{a='xyz'}
 test.eq(f.a, 'xyz')
 
 -- Declare with type spec.
-var f2 Foo[String] = .{a='abc'}
+var f2 Foo[string] = .{a='abc'}
 test.eq(f2.a, 'abc')
 
 -- Different variant.

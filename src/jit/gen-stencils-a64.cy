@@ -48,7 +48,7 @@ if codeBuf == false:
 var llSymIter = llvm.ObjectFileCopySymbolIterator(llBin)
 
 type Sym:
-    name String
+    name string
     addr int
 
 -- First pass accumulates the unordered symbols.
@@ -84,7 +84,7 @@ for syms -> sym, i:
     -- Skip ltmp0.
     if len == 0: continue 
 
-    var bin = (codeBuf as String)[sym.addr..sym.addr+len] 
+    var bin = (codeBuf as string)[sym.addr..sym.addr+len] 
 
     -- Remove ending continuation branch.
     if bin[bin.len()-4..].getInt32(0, .little) == 0x14000000:

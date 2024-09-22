@@ -538,7 +538,7 @@ pub fn split(vm: *cy.VM) anyerror!Value {
     const parent = obj.getParentByType(stype);
     const delim = vm.getString(1);
 
-    const list_t = (try vm.findType("List[String]")).?;
+    const list_t = (try vm.findType("List[string]")).?;
     const res = try vm.allocEmptyList(list_t.id());
     if (delim.len == 0) {
         return res;

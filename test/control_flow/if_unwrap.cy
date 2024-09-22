@@ -1,6 +1,6 @@
 use test
 
-var opt ?String = 'abc'
+var opt ?string = 'abc'
 var unwrapped = ''
 if opt -> v:
     unwrapped = v

@@ -12,7 +12,7 @@ use os
 use md '../src/tools/md4c.cy'
 
 var args = os.parseArgs(.{
-    { name='version', type=String, default='DEV' },
+    { name='version', type=string, default='DEV' },
     { name='import-style', type=bool, default=false },
 })
 
@@ -45,7 +45,7 @@ if res != 0:
     print "parse error: ${res}"
     os.exit(1)
 
-var tocLinksHtml = List[String]{}
+var tocLinksHtml = List[string]{}
 for tocLinks -> link:
     tocLinksHtml.append("<li><a href=\"${link.href}\">${link.text}</a></li>")
 
@@ -97,7 +97,7 @@ hljs.registerLanguage('cy', function() {
             'true', 'false', 'none', 'throw', 'try', 'catch', 'recover', 'enum', 'type', 'case', 'trait'
         ],
         type: [
-            'float', 'String', 'Array', 'bool', 'any', 'int', 'List', 'Map', 'symbol', 'dyn'
+            'float', 'string', 'Array', 'bool', 'any', 'int', 'List', 'Map', 'symbol', 'dyn'
         ],
     },
     contains: [
@@ -154,9 +154,9 @@ type State enum:
     case html
 
 type Link:
-    href  String
-    title String
-    text  String
+    href  string
+    title string
+    text  string
 
 func resetState():
     state = State.main
@@ -377,20 +377,20 @@ func text(text_t md.SPANTYPE, ptr *void, len int, userdata *void) int:
         out += str
     return 0
 
-func getAttrText(attr dyn) String:
+func getAttrText(attr dyn) string:
     if attr.size == 0:
         return ''
     return (attr.text as *void).getString(0, attr.size)
 
 type ModulePair:
-    path    String
-    section String
+    path    string
+    section string
 
-func genFuncDecl(decl Map) String:
+func genFuncDecl(decl Map) string:
     if (decl['hidden']): return ''
     
     var docLine = decl.get('docs') ?else ''
-    var params = List[String]{}
+    var params = List[string]{}
     for (decl['params'] as List[Map]) -> param:
         if param['typeSpec'] != '':
             params.append("${param['name']} ${param['typeSpec']}")
@@ -428,7 +428,7 @@ func genDocsModules():
 
     os.writeFile("${curDir}/docs-modules.md", md)
 
-func genDecl(decl Map) String:
+func genDecl(decl Map) string:
     var gen = ''
     switch decl['type']
     case 'funcDecl':

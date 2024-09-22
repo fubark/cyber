@@ -2,7 +2,7 @@ use test
 
 type Choice enum:
     case A int
-    case B String
+    case B string
 
 dyn c = Choice.A(123)
 var a = c.A

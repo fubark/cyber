@@ -6,7 +6,7 @@ var ffi = os.newFFI()
 dyn lib = try ffi.bindLib('xyz123.so')
 t.eq(lib, error.FileNotFound)
 
-var libPath ?String = none
+var libPath ?string = none
 if os.system == 'macos':
     -- rdynamic doesn't work atm for MacOS.
     libPath = 'test/ffi/macos_lib.dylib'

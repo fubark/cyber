@@ -1,5 +1,5 @@
 --| The current cpu arch's tag name.
-@host var .cpu String
+@host var .cpu string
 
 --| The current arch's endianness: .little, .big
 @host var .endian symbol
@@ -14,57 +14,57 @@
 @host var .stdout File
 
 --| The current operating system's tag name.
-@host var .system String
+@host var .system string
 
 --| Default SIMD vector bit size.
 @host var .vecBitSize int
 
 --| Attempts to access a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.
 --| Throws an error if unsuccessful.
-@host func access(path String, mode symbol) void
+@host func access(path string, mode symbol) void
 
---| Returns the command line arguments in a `List[String]`.
-@host func args() List[String]
+--| Returns the command line arguments in a `List[string]`.
+@host func args() List[string]
 
 --| Returns the path of a locally cached file of `url`.
 --| If no such file exists locally, it's fetched from `url`.
-@host func cacheUrl(url String) String
+@host func cacheUrl(url string) string
 
 --| Copies a file to a destination path.
-@host func copyFile(srcPath String, dstPath String) void
+@host func copyFile(srcPath string, dstPath string) void
 
 --| Creates the directory at `path`. Returns `true` if successful.
-@host func createDir(path String) void
+@host func createDir(path string) void
 
 --| Creates and opens the file at `path`. If `truncate` is true, an existing file will be truncated.
-@host func createFile(path String, truncate bool) File
+@host func createFile(path string, truncate bool) File
 
 --| Returns a null terminated C string.
-@host func cstr(s String) *void
+@host func cstr(s string) *void
 
 --| Returns the current working directory.
-@host func cwd() String
+@host func cwd() string
 
 --| Returns the given path with its last component removed.
-@host func dirName(path String) ?String
+@host func dirName(path string) ?string
 
 --| Runs a shell command and returns the stdout/stderr.
-@host func execCmd(args List[String]) Map
+@host func execCmd(args List[string]) Map
 
 --| Returns the current executable's path.
-@host func exePath() String
+@host func exePath() string
 
 --| Exits the program with a status code.
 @host func exit(status int) void
 
 --| Fetches the contents at `url` using the HTTP GET request method.
-@host func fetchUrl(url String) String
+@host func fetchUrl(url string) string
 
 --| Frees the memory located at `ptr`.
 @host func free(ptr *void) void
 
 --| Returns an environment variable by key.
-@host func getEnv(key String) ?String
+@host func getEnv(key string) ?string
 
 --| Returns all environment variables as a `Map`.
 @host func getEnvAll() Map
@@ -83,49 +83,49 @@
 @host func now() float
 
 --| Invokes `openDir(path, false)`.
-@host func openDir(path String) Dir
+@host func openDir(path string) Dir
 
 --| Opens a directory at the given `path`. `iterable` indicates that the directory's entries can be iterated.
-@host func openDir(path String, iterable bool) Dir
+@host func openDir(path string, iterable bool) Dir
 
 --| Opens a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.
-@host func openFile(path String, mode symbol) File
+@host func openFile(path string, mode symbol) File
 
 --| Given expected `ArgOption`s, returns a `Table` of the options and a `rest` entry which contains the non-option arguments.
 @host func parseArgs(options List[dyn]) ^Table
 
 --| Reads stdin to the EOF as a UTF-8 string.
 --| To return the bytes instead, use `stdin.readAll()`.
-@host func readAll() String
+@host func readAll() string
 
 --| Reads the file contents from `path` as a UTF-8 string.
 --| To return the bytes instead, use `File.readAll()`.
-@host func readFile(path String) String
+@host func readFile(path string) string
 
---| Reads stdin until a new line as a `String`. This is intended to read user input from the command line.
+--| Reads stdin until a new line as a `string`. This is intended to read user input from the command line.
 --| For bulk reads from stdin, use `stdin`.
-@host func readLine() String
+@host func readLine() string
 
 --| Returns the absolute path of the given path.
-@host func realPath(path String) String
+@host func realPath(path string) string
 
 --| Removes an empty directory at `path`. Returns `true` if successful.
-@host func removeDir(path String) void
+@host func removeDir(path string) void
 
 --| Removes the file at `path`. Returns `true` if successful.
-@host func removeFile(path String) void
+@host func removeFile(path string) void
 
 --| Sets an environment variable by key.
-@host func setEnv(key String, val String) void
+@host func setEnv(key string, val string) void
 
 --| Pauses the current thread for given milliseconds.
 @host func sleep(ms float) void
 
 --| Removes an environment variable by key.
-@host func unsetEnv(key String) void
+@host func unsetEnv(key string) void
 
 --| Writes `contents` as a string or bytes to a file.
-@host func writeFile(path String, contents String) void
+@host func writeFile(path string, contents string) void
 
 @host
 type File _:
@@ -133,14 +133,14 @@ type File _:
     --| Closes the file handle. File ops invoked afterwards will return `error.Closed`.
     @host func close(self) void
     @host func iterator(self) File
-    @host func next(self) ?String
+    @host func next(self) ?string
 
     --| Reads at most `n` bytes as an `Array`. `n` must be at least 1.
     --| A result with length 0 indicates the end of file was reached.
-    @host func read(self, n int) String
+    @host func read(self, n int) string
 
     --| Reads to the end of the file and returns the content as an `Array`.
-    @host func readAll(self) String
+    @host func readAll(self) string
 
     --| Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid.
     @host func seek(self, n int) void
@@ -165,9 +165,9 @@ type File _:
     @host='File.streamLines2'
     func streamLines(self, bufSize int) File
 
-    --| Writes a `String` at the current file position.
+    --| Writes a `string` at the current file position.
     --| The number of bytes written is returned.
-    @host func write(self, val String) int
+    @host func write(self, val string) int
 
 @host
 type Dir _:
@@ -196,13 +196,13 @@ type FFI _:
     @host func bindCallback(self, fn any, params List[dyn], ret symbol) ExternFunc
 
     --| Calls `bindLib(path, [:])`. 
-    @host func bindLib(self, path ?String) Map
+    @host func bindLib(self, path ?string) Map
 
     --| Creates a handle to a dynamic library and functions declared from `cfunc`.
     --| A map of function names to C-functions is returned.
     --| There are currently no valid options in `config`.
     @host='FFI.bindLib2'
-    func bindLib(self, path ?String, config Map) Map
+    func bindLib(self, path ?string, config Map) Map
 
     --| Returns a Cyber object's pointer. Operations on the pointer is unsafe,
     --| but it can be useful when passing it to C as an opaque pointer.
@@ -213,7 +213,7 @@ type FFI _:
     @host func cbind(self, mt type, fields List[dyn]) void
 
     --| Declares a C function which will get binded to the library handle created from `bindLib`.
-    @host func cfunc(self, name String, params List[dyn], ret any) void
+    @host func cfunc(self, name string, params List[dyn], ret any) void
 
     --| Allocates memory for a C struct or primitive with the given C type specifier.
     --| A `pointer` to the allocated memory is returned.

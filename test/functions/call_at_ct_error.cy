@@ -2,7 +2,7 @@ func GetType(a int) type:
     if a == 0:
         return bool
     else:
-        return String
+        return string
 
 var i = 0
 GetType#(i)

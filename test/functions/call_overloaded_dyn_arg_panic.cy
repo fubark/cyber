@@ -8,7 +8,7 @@ dyn arg = '123'
 foo(arg)
 
 --cytest: error
---panic: Can not find compatible function for call: `foo(String)`.
+--panic: Can not find compatible function for call: `foo(string)`.
 --Functions named `foo`:
 --    func foo(int) void
 --    func foo(bool) void

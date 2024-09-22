@@ -48,9 +48,9 @@ if codeBuf == false:
 var llSymIter = llvm.ObjectFileCopySymbolIterator(llBin)
 
 type Sym:
-    name String
+    name string
     addr int
-    code String
+    code string
 
 -- First pass accumulates the unordered symbols.
 var syms = List[Sym]{}
@@ -69,7 +69,7 @@ while llvm.ObjectFileIsSymbolIteratorAtEnd(llBin, llSymIter) == 0:
 
     var addr = llvm.GetSymbolAddress(llSymIter)
     var size = llvm.GetSymbolSize(llSymIter)
-    var code = (codeBuf as String)[addr..addr+size]
+    var code = (codeBuf as string)[addr..addr+size]
     var sym = Sym{name=name, addr=addr, code=code}
     syms.append(sym)
     symMap[name] = sym

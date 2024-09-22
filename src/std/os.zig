@@ -362,7 +362,7 @@ fn parseArgs(vm: *cy.VM) anyerror!Value {
     var iter = try std.process.argsWithAllocator(vm.alloc);
     defer iter.deinit();
 
-    const list_t = (try vm.findType("List[String]")).?;
+    const list_t = (try vm.findType("List[string]")).?;
     const rest = try vm.allocEmptyList(list_t.id());
 
     const restList = rest.asHeapObject().list.getList();
@@ -428,7 +428,7 @@ fn osArgs(vm: *cy.VM) anyerror!Value {
     var iter = try std.process.argsWithAllocator(vm.alloc);
     defer iter.deinit();
 
-    const list_t = (try vm.findType("List[String]")).?;
+    const list_t = (try vm.findType("List[string]")).?;
     const listv = try vm.allocEmptyList(list_t.id());
     const listo = listv.asHeapObject();
     while (iter.next()) |arg| {

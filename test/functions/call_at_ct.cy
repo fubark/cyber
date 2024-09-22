@@ -4,7 +4,7 @@ func GetType(a int) type:
     if a == 0:
         return bool
     else:
-        return String
+        return string
 
 var a GetType#(0) = true
 test.eq(a, true)

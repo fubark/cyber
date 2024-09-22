@@ -29,7 +29,7 @@ func choicetag[T](choice T) T.Tag:
 --| Prints a value to the error stream. The host determines how it is printed.
 @host func eprint(str any) void
 
-@host func errorReport() String
+@host func errorReport() string
 
 --| Returns the current reference count of an object.
 @host func getObjectRc(val any) int
@@ -71,7 +71,7 @@ func ptrcast[D, S](D type, val S) *D:
 @host func refcast[T](T type, ptr *T) ^T
 
 --| Converts a rune to a string.
-@host func runestr(val int) String
+@host func runestr(val int) string
 
 func sizeof[T](T type) int:
     return sizeof_(typeid[T])
@@ -137,11 +137,11 @@ type byte _:
     @host func '$infix>>'(self, o int) byte
 
     --| Formats the byte using a NumberFormat.
-    @host func fmt(self, format NumberFormat) String
+    @host func fmt(self, format NumberFormat) string
 
     --| `opts.pad` provides the ASCII rune that is used for padding with a string length of `config.width`.
     @host='int.fmt2'
-    func fmt(self, format NumberFormat, config ^Table) String
+    func fmt(self, format NumberFormat, config ^Table) string
 
     @host func $call(b byte) byte
 
@@ -165,15 +165,15 @@ type int _:
     @host func '$infix<<'(self, o int) int
     @host func '$infix>>'(self, o int) int
 
-    func fmt(self) String:
+    func fmt(self) string:
         return self.fmt(.dec)
 
     --| Formats the integer using a NumberFormat.
-    @host func fmt(self, format NumberFormat) String
+    @host func fmt(self, format NumberFormat) string
 
     --| `opts.pad` provides the ASCII rune that is used for padding with a string length of `config.width`.
     @host='int.fmt2'
-    func fmt(self, format NumberFormat, config ^Table) String
+    func fmt(self, format NumberFormat, config ^Table) string
 
 type NumberFormat enum:
     --| ASCII
@@ -204,7 +204,7 @@ type float _:
     @host func '$infix%'(self, o float) float
     @host func '$infix^'(self, o float) float
 
-    @host func fmt(self) String
+    @host func fmt(self) string
 
 --| Converts the value to a `float`. Panics if type conversion fails.
 @host func float.$call(val any) float
@@ -253,23 +253,23 @@ type FloatInfo struct:
     bits int
 
 type HostObjectInfo struct:
-    name   String
+    name   string
     -- getchildren
     -- finalizer
 
 type EnumInfo struct:
-    name  ?String
+    name  ?string
     cases List[EnumCase]
 
 type EnumCase struct:
-    name String
+    name string
 
 type ChoiceInfo struct:
-    name  ?String
+    name  ?string
     cases List[ChoiceCase]
 
 type ChoiceCase struct:
-    name String
+    name string
     type type
 
 type FuncKind enum:
@@ -290,17 +290,17 @@ type ArrayInfo struct:
     elem type
 
 type StructInfo struct:
-    name   ?String
+    name   ?string
     fields List[StructField]
     -- funcs  List[funcsym_t]
 
 type StructField struct:
-    name   String
+    name   string
     type   type
     offset int
 
 type TraitInfo struct:
-    name String
+    name string
     -- funcs List[funcsym_t]
 
 type PointerInfo struct:
@@ -337,10 +337,10 @@ type OptionInfo struct:
     @host -func iterator_(self, ret_type int) ListIterator[T]
 
     --| Returns a new string that joins the elements with `separator`.
-    func join(self, sep String) String:
+    func join(self, sep string) string:
         return self.join(typeid[T], sep)
 
-    @host func join(self, elem_t int, sep String) String
+    @host func join(self, elem_t int, sep string) string
 
     --| Returns the number of elements in the list.
     @host func len(self) int
@@ -404,11 +404,11 @@ type Tuple _:
 type Table:
     table_data Map
 
-    @host func $initPair(self, key String, value any) void
+    @host func $initPair(self, key string, value any) void
 
-    @host func $get(self, name String) dyn
+    @host func $get(self, name string) dyn
 
-    @host func $set(self, name String, value any) void
+    @host func $set(self, name string, value any) void
 
     @host func $index(self, key any) dyn
 
@@ -441,50 +441,50 @@ type MapIterator _:
     @host func next(self) ?dyn
 
 @host
-type String _:
+type string _:
     --| Returns the rune at byte index `idx`. The replacement character (0xFFFD) is returned for an invalid UTF-8 rune.
     @host func $index(self, idx int) int
 
     --| Returns a slice into this string from a `Range` with `start` (inclusive) to `end` (exclusive) byte indexes.
-    @host func $slice(self, start int, end int, has_end bool) String
+    @host func $slice(self, start int, end int, has_end bool) string
 
     --| Returns a new string that concats this string and `str`.
-    @host func '$infix+'(self, str String) String
+    @host func '$infix+'(self, str string) string
 
     --| Returns a new string that concats this string with a string representation of `v`.
-    @host='String.$infix+_any' func '$infix+'(self, v any) String
+    @host='string.$infix+_any' func '$infix+'(self, v any) string
 
     --| Returns a new string that concats this string and `str`.
-    @host func concat(self, str String) String
+    @host func concat(self, str string) string
 
     --| Returns a new string that concats this string with a string representation of `v`.
-    @host='String.concat_any' func concat(self, v any) String
+    @host='string.concat_any' func concat(self, v any) string
 
     --| Returns the number of runes in the string.
     @host func count(self) int
 
     --| Calls decode(.utf8)
-    -- @host func decode(self String) String
+    -- @host func decode(self string) string
 
     --| Decodes the array based on an `encoding`. Supported encodings: `.utf8`.
     --| Returns the decoded string or throws `error.Decode`.
-    -- @host='String.decode2'
-    -- func decode(self String, encoding symbol) String
+    -- @host='string.decode2'
+    -- func decode(self string, encoding symbol) string
 
     --| Returns whether the string ends with `suffix`.
-    @host func endsWith(self, suffix String) bool
+    @host func endsWith(self, suffix string) bool
 
     --| Returns the first byte index of substring `needle` in the string or `none` if not found. SIMD enabled.
-    @host func find(self, needle String) ?int
+    @host func find(self, needle string) ?int
 
-    -- @host='String.findAnyByteSlice'
-    -- func findAnyByte(self String, set []byte) ?int
+    -- @host='string.findAnyByteSlice'
+    -- func findAnyByte(self string, set []byte) ?int
 
     --| Returns the first index of any byte in `set` or `none` if not found.
     @host func findAnyByte(self, set List[byte]) ?int
 
-    -- @host='String.findAnyRuneSlice'
-    -- func findAnyRune(self String, runes []int) ?int
+    -- @host='string.findAnyRuneSlice'
+    -- func findAnyRune(self string, runes []int) ?int
 
     --| Returns the first byte index of any rune in `runes` or `none` if not found. SIMD enabled.
     @host func findAnyRune(self, runes List[int]) ?int
@@ -496,13 +496,13 @@ type String _:
     @host func findRune(self, rune int) ?int
 
     --| Replaces each placeholder `@` from the receiver string with the corresponding value in `args` converted to a string.
-    @host func fmt(self, args List[any]) String
+    @host func fmt(self, args List[any]) string
 
-    @host='String.fmt2' func fmt(self, placeholder String, args List[any]) String
+    @host='string.fmt2' func fmt(self, placeholder string, args List[any]) string
 
     --| Formats each byte in the string using a NumberFormat.
     --| Each byte is zero padded.
-    @host func fmtBytes(self, format NumberFormat) String
+    @host func fmtBytes(self, format NumberFormat) string
 
     --| Returns the byte value (0-255) at the given index `idx`.
     @host func getByte(self, idx int) byte
@@ -514,10 +514,10 @@ type String _:
     @host func getInt32(self, idx int, endian symbol) int
 
     --| Returns a new string with `str` inserted at byte index `idx`.
-    @host func insert(self, idx int, str String) String
+    @host func insert(self, idx int, str string) string
 
     --| Returns a new array with `byte` inserted at index `idx`.
-    @host func insertByte(self, idx int, byte int) String
+    @host func insertByte(self, idx int, byte int) string
 
     --| Returns whether the string contains all ASCII runes.
     @host func isAscii(self) bool
@@ -529,42 +529,42 @@ type String _:
     @host func len(self) int
 
     --| Returns whether this string is lexicographically before `other`.
-    @host func less(self, other String) bool
+    @host func less(self, other string) bool
 
     --| Returns this string in lowercase.
-    @host func lower(self) String
+    @host func lower(self) string
 
     --| Returns a new string with all occurrences of `needle` replaced with `replacement`.
-    @host func replace(self, needle String, replacement String) String
+    @host func replace(self, needle string, replacement string) string
 
     --| Returns a new string with this string repeated `n` times.
-    @host func repeat(self, n int) String
+    @host func repeat(self, n int) string
 
     --| Returns the starting byte index for the rune index `idx`.
     @host func seek(self, idx int) int
 
     --| Returns the UTF-8 rune starting at byte index `idx` as a string.
-    @host func sliceAt(self, idx int) String
+    @host func sliceAt(self, idx int) string
 
     --| Returns a list of UTF-8 strings split at occurrences of `sep`.
-    @host func split(self, sep String) List[String]
+    @host func split(self, sep string) List[string]
 
     --| Returns whether the string starts with `prefix`.
-    @host func startsWith(self, prefix String) bool
+    @host func startsWith(self, prefix string) bool
 
     --| Returns the string with ends trimmed from runes in `delims`. `mode` can be .left, .right, or .ends.
-    @host func trim(self, mode symbol, delims String) String
+    @host func trim(self, mode symbol, delims string) string
 
     --| Returns this string in uppercase.
-    @host func upper(self) String
+    @host func upper(self) string
 
-@host func String.interpolate(strs List[String], args List[any]) String
+@host func string.interpolate(strs List[string], args List[any]) string
 
 --| Converts a value to a string.
-@host func String.$call(val any) String
+@host func string.$call(val any) string
 
 type StringIterator:
-    str String
+    str string
     idx int
 
     func next(self) ?int:
@@ -631,14 +631,14 @@ type pointer[T type] _:
     --| Casts the pointer to a Cyber object. The object is retained before it's returned.
     @host func asObject(self Self) any
 
-    --| Returns a `String` from a null terminated C string.
-    @host func fromCstr(self Self, offset int) String
+    --| Returns a `string` from a null terminated C string.
+    @host func fromCstr(self Self, offset int) string
 
     --| Dereferences the pointer at a byte offset and returns the C value converted to Cyber.
     @host func get(self Self, offset int, ctype symbol) dyn
 
-    --| Returns a `String` with a copy of the byte data starting from an offset to the specified length.
-    @host func getString(self Self, offset int, len int) String
+    --| Returns a `string` with a copy of the byte data starting from an offset to the specified length.
+    @host func getString(self Self, offset int, len int) string
 
     --| Converts the value to a compatible C value and writes it to a byte offset from this pointer.
     @host func set(self Self, offset int, ctype symbol, val any) void

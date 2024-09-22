@@ -118,7 +118,7 @@ t.eq(file.read(3), 'foo')
 
 -- File.streamLines()
 file = os.openFile('test/assets/multiline.txt', .read)
-var lines = List[String]{}
+var lines = List[string]{}
 for file.streamLines() -> line:
     lines.append(line)
 t.eq(lines.len(), 3)
@@ -128,7 +128,7 @@ t.eq(lines[2], 'bar')
 
 -- File.streamLines2()
 file = os.openFile('test/assets/multiline.txt', .read)
-lines = List[String]{}
+lines = List[string]{}
 for file.streamLines(2) -> line:
     lines.append(line)
 t.eq(lines.len(), 3)

@@ -3,20 +3,20 @@ use t 'test'
 var a any = 'abc'
 
 -- Temporary rc if expr cond is released before entering body.
-a = if (String(1) == '1') 123 else 234
+a = if (string(1) == '1') 123 else 234
 
 -- Temporary rc if stmt cond is released before entering body.
-if String(1) == '1':
+if string(1) == '1':
     pass
 
 -- Temporary rc else cond is released before entering body. 
 if false:
     pass
-else String(1) == '1':
+else string(1) == '1':
     pass
 
 -- Temporary rc where cond is released before entering body.
-while String(1) == '1':
+while string(1) == '1':
     break
 
 -- Binary metatype operand does not reuse dst for temp since it is retained.

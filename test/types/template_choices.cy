@@ -1,7 +1,7 @@
 use test
 
 type Foo[T type] enum:
-    case a String
+    case a string
     case b T
 
 -- Infer decl type.
@@ -13,7 +13,7 @@ else:
     test.fail()
 
 -- Different variant.
-var f2 = Foo[String].b('abc')
+var f2 = Foo[string].b('abc')
 switch f2
 case .b -> b:
     test.eq(b, 'abc')

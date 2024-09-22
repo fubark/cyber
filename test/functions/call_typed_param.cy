@@ -60,9 +60,9 @@ dyn ptr_dyn = pointer.fromAddr(void, 123)
 t.eq(fooPointer(ptr_dyn), true)
 
 --|
---| String.
+--| string.
 --|
-func fooString(a String) bool:
+func fooString(a string) bool:
     return a == 'true'
 
 -- Literal.
@@ -74,7 +74,7 @@ t.eq(fooString(str), true)
 
 -- Cast erased type.
 dyn str_dyn = 'true'
-t.eq(fooString(String(str_dyn)), true)
+t.eq(fooString(string(str_dyn)), true)
 
 -- bool.
 func fooBool(a bool) bool:

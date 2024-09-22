@@ -27,8 +27,8 @@ t.eq(try bar(2), error.InvalidSignature)
 -- Static function binding wrapped in value.
 var bar2 = toString
 t.eq(bar2(10), '10')
-func toString(val int) String:
-    return String(val)
+func toString(val int) string:
+    return string(val)
 
 -- Wrong number of arugments when invoking wrapped native func.
 t.eq(try bar('a', 123), error.InvalidSignature)

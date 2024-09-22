@@ -22,13 +22,13 @@ t.eq(foo2(), 1)
 -- Non-error rc value inside function.
 func foo3() dyn:
     return try 'abc'
-t.eq(foo3() as String, 'abc')
+t.eq(foo3() as string, 'abc')
 
 -- Non-error rc value assignment inside function.
 func foo4() dyn:
     var val = try 'abc'
     return val
-t.eq(foo4() as String, 'abc')
+t.eq(foo4() as string, 'abc')
 
 -- Caught error.
 var res = try fail()

@@ -146,7 +146,7 @@ t.eq(m['c'], 4)
 
 -- Remove rc key from map.
 m = Map{}
-m[String(1)] = 123
+m[string(1)] = 123
 m.remove('1')
 t.eq(m.size(), 0)
 

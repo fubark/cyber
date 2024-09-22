@@ -2,7 +2,7 @@ use test
 
 type Choice enum:
     case a int
-    case b String
+    case b string
 
 var c = Choice.a(123)
 c.!b

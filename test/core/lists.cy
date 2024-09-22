@@ -34,7 +34,7 @@ t.eqList(a[3..], .{4, 5})
 t.eqList(a[..3], .{1, 2, 3})
 
 --| Slice retains rc elems.
-var a2 = List[dyn]{String(1), String(2), String(3)}
+var a2 = List[dyn]{string(1), string(2), string(3)}
 a2 = a2[..1]
 t.eq(a2[0], '1')
 

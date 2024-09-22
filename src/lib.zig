@@ -651,7 +651,7 @@ test "clNewInstance()" {
     vm.evalMust( 
         \\type Foo:
         \\    a int
-        \\    b String
+        \\    b string
     , &res);
     const foo_t = vm.findType("Foo").?;
     const val = vm.newInstance(foo_t, &.{
@@ -684,7 +684,7 @@ test "clNewChoice()" {
     vm.evalMust( 
         \\type Foo enum:
         \\    case a int
-        \\    case b String
+        \\    case b string
     , &res);
     const foo_t = vm.findType("Foo").?;
     const val = vm.newChoice(foo_t, "a", C.int(123));
@@ -711,7 +711,7 @@ test "clGetField()" {
     vm.evalMust( 
         \\type Foo:
         \\    a int
-        \\    b String
+        \\    b string
         \\Foo{a=123, b='abc'}
     , &res);
     defer vm.release(res);
@@ -761,7 +761,7 @@ test "clUnwrapChoice()" {
     vm.evalMust( 
         \\type Foo enum:
         \\    case a int
-        \\    case b String
+        \\    case b string
         \\Foo.a(123)
     , &res);
     defer vm.release(res);

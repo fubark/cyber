@@ -75,7 +75,7 @@ t.eq(n3.value.len(), 0)
 
 -- To string returns struct's name. 
 n1 = ^Node{value=123}
-t.eq(String(n1), '^Node')
+t.eq(string(n1), '^Node')
 
 type W:
     a any
@@ -110,7 +110,7 @@ t.eq(n5.e, 5)
 
 -- Using ref type as a value.
 var sym = ^Node
-t.eq(String(sym), 'type: ^Node')
+t.eq(string(sym), 'type: ^Node')
 
 -- Dynamic variable.
 dyn val = ^Node{value=123}

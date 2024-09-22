@@ -5,7 +5,7 @@ type Foo[T type] int:
         return a
 
 -- Declare explicit type.
-var f = bitcast(Foo[String], 123)
+var f = bitcast(Foo[string], 123)
 test.eq(123, bitcast(int, f))
 test.eq(f.get('abc'), 'abc')
 

@@ -1,5 +1,5 @@
 type Account:
-    name    String
+    name    string
     balance float
 
     func deposit(self, amt float):
@@ -11,10 +11,10 @@ type Account:
         else:
             self.balance -= amt
 
-    func show(self, title String):
+    func show(self, title string):
         print "$(title), $(self.name), $(self.balance)"
 
-func Account.new(name String) Account:
+func Account.new(name string) Account:
     return Account{name=name, balance=0.0}
 
 var a = Account.new('Savings')

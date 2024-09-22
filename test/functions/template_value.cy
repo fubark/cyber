@@ -1,12 +1,12 @@
 use test
 
-def GetType[ID String] type:
+def GetType[ID string] type:
     if ID == 'bool':
         return bool
     else ID == 'int':
         return int
-    else ID == 'String':
-        return String
+    else ID == 'string':
+        return string
     else:
         throw error.Unsupported
 
@@ -16,7 +16,7 @@ test.eq(a, true)
 var b GetType['int'] = 123
 test.eq(b, 123)
 
-var c GetType['String'] = 'xyz'
+var c GetType['string'] = 'xyz'
 test.eq(c, 'xyz')
 
 -- Specialize type templates.

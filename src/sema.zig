@@ -3383,7 +3383,7 @@ const NameResultType = enum {
     ct_value,
 };
 
-const NameResult = struct {
+pub const NameResult = struct {
     type: NameResultType,
     data: union {
         sym: *Sym,
@@ -3399,6 +3399,14 @@ const NameResult = struct {
     }
 };
 
+pub fn apiResolveName(c: *cy.Chunk, name: []const u8) ?NameResult {
+    // Check top level chunks.
+    const chunk = c.compiler.chunk_map.get(name) orelse {
+        return null;
+    };
+    return NameResult.initSym(@ptrCast(chunk.sym));
+}
+
 pub fn getResolvedSym(c: *cy.Chunk, name: []const u8, node: *ast.Node, distinct: bool) !?NameResult {
     if (c.sym_cache.get(name)) |sym| {
         if (distinct and !sym.isDistinct()) {
@@ -3410,12 +3418,13 @@ pub fn getResolvedSym(c: *cy.Chunk, name: []const u8, node: *ast.Node, distinct:
     // Look in the current chunk module.
     if (distinct) {
         if (try c.getResolvedDistinctSym(@ptrCast(c.sym), name, node, false)) |res| {
-            try c.sym_cache.putNoClobber(c.alloc, name, res);
+            // NOTE: The symbol's name is used as the key since `name` could be temporary.
+            try c.sym_cache.put(c.alloc, res.name(), res);
             return NameResult.initSym(res);
         }
     } else {
         if (try c.getOptResolvedSym(@ptrCast(c.sym), name)) |sym| {
-            try c.sym_cache.putNoClobber(c.alloc, name, sym);
+            try c.sym_cache.put(c.alloc, sym.name(), sym);
             return NameResult.initSym(sym);
         }
     }
@@ -3455,15 +3464,22 @@ pub fn getResolvedSym(c: *cy.Chunk, name: []const u8, node: *ast.Node, distinct:
         const mod_sym = c.use_alls.items[i];
         if (distinct) {
             if (try c.getResolvedDistinctSym(@ptrCast(mod_sym), name, node, false)) |res| {
-                try c.sym_cache.putNoClobber(c.alloc, name, res);
+                try c.sym_cache.put(c.alloc, res.name(), res);
                 return NameResult.initSym(res);
             }
         } else {
             if (try c.getOptResolvedSym(@ptrCast(mod_sym), name)) |sym| {
-                try c.sym_cache.putNoClobber(c.alloc, name, sym);
+
+                try c.sym_cache.put(c.alloc, sym.name(), sym);
                 return NameResult.initSym(sym);
             }
         }
+    }
+
+    // Finally invoke optional fallback logic.
+    // This is useful for implementing libcyber's `clFindType`.
+    if (c.resolve_name_fn) |resolve_name_fn| {
+        return resolve_name_fn(c, name);
     }
     return null;
 }

@@ -177,6 +177,9 @@ pub const Chunk = struct {
     /// Assumed to have resolved signatures.
     deferred_funcs: std.ArrayListUnmanaged(*cy.Func),
 
+    /// Fallback for name resolving. Used by libcyber's `clFindType`.
+    resolve_name_fn: ?*const fn(c: *Chunk, name: []const u8) ?sema.NameResult = null,
+
     /// LLVM
     tempTypeRefs: if (cy.hasJIT) std.ArrayListUnmanaged(llvm.TypeRef) else void,
     tempValueRefs: if (cy.hasJIT) std.ArrayListUnmanaged(llvm.ValueRef) else void,

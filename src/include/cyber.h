@@ -472,11 +472,17 @@ void clDeclareFunc(CLSym mod, const char* name, const CLType** params, size_t nu
 void clDeclareVar(CLSym mod, const char* name, CLType* type, CLValue val);
 
 // Expand type template for given arguments.
-bool clExpandTemplateType(CLVM* vm, CLSym type_t, const CLValue* args, size_t nargs, CLType* res);
+CLType* clExpandTemplateType(CLVM* vm, CLSym type_t, const CLValue* args, size_t nargs);
 
-// Find and return the type from an absolute path.
-// Returns `CL_TYPE_NULL` if the symbol could not be found or the symbol is not a type.
-CLType clFindType(CLVM* vm, CLStr path);
+// Find and return the type from a given type specifier.
+// Returns `NULL` if the symbol could not be found or the symbol is not a type.
+// Returns `NULL` if trying to resolve a template expansion that doesn't already exist.
+// NOTE: Currently this behaves like `clResolveType`.
+// If a type is returned, the type specifier is memoized to return the same result.
+CLType* clFindType(CLVM* vm, CLStr spec);
+
+// Similar to `clFindType` and also resolves any missing template expansions.
+CLType* clResolveType(CLVM* vm, CLStr spec);
 
 // -----------------------------------
 // [ Memory ]

@@ -90,6 +90,11 @@ pub const Compiler = struct {
 
     main_chunk: *cy.Chunk,
 
+    /// A chunk is reserved for the libcyber API.
+    api_chunk: *cy.Chunk,
+
+    find_type_cache: std.StringHashMapUnmanaged(*cy.Type),
+
     global_sym: ?*cy.sym.UserVar,
     get_global: ?*cy.Func,
 
@@ -125,6 +130,7 @@ pub const Compiler = struct {
             .hasApiError = false,
             .apiError = "",
             .main_chunk = undefined,
+            .api_chunk = undefined,
             .global_sym = null,
             .get_global = null,
             .cont = false,
@@ -132,7 +138,13 @@ pub const Compiler = struct {
             .type_start = 0,
             .context_vars = .{},
             .svar_init_stack = .{},
+            .deiniting_syms = false,
+            .find_type_cache = .{},
         };
+
+        self.api_chunk = try createModuleUnmanaged(self, "api", "");
+        self.api_chunk.resolve_name_fn = sema.apiResolveName;
+
         try self.reinitPerRun();    
     }
 
@@ -147,6 +159,7 @@ pub const Compiler = struct {
     }
 
     pub fn deinit(self: *Compiler, comptime reset: bool) void {
+        log.tracev("Deinit compiler reset={}", .{reset});
         self.clearReports();
         if (!reset) {
             self.reports.deinit(self.alloc);
@@ -180,8 +193,16 @@ pub const Compiler = struct {
             chunk.deinit();
             self.alloc.destroy(chunk);
         }
+        if (!reset) {
+            self.api_chunk.deinit();
+            self.alloc.destroy(self.api_chunk);
+        }
         for (self.svar_init_stack.items) |*svar_init| {
             svar_init.deps.deinit(self.alloc);
+        }
+        var iter = self.find_type_cache.keyIterator();
+        while (iter.next()) |spec| {
+            self.alloc.free(spec.*);
         }
         if (reset) {
             self.chunks.clearRetainingCapacity();
@@ -191,6 +212,7 @@ pub const Compiler = struct {
             self.import_tasks.clearRetainingCapacity();
             self.context_vars.clearRetainingCapacity();
             self.svar_init_stack.clearRetainingCapacity();
+            self.find_type_cache.clearRetainingCapacity();
         } else {
             self.chunks.deinit(self.alloc);
             self.chunk_map.deinit(self.alloc);
@@ -199,6 +221,7 @@ pub const Compiler = struct {
             self.import_tasks.deinit(self.alloc);
             self.context_vars.deinit(self.alloc);
             self.svar_init_stack.deinit(self.alloc);
+            self.find_type_cache.deinit(self.alloc);
         }
 
         // Chunks depends on modules.
@@ -291,6 +314,8 @@ pub const Compiler = struct {
             } else {
                 core_sym = self.chunk_map.get("core").?.sym;
             }
+
+            try self.api_chunk.use_alls.append(self.alloc, @ptrCast(core_sym));
         }
 
         const prev_main = self.main_chunk;
@@ -743,6 +768,16 @@ fn loadModule(self: *Compiler, r_uri: []const u8) !?*cy.Chunk {
     const chunk: *cy.Chunk = @ptrCast(@alignCast(res.ptr));
     cache.key_ptr.* = chunk.srcUri;
     cache.value_ptr.* = chunk;
+    return chunk;
+}
+
+fn createModuleUnmanaged(self: *Compiler, r_uri: []const u8, src: []const u8) !*cy.Chunk {
+    const src_dupe = try self.alloc.dupe(u8, src);
+    const r_uri_dupe = try self.alloc.dupe(u8, r_uri);
+
+    const chunk = try self.alloc.create(cy.Chunk);
+    try chunk.init(self, cy.NullId, r_uri_dupe, src_dupe);
+    chunk.sym = try chunk.createChunkSym(r_uri_dupe);
     return chunk;
 }
 

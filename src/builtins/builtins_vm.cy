@@ -563,7 +563,6 @@ type String _:
 --| Converts a value to a string.
 @host func String.$call(val any) String
 
-<<<<<<< HEAD
 type StringIterator:
     str String
     idx int

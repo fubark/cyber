@@ -867,15 +867,20 @@ fn assignStmt(c: *cy.Chunk, node: *ast.Node, left_n: *ast.Node, right: *ast.Node
 
             const sym = mod.getSym(name) orelse {
                 // TODO: This depends on $get being known, make sure $get is a nested declaration.
-                const type_e = c.sema.types.items[type_sym.getStaticType().?];
-                if (type_e.has_set_method) {
-                    const expr = Expr.initRequire(right, bt.Dyn);
+                if (type_.has_set_method) {
+                    const sym = try c.mustFindSym(@ptrCast(type_.sym()), "$set", debug_node);
+                    const func_sym = try requireFuncSym(c, sym, node);
+
+                    const field_name = try c.semaString(name, left_n);
+                    const expr = Expr.init(right);
                     const right_res = try c.semaExprOrOpAssignBinExpr(expr, opts.rhsOpAssignBinExpr);
-                    return try c.ir.pushStmt(c.alloc, .set_field_dyn, debug_node, .{ .set_field_dyn = .{
-                        .name = name,
-                        .rec = rec.irIdx,
-                        .right = right_res.irIdx,
-                    }});
+
+                    const call = try c.semaCallFuncSymRec2(func_sym, left.left, rec,
+                        &.{ field_name, right_res }, &.{ left.right, right }, .any, debug_node);
+                    return try c.ir.pushStmt(c.alloc, .exprStmt, debug_node, .{
+                        .expr = call.irIdx,
+                        .isBlockResult = false,
+                    });
                 }
 
                 if (type_.kind() == .pointer) {

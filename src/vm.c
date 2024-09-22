@@ -1673,13 +1673,8 @@ beginSwitch:
                 WRITE_U16(7, right_rt);
                 pc[9] = (u8)res.offset;
             } else {
-                SAVE_STATE();
-                ResultCode code = zSetFieldFallback(vm, obj, fieldId, val);
-                if (code != RES_CODE_SUCCESS) {
-                    RESTORE_STATE();
-                    RETURN(code);
-                }
-                release(vm, val);
+                panicFieldMissing(vm);
+                RETURN(RES_CODE_PANIC);
             }
             pc += 10;
             NEXT();

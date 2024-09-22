@@ -1275,29 +1275,6 @@ pub const VM = struct {
         return val;
     }
 
-    fn setFieldFallback(self: *VM, obj: *HeapObject, nameId: vmc.NameId, val: cy.Value) !void {
-        const name = rt.getName(self, nameId);
-        const rec_t = obj.getTypeId();
-        if (!self.c.types[rec_t].has_set_method) {
-            _ = self.prepPanic("Missing field in object.");
-            return error.Panic;
-        }
-        const rec_arg = Value.initPtr(obj);
-        const name_arg = try self.allocString(name);
-        defer self.release(name_arg);
-
-        var args: [3]Value = .{ rec_arg, name_arg, val };
-        const func = self.getCompatMethodFunc(rec_t, self.compiler.setMID, args[1..]) orelse {
-            return error.Unexpected;
-        };
-        const func_val = try cy.heap.allocFunc(self, func);
-        defer self.release(func_val);
-        const result = try self.callFunc(func_val, &args, .{ .from_external = false });
-        if (result.isInterrupt()) {
-            return error.Panic;
-        }
-    }
-
     pub fn getType(self: *const VM, id: cy.TypeId) *cy.Type {
         return self.c.types[id];
     }
@@ -3476,18 +3453,6 @@ pub fn zDumpValue(vm: *VM, val: Value) callconv(.C) void {
     cy.rt.log(fbuf.getWritten());
 }
 
-fn zSetFieldFallback(vm: *VM, obj: *HeapObject, field_id: rt.FieldId, val: cy.Value) callconv(.C) vmc.ResultCode {
-    const name_id = vm.c.fields[field_id].name_id;
-    vm.setFieldFallback(obj, name_id, val) catch |err| {
-        if (err == error.Panic) {
-            return vmc.RES_CODE_PANIC;
-        } else {
-            return vmc.RES_CODE_UNKNOWN;
-        }
-    };
-    return vmc.RES_CODE_SUCCESS;
-}
-
 fn zAlloc(alloc: vmc.ZAllocator, n: usize) callconv(.C) vmc.BufferResult {
     const zalloc = std.mem.Allocator{
         .ptr = @ptrCast(alloc.ptr),
@@ -3582,7 +3547,6 @@ comptime {
         @export(zFutureValue, .{ .name = "zFutureValue", .linkage = .strong });
         @export(zPopFiber, .{ .name = "zPopFiber", .linkage = .strong });
         @export(zPushFiber, .{ .name = "zPushFiber", .linkage = .strong });
-        @export(zSetFieldFallback, .{ .name = "zSetFieldFallback", .linkage = .strong });
         @export(zMapSet, .{ .name = "zMapSet", .linkage = .strong });
         @export(zValueMapGet, .{ .name = "zValueMapGet", .linkage = .strong });
         @export(zPanicFmt, .{ .name = "zPanicFmt", .linkage = .strong });

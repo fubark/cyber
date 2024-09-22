@@ -1512,7 +1512,7 @@ pub const VM = struct {
         return try self.alloc.dupe(u8, str);
     }
 
-    pub fn bufPrintValueShortStr(self: *const VM, buf: []u8, val: Value) ![]const u8 {
+    pub fn bufPrintValueShortStr(self: *const VM, buf: []u8, val: Value, skip_full_type_names: bool) ![]const u8 {
         var fbuf = std.io.fixedBufferStream(buf);
         var w = fbuf.writer();
 
@@ -1524,7 +1524,8 @@ pub const VM = struct {
                 try w.print("String({}) {s}", .{ str.len, str });
             }
         } else {
-            _ = try self.writeValue(w, val);
+            const val_t = val.getTypeId();
+            _ = try self.writeValue(w, val_t, unbox2(self, val), skip_full_type_names);
         }
         return fbuf.getWritten();
     }
@@ -1537,7 +1538,8 @@ pub const VM = struct {
         if (val.isString()) {
             return val.asString();
         } else {
-            _ = try self.writeValue(w, val);
+            const val_t = val.getTypeId();
+            _ = try self.writeValue(w, val_t, unbox2(self, val), false);
         }
         return fbuf.getWritten();
     }
@@ -1550,17 +1552,32 @@ pub const VM = struct {
             out_ascii.* = val.asHeapObject().string.getType().isAstring();
             return val.asString();
         } else {
-            _ = try self.writeValue(w, val);
+            const val_t = val.getTypeId();
+            if (try self.writeValue(w, val_t, unbox2(self, val), false)) {
+                out_ascii.* = true;
+                return fbuf.getWritten();
+            } else {
+                const res = fbuf.getWritten();
+                out_ascii.* = cy.string.isAstring(res);
+                return res;
+            }
         }
-        const res = fbuf.getWritten();
-        out_ascii.* = true;
-        return res;
     }
 
-    pub fn writeValue(self: *const VM, w: anytype, val: Value) !void {
-        const typeId = val.getTypeId();
+    pub fn writeValue2(self: *const VM, w: anytype, val_static_t: cy.TypeId, val: Value, skip_full_type_names: bool) !bool {
+        if (val_static_t == bt.Any or val_static_t == bt.Dyn) {
+            const val_t = val.getTypeId();
+            return writeValue(self, w, val_t, unbox2(self, val), skip_full_type_names);
+        } else {
+            return writeValue(self, w, val_static_t, val, skip_full_type_names);
+        }
+    }
 
-        switch (typeId) {
+    /// Assumes `val` is unboxed.
+    /// Returns whether the string written can be assumed to be ASCII.
+    /// `skip_full_type_names` can be useful when printing a value during teardown.
+    pub fn writeValue(self: *const VM, w: anytype, val_t: cy.TypeId, val: Value, skip_full_type_names: bool) !bool {
+        switch (val_t) {
             bt.Float => {
                 const f = val.asF64();
                 if (Value.floatIsSpecial(f)) {
@@ -1572,7 +1589,7 @@ pub const VM = struct {
                         try std.fmt.format(w, "{d}", .{f});
                     }
                 }
-                return;
+                return true;
             },
             bt.Boolean => {
                 if (val.asBool()) {
@@ -1580,61 +1597,81 @@ pub const VM = struct {
                 } else {
                     try w.writeAll("false");
                 }
-                return;
+                return true;
             },
             bt.Error => {
                 const symId = val.asErrorSymbol();
                 try std.fmt.format(w, "error.{s}", .{self.getSymbolName(symId)});
-                return;
+                return true;
             },
             bt.Symbol => {
                 const litId = val.asSymbolId();
                 try std.fmt.format(w, "symbol.{s}", .{self.getSymbolName(litId)});
-                return;
+                return true;
             },
             bt.Integer => {
-                try std.fmt.format(w, "{}", .{val.asBoxInt()});
-                return;
+                try std.fmt.format(w, "{}", .{val.asInt()});
+                return true;
             },
             else => {}, // Fall-through.
         }
 
         if (!val.isPointer()) {
-            if (val.isEnum()) {
-                const sym = self.c.types[typeId].sym;
-                const enumv = val.getEnumValue();
-                const name = sym.cast(.enum_t).getValueSym(enumv).head.name();
-                try std.fmt.format(w, "{s}.{s}", .{ sym.name(), name });
-            } else {
-                try w.writeAll("Unknown");
-            }
-            return;
+            try w.writeAll("Unknown");
+            return true;
         }
 
+        const type_ = self.getType(val_t);
         const obj = val.asHeapObject();
-        switch (typeId) {
+        if (obj.isRef()) {
+            try w.writeAll("^");
+            if (skip_full_type_names) {
+                try w.writeAll(type_.name());
+            } else {
+                try self.sema.writeTypeName(w, type_, null);
+            }
+            return false;
+        }
+
+        switch (val_t) {
             bt.String => {
                 try w.writeAll(obj.string.getSlice());
-            },
-            bt.ListDyn => {
-                try std.fmt.format(w, "List ({})", .{obj.list.list.len});
+                return obj.string.getType().isAstring();
             },
             bt.Map => {
                 try std.fmt.format(w, "Map ({})", .{obj.map.inner.size});
+                return true;
             },
             bt.Type => {
-                const name = try self.sema.allocTypeName(obj.type.type);
-                defer self.alloc.free(name);
-                try std.fmt.format(w, "type: {s}", .{name});
+                try w.writeAll("type: ");
+                const type__ = self.getType(obj.type.type);
+                if (skip_full_type_names) {
+                    try w.writeAll(type__.name());
+                } else {
+                    try self.sema.writeTypeName(w, type__, null);
+                }
+                return false;
             },
             else => {
-                if (typeId == cy.NullId >> 3) {
+                if (val_t == cy.NullId & vmc.TYPE_MASK) {
                     try w.writeAll("danglingObject");
-                    return;
+                    return true;
                 }
-                const name = self.compiler.sema.getTypeBaseName(typeId);
-                try w.writeAll(name);
-            },
+
+                if (type_.kind() == .enum_t) {
+                    const enumv = val.asInt();
+                    const name = type_.cast(.enum_t).getValueSym(@intCast(enumv)).head.name();
+                    try std.fmt.format(w, "{s}.{s}", .{type_.name(), name});
+                    return false;
+                }
+
+                if (skip_full_type_names) {
+                    try w.writeAll(type_.name());
+                } else {
+                    try self.sema.writeTypeName(w, type_, null);
+                }
+                return false;
+            }
         }
     }
 
@@ -1652,13 +1689,13 @@ pub const VM = struct {
         return Value.Interrupt;
     }
 
-    pub fn clearTempString(vm: *VM) cy.ListAligned(u8, 8).Writer {
+    pub fn clearTempString(vm: *VM) std.ArrayListAlignedUnmanaged(u8, 8).Writer {
         vm.u8Buf.clearRetainingCapacity();
         return vm.u8Buf.writer(vm.alloc);
     }
 
     pub fn getTempString(vm: *VM) []const u8 {
-        return vm.u8Buf.items();
+        return vm.u8Buf.items;
     }
 
     pub fn getNewFramePtrOffset(self: *VM, args: [*]const Value, nargs: u8) u32 {

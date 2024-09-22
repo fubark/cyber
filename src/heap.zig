@@ -1869,17 +1869,10 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             cy.panicFmt("Double free object: {*} Should have been discovered in release op.", .{obj});
         } else {
             if (log_free or log_mem) {
-                // Avoid printing too much details about the value during type types teardown
+                // Avoid printing too much details about the value during types teardown
                 // since it can be dependent on something already freed. (e.g. `type` that already has freed template args)
-                var desc: []const u8 = undefined;
-                if (obj.getTypeId() == bt.Type) {
-                    var fbuf = std.io.fixedBufferStream(&cy.tempBuf);
-                    var w = fbuf.writer();
-                    w.print("type: {s}", .{vm.sema.getTypeBaseName(obj.type.type)}) catch cy.fatal();
-                    desc = fbuf.getWritten();
-                } else {
-                    desc = vm.bufPrintValueShortStr(&cy.tempBuf, Value.initPtr(obj)) catch cy.fatal();
-                }
+                const skip_full_type_names = vm.compiler.deiniting_syms;
+                const desc = vm.bufPrintValueShortStr(&cy.tempBuf, Value.initPtr(obj), skip_full_type_names) catch cy.fatal();
                 log.tracev("free type={}({s}) {*}: `{s}`", .{
                     obj.getTypeId(), vm.getTypeName(obj.getTypeId()), obj, desc,
                 });

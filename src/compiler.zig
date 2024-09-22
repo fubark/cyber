@@ -96,6 +96,9 @@ pub const Compiler = struct {
     /// Whether this is a subsequent compilation reusing the same state.
     cont: bool,
 
+    /// Currently deiniting syms.
+    deiniting_syms: bool,
+
     chunk_start: u32,
     type_start: u32,
 
@@ -134,6 +137,8 @@ pub const Compiler = struct {
     }
 
     pub fn deinitValues(self: *Compiler) void {
+        self.deiniting_syms = true;
+        defer self.deiniting_syms = false;
         for (self.chunks.items) |chunk| {
             for (chunk.syms.items) |sym| {
                 sym.deinitValues(self.vm);

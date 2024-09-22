@@ -19,6 +19,7 @@ pub const HeapStringBuilder = struct {
     len: u32,
     isAstring: bool,
     hasObject: bool,
+    detect_encoding: bool = true,
     vm: *cy.VM,
 
     /// Starts as an Astring pool object.
@@ -51,6 +52,46 @@ pub const HeapStringBuilder = struct {
         }
     }
 
+    pub const Writer = struct {
+        buf: *HeapStringBuilder,
+
+        pub fn print(self: Writer, comptime format: []const u8, args: anytype) !void {
+            try std.fmt.format(self, format, args);
+        }
+
+        pub fn writeByte(self: Writer, b: u8) !void {
+            try self.writeAll(&.{ b });
+        }
+
+        pub fn writeAll(self: Writer, data: []const u8) !void {
+            _ = try self.buf.appendString(data);
+        }
+
+        pub fn writeBytesNTimes(self: Writer, bytes: []const u8, n: usize) anyerror!void {
+            var i: usize = 0;
+            while (i < n) : (i += 1) {
+                try self.writeAll(bytes);
+            }
+        }
+
+        pub const Error = anyerror;
+    };
+
+    pub fn writer(self: *HeapStringBuilder) Writer {
+        return Writer{
+            .buf = self,
+        };
+    }
+
+    pub fn buildWithEncoding(self: *HeapStringBuilder, ascii: bool) !cy.Value {
+        self.hasObject = false;
+        if (ascii) {
+            return self.vm.allocAstringSlice(self.buf[0..self.len], self.buf_obj);
+        } else {
+            return self.vm.allocUstringSlice(self.buf[0..self.len], self.buf_obj);
+        }
+    }
+
     pub fn build(self: *HeapStringBuilder) !*cy.HeapObject {
         var slice: cy.Value = undefined;
         if (self.isAstring) {
@@ -69,12 +110,14 @@ pub const HeapStringBuilder = struct {
         const oldLen = self.len;
         self.len += @intCast(str.len);
         @memcpy(self.buf[oldLen..self.len], str);
-        const append_ascii = cy.string.isAstring(str);
-        if (self.isAstring and !append_ascii) {
-            // Upgrade to Ustring.
-            const len = self.buf_obj.string.len();
-            self.buf_obj.string.headerAndLen = (@as(u32, @intFromEnum(cy.heap.StringType.ustring)) << 30) | len;
-            self.isAstring = false;
+        if (self.detect_encoding) {
+            const append_ascii = cy.string.isAstring(str);
+            if (self.isAstring and !append_ascii) {
+                // Upgrade to Ustring.
+                const len = self.buf_obj.string.len();
+                self.buf_obj.string.headerAndLen = (@as(u32, @intFromEnum(cy.heap.StringType.ustring)) << 30) | len;
+                self.isAstring = false;
+            }
         }
     }
 

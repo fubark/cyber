@@ -188,7 +188,7 @@ const funcs = [_]C.HostFuncEntry{
     func("String.find",        string.find),
     func("String.findAnyByte", stringFindAnyByte),
     func("String.findAnyRune", zErrFunc(string.findAnyRune)),
-    func("String.findByte",    stringFindByte),
+    func("String.findByte",    zErrFunc(stringFindByte)),
     func("String.findRune",    string.findRune),
     func("String.fmt",         zErrFunc(string_fmt)),
     func("String.fmt2",        zErrFunc(string_fmt2)),
@@ -1384,14 +1384,14 @@ fn stringFindAnyByte(vm: *cy.VM) Value {
     return intNone(vm) catch cy.fatal();
 }
 
-fn stringFindByte(vm: *cy.VM) Value {
+fn stringFindByte(vm: *cy.VM) !Value {
     const slice = vm.getString(0);
     const byte = vm.getByte(1);
 
     if (cy.string.indexOfChar(slice, @intCast(byte))) |idx| {
         return intSome(vm, @intCast(idx)) catch cy.fatal();
     }
-    return intNone(vm) catch cy.fatal();
+    return intNone(vm);
 }
 
 fn string_fmt(vm: *cy.VM) anyerror!Value {
@@ -1411,7 +1411,7 @@ fn stringFmt(vm: *cy.VM, format: []const u8, ascii_format: bool, placeholder: []
     var ascii_args = true;
     const buf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
     buf.clearRetainingCapacity();
-    defer buf.ensureMaxCapOrClear(vm.alloc, 4096) catch fatal();
+    defer if (buf.capacity > 4096) buf.clearAndFree(vm.alloc);
 
     var pos: usize = 0;
     var num_ph: usize = 0;
@@ -1441,9 +1441,9 @@ fn stringFmt(vm: *cy.VM, format: []const u8, ascii_format: bool, placeholder: []
     }
 
     if (ascii_format and ascii_args) {
-        return vm.retainOrAllocAstring(buf.items());
+        return vm.retainOrAllocAstring(buf.items);
     } else {
-        return vm.retainOrAllocUstring(buf.items());
+        return vm.retainOrAllocUstring(buf.items);
     }
 }
 

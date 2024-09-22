@@ -165,7 +165,7 @@ pub fn findAnyRune(vm: *cy.VM) anyerror!Value {
 
     const tempBuf = &vm.u8Buf;
     tempBuf.clearRetainingCapacity();
-    defer tempBuf.ensureMaxCapOrClear(vm.alloc, 4096) catch fatal();
+    defer if (tempBuf.capacity > 4096) tempBuf.clearAndFree(vm.alloc);
 
     var set_is_ascii = true;
     for (set_list) |rune| {
@@ -175,7 +175,7 @@ pub fn findAnyRune(vm: *cy.VM) anyerror!Value {
             set_is_ascii = false;
         }
     }
-    const set_str = tempBuf.items();
+    const set_str = tempBuf.items;
 
     if (set_list.len > 0) {
         if (stype.isAstring()) {
@@ -439,20 +439,20 @@ fn astringReplace(vm: *cy.VM, str: []const u8, needlev: *cy.heap.String, replace
 
     const idxBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
     idxBuf.clearRetainingCapacity();
-    defer idxBuf.ensureMaxCapOrClear(vm.alloc, 4096) catch fatal();
+    defer if (idxBuf.capacity > 4096) idxBuf.clearAndFree(vm.alloc);
     const newLen = string.prepReplacement(str, needle, replacement, idxBuf.writer(vm.alloc)) catch fatal();
-    const numIdxes = @divExact(idxBuf.len, 4);
+    const numIdxes = @divExact(idxBuf.items.len, 4);
     if (numIdxes > 0) {
         if (replacev.getType().isAstring()) {
             const new = vm.allocUnsetAstringObject(newLen) catch fatal();
             const newBuf = new.astring.getMutSlice();
-            const idxes = @as([*]const u32, @ptrCast(idxBuf.buf.ptr))[0..numIdxes];
+            const idxes = @as([*]const u32, @ptrCast(idxBuf.items.ptr))[0..numIdxes];
             string.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
             return vm.allocOwnedAstring(new) catch fatal();
         } else {
             const new = vm.allocUnsetUstringObject(newLen) catch fatal();
             const newBuf = new.ustring.getMutSlice();
-            const idxes = @as([*]const u32, @ptrCast(idxBuf.buf.ptr))[0..numIdxes];
+            const idxes = @as([*]const u32, @ptrCast(idxBuf.items.ptr))[0..numIdxes];
             string.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
             return vm.allocOwnedUstring(new) catch fatal();
         }
@@ -467,13 +467,13 @@ fn ustringReplace(vm: *cy.VM, str: []const u8, needlev: *cy.heap.String, replace
 
     const idxBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
     idxBuf.clearRetainingCapacity();
-    defer idxBuf.ensureMaxCapOrClear(vm.alloc, 4096) catch fatal();
+    defer if (idxBuf.capacity > 4096) { idxBuf.clearAndFree(vm.alloc); };
     const newLen = string.prepReplacement(str, needle, replacement, idxBuf.writer(vm.alloc)) catch fatal();
-    const numIdxes = @divExact(idxBuf.len, 4);
+    const numIdxes = @divExact(idxBuf.items.len, 4);
     if (numIdxes > 0) {
         const new = vm.allocUnsetUstringObject(newLen) catch fatal();
         const newBuf = new.ustring.getMutSlice();
-        const idxes = @as([*]const u32, @ptrCast(idxBuf.buf.ptr))[0..numIdxes];
+        const idxes = @as([*]const u32, @ptrCast(idxBuf.items.ptr))[0..numIdxes];
         cy.string.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
         return vm.allocOwnedUstring(new) catch fatal();
     } else {
@@ -531,7 +531,8 @@ pub fn split(vm: *cy.VM) anyerror!Value {
     const parent = obj.getParentByType(stype);
     const delim = vm.getString(1);
 
-    const res = try vm.allocEmptyListDyn();
+    const list_t = (try vm.findType("List[String]")).?;
+    const res = try vm.allocEmptyList(list_t.id());
     if (delim.len == 0) {
         return res;
     }

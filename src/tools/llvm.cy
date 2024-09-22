@@ -5,11 +5,11 @@
 type FatalErrorHandler -> *void
 
 func InstallFatalErrorHandler(Handler *void) void:
-    return lib.LLVMInstallFatalErrorHandler(Handler)
+    return lib['LLVMInstallFatalErrorHandler'](Handler)
 func ResetFatalErrorHandler() void:
-    return lib.LLVMResetFatalErrorHandler()
+    return lib['LLVMResetFatalErrorHandler']()
 func EnablePrettyStackTrace() void:
-    return lib.LLVMEnablePrettyStackTrace()
+    return lib['LLVMEnablePrettyStackTrace']()
 type int64_t -> int
 
 type uint64_t -> int
@@ -68,67 +68,67 @@ type uintmax_t -> int
 
 type Bool -> int
 
-type OpaqueMemoryBuffer_S #int64_t
+type OpaqueMemoryBuffer_S int
 type MemoryBufferRef -> *void
 
-type OpaqueContext_S #int64_t
+type OpaqueContext_S int
 type ContextRef -> *void
 
-type OpaqueModule_S #int64_t
+type OpaqueModule_S int
 type ModuleRef -> *void
 
-type OpaqueType_S #int64_t
+type OpaqueType_S int
 type TypeRef -> *void
 
-type OpaqueValue_S #int64_t
+type OpaqueValue_S int
 type ValueRef -> *void
 
-type OpaqueBasicBlock_S #int64_t
+type OpaqueBasicBlock_S int
 type BasicBlockRef -> *void
 
-type OpaqueMetadata_S #int64_t
+type OpaqueMetadata_S int
 type MetadataRef -> *void
 
-type OpaqueNamedMDNode_S #int64_t
+type OpaqueNamedMDNode_S int
 type NamedMDNodeRef -> *void
 
-type OpaqueValueMetadataEntry_S #int64_t
+type OpaqueValueMetadataEntry_S int
 type ValueMetadataEntry -> OpaqueValueMetadataEntry_S
 
-type OpaqueBuilder_S #int64_t
+type OpaqueBuilder_S int
 type BuilderRef -> *void
 
-type OpaqueDIBuilder_S #int64_t
+type OpaqueDIBuilder_S int
 type DIBuilderRef -> *void
 
-type OpaqueModuleProvider_S #int64_t
+type OpaqueModuleProvider_S int
 type ModuleProviderRef -> *void
 
-type OpaquePassManager_S #int64_t
+type OpaquePassManager_S int
 type PassManagerRef -> *void
 
-type OpaqueUse_S #int64_t
+type OpaqueUse_S int
 type UseRef -> *void
 
-type OpaqueOperandBundle_S #int64_t
+type OpaqueOperandBundle_S int
 type OperandBundleRef -> *void
 
-type OpaqueAttributeRef_S #int64_t
+type OpaqueAttributeRef_S int
 type AttributeRef -> *void
 
-type OpaqueDiagnosticInfo_S #int64_t
+type OpaqueDiagnosticInfo_S int
 type DiagnosticInfoRef -> *void
 
-type Comdat_S #int64_t
+type Comdat_S int
 type ComdatRef -> *void
 
-type OpaqueModuleFlagEntry_S #int64_t
+type OpaqueModuleFlagEntry_S int
 type ModuleFlagEntry -> OpaqueModuleFlagEntry_S
 
-type OpaqueJITEventListener_S #int64_t
+type OpaqueJITEventListener_S int
 type JITEventListenerRef -> *void
 
-type OpaqueBinary_S #int64_t
+type OpaqueBinary_S int
 type BinaryRef -> *void
 
 type Opcode -> int
@@ -438,1444 +438,1444 @@ var .FastMathAll int = 127
 type FastMathFlags -> int
 
 func Shutdown() void:
-    return lib.LLVMShutdown()
+    return lib['LLVMShutdown']()
 func GetVersion(Major *void, Minor *void, Patch *void) void:
-    return lib.LLVMGetVersion(Major, Minor, Patch)
+    return lib['LLVMGetVersion'](Major, Minor, Patch)
 func CreateMessage(Message *void) *void:
-    return lib.LLVMCreateMessage(Message)
+    return lib['LLVMCreateMessage'](Message)
 func DisposeMessage(Message *void) void:
-    return lib.LLVMDisposeMessage(Message)
+    return lib['LLVMDisposeMessage'](Message)
 type DiagnosticHandler -> *void
 
 type YieldCallback -> *void
 
 func ContextCreate() ContextRef:
-    return lib.LLVMContextCreate()
+    return lib['LLVMContextCreate']()
 func GetGlobalContext() ContextRef:
-    return lib.LLVMGetGlobalContext()
+    return lib['LLVMGetGlobalContext']()
 func ContextSetDiagnosticHandler(C *void, Handler *void, DiagnosticContext *void) void:
-    return lib.LLVMContextSetDiagnosticHandler(C, Handler, DiagnosticContext)
+    return lib['LLVMContextSetDiagnosticHandler'](C, Handler, DiagnosticContext)
 func ContextGetDiagnosticHandler(C *void) DiagnosticHandler:
-    return lib.LLVMContextGetDiagnosticHandler(C)
+    return lib['LLVMContextGetDiagnosticHandler'](C)
 func ContextGetDiagnosticContext(C *void) *void:
-    return lib.LLVMContextGetDiagnosticContext(C)
+    return lib['LLVMContextGetDiagnosticContext'](C)
 func ContextSetYieldCallback(C *void, Callback *void, OpaqueHandle *void) void:
-    return lib.LLVMContextSetYieldCallback(C, Callback, OpaqueHandle)
+    return lib['LLVMContextSetYieldCallback'](C, Callback, OpaqueHandle)
 func ContextShouldDiscardValueNames(C *void) Bool:
-    return lib.LLVMContextShouldDiscardValueNames(C)
+    return lib['LLVMContextShouldDiscardValueNames'](C)
 func ContextSetDiscardValueNames(C *void, Discard Bool) void:
-    return lib.LLVMContextSetDiscardValueNames(C, Discard)
+    return lib['LLVMContextSetDiscardValueNames'](C, Discard)
 func ContextDispose(C *void) void:
-    return lib.LLVMContextDispose(C)
+    return lib['LLVMContextDispose'](C)
 func GetDiagInfoDescription(DI *void) *void:
-    return lib.LLVMGetDiagInfoDescription(DI)
+    return lib['LLVMGetDiagInfoDescription'](DI)
 func GetDiagInfoSeverity(DI *void) DiagnosticSeverity:
-    return lib.LLVMGetDiagInfoSeverity(DI)
+    return lib['LLVMGetDiagInfoSeverity'](DI)
 func GetMDKindIDInContext(C *void, Name *void, SLen int) int:
-    return lib.LLVMGetMDKindIDInContext(C, Name, SLen)
+    return lib['LLVMGetMDKindIDInContext'](C, Name, SLen)
 func GetMDKindID(Name *void, SLen int) int:
-    return lib.LLVMGetMDKindID(Name, SLen)
+    return lib['LLVMGetMDKindID'](Name, SLen)
 func GetEnumAttributeKindForName(Name *void, SLen int) int:
-    return lib.LLVMGetEnumAttributeKindForName(Name, SLen)
+    return lib['LLVMGetEnumAttributeKindForName'](Name, SLen)
 func GetLastEnumAttributeKind() int:
-    return lib.LLVMGetLastEnumAttributeKind()
+    return lib['LLVMGetLastEnumAttributeKind']()
 func CreateEnumAttribute(C *void, KindID int, Val int) AttributeRef:
-    return lib.LLVMCreateEnumAttribute(C, KindID, Val)
+    return lib['LLVMCreateEnumAttribute'](C, KindID, Val)
 func GetEnumAttributeKind(A *void) int:
-    return lib.LLVMGetEnumAttributeKind(A)
+    return lib['LLVMGetEnumAttributeKind'](A)
 func GetEnumAttributeValue(A *void) int:
-    return lib.LLVMGetEnumAttributeValue(A)
+    return lib['LLVMGetEnumAttributeValue'](A)
 func CreateTypeAttribute(C *void, KindID int, type_ref *void) AttributeRef:
-    return lib.LLVMCreateTypeAttribute(C, KindID, type_ref)
+    return lib['LLVMCreateTypeAttribute'](C, KindID, type_ref)
 func GetTypeAttributeValue(A *void) TypeRef:
-    return lib.LLVMGetTypeAttributeValue(A)
+    return lib['LLVMGetTypeAttributeValue'](A)
 func CreateStringAttribute(C *void, K *void, KLength int, V *void, VLength int) AttributeRef:
-    return lib.LLVMCreateStringAttribute(C, K, KLength, V, VLength)
+    return lib['LLVMCreateStringAttribute'](C, K, KLength, V, VLength)
 func GetStringAttributeKind(A *void, Length *void) *void:
-    return lib.LLVMGetStringAttributeKind(A, Length)
+    return lib['LLVMGetStringAttributeKind'](A, Length)
 func GetStringAttributeValue(A *void, Length *void) *void:
-    return lib.LLVMGetStringAttributeValue(A, Length)
+    return lib['LLVMGetStringAttributeValue'](A, Length)
 func IsEnumAttribute(A *void) Bool:
-    return lib.LLVMIsEnumAttribute(A)
+    return lib['LLVMIsEnumAttribute'](A)
 func IsStringAttribute(A *void) Bool:
-    return lib.LLVMIsStringAttribute(A)
+    return lib['LLVMIsStringAttribute'](A)
 func IsTypeAttribute(A *void) Bool:
-    return lib.LLVMIsTypeAttribute(A)
+    return lib['LLVMIsTypeAttribute'](A)
 func GetTypeByName2(C *void, Name *void) TypeRef:
-    return lib.LLVMGetTypeByName2(C, Name)
+    return lib['LLVMGetTypeByName2'](C, Name)
 func ModuleCreateWithName(ModuleID *void) ModuleRef:
-    return lib.LLVMModuleCreateWithName(ModuleID)
+    return lib['LLVMModuleCreateWithName'](ModuleID)
 func ModuleCreateWithNameInContext(ModuleID *void, C *void) ModuleRef:
-    return lib.LLVMModuleCreateWithNameInContext(ModuleID, C)
+    return lib['LLVMModuleCreateWithNameInContext'](ModuleID, C)
 func CloneModule(M *void) ModuleRef:
-    return lib.LLVMCloneModule(M)
+    return lib['LLVMCloneModule'](M)
 func DisposeModule(M *void) void:
-    return lib.LLVMDisposeModule(M)
+    return lib['LLVMDisposeModule'](M)
 func GetModuleIdentifier(M *void, Len *void) *void:
-    return lib.LLVMGetModuleIdentifier(M, Len)
+    return lib['LLVMGetModuleIdentifier'](M, Len)
 func SetModuleIdentifier(M *void, Ident *void, Len int) void:
-    return lib.LLVMSetModuleIdentifier(M, Ident, Len)
+    return lib['LLVMSetModuleIdentifier'](M, Ident, Len)
 func GetSourceFileName(M *void, Len *void) *void:
-    return lib.LLVMGetSourceFileName(M, Len)
+    return lib['LLVMGetSourceFileName'](M, Len)
 func SetSourceFileName(M *void, Name *void, Len int) void:
-    return lib.LLVMSetSourceFileName(M, Name, Len)
+    return lib['LLVMSetSourceFileName'](M, Name, Len)
 func GetDataLayoutStr(M *void) *void:
-    return lib.LLVMGetDataLayoutStr(M)
+    return lib['LLVMGetDataLayoutStr'](M)
 func GetDataLayout(M *void) *void:
-    return lib.LLVMGetDataLayout(M)
+    return lib['LLVMGetDataLayout'](M)
 func SetDataLayout(M *void, DataLayoutStr *void) void:
-    return lib.LLVMSetDataLayout(M, DataLayoutStr)
+    return lib['LLVMSetDataLayout'](M, DataLayoutStr)
 func GetTarget(M *void) *void:
-    return lib.LLVMGetTarget(M)
+    return lib['LLVMGetTarget'](M)
 func SetTarget(M *void, Triple *void) void:
-    return lib.LLVMSetTarget(M, Triple)
+    return lib['LLVMSetTarget'](M, Triple)
 func CopyModuleFlagsMetadata(M *void, Len *void) *void:
-    return lib.LLVMCopyModuleFlagsMetadata(M, Len)
+    return lib['LLVMCopyModuleFlagsMetadata'](M, Len)
 func DisposeModuleFlagsMetadata(Entries *void) void:
-    return lib.LLVMDisposeModuleFlagsMetadata(Entries)
+    return lib['LLVMDisposeModuleFlagsMetadata'](Entries)
 func ModuleFlagEntriesGetFlagBehavior(Entries *void, Index int) ModuleFlagBehavior:
-    return lib.LLVMModuleFlagEntriesGetFlagBehavior(Entries, Index)
+    return lib['LLVMModuleFlagEntriesGetFlagBehavior'](Entries, Index)
 func ModuleFlagEntriesGetKey(Entries *void, Index int, Len *void) *void:
-    return lib.LLVMModuleFlagEntriesGetKey(Entries, Index, Len)
+    return lib['LLVMModuleFlagEntriesGetKey'](Entries, Index, Len)
 func ModuleFlagEntriesGetMetadata(Entries *void, Index int) MetadataRef:
-    return lib.LLVMModuleFlagEntriesGetMetadata(Entries, Index)
+    return lib['LLVMModuleFlagEntriesGetMetadata'](Entries, Index)
 func GetModuleFlag(M *void, Key *void, KeyLen int) MetadataRef:
-    return lib.LLVMGetModuleFlag(M, Key, KeyLen)
+    return lib['LLVMGetModuleFlag'](M, Key, KeyLen)
 func AddModuleFlag(M *void, Behavior ModuleFlagBehavior, Key *void, KeyLen int, Val *void) void:
-    return lib.LLVMAddModuleFlag(M, Behavior, Key, KeyLen, Val)
+    return lib['LLVMAddModuleFlag'](M, Behavior, Key, KeyLen, Val)
 func DumpModule(M *void) void:
-    return lib.LLVMDumpModule(M)
+    return lib['LLVMDumpModule'](M)
 func PrintModuleToFile(M *void, Filename *void, ErrorMessage *void) Bool:
-    return lib.LLVMPrintModuleToFile(M, Filename, ErrorMessage)
+    return lib['LLVMPrintModuleToFile'](M, Filename, ErrorMessage)
 func PrintModuleToString(M *void) *void:
-    return lib.LLVMPrintModuleToString(M)
+    return lib['LLVMPrintModuleToString'](M)
 func GetModuleInlineAsm(M *void, Len *void) *void:
-    return lib.LLVMGetModuleInlineAsm(M, Len)
+    return lib['LLVMGetModuleInlineAsm'](M, Len)
 func SetModuleInlineAsm2(M *void, Asm *void, Len int) void:
-    return lib.LLVMSetModuleInlineAsm2(M, Asm, Len)
+    return lib['LLVMSetModuleInlineAsm2'](M, Asm, Len)
 func AppendModuleInlineAsm(M *void, Asm *void, Len int) void:
-    return lib.LLVMAppendModuleInlineAsm(M, Asm, Len)
+    return lib['LLVMAppendModuleInlineAsm'](M, Asm, Len)
 func GetInlineAsm(Ty *void, AsmString *void, AsmStringSize int, Constraints *void, ConstraintsSize int, HasSideEffects Bool, IsAlignStack Bool, Dialect InlineAsmDialect, CanThrow Bool) ValueRef:
-    return lib.LLVMGetInlineAsm(Ty, AsmString, AsmStringSize, Constraints, ConstraintsSize, HasSideEffects, IsAlignStack, Dialect, CanThrow)
+    return lib['LLVMGetInlineAsm'](Ty, AsmString, AsmStringSize, Constraints, ConstraintsSize, HasSideEffects, IsAlignStack, Dialect, CanThrow)
 func GetInlineAsmAsmString(InlineAsmVal *void, Len *void) *void:
-    return lib.LLVMGetInlineAsmAsmString(InlineAsmVal, Len)
+    return lib['LLVMGetInlineAsmAsmString'](InlineAsmVal, Len)
 func GetInlineAsmConstraintString(InlineAsmVal *void, Len *void) *void:
-    return lib.LLVMGetInlineAsmConstraintString(InlineAsmVal, Len)
+    return lib['LLVMGetInlineAsmConstraintString'](InlineAsmVal, Len)
 func GetInlineAsmDialect(InlineAsmVal *void) InlineAsmDialect:
-    return lib.LLVMGetInlineAsmDialect(InlineAsmVal)
+    return lib['LLVMGetInlineAsmDialect'](InlineAsmVal)
 func GetInlineAsmFunctionType(InlineAsmVal *void) TypeRef:
-    return lib.LLVMGetInlineAsmFunctionType(InlineAsmVal)
+    return lib['LLVMGetInlineAsmFunctionType'](InlineAsmVal)
 func GetInlineAsmHasSideEffects(InlineAsmVal *void) Bool:
-    return lib.LLVMGetInlineAsmHasSideEffects(InlineAsmVal)
+    return lib['LLVMGetInlineAsmHasSideEffects'](InlineAsmVal)
 func GetInlineAsmNeedsAlignedStack(InlineAsmVal *void) Bool:
-    return lib.LLVMGetInlineAsmNeedsAlignedStack(InlineAsmVal)
+    return lib['LLVMGetInlineAsmNeedsAlignedStack'](InlineAsmVal)
 func GetInlineAsmCanUnwind(InlineAsmVal *void) Bool:
-    return lib.LLVMGetInlineAsmCanUnwind(InlineAsmVal)
+    return lib['LLVMGetInlineAsmCanUnwind'](InlineAsmVal)
 func GetModuleContext(M *void) ContextRef:
-    return lib.LLVMGetModuleContext(M)
+    return lib['LLVMGetModuleContext'](M)
 func GetTypeByName(M *void, Name *void) TypeRef:
-    return lib.LLVMGetTypeByName(M, Name)
+    return lib['LLVMGetTypeByName'](M, Name)
 func GetFirstNamedMetadata(M *void) NamedMDNodeRef:
-    return lib.LLVMGetFirstNamedMetadata(M)
+    return lib['LLVMGetFirstNamedMetadata'](M)
 func GetLastNamedMetadata(M *void) NamedMDNodeRef:
-    return lib.LLVMGetLastNamedMetadata(M)
+    return lib['LLVMGetLastNamedMetadata'](M)
 func GetNextNamedMetadata(NamedMDNode *void) NamedMDNodeRef:
-    return lib.LLVMGetNextNamedMetadata(NamedMDNode)
+    return lib['LLVMGetNextNamedMetadata'](NamedMDNode)
 func GetPreviousNamedMetadata(NamedMDNode *void) NamedMDNodeRef:
-    return lib.LLVMGetPreviousNamedMetadata(NamedMDNode)
+    return lib['LLVMGetPreviousNamedMetadata'](NamedMDNode)
 func GetNamedMetadata(M *void, Name *void, NameLen int) NamedMDNodeRef:
-    return lib.LLVMGetNamedMetadata(M, Name, NameLen)
+    return lib['LLVMGetNamedMetadata'](M, Name, NameLen)
 func GetOrInsertNamedMetadata(M *void, Name *void, NameLen int) NamedMDNodeRef:
-    return lib.LLVMGetOrInsertNamedMetadata(M, Name, NameLen)
+    return lib['LLVMGetOrInsertNamedMetadata'](M, Name, NameLen)
 func GetNamedMetadataName(NamedMD *void, NameLen *void) *void:
-    return lib.LLVMGetNamedMetadataName(NamedMD, NameLen)
+    return lib['LLVMGetNamedMetadataName'](NamedMD, NameLen)
 func GetNamedMetadataNumOperands(M *void, Name *void) int:
-    return lib.LLVMGetNamedMetadataNumOperands(M, Name)
+    return lib['LLVMGetNamedMetadataNumOperands'](M, Name)
 func GetNamedMetadataOperands(M *void, Name *void, Dest *void) void:
-    return lib.LLVMGetNamedMetadataOperands(M, Name, Dest)
+    return lib['LLVMGetNamedMetadataOperands'](M, Name, Dest)
 func AddNamedMetadataOperand(M *void, Name *void, Val *void) void:
-    return lib.LLVMAddNamedMetadataOperand(M, Name, Val)
+    return lib['LLVMAddNamedMetadataOperand'](M, Name, Val)
 func GetDebugLocDirectory(Val *void, Length *void) *void:
-    return lib.LLVMGetDebugLocDirectory(Val, Length)
+    return lib['LLVMGetDebugLocDirectory'](Val, Length)
 func GetDebugLocFilename(Val *void, Length *void) *void:
-    return lib.LLVMGetDebugLocFilename(Val, Length)
+    return lib['LLVMGetDebugLocFilename'](Val, Length)
 func GetDebugLocLine(Val *void) int:
-    return lib.LLVMGetDebugLocLine(Val)
+    return lib['LLVMGetDebugLocLine'](Val)
 func GetDebugLocColumn(Val *void) int:
-    return lib.LLVMGetDebugLocColumn(Val)
+    return lib['LLVMGetDebugLocColumn'](Val)
 func AddFunction(M *void, Name *void, FunctionTy *void) ValueRef:
-    return lib.LLVMAddFunction(M, Name, FunctionTy)
+    return lib['LLVMAddFunction'](M, Name, FunctionTy)
 func GetNamedFunction(M *void, Name *void) ValueRef:
-    return lib.LLVMGetNamedFunction(M, Name)
+    return lib['LLVMGetNamedFunction'](M, Name)
 func GetFirstFunction(M *void) ValueRef:
-    return lib.LLVMGetFirstFunction(M)
+    return lib['LLVMGetFirstFunction'](M)
 func GetLastFunction(M *void) ValueRef:
-    return lib.LLVMGetLastFunction(M)
+    return lib['LLVMGetLastFunction'](M)
 func GetNextFunction(Fn *void) ValueRef:
-    return lib.LLVMGetNextFunction(Fn)
+    return lib['LLVMGetNextFunction'](Fn)
 func GetPreviousFunction(Fn *void) ValueRef:
-    return lib.LLVMGetPreviousFunction(Fn)
+    return lib['LLVMGetPreviousFunction'](Fn)
 func SetModuleInlineAsm(M *void, Asm *void) void:
-    return lib.LLVMSetModuleInlineAsm(M, Asm)
+    return lib['LLVMSetModuleInlineAsm'](M, Asm)
 func GetTypeKind(Ty *void) TypeKind:
-    return lib.LLVMGetTypeKind(Ty)
+    return lib['LLVMGetTypeKind'](Ty)
 func TypeIsSized(Ty *void) Bool:
-    return lib.LLVMTypeIsSized(Ty)
+    return lib['LLVMTypeIsSized'](Ty)
 func GetTypeContext(Ty *void) ContextRef:
-    return lib.LLVMGetTypeContext(Ty)
+    return lib['LLVMGetTypeContext'](Ty)
 func DumpType(Val *void) void:
-    return lib.LLVMDumpType(Val)
+    return lib['LLVMDumpType'](Val)
 func PrintTypeToString(Val *void) *void:
-    return lib.LLVMPrintTypeToString(Val)
+    return lib['LLVMPrintTypeToString'](Val)
 func Int1TypeInContext(C *void) TypeRef:
-    return lib.LLVMInt1TypeInContext(C)
+    return lib['LLVMInt1TypeInContext'](C)
 func Int8TypeInContext(C *void) TypeRef:
-    return lib.LLVMInt8TypeInContext(C)
+    return lib['LLVMInt8TypeInContext'](C)
 func Int16TypeInContext(C *void) TypeRef:
-    return lib.LLVMInt16TypeInContext(C)
+    return lib['LLVMInt16TypeInContext'](C)
 func Int32TypeInContext(C *void) TypeRef:
-    return lib.LLVMInt32TypeInContext(C)
+    return lib['LLVMInt32TypeInContext'](C)
 func Int64TypeInContext(C *void) TypeRef:
-    return lib.LLVMInt64TypeInContext(C)
+    return lib['LLVMInt64TypeInContext'](C)
 func Int128TypeInContext(C *void) TypeRef:
-    return lib.LLVMInt128TypeInContext(C)
+    return lib['LLVMInt128TypeInContext'](C)
 func IntTypeInContext(C *void, NumBits int) TypeRef:
-    return lib.LLVMIntTypeInContext(C, NumBits)
+    return lib['LLVMIntTypeInContext'](C, NumBits)
 func Int1Type() TypeRef:
-    return lib.LLVMInt1Type()
+    return lib['LLVMInt1Type']()
 func Int8Type() TypeRef:
-    return lib.LLVMInt8Type()
+    return lib['LLVMInt8Type']()
 func Int16Type() TypeRef:
-    return lib.LLVMInt16Type()
+    return lib['LLVMInt16Type']()
 func Int32Type() TypeRef:
-    return lib.LLVMInt32Type()
+    return lib['LLVMInt32Type']()
 func Int64Type() TypeRef:
-    return lib.LLVMInt64Type()
+    return lib['LLVMInt64Type']()
 func Int128Type() TypeRef:
-    return lib.LLVMInt128Type()
+    return lib['LLVMInt128Type']()
 func IntType(NumBits int) TypeRef:
-    return lib.LLVMIntType(NumBits)
+    return lib['LLVMIntType'](NumBits)
 func GetIntTypeWidth(IntegerTy *void) int:
-    return lib.LLVMGetIntTypeWidth(IntegerTy)
+    return lib['LLVMGetIntTypeWidth'](IntegerTy)
 func HalfTypeInContext(C *void) TypeRef:
-    return lib.LLVMHalfTypeInContext(C)
+    return lib['LLVMHalfTypeInContext'](C)
 func BFloatTypeInContext(C *void) TypeRef:
-    return lib.LLVMBFloatTypeInContext(C)
+    return lib['LLVMBFloatTypeInContext'](C)
 func FloatTypeInContext(C *void) TypeRef:
-    return lib.LLVMFloatTypeInContext(C)
+    return lib['LLVMFloatTypeInContext'](C)
 func DoubleTypeInContext(C *void) TypeRef:
-    return lib.LLVMDoubleTypeInContext(C)
+    return lib['LLVMDoubleTypeInContext'](C)
 func X86FP80TypeInContext(C *void) TypeRef:
-    return lib.LLVMX86FP80TypeInContext(C)
+    return lib['LLVMX86FP80TypeInContext'](C)
 func FP128TypeInContext(C *void) TypeRef:
-    return lib.LLVMFP128TypeInContext(C)
+    return lib['LLVMFP128TypeInContext'](C)
 func PPCFP128TypeInContext(C *void) TypeRef:
-    return lib.LLVMPPCFP128TypeInContext(C)
+    return lib['LLVMPPCFP128TypeInContext'](C)
 func HalfType() TypeRef:
-    return lib.LLVMHalfType()
+    return lib['LLVMHalfType']()
 func BFloatType() TypeRef:
-    return lib.LLVMBFloatType()
+    return lib['LLVMBFloatType']()
 func FloatType() TypeRef:
-    return lib.LLVMFloatType()
+    return lib['LLVMFloatType']()
 func DoubleType() TypeRef:
-    return lib.LLVMDoubleType()
+    return lib['LLVMDoubleType']()
 func X86FP80Type() TypeRef:
-    return lib.LLVMX86FP80Type()
+    return lib['LLVMX86FP80Type']()
 func FP128Type() TypeRef:
-    return lib.LLVMFP128Type()
+    return lib['LLVMFP128Type']()
 func PPCFP128Type() TypeRef:
-    return lib.LLVMPPCFP128Type()
+    return lib['LLVMPPCFP128Type']()
 func FunctionType(ReturnType *void, ParamTypes *void, ParamCount int, IsVarArg Bool) TypeRef:
-    return lib.LLVMFunctionType(ReturnType, ParamTypes, ParamCount, IsVarArg)
+    return lib['LLVMFunctionType'](ReturnType, ParamTypes, ParamCount, IsVarArg)
 func IsFunctionVarArg(FunctionTy *void) Bool:
-    return lib.LLVMIsFunctionVarArg(FunctionTy)
+    return lib['LLVMIsFunctionVarArg'](FunctionTy)
 func GetReturnType(FunctionTy *void) TypeRef:
-    return lib.LLVMGetReturnType(FunctionTy)
+    return lib['LLVMGetReturnType'](FunctionTy)
 func CountParamTypes(FunctionTy *void) int:
-    return lib.LLVMCountParamTypes(FunctionTy)
+    return lib['LLVMCountParamTypes'](FunctionTy)
 func GetParamTypes(FunctionTy *void, Dest *void) void:
-    return lib.LLVMGetParamTypes(FunctionTy, Dest)
+    return lib['LLVMGetParamTypes'](FunctionTy, Dest)
 func StructTypeInContext(C *void, ElementTypes *void, ElementCount int, Packed Bool) TypeRef:
-    return lib.LLVMStructTypeInContext(C, ElementTypes, ElementCount, Packed)
+    return lib['LLVMStructTypeInContext'](C, ElementTypes, ElementCount, Packed)
 func StructType(ElementTypes *void, ElementCount int, Packed Bool) TypeRef:
-    return lib.LLVMStructType(ElementTypes, ElementCount, Packed)
+    return lib['LLVMStructType'](ElementTypes, ElementCount, Packed)
 func StructCreateNamed(C *void, Name *void) TypeRef:
-    return lib.LLVMStructCreateNamed(C, Name)
+    return lib['LLVMStructCreateNamed'](C, Name)
 func GetStructName(Ty *void) *void:
-    return lib.LLVMGetStructName(Ty)
+    return lib['LLVMGetStructName'](Ty)
 func StructSetBody(StructTy *void, ElementTypes *void, ElementCount int, Packed Bool) void:
-    return lib.LLVMStructSetBody(StructTy, ElementTypes, ElementCount, Packed)
+    return lib['LLVMStructSetBody'](StructTy, ElementTypes, ElementCount, Packed)
 func CountStructElementTypes(StructTy *void) int:
-    return lib.LLVMCountStructElementTypes(StructTy)
+    return lib['LLVMCountStructElementTypes'](StructTy)
 func GetStructElementTypes(StructTy *void, Dest *void) void:
-    return lib.LLVMGetStructElementTypes(StructTy, Dest)
+    return lib['LLVMGetStructElementTypes'](StructTy, Dest)
 func StructGetTypeAtIndex(StructTy *void, i int) TypeRef:
-    return lib.LLVMStructGetTypeAtIndex(StructTy, i)
+    return lib['LLVMStructGetTypeAtIndex'](StructTy, i)
 func IsPackedStruct(StructTy *void) Bool:
-    return lib.LLVMIsPackedStruct(StructTy)
+    return lib['LLVMIsPackedStruct'](StructTy)
 func IsOpaqueStruct(StructTy *void) Bool:
-    return lib.LLVMIsOpaqueStruct(StructTy)
+    return lib['LLVMIsOpaqueStruct'](StructTy)
 func IsLiteralStruct(StructTy *void) Bool:
-    return lib.LLVMIsLiteralStruct(StructTy)
+    return lib['LLVMIsLiteralStruct'](StructTy)
 func GetElementType(Ty *void) TypeRef:
-    return lib.LLVMGetElementType(Ty)
+    return lib['LLVMGetElementType'](Ty)
 func GetSubtypes(Tp *void, Arr *void) void:
-    return lib.LLVMGetSubtypes(Tp, Arr)
+    return lib['LLVMGetSubtypes'](Tp, Arr)
 func GetNumContainedTypes(Tp *void) int:
-    return lib.LLVMGetNumContainedTypes(Tp)
+    return lib['LLVMGetNumContainedTypes'](Tp)
 func ArrayType(ElementType *void, ElementCount int) TypeRef:
-    return lib.LLVMArrayType(ElementType, ElementCount)
+    return lib['LLVMArrayType'](ElementType, ElementCount)
 func ArrayType2(ElementType *void, ElementCount int) TypeRef:
-    return lib.LLVMArrayType2(ElementType, ElementCount)
+    return lib['LLVMArrayType2'](ElementType, ElementCount)
 func GetArrayLength(ArrayTy *void) int:
-    return lib.LLVMGetArrayLength(ArrayTy)
+    return lib['LLVMGetArrayLength'](ArrayTy)
 func GetArrayLength2(ArrayTy *void) int:
-    return lib.LLVMGetArrayLength2(ArrayTy)
+    return lib['LLVMGetArrayLength2'](ArrayTy)
 func PointerType(ElementType *void, AddressSpace int) TypeRef:
-    return lib.LLVMPointerType(ElementType, AddressSpace)
+    return lib['LLVMPointerType'](ElementType, AddressSpace)
 func PointerTypeIsOpaque(Ty *void) Bool:
-    return lib.LLVMPointerTypeIsOpaque(Ty)
+    return lib['LLVMPointerTypeIsOpaque'](Ty)
 func PointerTypeInContext(C *void, AddressSpace int) TypeRef:
-    return lib.LLVMPointerTypeInContext(C, AddressSpace)
+    return lib['LLVMPointerTypeInContext'](C, AddressSpace)
 func GetPointerAddressSpace(PointerTy *void) int:
-    return lib.LLVMGetPointerAddressSpace(PointerTy)
+    return lib['LLVMGetPointerAddressSpace'](PointerTy)
 func VectorType(ElementType *void, ElementCount int) TypeRef:
-    return lib.LLVMVectorType(ElementType, ElementCount)
+    return lib['LLVMVectorType'](ElementType, ElementCount)
 func ScalableVectorType(ElementType *void, ElementCount int) TypeRef:
-    return lib.LLVMScalableVectorType(ElementType, ElementCount)
+    return lib['LLVMScalableVectorType'](ElementType, ElementCount)
 func GetVectorSize(VectorTy *void) int:
-    return lib.LLVMGetVectorSize(VectorTy)
+    return lib['LLVMGetVectorSize'](VectorTy)
 func VoidTypeInContext(C *void) TypeRef:
-    return lib.LLVMVoidTypeInContext(C)
+    return lib['LLVMVoidTypeInContext'](C)
 func LabelTypeInContext(C *void) TypeRef:
-    return lib.LLVMLabelTypeInContext(C)
+    return lib['LLVMLabelTypeInContext'](C)
 func X86MMXTypeInContext(C *void) TypeRef:
-    return lib.LLVMX86MMXTypeInContext(C)
+    return lib['LLVMX86MMXTypeInContext'](C)
 func X86AMXTypeInContext(C *void) TypeRef:
-    return lib.LLVMX86AMXTypeInContext(C)
+    return lib['LLVMX86AMXTypeInContext'](C)
 func TokenTypeInContext(C *void) TypeRef:
-    return lib.LLVMTokenTypeInContext(C)
+    return lib['LLVMTokenTypeInContext'](C)
 func MetadataTypeInContext(C *void) TypeRef:
-    return lib.LLVMMetadataTypeInContext(C)
+    return lib['LLVMMetadataTypeInContext'](C)
 func VoidType() TypeRef:
-    return lib.LLVMVoidType()
+    return lib['LLVMVoidType']()
 func LabelType() TypeRef:
-    return lib.LLVMLabelType()
+    return lib['LLVMLabelType']()
 func X86MMXType() TypeRef:
-    return lib.LLVMX86MMXType()
+    return lib['LLVMX86MMXType']()
 func X86AMXType() TypeRef:
-    return lib.LLVMX86AMXType()
+    return lib['LLVMX86AMXType']()
 func TargetExtTypeInContext(C *void, Name *void, TypeParams *void, TypeParamCount int, IntParams *void, IntParamCount int) TypeRef:
-    return lib.LLVMTargetExtTypeInContext(C, Name, TypeParams, TypeParamCount, IntParams, IntParamCount)
+    return lib['LLVMTargetExtTypeInContext'](C, Name, TypeParams, TypeParamCount, IntParams, IntParamCount)
 func TypeOf(Val *void) TypeRef:
-    return lib.LLVMTypeOf(Val)
+    return lib['LLVMTypeOf'](Val)
 func GetValueKind(Val *void) ValueKind:
-    return lib.LLVMGetValueKind(Val)
+    return lib['LLVMGetValueKind'](Val)
 func GetValueName2(Val *void, Length *void) *void:
-    return lib.LLVMGetValueName2(Val, Length)
+    return lib['LLVMGetValueName2'](Val, Length)
 func SetValueName2(Val *void, Name *void, NameLen int) void:
-    return lib.LLVMSetValueName2(Val, Name, NameLen)
+    return lib['LLVMSetValueName2'](Val, Name, NameLen)
 func DumpValue(Val *void) void:
-    return lib.LLVMDumpValue(Val)
+    return lib['LLVMDumpValue'](Val)
 func PrintValueToString(Val *void) *void:
-    return lib.LLVMPrintValueToString(Val)
+    return lib['LLVMPrintValueToString'](Val)
 func ReplaceAllUsesWith(OldVal *void, NewVal *void) void:
-    return lib.LLVMReplaceAllUsesWith(OldVal, NewVal)
+    return lib['LLVMReplaceAllUsesWith'](OldVal, NewVal)
 func IsConstant(Val *void) Bool:
-    return lib.LLVMIsConstant(Val)
+    return lib['LLVMIsConstant'](Val)
 func IsUndef(Val *void) Bool:
-    return lib.LLVMIsUndef(Val)
+    return lib['LLVMIsUndef'](Val)
 func IsPoison(Val *void) Bool:
-    return lib.LLVMIsPoison(Val)
+    return lib['LLVMIsPoison'](Val)
 func IsAArgument(Val *void) ValueRef:
-    return lib.LLVMIsAArgument(Val)
+    return lib['LLVMIsAArgument'](Val)
 func IsABasicBlock(Val *void) ValueRef:
-    return lib.LLVMIsABasicBlock(Val)
+    return lib['LLVMIsABasicBlock'](Val)
 func IsAInlineAsm(Val *void) ValueRef:
-    return lib.LLVMIsAInlineAsm(Val)
+    return lib['LLVMIsAInlineAsm'](Val)
 func IsAUser(Val *void) ValueRef:
-    return lib.LLVMIsAUser(Val)
+    return lib['LLVMIsAUser'](Val)
 func IsAConstant(Val *void) ValueRef:
-    return lib.LLVMIsAConstant(Val)
+    return lib['LLVMIsAConstant'](Val)
 func IsABlockAddress(Val *void) ValueRef:
-    return lib.LLVMIsABlockAddress(Val)
+    return lib['LLVMIsABlockAddress'](Val)
 func IsAConstantAggregateZero(Val *void) ValueRef:
-    return lib.LLVMIsAConstantAggregateZero(Val)
+    return lib['LLVMIsAConstantAggregateZero'](Val)
 func IsAConstantArray(Val *void) ValueRef:
-    return lib.LLVMIsAConstantArray(Val)
+    return lib['LLVMIsAConstantArray'](Val)
 func IsAConstantDataSequential(Val *void) ValueRef:
-    return lib.LLVMIsAConstantDataSequential(Val)
+    return lib['LLVMIsAConstantDataSequential'](Val)
 func IsAConstantDataArray(Val *void) ValueRef:
-    return lib.LLVMIsAConstantDataArray(Val)
+    return lib['LLVMIsAConstantDataArray'](Val)
 func IsAConstantDataVector(Val *void) ValueRef:
-    return lib.LLVMIsAConstantDataVector(Val)
+    return lib['LLVMIsAConstantDataVector'](Val)
 func IsAConstantExpr(Val *void) ValueRef:
-    return lib.LLVMIsAConstantExpr(Val)
+    return lib['LLVMIsAConstantExpr'](Val)
 func IsAConstantFP(Val *void) ValueRef:
-    return lib.LLVMIsAConstantFP(Val)
+    return lib['LLVMIsAConstantFP'](Val)
 func IsAConstantInt(Val *void) ValueRef:
-    return lib.LLVMIsAConstantInt(Val)
+    return lib['LLVMIsAConstantInt'](Val)
 func IsAConstantPointerNull(Val *void) ValueRef:
-    return lib.LLVMIsAConstantPointerNull(Val)
+    return lib['LLVMIsAConstantPointerNull'](Val)
 func IsAConstantStruct(Val *void) ValueRef:
-    return lib.LLVMIsAConstantStruct(Val)
+    return lib['LLVMIsAConstantStruct'](Val)
 func IsAConstantTokenNone(Val *void) ValueRef:
-    return lib.LLVMIsAConstantTokenNone(Val)
+    return lib['LLVMIsAConstantTokenNone'](Val)
 func IsAConstantVector(Val *void) ValueRef:
-    return lib.LLVMIsAConstantVector(Val)
+    return lib['LLVMIsAConstantVector'](Val)
 func IsAGlobalValue(Val *void) ValueRef:
-    return lib.LLVMIsAGlobalValue(Val)
+    return lib['LLVMIsAGlobalValue'](Val)
 func IsAGlobalAlias(Val *void) ValueRef:
-    return lib.LLVMIsAGlobalAlias(Val)
+    return lib['LLVMIsAGlobalAlias'](Val)
 func IsAGlobalObject(Val *void) ValueRef:
-    return lib.LLVMIsAGlobalObject(Val)
+    return lib['LLVMIsAGlobalObject'](Val)
 func IsAFunction(Val *void) ValueRef:
-    return lib.LLVMIsAFunction(Val)
+    return lib['LLVMIsAFunction'](Val)
 func IsAGlobalVariable(Val *void) ValueRef:
-    return lib.LLVMIsAGlobalVariable(Val)
+    return lib['LLVMIsAGlobalVariable'](Val)
 func IsAGlobalIFunc(Val *void) ValueRef:
-    return lib.LLVMIsAGlobalIFunc(Val)
+    return lib['LLVMIsAGlobalIFunc'](Val)
 func IsAUndefValue(Val *void) ValueRef:
-    return lib.LLVMIsAUndefValue(Val)
+    return lib['LLVMIsAUndefValue'](Val)
 func IsAPoisonValue(Val *void) ValueRef:
-    return lib.LLVMIsAPoisonValue(Val)
+    return lib['LLVMIsAPoisonValue'](Val)
 func IsAInstruction(Val *void) ValueRef:
-    return lib.LLVMIsAInstruction(Val)
+    return lib['LLVMIsAInstruction'](Val)
 func IsAUnaryOperator(Val *void) ValueRef:
-    return lib.LLVMIsAUnaryOperator(Val)
+    return lib['LLVMIsAUnaryOperator'](Val)
 func IsABinaryOperator(Val *void) ValueRef:
-    return lib.LLVMIsABinaryOperator(Val)
+    return lib['LLVMIsABinaryOperator'](Val)
 func IsACallInst(Val *void) ValueRef:
-    return lib.LLVMIsACallInst(Val)
+    return lib['LLVMIsACallInst'](Val)
 func IsAIntrinsicInst(Val *void) ValueRef:
-    return lib.LLVMIsAIntrinsicInst(Val)
+    return lib['LLVMIsAIntrinsicInst'](Val)
 func IsADbgInfoIntrinsic(Val *void) ValueRef:
-    return lib.LLVMIsADbgInfoIntrinsic(Val)
+    return lib['LLVMIsADbgInfoIntrinsic'](Val)
 func IsADbgVariableIntrinsic(Val *void) ValueRef:
-    return lib.LLVMIsADbgVariableIntrinsic(Val)
+    return lib['LLVMIsADbgVariableIntrinsic'](Val)
 func IsADbgDeclareInst(Val *void) ValueRef:
-    return lib.LLVMIsADbgDeclareInst(Val)
+    return lib['LLVMIsADbgDeclareInst'](Val)
 func IsADbgLabelInst(Val *void) ValueRef:
-    return lib.LLVMIsADbgLabelInst(Val)
+    return lib['LLVMIsADbgLabelInst'](Val)
 func IsAMemIntrinsic(Val *void) ValueRef:
-    return lib.LLVMIsAMemIntrinsic(Val)
+    return lib['LLVMIsAMemIntrinsic'](Val)
 func IsAMemCpyInst(Val *void) ValueRef:
-    return lib.LLVMIsAMemCpyInst(Val)
+    return lib['LLVMIsAMemCpyInst'](Val)
 func IsAMemMoveInst(Val *void) ValueRef:
-    return lib.LLVMIsAMemMoveInst(Val)
+    return lib['LLVMIsAMemMoveInst'](Val)
 func IsAMemSetInst(Val *void) ValueRef:
-    return lib.LLVMIsAMemSetInst(Val)
+    return lib['LLVMIsAMemSetInst'](Val)
 func IsACmpInst(Val *void) ValueRef:
-    return lib.LLVMIsACmpInst(Val)
+    return lib['LLVMIsACmpInst'](Val)
 func IsAFCmpInst(Val *void) ValueRef:
-    return lib.LLVMIsAFCmpInst(Val)
+    return lib['LLVMIsAFCmpInst'](Val)
 func IsAICmpInst(Val *void) ValueRef:
-    return lib.LLVMIsAICmpInst(Val)
+    return lib['LLVMIsAICmpInst'](Val)
 func IsAExtractElementInst(Val *void) ValueRef:
-    return lib.LLVMIsAExtractElementInst(Val)
+    return lib['LLVMIsAExtractElementInst'](Val)
 func IsAGetElementPtrInst(Val *void) ValueRef:
-    return lib.LLVMIsAGetElementPtrInst(Val)
+    return lib['LLVMIsAGetElementPtrInst'](Val)
 func IsAInsertElementInst(Val *void) ValueRef:
-    return lib.LLVMIsAInsertElementInst(Val)
+    return lib['LLVMIsAInsertElementInst'](Val)
 func IsAInsertValueInst(Val *void) ValueRef:
-    return lib.LLVMIsAInsertValueInst(Val)
+    return lib['LLVMIsAInsertValueInst'](Val)
 func IsALandingPadInst(Val *void) ValueRef:
-    return lib.LLVMIsALandingPadInst(Val)
+    return lib['LLVMIsALandingPadInst'](Val)
 func IsAPHINode(Val *void) ValueRef:
-    return lib.LLVMIsAPHINode(Val)
+    return lib['LLVMIsAPHINode'](Val)
 func IsASelectInst(Val *void) ValueRef:
-    return lib.LLVMIsASelectInst(Val)
+    return lib['LLVMIsASelectInst'](Val)
 func IsAShuffleVectorInst(Val *void) ValueRef:
-    return lib.LLVMIsAShuffleVectorInst(Val)
+    return lib['LLVMIsAShuffleVectorInst'](Val)
 func IsAStoreInst(Val *void) ValueRef:
-    return lib.LLVMIsAStoreInst(Val)
+    return lib['LLVMIsAStoreInst'](Val)
 func IsABranchInst(Val *void) ValueRef:
-    return lib.LLVMIsABranchInst(Val)
+    return lib['LLVMIsABranchInst'](Val)
 func IsAIndirectBrInst(Val *void) ValueRef:
-    return lib.LLVMIsAIndirectBrInst(Val)
+    return lib['LLVMIsAIndirectBrInst'](Val)
 func IsAInvokeInst(Val *void) ValueRef:
-    return lib.LLVMIsAInvokeInst(Val)
+    return lib['LLVMIsAInvokeInst'](Val)
 func IsAReturnInst(Val *void) ValueRef:
-    return lib.LLVMIsAReturnInst(Val)
+    return lib['LLVMIsAReturnInst'](Val)
 func IsASwitchInst(Val *void) ValueRef:
-    return lib.LLVMIsASwitchInst(Val)
+    return lib['LLVMIsASwitchInst'](Val)
 func IsAUnreachableInst(Val *void) ValueRef:
-    return lib.LLVMIsAUnreachableInst(Val)
+    return lib['LLVMIsAUnreachableInst'](Val)
 func IsAResumeInst(Val *void) ValueRef:
-    return lib.LLVMIsAResumeInst(Val)
+    return lib['LLVMIsAResumeInst'](Val)
 func IsACleanupReturnInst(Val *void) ValueRef:
-    return lib.LLVMIsACleanupReturnInst(Val)
+    return lib['LLVMIsACleanupReturnInst'](Val)
 func IsACatchReturnInst(Val *void) ValueRef:
-    return lib.LLVMIsACatchReturnInst(Val)
+    return lib['LLVMIsACatchReturnInst'](Val)
 func IsACatchSwitchInst(Val *void) ValueRef:
-    return lib.LLVMIsACatchSwitchInst(Val)
+    return lib['LLVMIsACatchSwitchInst'](Val)
 func IsACallBrInst(Val *void) ValueRef:
-    return lib.LLVMIsACallBrInst(Val)
+    return lib['LLVMIsACallBrInst'](Val)
 func IsAFuncletPadInst(Val *void) ValueRef:
-    return lib.LLVMIsAFuncletPadInst(Val)
+    return lib['LLVMIsAFuncletPadInst'](Val)
 func IsACatchPadInst(Val *void) ValueRef:
-    return lib.LLVMIsACatchPadInst(Val)
+    return lib['LLVMIsACatchPadInst'](Val)
 func IsACleanupPadInst(Val *void) ValueRef:
-    return lib.LLVMIsACleanupPadInst(Val)
+    return lib['LLVMIsACleanupPadInst'](Val)
 func IsAUnaryInstruction(Val *void) ValueRef:
-    return lib.LLVMIsAUnaryInstruction(Val)
+    return lib['LLVMIsAUnaryInstruction'](Val)
 func IsAAllocaInst(Val *void) ValueRef:
-    return lib.LLVMIsAAllocaInst(Val)
+    return lib['LLVMIsAAllocaInst'](Val)
 func IsACastInst(Val *void) ValueRef:
-    return lib.LLVMIsACastInst(Val)
+    return lib['LLVMIsACastInst'](Val)
 func IsAAddrSpaceCastInst(Val *void) ValueRef:
-    return lib.LLVMIsAAddrSpaceCastInst(Val)
+    return lib['LLVMIsAAddrSpaceCastInst'](Val)
 func IsABitCastInst(Val *void) ValueRef:
-    return lib.LLVMIsABitCastInst(Val)
+    return lib['LLVMIsABitCastInst'](Val)
 func IsAFPExtInst(Val *void) ValueRef:
-    return lib.LLVMIsAFPExtInst(Val)
+    return lib['LLVMIsAFPExtInst'](Val)
 func IsAFPToSIInst(Val *void) ValueRef:
-    return lib.LLVMIsAFPToSIInst(Val)
+    return lib['LLVMIsAFPToSIInst'](Val)
 func IsAFPToUIInst(Val *void) ValueRef:
-    return lib.LLVMIsAFPToUIInst(Val)
+    return lib['LLVMIsAFPToUIInst'](Val)
 func IsAFPTruncInst(Val *void) ValueRef:
-    return lib.LLVMIsAFPTruncInst(Val)
+    return lib['LLVMIsAFPTruncInst'](Val)
 func IsAIntToPtrInst(Val *void) ValueRef:
-    return lib.LLVMIsAIntToPtrInst(Val)
+    return lib['LLVMIsAIntToPtrInst'](Val)
 func IsAPtrToIntInst(Val *void) ValueRef:
-    return lib.LLVMIsAPtrToIntInst(Val)
+    return lib['LLVMIsAPtrToIntInst'](Val)
 func IsASExtInst(Val *void) ValueRef:
-    return lib.LLVMIsASExtInst(Val)
+    return lib['LLVMIsASExtInst'](Val)
 func IsASIToFPInst(Val *void) ValueRef:
-    return lib.LLVMIsASIToFPInst(Val)
+    return lib['LLVMIsASIToFPInst'](Val)
 func IsATruncInst(Val *void) ValueRef:
-    return lib.LLVMIsATruncInst(Val)
+    return lib['LLVMIsATruncInst'](Val)
 func IsAUIToFPInst(Val *void) ValueRef:
-    return lib.LLVMIsAUIToFPInst(Val)
+    return lib['LLVMIsAUIToFPInst'](Val)
 func IsAZExtInst(Val *void) ValueRef:
-    return lib.LLVMIsAZExtInst(Val)
+    return lib['LLVMIsAZExtInst'](Val)
 func IsAExtractValueInst(Val *void) ValueRef:
-    return lib.LLVMIsAExtractValueInst(Val)
+    return lib['LLVMIsAExtractValueInst'](Val)
 func IsALoadInst(Val *void) ValueRef:
-    return lib.LLVMIsALoadInst(Val)
+    return lib['LLVMIsALoadInst'](Val)
 func IsAVAArgInst(Val *void) ValueRef:
-    return lib.LLVMIsAVAArgInst(Val)
+    return lib['LLVMIsAVAArgInst'](Val)
 func IsAFreezeInst(Val *void) ValueRef:
-    return lib.LLVMIsAFreezeInst(Val)
+    return lib['LLVMIsAFreezeInst'](Val)
 func IsAAtomicCmpXchgInst(Val *void) ValueRef:
-    return lib.LLVMIsAAtomicCmpXchgInst(Val)
+    return lib['LLVMIsAAtomicCmpXchgInst'](Val)
 func IsAAtomicRMWInst(Val *void) ValueRef:
-    return lib.LLVMIsAAtomicRMWInst(Val)
+    return lib['LLVMIsAAtomicRMWInst'](Val)
 func IsAFenceInst(Val *void) ValueRef:
-    return lib.LLVMIsAFenceInst(Val)
+    return lib['LLVMIsAFenceInst'](Val)
 func IsAMDNode(Val *void) ValueRef:
-    return lib.LLVMIsAMDNode(Val)
+    return lib['LLVMIsAMDNode'](Val)
 func IsAValueAsMetadata(Val *void) ValueRef:
-    return lib.LLVMIsAValueAsMetadata(Val)
+    return lib['LLVMIsAValueAsMetadata'](Val)
 func IsAMDString(Val *void) ValueRef:
-    return lib.LLVMIsAMDString(Val)
+    return lib['LLVMIsAMDString'](Val)
 func GetValueName(Val *void) *void:
-    return lib.LLVMGetValueName(Val)
+    return lib['LLVMGetValueName'](Val)
 func SetValueName(Val *void, Name *void) void:
-    return lib.LLVMSetValueName(Val, Name)
+    return lib['LLVMSetValueName'](Val, Name)
 func GetFirstUse(Val *void) UseRef:
-    return lib.LLVMGetFirstUse(Val)
+    return lib['LLVMGetFirstUse'](Val)
 func GetNextUse(U *void) UseRef:
-    return lib.LLVMGetNextUse(U)
+    return lib['LLVMGetNextUse'](U)
 func GetUser(U *void) ValueRef:
-    return lib.LLVMGetUser(U)
+    return lib['LLVMGetUser'](U)
 func GetUsedValue(U *void) ValueRef:
-    return lib.LLVMGetUsedValue(U)
+    return lib['LLVMGetUsedValue'](U)
 func GetOperand(Val *void, Index int) ValueRef:
-    return lib.LLVMGetOperand(Val, Index)
+    return lib['LLVMGetOperand'](Val, Index)
 func GetOperandUse(Val *void, Index int) UseRef:
-    return lib.LLVMGetOperandUse(Val, Index)
+    return lib['LLVMGetOperandUse'](Val, Index)
 func SetOperand(User *void, Index int, Val *void) void:
-    return lib.LLVMSetOperand(User, Index, Val)
+    return lib['LLVMSetOperand'](User, Index, Val)
 func GetNumOperands(Val *void) int:
-    return lib.LLVMGetNumOperands(Val)
+    return lib['LLVMGetNumOperands'](Val)
 func ConstNull(Ty *void) ValueRef:
-    return lib.LLVMConstNull(Ty)
+    return lib['LLVMConstNull'](Ty)
 func ConstAllOnes(Ty *void) ValueRef:
-    return lib.LLVMConstAllOnes(Ty)
+    return lib['LLVMConstAllOnes'](Ty)
 func GetUndef(Ty *void) ValueRef:
-    return lib.LLVMGetUndef(Ty)
+    return lib['LLVMGetUndef'](Ty)
 func GetPoison(Ty *void) ValueRef:
-    return lib.LLVMGetPoison(Ty)
+    return lib['LLVMGetPoison'](Ty)
 func IsNull(Val *void) Bool:
-    return lib.LLVMIsNull(Val)
+    return lib['LLVMIsNull'](Val)
 func ConstPointerNull(Ty *void) ValueRef:
-    return lib.LLVMConstPointerNull(Ty)
+    return lib['LLVMConstPointerNull'](Ty)
 func ConstInt(IntTy *void, N int, SignExtend Bool) ValueRef:
-    return lib.LLVMConstInt(IntTy, N, SignExtend)
+    return lib['LLVMConstInt'](IntTy, N, SignExtend)
 func ConstIntOfArbitraryPrecision(IntTy *void, NumWords int, Words *void) ValueRef:
-    return lib.LLVMConstIntOfArbitraryPrecision(IntTy, NumWords, Words)
+    return lib['LLVMConstIntOfArbitraryPrecision'](IntTy, NumWords, Words)
 func ConstIntOfString(IntTy *void, Text *void, Radix int) ValueRef:
-    return lib.LLVMConstIntOfString(IntTy, Text, Radix)
+    return lib['LLVMConstIntOfString'](IntTy, Text, Radix)
 func ConstIntOfStringAndSize(IntTy *void, Text *void, SLen int, Radix int) ValueRef:
-    return lib.LLVMConstIntOfStringAndSize(IntTy, Text, SLen, Radix)
+    return lib['LLVMConstIntOfStringAndSize'](IntTy, Text, SLen, Radix)
 func ConstReal(RealTy *void, N float) ValueRef:
-    return lib.LLVMConstReal(RealTy, N)
+    return lib['LLVMConstReal'](RealTy, N)
 func ConstRealOfString(RealTy *void, Text *void) ValueRef:
-    return lib.LLVMConstRealOfString(RealTy, Text)
+    return lib['LLVMConstRealOfString'](RealTy, Text)
 func ConstRealOfStringAndSize(RealTy *void, Text *void, SLen int) ValueRef:
-    return lib.LLVMConstRealOfStringAndSize(RealTy, Text, SLen)
+    return lib['LLVMConstRealOfStringAndSize'](RealTy, Text, SLen)
 func ConstIntGetZExtValue(ConstantVal *void) int:
-    return lib.LLVMConstIntGetZExtValue(ConstantVal)
+    return lib['LLVMConstIntGetZExtValue'](ConstantVal)
 func ConstIntGetSExtValue(ConstantVal *void) int:
-    return lib.LLVMConstIntGetSExtValue(ConstantVal)
+    return lib['LLVMConstIntGetSExtValue'](ConstantVal)
 func ConstRealGetDouble(ConstantVal *void, losesInfo *void) float:
-    return lib.LLVMConstRealGetDouble(ConstantVal, losesInfo)
+    return lib['LLVMConstRealGetDouble'](ConstantVal, losesInfo)
 func ConstStringInContext(C *void, Str *void, Length int, DontNullTerminate Bool) ValueRef:
-    return lib.LLVMConstStringInContext(C, Str, Length, DontNullTerminate)
+    return lib['LLVMConstStringInContext'](C, Str, Length, DontNullTerminate)
 func ConstString(Str *void, Length int, DontNullTerminate Bool) ValueRef:
-    return lib.LLVMConstString(Str, Length, DontNullTerminate)
+    return lib['LLVMConstString'](Str, Length, DontNullTerminate)
 func IsConstantString(c *void) Bool:
-    return lib.LLVMIsConstantString(c)
+    return lib['LLVMIsConstantString'](c)
 func GetAsString(c *void, Length *void) *void:
-    return lib.LLVMGetAsString(c, Length)
+    return lib['LLVMGetAsString'](c, Length)
 func ConstStructInContext(C *void, ConstantVals *void, Count int, Packed Bool) ValueRef:
-    return lib.LLVMConstStructInContext(C, ConstantVals, Count, Packed)
+    return lib['LLVMConstStructInContext'](C, ConstantVals, Count, Packed)
 func ConstStruct(ConstantVals *void, Count int, Packed Bool) ValueRef:
-    return lib.LLVMConstStruct(ConstantVals, Count, Packed)
+    return lib['LLVMConstStruct'](ConstantVals, Count, Packed)
 func ConstArray(ElementTy *void, ConstantVals *void, Length int) ValueRef:
-    return lib.LLVMConstArray(ElementTy, ConstantVals, Length)
+    return lib['LLVMConstArray'](ElementTy, ConstantVals, Length)
 func ConstArray2(ElementTy *void, ConstantVals *void, Length int) ValueRef:
-    return lib.LLVMConstArray2(ElementTy, ConstantVals, Length)
+    return lib['LLVMConstArray2'](ElementTy, ConstantVals, Length)
 func ConstNamedStruct(StructTy *void, ConstantVals *void, Count int) ValueRef:
-    return lib.LLVMConstNamedStruct(StructTy, ConstantVals, Count)
+    return lib['LLVMConstNamedStruct'](StructTy, ConstantVals, Count)
 func GetAggregateElement(C *void, Idx int) ValueRef:
-    return lib.LLVMGetAggregateElement(C, Idx)
+    return lib['LLVMGetAggregateElement'](C, Idx)
 func GetElementAsConstant(C *void, idx int) ValueRef:
-    return lib.LLVMGetElementAsConstant(C, idx)
+    return lib['LLVMGetElementAsConstant'](C, idx)
 func ConstVector(ScalarConstantVals *void, Size int) ValueRef:
-    return lib.LLVMConstVector(ScalarConstantVals, Size)
+    return lib['LLVMConstVector'](ScalarConstantVals, Size)
 func GetConstOpcode(ConstantVal *void) Opcode:
-    return lib.LLVMGetConstOpcode(ConstantVal)
+    return lib['LLVMGetConstOpcode'](ConstantVal)
 func AlignOf(Ty *void) ValueRef:
-    return lib.LLVMAlignOf(Ty)
+    return lib['LLVMAlignOf'](Ty)
 func SizeOf(Ty *void) ValueRef:
-    return lib.LLVMSizeOf(Ty)
+    return lib['LLVMSizeOf'](Ty)
 func ConstNeg(ConstantVal *void) ValueRef:
-    return lib.LLVMConstNeg(ConstantVal)
+    return lib['LLVMConstNeg'](ConstantVal)
 func ConstNSWNeg(ConstantVal *void) ValueRef:
-    return lib.LLVMConstNSWNeg(ConstantVal)
+    return lib['LLVMConstNSWNeg'](ConstantVal)
 func ConstNUWNeg(ConstantVal *void) ValueRef:
-    return lib.LLVMConstNUWNeg(ConstantVal)
+    return lib['LLVMConstNUWNeg'](ConstantVal)
 func ConstNot(ConstantVal *void) ValueRef:
-    return lib.LLVMConstNot(ConstantVal)
+    return lib['LLVMConstNot'](ConstantVal)
 func ConstAdd(LHSConstant *void, RHSConstant *void) ValueRef:
-    return lib.LLVMConstAdd(LHSConstant, RHSConstant)
+    return lib['LLVMConstAdd'](LHSConstant, RHSConstant)
 func ConstNSWAdd(LHSConstant *void, RHSConstant *void) ValueRef:
-    return lib.LLVMConstNSWAdd(LHSConstant, RHSConstant)
+    return lib['LLVMConstNSWAdd'](LHSConstant, RHSConstant)
 func ConstNUWAdd(LHSConstant *void, RHSConstant *void) ValueRef:
-    return lib.LLVMConstNUWAdd(LHSConstant, RHSConstant)
+    return lib['LLVMConstNUWAdd'](LHSConstant, RHSConstant)
 func ConstSub(LHSConstant *void, RHSConstant *void) ValueRef:
-    return lib.LLVMConstSub(LHSConstant, RHSConstant)
+    return lib['LLVMConstSub'](LHSConstant, RHSConstant)
 func ConstNSWSub(LHSConstant *void, RHSConstant *void) ValueRef:
-    return lib.LLVMConstNSWSub(LHSConstant, RHSConstant)
+    return lib['LLVMConstNSWSub'](LHSConstant, RHSConstant)
 func ConstNUWSub(LHSConstant *void, RHSConstant *void) ValueRef:
-    return lib.LLVMConstNUWSub(LHSConstant, RHSConstant)
+    return lib['LLVMConstNUWSub'](LHSConstant, RHSConstant)
 func ConstMul(LHSConstant *void, RHSConstant *void) ValueRef:
-    return lib.LLVMConstMul(LHSConstant, RHSConstant)
+    return lib['LLVMConstMul'](LHSConstant, RHSConstant)
 func ConstNSWMul(LHSConstant *void, RHSConstant *void) ValueRef:
-    return lib.LLVMConstNSWMul(LHSConstant, RHSConstant)
+    return lib['LLVMConstNSWMul'](LHSConstant, RHSConstant)
 func ConstNUWMul(LHSConstant *void, RHSConstant *void) ValueRef:
-    return lib.LLVMConstNUWMul(LHSConstant, RHSConstant)
+    return lib['LLVMConstNUWMul'](LHSConstant, RHSConstant)
 func ConstXor(LHSConstant *void, RHSConstant *void) ValueRef:
-    return lib.LLVMConstXor(LHSConstant, RHSConstant)
+    return lib['LLVMConstXor'](LHSConstant, RHSConstant)
 func ConstICmp(Predicate IntPredicate, LHSConstant *void, RHSConstant *void) ValueRef:
-    return lib.LLVMConstICmp(Predicate, LHSConstant, RHSConstant)
+    return lib['LLVMConstICmp'](Predicate, LHSConstant, RHSConstant)
 func ConstFCmp(Predicate RealPredicate, LHSConstant *void, RHSConstant *void) ValueRef:
-    return lib.LLVMConstFCmp(Predicate, LHSConstant, RHSConstant)
+    return lib['LLVMConstFCmp'](Predicate, LHSConstant, RHSConstant)
 func ConstShl(LHSConstant *void, RHSConstant *void) ValueRef:
-    return lib.LLVMConstShl(LHSConstant, RHSConstant)
+    return lib['LLVMConstShl'](LHSConstant, RHSConstant)
 func ConstGEP2(Ty *void, ConstantVal *void, ConstantIndices *void, NumIndices int) ValueRef:
-    return lib.LLVMConstGEP2(Ty, ConstantVal, ConstantIndices, NumIndices)
+    return lib['LLVMConstGEP2'](Ty, ConstantVal, ConstantIndices, NumIndices)
 func ConstInBoundsGEP2(Ty *void, ConstantVal *void, ConstantIndices *void, NumIndices int) ValueRef:
-    return lib.LLVMConstInBoundsGEP2(Ty, ConstantVal, ConstantIndices, NumIndices)
+    return lib['LLVMConstInBoundsGEP2'](Ty, ConstantVal, ConstantIndices, NumIndices)
 func ConstTrunc(ConstantVal *void, ToType *void) ValueRef:
-    return lib.LLVMConstTrunc(ConstantVal, ToType)
+    return lib['LLVMConstTrunc'](ConstantVal, ToType)
 func ConstPtrToInt(ConstantVal *void, ToType *void) ValueRef:
-    return lib.LLVMConstPtrToInt(ConstantVal, ToType)
+    return lib['LLVMConstPtrToInt'](ConstantVal, ToType)
 func ConstIntToPtr(ConstantVal *void, ToType *void) ValueRef:
-    return lib.LLVMConstIntToPtr(ConstantVal, ToType)
+    return lib['LLVMConstIntToPtr'](ConstantVal, ToType)
 func ConstBitCast(ConstantVal *void, ToType *void) ValueRef:
-    return lib.LLVMConstBitCast(ConstantVal, ToType)
+    return lib['LLVMConstBitCast'](ConstantVal, ToType)
 func ConstAddrSpaceCast(ConstantVal *void, ToType *void) ValueRef:
-    return lib.LLVMConstAddrSpaceCast(ConstantVal, ToType)
+    return lib['LLVMConstAddrSpaceCast'](ConstantVal, ToType)
 func ConstTruncOrBitCast(ConstantVal *void, ToType *void) ValueRef:
-    return lib.LLVMConstTruncOrBitCast(ConstantVal, ToType)
+    return lib['LLVMConstTruncOrBitCast'](ConstantVal, ToType)
 func ConstPointerCast(ConstantVal *void, ToType *void) ValueRef:
-    return lib.LLVMConstPointerCast(ConstantVal, ToType)
+    return lib['LLVMConstPointerCast'](ConstantVal, ToType)
 func ConstExtractElement(VectorConstant *void, IndexConstant *void) ValueRef:
-    return lib.LLVMConstExtractElement(VectorConstant, IndexConstant)
+    return lib['LLVMConstExtractElement'](VectorConstant, IndexConstant)
 func ConstInsertElement(VectorConstant *void, ElementValueConstant *void, IndexConstant *void) ValueRef:
-    return lib.LLVMConstInsertElement(VectorConstant, ElementValueConstant, IndexConstant)
+    return lib['LLVMConstInsertElement'](VectorConstant, ElementValueConstant, IndexConstant)
 func ConstShuffleVector(VectorAConstant *void, VectorBConstant *void, MaskConstant *void) ValueRef:
-    return lib.LLVMConstShuffleVector(VectorAConstant, VectorBConstant, MaskConstant)
+    return lib['LLVMConstShuffleVector'](VectorAConstant, VectorBConstant, MaskConstant)
 func BlockAddress(F *void, BB *void) ValueRef:
-    return lib.LLVMBlockAddress(F, BB)
+    return lib['LLVMBlockAddress'](F, BB)
 func ConstInlineAsm(Ty *void, AsmString *void, Constraints *void, HasSideEffects Bool, IsAlignStack Bool) ValueRef:
-    return lib.LLVMConstInlineAsm(Ty, AsmString, Constraints, HasSideEffects, IsAlignStack)
+    return lib['LLVMConstInlineAsm'](Ty, AsmString, Constraints, HasSideEffects, IsAlignStack)
 func GetGlobalParent(Global *void) ModuleRef:
-    return lib.LLVMGetGlobalParent(Global)
+    return lib['LLVMGetGlobalParent'](Global)
 func IsDeclaration(Global *void) Bool:
-    return lib.LLVMIsDeclaration(Global)
+    return lib['LLVMIsDeclaration'](Global)
 func GetLinkage(Global *void) Linkage:
-    return lib.LLVMGetLinkage(Global)
+    return lib['LLVMGetLinkage'](Global)
 func SetLinkage(Global *void, Linkage Linkage) void:
-    return lib.LLVMSetLinkage(Global, Linkage)
+    return lib['LLVMSetLinkage'](Global, Linkage)
 func GetSection(Global *void) *void:
-    return lib.LLVMGetSection(Global)
+    return lib['LLVMGetSection'](Global)
 func SetSection(Global *void, Section *void) void:
-    return lib.LLVMSetSection(Global, Section)
+    return lib['LLVMSetSection'](Global, Section)
 func GetVisibility(Global *void) Visibility:
-    return lib.LLVMGetVisibility(Global)
+    return lib['LLVMGetVisibility'](Global)
 func SetVisibility(Global *void, Viz Visibility) void:
-    return lib.LLVMSetVisibility(Global, Viz)
+    return lib['LLVMSetVisibility'](Global, Viz)
 func GetDLLStorageClass(Global *void) DLLStorageClass:
-    return lib.LLVMGetDLLStorageClass(Global)
+    return lib['LLVMGetDLLStorageClass'](Global)
 func SetDLLStorageClass(Global *void, Class DLLStorageClass) void:
-    return lib.LLVMSetDLLStorageClass(Global, Class)
+    return lib['LLVMSetDLLStorageClass'](Global, Class)
 func GetUnnamedAddress(Global *void) UnnamedAddr:
-    return lib.LLVMGetUnnamedAddress(Global)
+    return lib['LLVMGetUnnamedAddress'](Global)
 func SetUnnamedAddress(Global *void, UnnamedAddr UnnamedAddr) void:
-    return lib.LLVMSetUnnamedAddress(Global, UnnamedAddr)
+    return lib['LLVMSetUnnamedAddress'](Global, UnnamedAddr)
 func GlobalGetValueType(Global *void) TypeRef:
-    return lib.LLVMGlobalGetValueType(Global)
+    return lib['LLVMGlobalGetValueType'](Global)
 func HasUnnamedAddr(Global *void) Bool:
-    return lib.LLVMHasUnnamedAddr(Global)
+    return lib['LLVMHasUnnamedAddr'](Global)
 func SetUnnamedAddr(Global *void, HasUnnamedAddr Bool) void:
-    return lib.LLVMSetUnnamedAddr(Global, HasUnnamedAddr)
+    return lib['LLVMSetUnnamedAddr'](Global, HasUnnamedAddr)
 func GetAlignment(V *void) int:
-    return lib.LLVMGetAlignment(V)
+    return lib['LLVMGetAlignment'](V)
 func SetAlignment(V *void, Bytes int) void:
-    return lib.LLVMSetAlignment(V, Bytes)
+    return lib['LLVMSetAlignment'](V, Bytes)
 func GlobalSetMetadata(Global *void, Kind int, MD *void) void:
-    return lib.LLVMGlobalSetMetadata(Global, Kind, MD)
+    return lib['LLVMGlobalSetMetadata'](Global, Kind, MD)
 func GlobalEraseMetadata(Global *void, Kind int) void:
-    return lib.LLVMGlobalEraseMetadata(Global, Kind)
+    return lib['LLVMGlobalEraseMetadata'](Global, Kind)
 func GlobalClearMetadata(Global *void) void:
-    return lib.LLVMGlobalClearMetadata(Global)
+    return lib['LLVMGlobalClearMetadata'](Global)
 func GlobalCopyAllMetadata(Value *void, NumEntries *void) *void:
-    return lib.LLVMGlobalCopyAllMetadata(Value, NumEntries)
+    return lib['LLVMGlobalCopyAllMetadata'](Value, NumEntries)
 func DisposeValueMetadataEntries(Entries *void) void:
-    return lib.LLVMDisposeValueMetadataEntries(Entries)
+    return lib['LLVMDisposeValueMetadataEntries'](Entries)
 func ValueMetadataEntriesGetKind(Entries *void, Index int) int:
-    return lib.LLVMValueMetadataEntriesGetKind(Entries, Index)
+    return lib['LLVMValueMetadataEntriesGetKind'](Entries, Index)
 func ValueMetadataEntriesGetMetadata(Entries *void, Index int) MetadataRef:
-    return lib.LLVMValueMetadataEntriesGetMetadata(Entries, Index)
+    return lib['LLVMValueMetadataEntriesGetMetadata'](Entries, Index)
 func AddGlobal(M *void, Ty *void, Name *void) ValueRef:
-    return lib.LLVMAddGlobal(M, Ty, Name)
+    return lib['LLVMAddGlobal'](M, Ty, Name)
 func AddGlobalInAddressSpace(M *void, Ty *void, Name *void, AddressSpace int) ValueRef:
-    return lib.LLVMAddGlobalInAddressSpace(M, Ty, Name, AddressSpace)
+    return lib['LLVMAddGlobalInAddressSpace'](M, Ty, Name, AddressSpace)
 func GetNamedGlobal(M *void, Name *void) ValueRef:
-    return lib.LLVMGetNamedGlobal(M, Name)
+    return lib['LLVMGetNamedGlobal'](M, Name)
 func GetFirstGlobal(M *void) ValueRef:
-    return lib.LLVMGetFirstGlobal(M)
+    return lib['LLVMGetFirstGlobal'](M)
 func GetLastGlobal(M *void) ValueRef:
-    return lib.LLVMGetLastGlobal(M)
+    return lib['LLVMGetLastGlobal'](M)
 func GetNextGlobal(GlobalVar *void) ValueRef:
-    return lib.LLVMGetNextGlobal(GlobalVar)
+    return lib['LLVMGetNextGlobal'](GlobalVar)
 func GetPreviousGlobal(GlobalVar *void) ValueRef:
-    return lib.LLVMGetPreviousGlobal(GlobalVar)
+    return lib['LLVMGetPreviousGlobal'](GlobalVar)
 func DeleteGlobal(GlobalVar *void) void:
-    return lib.LLVMDeleteGlobal(GlobalVar)
+    return lib['LLVMDeleteGlobal'](GlobalVar)
 func GetInitializer(GlobalVar *void) ValueRef:
-    return lib.LLVMGetInitializer(GlobalVar)
+    return lib['LLVMGetInitializer'](GlobalVar)
 func SetInitializer(GlobalVar *void, ConstantVal *void) void:
-    return lib.LLVMSetInitializer(GlobalVar, ConstantVal)
+    return lib['LLVMSetInitializer'](GlobalVar, ConstantVal)
 func IsThreadLocal(GlobalVar *void) Bool:
-    return lib.LLVMIsThreadLocal(GlobalVar)
+    return lib['LLVMIsThreadLocal'](GlobalVar)
 func SetThreadLocal(GlobalVar *void, IsThreadLocal Bool) void:
-    return lib.LLVMSetThreadLocal(GlobalVar, IsThreadLocal)
+    return lib['LLVMSetThreadLocal'](GlobalVar, IsThreadLocal)
 func IsGlobalConstant(GlobalVar *void) Bool:
-    return lib.LLVMIsGlobalConstant(GlobalVar)
+    return lib['LLVMIsGlobalConstant'](GlobalVar)
 func SetGlobalConstant(GlobalVar *void, IsConstant Bool) void:
-    return lib.LLVMSetGlobalConstant(GlobalVar, IsConstant)
+    return lib['LLVMSetGlobalConstant'](GlobalVar, IsConstant)
 func GetThreadLocalMode(GlobalVar *void) ThreadLocalMode:
-    return lib.LLVMGetThreadLocalMode(GlobalVar)
+    return lib['LLVMGetThreadLocalMode'](GlobalVar)
 func SetThreadLocalMode(GlobalVar *void, Mode ThreadLocalMode) void:
-    return lib.LLVMSetThreadLocalMode(GlobalVar, Mode)
+    return lib['LLVMSetThreadLocalMode'](GlobalVar, Mode)
 func IsExternallyInitialized(GlobalVar *void) Bool:
-    return lib.LLVMIsExternallyInitialized(GlobalVar)
+    return lib['LLVMIsExternallyInitialized'](GlobalVar)
 func SetExternallyInitialized(GlobalVar *void, IsExtInit Bool) void:
-    return lib.LLVMSetExternallyInitialized(GlobalVar, IsExtInit)
+    return lib['LLVMSetExternallyInitialized'](GlobalVar, IsExtInit)
 func AddAlias2(M *void, ValueTy *void, AddrSpace int, Aliasee *void, Name *void) ValueRef:
-    return lib.LLVMAddAlias2(M, ValueTy, AddrSpace, Aliasee, Name)
+    return lib['LLVMAddAlias2'](M, ValueTy, AddrSpace, Aliasee, Name)
 func GetNamedGlobalAlias(M *void, Name *void, NameLen int) ValueRef:
-    return lib.LLVMGetNamedGlobalAlias(M, Name, NameLen)
+    return lib['LLVMGetNamedGlobalAlias'](M, Name, NameLen)
 func GetFirstGlobalAlias(M *void) ValueRef:
-    return lib.LLVMGetFirstGlobalAlias(M)
+    return lib['LLVMGetFirstGlobalAlias'](M)
 func GetLastGlobalAlias(M *void) ValueRef:
-    return lib.LLVMGetLastGlobalAlias(M)
+    return lib['LLVMGetLastGlobalAlias'](M)
 func GetNextGlobalAlias(GA *void) ValueRef:
-    return lib.LLVMGetNextGlobalAlias(GA)
+    return lib['LLVMGetNextGlobalAlias'](GA)
 func GetPreviousGlobalAlias(GA *void) ValueRef:
-    return lib.LLVMGetPreviousGlobalAlias(GA)
+    return lib['LLVMGetPreviousGlobalAlias'](GA)
 func AliasGetAliasee(Alias *void) ValueRef:
-    return lib.LLVMAliasGetAliasee(Alias)
+    return lib['LLVMAliasGetAliasee'](Alias)
 func AliasSetAliasee(Alias *void, Aliasee *void) void:
-    return lib.LLVMAliasSetAliasee(Alias, Aliasee)
+    return lib['LLVMAliasSetAliasee'](Alias, Aliasee)
 func DeleteFunction(Fn *void) void:
-    return lib.LLVMDeleteFunction(Fn)
+    return lib['LLVMDeleteFunction'](Fn)
 func HasPersonalityFn(Fn *void) Bool:
-    return lib.LLVMHasPersonalityFn(Fn)
+    return lib['LLVMHasPersonalityFn'](Fn)
 func GetPersonalityFn(Fn *void) ValueRef:
-    return lib.LLVMGetPersonalityFn(Fn)
+    return lib['LLVMGetPersonalityFn'](Fn)
 func SetPersonalityFn(Fn *void, PersonalityFn *void) void:
-    return lib.LLVMSetPersonalityFn(Fn, PersonalityFn)
+    return lib['LLVMSetPersonalityFn'](Fn, PersonalityFn)
 func LookupIntrinsicID(Name *void, NameLen int) int:
-    return lib.LLVMLookupIntrinsicID(Name, NameLen)
+    return lib['LLVMLookupIntrinsicID'](Name, NameLen)
 func GetIntrinsicID(Fn *void) int:
-    return lib.LLVMGetIntrinsicID(Fn)
+    return lib['LLVMGetIntrinsicID'](Fn)
 func GetIntrinsicDeclaration(Mod *void, ID int, ParamTypes *void, ParamCount int) ValueRef:
-    return lib.LLVMGetIntrinsicDeclaration(Mod, ID, ParamTypes, ParamCount)
+    return lib['LLVMGetIntrinsicDeclaration'](Mod, ID, ParamTypes, ParamCount)
 func IntrinsicGetType(Ctx *void, ID int, ParamTypes *void, ParamCount int) TypeRef:
-    return lib.LLVMIntrinsicGetType(Ctx, ID, ParamTypes, ParamCount)
+    return lib['LLVMIntrinsicGetType'](Ctx, ID, ParamTypes, ParamCount)
 func IntrinsicGetName(ID int, NameLength *void) *void:
-    return lib.LLVMIntrinsicGetName(ID, NameLength)
+    return lib['LLVMIntrinsicGetName'](ID, NameLength)
 func IntrinsicCopyOverloadedName(ID int, ParamTypes *void, ParamCount int, NameLength *void) *void:
-    return lib.LLVMIntrinsicCopyOverloadedName(ID, ParamTypes, ParamCount, NameLength)
+    return lib['LLVMIntrinsicCopyOverloadedName'](ID, ParamTypes, ParamCount, NameLength)
 func IntrinsicCopyOverloadedName2(Mod *void, ID int, ParamTypes *void, ParamCount int, NameLength *void) *void:
-    return lib.LLVMIntrinsicCopyOverloadedName2(Mod, ID, ParamTypes, ParamCount, NameLength)
+    return lib['LLVMIntrinsicCopyOverloadedName2'](Mod, ID, ParamTypes, ParamCount, NameLength)
 func IntrinsicIsOverloaded(ID int) Bool:
-    return lib.LLVMIntrinsicIsOverloaded(ID)
+    return lib['LLVMIntrinsicIsOverloaded'](ID)
 func GetFunctionCallConv(Fn *void) int:
-    return lib.LLVMGetFunctionCallConv(Fn)
+    return lib['LLVMGetFunctionCallConv'](Fn)
 func SetFunctionCallConv(Fn *void, CC int) void:
-    return lib.LLVMSetFunctionCallConv(Fn, CC)
+    return lib['LLVMSetFunctionCallConv'](Fn, CC)
 func GetGC(Fn *void) *void:
-    return lib.LLVMGetGC(Fn)
+    return lib['LLVMGetGC'](Fn)
 func SetGC(Fn *void, Name *void) void:
-    return lib.LLVMSetGC(Fn, Name)
+    return lib['LLVMSetGC'](Fn, Name)
 func AddAttributeAtIndex(F *void, Idx AttributeIndex, A *void) void:
-    return lib.LLVMAddAttributeAtIndex(F, Idx, A)
+    return lib['LLVMAddAttributeAtIndex'](F, Idx, A)
 func GetAttributeCountAtIndex(F *void, Idx AttributeIndex) int:
-    return lib.LLVMGetAttributeCountAtIndex(F, Idx)
+    return lib['LLVMGetAttributeCountAtIndex'](F, Idx)
 func GetAttributesAtIndex(F *void, Idx AttributeIndex, Attrs *void) void:
-    return lib.LLVMGetAttributesAtIndex(F, Idx, Attrs)
+    return lib['LLVMGetAttributesAtIndex'](F, Idx, Attrs)
 func GetEnumAttributeAtIndex(F *void, Idx AttributeIndex, KindID int) AttributeRef:
-    return lib.LLVMGetEnumAttributeAtIndex(F, Idx, KindID)
+    return lib['LLVMGetEnumAttributeAtIndex'](F, Idx, KindID)
 func GetStringAttributeAtIndex(F *void, Idx AttributeIndex, K *void, KLen int) AttributeRef:
-    return lib.LLVMGetStringAttributeAtIndex(F, Idx, K, KLen)
+    return lib['LLVMGetStringAttributeAtIndex'](F, Idx, K, KLen)
 func RemoveEnumAttributeAtIndex(F *void, Idx AttributeIndex, KindID int) void:
-    return lib.LLVMRemoveEnumAttributeAtIndex(F, Idx, KindID)
+    return lib['LLVMRemoveEnumAttributeAtIndex'](F, Idx, KindID)
 func RemoveStringAttributeAtIndex(F *void, Idx AttributeIndex, K *void, KLen int) void:
-    return lib.LLVMRemoveStringAttributeAtIndex(F, Idx, K, KLen)
+    return lib['LLVMRemoveStringAttributeAtIndex'](F, Idx, K, KLen)
 func AddTargetDependentFunctionAttr(Fn *void, A *void, V *void) void:
-    return lib.LLVMAddTargetDependentFunctionAttr(Fn, A, V)
+    return lib['LLVMAddTargetDependentFunctionAttr'](Fn, A, V)
 func CountParams(Fn *void) int:
-    return lib.LLVMCountParams(Fn)
+    return lib['LLVMCountParams'](Fn)
 func GetParams(Fn *void, Params *void) void:
-    return lib.LLVMGetParams(Fn, Params)
+    return lib['LLVMGetParams'](Fn, Params)
 func GetParam(Fn *void, Index int) ValueRef:
-    return lib.LLVMGetParam(Fn, Index)
+    return lib['LLVMGetParam'](Fn, Index)
 func GetParamParent(Inst *void) ValueRef:
-    return lib.LLVMGetParamParent(Inst)
+    return lib['LLVMGetParamParent'](Inst)
 func GetFirstParam(Fn *void) ValueRef:
-    return lib.LLVMGetFirstParam(Fn)
+    return lib['LLVMGetFirstParam'](Fn)
 func GetLastParam(Fn *void) ValueRef:
-    return lib.LLVMGetLastParam(Fn)
+    return lib['LLVMGetLastParam'](Fn)
 func GetNextParam(Arg *void) ValueRef:
-    return lib.LLVMGetNextParam(Arg)
+    return lib['LLVMGetNextParam'](Arg)
 func GetPreviousParam(Arg *void) ValueRef:
-    return lib.LLVMGetPreviousParam(Arg)
+    return lib['LLVMGetPreviousParam'](Arg)
 func SetParamAlignment(Arg *void, Align int) void:
-    return lib.LLVMSetParamAlignment(Arg, Align)
+    return lib['LLVMSetParamAlignment'](Arg, Align)
 func AddGlobalIFunc(M *void, Name *void, NameLen int, Ty *void, AddrSpace int, Resolver *void) ValueRef:
-    return lib.LLVMAddGlobalIFunc(M, Name, NameLen, Ty, AddrSpace, Resolver)
+    return lib['LLVMAddGlobalIFunc'](M, Name, NameLen, Ty, AddrSpace, Resolver)
 func GetNamedGlobalIFunc(M *void, Name *void, NameLen int) ValueRef:
-    return lib.LLVMGetNamedGlobalIFunc(M, Name, NameLen)
+    return lib['LLVMGetNamedGlobalIFunc'](M, Name, NameLen)
 func GetFirstGlobalIFunc(M *void) ValueRef:
-    return lib.LLVMGetFirstGlobalIFunc(M)
+    return lib['LLVMGetFirstGlobalIFunc'](M)
 func GetLastGlobalIFunc(M *void) ValueRef:
-    return lib.LLVMGetLastGlobalIFunc(M)
+    return lib['LLVMGetLastGlobalIFunc'](M)
 func GetNextGlobalIFunc(IFunc *void) ValueRef:
-    return lib.LLVMGetNextGlobalIFunc(IFunc)
+    return lib['LLVMGetNextGlobalIFunc'](IFunc)
 func GetPreviousGlobalIFunc(IFunc *void) ValueRef:
-    return lib.LLVMGetPreviousGlobalIFunc(IFunc)
+    return lib['LLVMGetPreviousGlobalIFunc'](IFunc)
 func GetGlobalIFuncResolver(IFunc *void) ValueRef:
-    return lib.LLVMGetGlobalIFuncResolver(IFunc)
+    return lib['LLVMGetGlobalIFuncResolver'](IFunc)
 func SetGlobalIFuncResolver(IFunc *void, Resolver *void) void:
-    return lib.LLVMSetGlobalIFuncResolver(IFunc, Resolver)
+    return lib['LLVMSetGlobalIFuncResolver'](IFunc, Resolver)
 func EraseGlobalIFunc(IFunc *void) void:
-    return lib.LLVMEraseGlobalIFunc(IFunc)
+    return lib['LLVMEraseGlobalIFunc'](IFunc)
 func RemoveGlobalIFunc(IFunc *void) void:
-    return lib.LLVMRemoveGlobalIFunc(IFunc)
+    return lib['LLVMRemoveGlobalIFunc'](IFunc)
 func MDStringInContext2(C *void, Str *void, SLen int) MetadataRef:
-    return lib.LLVMMDStringInContext2(C, Str, SLen)
+    return lib['LLVMMDStringInContext2'](C, Str, SLen)
 func MDNodeInContext2(C *void, MDs *void, Count int) MetadataRef:
-    return lib.LLVMMDNodeInContext2(C, MDs, Count)
+    return lib['LLVMMDNodeInContext2'](C, MDs, Count)
 func MetadataAsValue(C *void, MD *void) ValueRef:
-    return lib.LLVMMetadataAsValue(C, MD)
+    return lib['LLVMMetadataAsValue'](C, MD)
 func ValueAsMetadata(Val *void) MetadataRef:
-    return lib.LLVMValueAsMetadata(Val)
+    return lib['LLVMValueAsMetadata'](Val)
 func GetMDString(V *void, Length *void) *void:
-    return lib.LLVMGetMDString(V, Length)
+    return lib['LLVMGetMDString'](V, Length)
 func GetMDNodeNumOperands(V *void) int:
-    return lib.LLVMGetMDNodeNumOperands(V)
+    return lib['LLVMGetMDNodeNumOperands'](V)
 func GetMDNodeOperands(V *void, Dest *void) void:
-    return lib.LLVMGetMDNodeOperands(V, Dest)
+    return lib['LLVMGetMDNodeOperands'](V, Dest)
 func ReplaceMDNodeOperandWith(V *void, Index int, Replacement *void) void:
-    return lib.LLVMReplaceMDNodeOperandWith(V, Index, Replacement)
+    return lib['LLVMReplaceMDNodeOperandWith'](V, Index, Replacement)
 func MDStringInContext(C *void, Str *void, SLen int) ValueRef:
-    return lib.LLVMMDStringInContext(C, Str, SLen)
+    return lib['LLVMMDStringInContext'](C, Str, SLen)
 func MDString(Str *void, SLen int) ValueRef:
-    return lib.LLVMMDString(Str, SLen)
+    return lib['LLVMMDString'](Str, SLen)
 func MDNodeInContext(C *void, Vals *void, Count int) ValueRef:
-    return lib.LLVMMDNodeInContext(C, Vals, Count)
+    return lib['LLVMMDNodeInContext'](C, Vals, Count)
 func MDNode(Vals *void, Count int) ValueRef:
-    return lib.LLVMMDNode(Vals, Count)
+    return lib['LLVMMDNode'](Vals, Count)
 func CreateOperandBundle(Tag *void, TagLen int, Args *void, NumArgs int) OperandBundleRef:
-    return lib.LLVMCreateOperandBundle(Tag, TagLen, Args, NumArgs)
+    return lib['LLVMCreateOperandBundle'](Tag, TagLen, Args, NumArgs)
 func DisposeOperandBundle(Bundle *void) void:
-    return lib.LLVMDisposeOperandBundle(Bundle)
+    return lib['LLVMDisposeOperandBundle'](Bundle)
 func GetOperandBundleTag(Bundle *void, Len *void) *void:
-    return lib.LLVMGetOperandBundleTag(Bundle, Len)
+    return lib['LLVMGetOperandBundleTag'](Bundle, Len)
 func GetNumOperandBundleArgs(Bundle *void) int:
-    return lib.LLVMGetNumOperandBundleArgs(Bundle)
+    return lib['LLVMGetNumOperandBundleArgs'](Bundle)
 func GetOperandBundleArgAtIndex(Bundle *void, Index int) ValueRef:
-    return lib.LLVMGetOperandBundleArgAtIndex(Bundle, Index)
+    return lib['LLVMGetOperandBundleArgAtIndex'](Bundle, Index)
 func BasicBlockAsValue(BB *void) ValueRef:
-    return lib.LLVMBasicBlockAsValue(BB)
+    return lib['LLVMBasicBlockAsValue'](BB)
 func ValueIsBasicBlock(Val *void) Bool:
-    return lib.LLVMValueIsBasicBlock(Val)
+    return lib['LLVMValueIsBasicBlock'](Val)
 func ValueAsBasicBlock(Val *void) BasicBlockRef:
-    return lib.LLVMValueAsBasicBlock(Val)
+    return lib['LLVMValueAsBasicBlock'](Val)
 func GetBasicBlockName(BB *void) *void:
-    return lib.LLVMGetBasicBlockName(BB)
+    return lib['LLVMGetBasicBlockName'](BB)
 func GetBasicBlockParent(BB *void) ValueRef:
-    return lib.LLVMGetBasicBlockParent(BB)
+    return lib['LLVMGetBasicBlockParent'](BB)
 func GetBasicBlockTerminator(BB *void) ValueRef:
-    return lib.LLVMGetBasicBlockTerminator(BB)
+    return lib['LLVMGetBasicBlockTerminator'](BB)
 func CountBasicBlocks(Fn *void) int:
-    return lib.LLVMCountBasicBlocks(Fn)
+    return lib['LLVMCountBasicBlocks'](Fn)
 func GetBasicBlocks(Fn *void, BasicBlocks *void) void:
-    return lib.LLVMGetBasicBlocks(Fn, BasicBlocks)
+    return lib['LLVMGetBasicBlocks'](Fn, BasicBlocks)
 func GetFirstBasicBlock(Fn *void) BasicBlockRef:
-    return lib.LLVMGetFirstBasicBlock(Fn)
+    return lib['LLVMGetFirstBasicBlock'](Fn)
 func GetLastBasicBlock(Fn *void) BasicBlockRef:
-    return lib.LLVMGetLastBasicBlock(Fn)
+    return lib['LLVMGetLastBasicBlock'](Fn)
 func GetNextBasicBlock(BB *void) BasicBlockRef:
-    return lib.LLVMGetNextBasicBlock(BB)
+    return lib['LLVMGetNextBasicBlock'](BB)
 func GetPreviousBasicBlock(BB *void) BasicBlockRef:
-    return lib.LLVMGetPreviousBasicBlock(BB)
+    return lib['LLVMGetPreviousBasicBlock'](BB)
 func GetEntryBasicBlock(Fn *void) BasicBlockRef:
-    return lib.LLVMGetEntryBasicBlock(Fn)
+    return lib['LLVMGetEntryBasicBlock'](Fn)
 func InsertExistingBasicBlockAfterInsertBlock(Builder *void, BB *void) void:
-    return lib.LLVMInsertExistingBasicBlockAfterInsertBlock(Builder, BB)
+    return lib['LLVMInsertExistingBasicBlockAfterInsertBlock'](Builder, BB)
 func AppendExistingBasicBlock(Fn *void, BB *void) void:
-    return lib.LLVMAppendExistingBasicBlock(Fn, BB)
+    return lib['LLVMAppendExistingBasicBlock'](Fn, BB)
 func CreateBasicBlockInContext(C *void, Name *void) BasicBlockRef:
-    return lib.LLVMCreateBasicBlockInContext(C, Name)
+    return lib['LLVMCreateBasicBlockInContext'](C, Name)
 func AppendBasicBlockInContext(C *void, Fn *void, Name *void) BasicBlockRef:
-    return lib.LLVMAppendBasicBlockInContext(C, Fn, Name)
+    return lib['LLVMAppendBasicBlockInContext'](C, Fn, Name)
 func AppendBasicBlock(Fn *void, Name *void) BasicBlockRef:
-    return lib.LLVMAppendBasicBlock(Fn, Name)
+    return lib['LLVMAppendBasicBlock'](Fn, Name)
 func InsertBasicBlockInContext(C *void, BB *void, Name *void) BasicBlockRef:
-    return lib.LLVMInsertBasicBlockInContext(C, BB, Name)
+    return lib['LLVMInsertBasicBlockInContext'](C, BB, Name)
 func InsertBasicBlock(InsertBeforeBB *void, Name *void) BasicBlockRef:
-    return lib.LLVMInsertBasicBlock(InsertBeforeBB, Name)
+    return lib['LLVMInsertBasicBlock'](InsertBeforeBB, Name)
 func DeleteBasicBlock(BB *void) void:
-    return lib.LLVMDeleteBasicBlock(BB)
+    return lib['LLVMDeleteBasicBlock'](BB)
 func RemoveBasicBlockFromParent(BB *void) void:
-    return lib.LLVMRemoveBasicBlockFromParent(BB)
+    return lib['LLVMRemoveBasicBlockFromParent'](BB)
 func MoveBasicBlockBefore(BB *void, MovePos *void) void:
-    return lib.LLVMMoveBasicBlockBefore(BB, MovePos)
+    return lib['LLVMMoveBasicBlockBefore'](BB, MovePos)
 func MoveBasicBlockAfter(BB *void, MovePos *void) void:
-    return lib.LLVMMoveBasicBlockAfter(BB, MovePos)
+    return lib['LLVMMoveBasicBlockAfter'](BB, MovePos)
 func GetFirstInstruction(BB *void) ValueRef:
-    return lib.LLVMGetFirstInstruction(BB)
+    return lib['LLVMGetFirstInstruction'](BB)
 func GetLastInstruction(BB *void) ValueRef:
-    return lib.LLVMGetLastInstruction(BB)
+    return lib['LLVMGetLastInstruction'](BB)
 func HasMetadata(Val *void) int:
-    return lib.LLVMHasMetadata(Val)
+    return lib['LLVMHasMetadata'](Val)
 func GetMetadata(Val *void, KindID int) ValueRef:
-    return lib.LLVMGetMetadata(Val, KindID)
+    return lib['LLVMGetMetadata'](Val, KindID)
 func SetMetadata(Val *void, KindID int, Node *void) void:
-    return lib.LLVMSetMetadata(Val, KindID, Node)
+    return lib['LLVMSetMetadata'](Val, KindID, Node)
 func InstructionGetAllMetadataOtherThanDebugLoc(Instr *void, NumEntries *void) *void:
-    return lib.LLVMInstructionGetAllMetadataOtherThanDebugLoc(Instr, NumEntries)
+    return lib['LLVMInstructionGetAllMetadataOtherThanDebugLoc'](Instr, NumEntries)
 func GetInstructionParent(Inst *void) BasicBlockRef:
-    return lib.LLVMGetInstructionParent(Inst)
+    return lib['LLVMGetInstructionParent'](Inst)
 func GetNextInstruction(Inst *void) ValueRef:
-    return lib.LLVMGetNextInstruction(Inst)
+    return lib['LLVMGetNextInstruction'](Inst)
 func GetPreviousInstruction(Inst *void) ValueRef:
-    return lib.LLVMGetPreviousInstruction(Inst)
+    return lib['LLVMGetPreviousInstruction'](Inst)
 func InstructionRemoveFromParent(Inst *void) void:
-    return lib.LLVMInstructionRemoveFromParent(Inst)
+    return lib['LLVMInstructionRemoveFromParent'](Inst)
 func InstructionEraseFromParent(Inst *void) void:
-    return lib.LLVMInstructionEraseFromParent(Inst)
+    return lib['LLVMInstructionEraseFromParent'](Inst)
 func DeleteInstruction(Inst *void) void:
-    return lib.LLVMDeleteInstruction(Inst)
+    return lib['LLVMDeleteInstruction'](Inst)
 func GetInstructionOpcode(Inst *void) Opcode:
-    return lib.LLVMGetInstructionOpcode(Inst)
+    return lib['LLVMGetInstructionOpcode'](Inst)
 func GetICmpPredicate(Inst *void) IntPredicate:
-    return lib.LLVMGetICmpPredicate(Inst)
+    return lib['LLVMGetICmpPredicate'](Inst)
 func GetFCmpPredicate(Inst *void) RealPredicate:
-    return lib.LLVMGetFCmpPredicate(Inst)
+    return lib['LLVMGetFCmpPredicate'](Inst)
 func InstructionClone(Inst *void) ValueRef:
-    return lib.LLVMInstructionClone(Inst)
+    return lib['LLVMInstructionClone'](Inst)
 func IsATerminatorInst(Inst *void) ValueRef:
-    return lib.LLVMIsATerminatorInst(Inst)
+    return lib['LLVMIsATerminatorInst'](Inst)
 func GetNumArgOperands(Instr *void) int:
-    return lib.LLVMGetNumArgOperands(Instr)
+    return lib['LLVMGetNumArgOperands'](Instr)
 func SetInstructionCallConv(Instr *void, CC int) void:
-    return lib.LLVMSetInstructionCallConv(Instr, CC)
+    return lib['LLVMSetInstructionCallConv'](Instr, CC)
 func GetInstructionCallConv(Instr *void) int:
-    return lib.LLVMGetInstructionCallConv(Instr)
+    return lib['LLVMGetInstructionCallConv'](Instr)
 func SetInstrParamAlignment(Instr *void, Idx AttributeIndex, Align int) void:
-    return lib.LLVMSetInstrParamAlignment(Instr, Idx, Align)
+    return lib['LLVMSetInstrParamAlignment'](Instr, Idx, Align)
 func AddCallSiteAttribute(C *void, Idx AttributeIndex, A *void) void:
-    return lib.LLVMAddCallSiteAttribute(C, Idx, A)
+    return lib['LLVMAddCallSiteAttribute'](C, Idx, A)
 func GetCallSiteAttributeCount(C *void, Idx AttributeIndex) int:
-    return lib.LLVMGetCallSiteAttributeCount(C, Idx)
+    return lib['LLVMGetCallSiteAttributeCount'](C, Idx)
 func GetCallSiteAttributes(C *void, Idx AttributeIndex, Attrs *void) void:
-    return lib.LLVMGetCallSiteAttributes(C, Idx, Attrs)
+    return lib['LLVMGetCallSiteAttributes'](C, Idx, Attrs)
 func GetCallSiteEnumAttribute(C *void, Idx AttributeIndex, KindID int) AttributeRef:
-    return lib.LLVMGetCallSiteEnumAttribute(C, Idx, KindID)
+    return lib['LLVMGetCallSiteEnumAttribute'](C, Idx, KindID)
 func GetCallSiteStringAttribute(C *void, Idx AttributeIndex, K *void, KLen int) AttributeRef:
-    return lib.LLVMGetCallSiteStringAttribute(C, Idx, K, KLen)
+    return lib['LLVMGetCallSiteStringAttribute'](C, Idx, K, KLen)
 func RemoveCallSiteEnumAttribute(C *void, Idx AttributeIndex, KindID int) void:
-    return lib.LLVMRemoveCallSiteEnumAttribute(C, Idx, KindID)
+    return lib['LLVMRemoveCallSiteEnumAttribute'](C, Idx, KindID)
 func RemoveCallSiteStringAttribute(C *void, Idx AttributeIndex, K *void, KLen int) void:
-    return lib.LLVMRemoveCallSiteStringAttribute(C, Idx, K, KLen)
+    return lib['LLVMRemoveCallSiteStringAttribute'](C, Idx, K, KLen)
 func GetCalledFunctionType(C *void) TypeRef:
-    return lib.LLVMGetCalledFunctionType(C)
+    return lib['LLVMGetCalledFunctionType'](C)
 func GetCalledValue(Instr *void) ValueRef:
-    return lib.LLVMGetCalledValue(Instr)
+    return lib['LLVMGetCalledValue'](Instr)
 func GetNumOperandBundles(C *void) int:
-    return lib.LLVMGetNumOperandBundles(C)
+    return lib['LLVMGetNumOperandBundles'](C)
 func GetOperandBundleAtIndex(C *void, Index int) OperandBundleRef:
-    return lib.LLVMGetOperandBundleAtIndex(C, Index)
+    return lib['LLVMGetOperandBundleAtIndex'](C, Index)
 func IsTailCall(CallInst *void) Bool:
-    return lib.LLVMIsTailCall(CallInst)
+    return lib['LLVMIsTailCall'](CallInst)
 func SetTailCall(CallInst *void, IsTailCall Bool) void:
-    return lib.LLVMSetTailCall(CallInst, IsTailCall)
+    return lib['LLVMSetTailCall'](CallInst, IsTailCall)
 func GetTailCallKind(CallInst *void) TailCallKind:
-    return lib.LLVMGetTailCallKind(CallInst)
+    return lib['LLVMGetTailCallKind'](CallInst)
 func SetTailCallKind(CallInst *void, kind TailCallKind) void:
-    return lib.LLVMSetTailCallKind(CallInst, kind)
+    return lib['LLVMSetTailCallKind'](CallInst, kind)
 func GetNormalDest(InvokeInst *void) BasicBlockRef:
-    return lib.LLVMGetNormalDest(InvokeInst)
+    return lib['LLVMGetNormalDest'](InvokeInst)
 func GetUnwindDest(InvokeInst *void) BasicBlockRef:
-    return lib.LLVMGetUnwindDest(InvokeInst)
+    return lib['LLVMGetUnwindDest'](InvokeInst)
 func SetNormalDest(InvokeInst *void, B *void) void:
-    return lib.LLVMSetNormalDest(InvokeInst, B)
+    return lib['LLVMSetNormalDest'](InvokeInst, B)
 func SetUnwindDest(InvokeInst *void, B *void) void:
-    return lib.LLVMSetUnwindDest(InvokeInst, B)
+    return lib['LLVMSetUnwindDest'](InvokeInst, B)
 func GetNumSuccessors(Term *void) int:
-    return lib.LLVMGetNumSuccessors(Term)
+    return lib['LLVMGetNumSuccessors'](Term)
 func GetSuccessor(Term *void, i int) BasicBlockRef:
-    return lib.LLVMGetSuccessor(Term, i)
+    return lib['LLVMGetSuccessor'](Term, i)
 func SetSuccessor(Term *void, i int, block *void) void:
-    return lib.LLVMSetSuccessor(Term, i, block)
+    return lib['LLVMSetSuccessor'](Term, i, block)
 func IsConditional(Branch *void) Bool:
-    return lib.LLVMIsConditional(Branch)
+    return lib['LLVMIsConditional'](Branch)
 func GetCondition(Branch *void) ValueRef:
-    return lib.LLVMGetCondition(Branch)
+    return lib['LLVMGetCondition'](Branch)
 func SetCondition(Branch *void, Cond *void) void:
-    return lib.LLVMSetCondition(Branch, Cond)
+    return lib['LLVMSetCondition'](Branch, Cond)
 func GetSwitchDefaultDest(SwitchInstr *void) BasicBlockRef:
-    return lib.LLVMGetSwitchDefaultDest(SwitchInstr)
+    return lib['LLVMGetSwitchDefaultDest'](SwitchInstr)
 func GetAllocatedType(Alloca *void) TypeRef:
-    return lib.LLVMGetAllocatedType(Alloca)
+    return lib['LLVMGetAllocatedType'](Alloca)
 func IsInBounds(GEP *void) Bool:
-    return lib.LLVMIsInBounds(GEP)
+    return lib['LLVMIsInBounds'](GEP)
 func SetIsInBounds(GEP *void, InBounds Bool) void:
-    return lib.LLVMSetIsInBounds(GEP, InBounds)
+    return lib['LLVMSetIsInBounds'](GEP, InBounds)
 func GetGEPSourceElementType(GEP *void) TypeRef:
-    return lib.LLVMGetGEPSourceElementType(GEP)
+    return lib['LLVMGetGEPSourceElementType'](GEP)
 func AddIncoming(PhiNode *void, IncomingValues *void, IncomingBlocks *void, Count int) void:
-    return lib.LLVMAddIncoming(PhiNode, IncomingValues, IncomingBlocks, Count)
+    return lib['LLVMAddIncoming'](PhiNode, IncomingValues, IncomingBlocks, Count)
 func CountIncoming(PhiNode *void) int:
-    return lib.LLVMCountIncoming(PhiNode)
+    return lib['LLVMCountIncoming'](PhiNode)
 func GetIncomingValue(PhiNode *void, Index int) ValueRef:
-    return lib.LLVMGetIncomingValue(PhiNode, Index)
+    return lib['LLVMGetIncomingValue'](PhiNode, Index)
 func GetIncomingBlock(PhiNode *void, Index int) BasicBlockRef:
-    return lib.LLVMGetIncomingBlock(PhiNode, Index)
+    return lib['LLVMGetIncomingBlock'](PhiNode, Index)
 func GetNumIndices(Inst *void) int:
-    return lib.LLVMGetNumIndices(Inst)
+    return lib['LLVMGetNumIndices'](Inst)
 func GetIndices(Inst *void) *void:
-    return lib.LLVMGetIndices(Inst)
+    return lib['LLVMGetIndices'](Inst)
 func CreateBuilderInContext(C *void) BuilderRef:
-    return lib.LLVMCreateBuilderInContext(C)
+    return lib['LLVMCreateBuilderInContext'](C)
 func CreateBuilder() BuilderRef:
-    return lib.LLVMCreateBuilder()
+    return lib['LLVMCreateBuilder']()
 func PositionBuilder(Builder *void, Block *void, Instr *void) void:
-    return lib.LLVMPositionBuilder(Builder, Block, Instr)
+    return lib['LLVMPositionBuilder'](Builder, Block, Instr)
 func PositionBuilderBefore(Builder *void, Instr *void) void:
-    return lib.LLVMPositionBuilderBefore(Builder, Instr)
+    return lib['LLVMPositionBuilderBefore'](Builder, Instr)
 func PositionBuilderAtEnd(Builder *void, Block *void) void:
-    return lib.LLVMPositionBuilderAtEnd(Builder, Block)
+    return lib['LLVMPositionBuilderAtEnd'](Builder, Block)
 func GetInsertBlock(Builder *void) BasicBlockRef:
-    return lib.LLVMGetInsertBlock(Builder)
+    return lib['LLVMGetInsertBlock'](Builder)
 func ClearInsertionPosition(Builder *void) void:
-    return lib.LLVMClearInsertionPosition(Builder)
+    return lib['LLVMClearInsertionPosition'](Builder)
 func InsertIntoBuilder(Builder *void, Instr *void) void:
-    return lib.LLVMInsertIntoBuilder(Builder, Instr)
+    return lib['LLVMInsertIntoBuilder'](Builder, Instr)
 func InsertIntoBuilderWithName(Builder *void, Instr *void, Name *void) void:
-    return lib.LLVMInsertIntoBuilderWithName(Builder, Instr, Name)
+    return lib['LLVMInsertIntoBuilderWithName'](Builder, Instr, Name)
 func DisposeBuilder(Builder *void) void:
-    return lib.LLVMDisposeBuilder(Builder)
+    return lib['LLVMDisposeBuilder'](Builder)
 func GetCurrentDebugLocation2(Builder *void) MetadataRef:
-    return lib.LLVMGetCurrentDebugLocation2(Builder)
+    return lib['LLVMGetCurrentDebugLocation2'](Builder)
 func SetCurrentDebugLocation2(Builder *void, Loc *void) void:
-    return lib.LLVMSetCurrentDebugLocation2(Builder, Loc)
+    return lib['LLVMSetCurrentDebugLocation2'](Builder, Loc)
 func SetInstDebugLocation(Builder *void, Inst *void) void:
-    return lib.LLVMSetInstDebugLocation(Builder, Inst)
+    return lib['LLVMSetInstDebugLocation'](Builder, Inst)
 func AddMetadataToInst(Builder *void, Inst *void) void:
-    return lib.LLVMAddMetadataToInst(Builder, Inst)
+    return lib['LLVMAddMetadataToInst'](Builder, Inst)
 func BuilderGetDefaultFPMathTag(Builder *void) MetadataRef:
-    return lib.LLVMBuilderGetDefaultFPMathTag(Builder)
+    return lib['LLVMBuilderGetDefaultFPMathTag'](Builder)
 func BuilderSetDefaultFPMathTag(Builder *void, FPMathTag *void) void:
-    return lib.LLVMBuilderSetDefaultFPMathTag(Builder, FPMathTag)
+    return lib['LLVMBuilderSetDefaultFPMathTag'](Builder, FPMathTag)
 func SetCurrentDebugLocation(Builder *void, L *void) void:
-    return lib.LLVMSetCurrentDebugLocation(Builder, L)
+    return lib['LLVMSetCurrentDebugLocation'](Builder, L)
 func GetCurrentDebugLocation(Builder *void) ValueRef:
-    return lib.LLVMGetCurrentDebugLocation(Builder)
+    return lib['LLVMGetCurrentDebugLocation'](Builder)
 func BuildRetVoid(param0 *void) ValueRef:
-    return lib.LLVMBuildRetVoid(param0)
+    return lib['LLVMBuildRetVoid'](param0)
 func BuildRet(param0 *void, V *void) ValueRef:
-    return lib.LLVMBuildRet(param0, V)
+    return lib['LLVMBuildRet'](param0, V)
 func BuildAggregateRet(param0 *void, RetVals *void, N int) ValueRef:
-    return lib.LLVMBuildAggregateRet(param0, RetVals, N)
+    return lib['LLVMBuildAggregateRet'](param0, RetVals, N)
 func BuildBr(param0 *void, Dest *void) ValueRef:
-    return lib.LLVMBuildBr(param0, Dest)
+    return lib['LLVMBuildBr'](param0, Dest)
 func BuildCondBr(param0 *void, If *void, Then *void, Else *void) ValueRef:
-    return lib.LLVMBuildCondBr(param0, If, Then, Else)
+    return lib['LLVMBuildCondBr'](param0, If, Then, Else)
 func BuildSwitch(param0 *void, V *void, Else *void, NumCases int) ValueRef:
-    return lib.LLVMBuildSwitch(param0, V, Else, NumCases)
+    return lib['LLVMBuildSwitch'](param0, V, Else, NumCases)
 func BuildIndirectBr(B *void, Addr *void, NumDests int) ValueRef:
-    return lib.LLVMBuildIndirectBr(B, Addr, NumDests)
+    return lib['LLVMBuildIndirectBr'](B, Addr, NumDests)
 func BuildInvoke2(param0 *void, Ty *void, Fn *void, Args *void, NumArgs int, Then *void, Catch *void, Name *void) ValueRef:
-    return lib.LLVMBuildInvoke2(param0, Ty, Fn, Args, NumArgs, Then, Catch, Name)
+    return lib['LLVMBuildInvoke2'](param0, Ty, Fn, Args, NumArgs, Then, Catch, Name)
 func BuildInvokeWithOperandBundles(param0 *void, Ty *void, Fn *void, Args *void, NumArgs int, Then *void, Catch *void, Bundles *void, NumBundles int, Name *void) ValueRef:
-    return lib.LLVMBuildInvokeWithOperandBundles(param0, Ty, Fn, Args, NumArgs, Then, Catch, Bundles, NumBundles, Name)
+    return lib['LLVMBuildInvokeWithOperandBundles'](param0, Ty, Fn, Args, NumArgs, Then, Catch, Bundles, NumBundles, Name)
 func BuildUnreachable(param0 *void) ValueRef:
-    return lib.LLVMBuildUnreachable(param0)
+    return lib['LLVMBuildUnreachable'](param0)
 func BuildResume(B *void, Exn *void) ValueRef:
-    return lib.LLVMBuildResume(B, Exn)
+    return lib['LLVMBuildResume'](B, Exn)
 func BuildLandingPad(B *void, Ty *void, PersFn *void, NumClauses int, Name *void) ValueRef:
-    return lib.LLVMBuildLandingPad(B, Ty, PersFn, NumClauses, Name)
+    return lib['LLVMBuildLandingPad'](B, Ty, PersFn, NumClauses, Name)
 func BuildCleanupRet(B *void, CatchPad *void, BB *void) ValueRef:
-    return lib.LLVMBuildCleanupRet(B, CatchPad, BB)
+    return lib['LLVMBuildCleanupRet'](B, CatchPad, BB)
 func BuildCatchRet(B *void, CatchPad *void, BB *void) ValueRef:
-    return lib.LLVMBuildCatchRet(B, CatchPad, BB)
+    return lib['LLVMBuildCatchRet'](B, CatchPad, BB)
 func BuildCatchPad(B *void, ParentPad *void, Args *void, NumArgs int, Name *void) ValueRef:
-    return lib.LLVMBuildCatchPad(B, ParentPad, Args, NumArgs, Name)
+    return lib['LLVMBuildCatchPad'](B, ParentPad, Args, NumArgs, Name)
 func BuildCleanupPad(B *void, ParentPad *void, Args *void, NumArgs int, Name *void) ValueRef:
-    return lib.LLVMBuildCleanupPad(B, ParentPad, Args, NumArgs, Name)
+    return lib['LLVMBuildCleanupPad'](B, ParentPad, Args, NumArgs, Name)
 func BuildCatchSwitch(B *void, ParentPad *void, UnwindBB *void, NumHandlers int, Name *void) ValueRef:
-    return lib.LLVMBuildCatchSwitch(B, ParentPad, UnwindBB, NumHandlers, Name)
+    return lib['LLVMBuildCatchSwitch'](B, ParentPad, UnwindBB, NumHandlers, Name)
 func AddCase(Switch *void, OnVal *void, Dest *void) void:
-    return lib.LLVMAddCase(Switch, OnVal, Dest)
+    return lib['LLVMAddCase'](Switch, OnVal, Dest)
 func AddDestination(IndirectBr *void, Dest *void) void:
-    return lib.LLVMAddDestination(IndirectBr, Dest)
+    return lib['LLVMAddDestination'](IndirectBr, Dest)
 func GetNumClauses(LandingPad *void) int:
-    return lib.LLVMGetNumClauses(LandingPad)
+    return lib['LLVMGetNumClauses'](LandingPad)
 func GetClause(LandingPad *void, Idx int) ValueRef:
-    return lib.LLVMGetClause(LandingPad, Idx)
+    return lib['LLVMGetClause'](LandingPad, Idx)
 func AddClause(LandingPad *void, ClauseVal *void) void:
-    return lib.LLVMAddClause(LandingPad, ClauseVal)
+    return lib['LLVMAddClause'](LandingPad, ClauseVal)
 func IsCleanup(LandingPad *void) Bool:
-    return lib.LLVMIsCleanup(LandingPad)
+    return lib['LLVMIsCleanup'](LandingPad)
 func SetCleanup(LandingPad *void, Val Bool) void:
-    return lib.LLVMSetCleanup(LandingPad, Val)
+    return lib['LLVMSetCleanup'](LandingPad, Val)
 func AddHandler(CatchSwitch *void, Dest *void) void:
-    return lib.LLVMAddHandler(CatchSwitch, Dest)
+    return lib['LLVMAddHandler'](CatchSwitch, Dest)
 func GetNumHandlers(CatchSwitch *void) int:
-    return lib.LLVMGetNumHandlers(CatchSwitch)
+    return lib['LLVMGetNumHandlers'](CatchSwitch)
 func GetHandlers(CatchSwitch *void, Handlers *void) void:
-    return lib.LLVMGetHandlers(CatchSwitch, Handlers)
+    return lib['LLVMGetHandlers'](CatchSwitch, Handlers)
 func GetArgOperand(Funclet *void, i int) ValueRef:
-    return lib.LLVMGetArgOperand(Funclet, i)
+    return lib['LLVMGetArgOperand'](Funclet, i)
 func SetArgOperand(Funclet *void, i int, value *void) void:
-    return lib.LLVMSetArgOperand(Funclet, i, value)
+    return lib['LLVMSetArgOperand'](Funclet, i, value)
 func GetParentCatchSwitch(CatchPad *void) ValueRef:
-    return lib.LLVMGetParentCatchSwitch(CatchPad)
+    return lib['LLVMGetParentCatchSwitch'](CatchPad)
 func SetParentCatchSwitch(CatchPad *void, CatchSwitch *void) void:
-    return lib.LLVMSetParentCatchSwitch(CatchPad, CatchSwitch)
+    return lib['LLVMSetParentCatchSwitch'](CatchPad, CatchSwitch)
 func BuildAdd(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildAdd(param0, LHS, RHS, Name)
+    return lib['LLVMBuildAdd'](param0, LHS, RHS, Name)
 func BuildNSWAdd(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildNSWAdd(param0, LHS, RHS, Name)
+    return lib['LLVMBuildNSWAdd'](param0, LHS, RHS, Name)
 func BuildNUWAdd(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildNUWAdd(param0, LHS, RHS, Name)
+    return lib['LLVMBuildNUWAdd'](param0, LHS, RHS, Name)
 func BuildFAdd(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildFAdd(param0, LHS, RHS, Name)
+    return lib['LLVMBuildFAdd'](param0, LHS, RHS, Name)
 func BuildSub(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildSub(param0, LHS, RHS, Name)
+    return lib['LLVMBuildSub'](param0, LHS, RHS, Name)
 func BuildNSWSub(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildNSWSub(param0, LHS, RHS, Name)
+    return lib['LLVMBuildNSWSub'](param0, LHS, RHS, Name)
 func BuildNUWSub(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildNUWSub(param0, LHS, RHS, Name)
+    return lib['LLVMBuildNUWSub'](param0, LHS, RHS, Name)
 func BuildFSub(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildFSub(param0, LHS, RHS, Name)
+    return lib['LLVMBuildFSub'](param0, LHS, RHS, Name)
 func BuildMul(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildMul(param0, LHS, RHS, Name)
+    return lib['LLVMBuildMul'](param0, LHS, RHS, Name)
 func BuildNSWMul(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildNSWMul(param0, LHS, RHS, Name)
+    return lib['LLVMBuildNSWMul'](param0, LHS, RHS, Name)
 func BuildNUWMul(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildNUWMul(param0, LHS, RHS, Name)
+    return lib['LLVMBuildNUWMul'](param0, LHS, RHS, Name)
 func BuildFMul(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildFMul(param0, LHS, RHS, Name)
+    return lib['LLVMBuildFMul'](param0, LHS, RHS, Name)
 func BuildUDiv(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildUDiv(param0, LHS, RHS, Name)
+    return lib['LLVMBuildUDiv'](param0, LHS, RHS, Name)
 func BuildExactUDiv(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildExactUDiv(param0, LHS, RHS, Name)
+    return lib['LLVMBuildExactUDiv'](param0, LHS, RHS, Name)
 func BuildSDiv(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildSDiv(param0, LHS, RHS, Name)
+    return lib['LLVMBuildSDiv'](param0, LHS, RHS, Name)
 func BuildExactSDiv(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildExactSDiv(param0, LHS, RHS, Name)
+    return lib['LLVMBuildExactSDiv'](param0, LHS, RHS, Name)
 func BuildFDiv(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildFDiv(param0, LHS, RHS, Name)
+    return lib['LLVMBuildFDiv'](param0, LHS, RHS, Name)
 func BuildURem(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildURem(param0, LHS, RHS, Name)
+    return lib['LLVMBuildURem'](param0, LHS, RHS, Name)
 func BuildSRem(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildSRem(param0, LHS, RHS, Name)
+    return lib['LLVMBuildSRem'](param0, LHS, RHS, Name)
 func BuildFRem(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildFRem(param0, LHS, RHS, Name)
+    return lib['LLVMBuildFRem'](param0, LHS, RHS, Name)
 func BuildShl(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildShl(param0, LHS, RHS, Name)
+    return lib['LLVMBuildShl'](param0, LHS, RHS, Name)
 func BuildLShr(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildLShr(param0, LHS, RHS, Name)
+    return lib['LLVMBuildLShr'](param0, LHS, RHS, Name)
 func BuildAShr(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildAShr(param0, LHS, RHS, Name)
+    return lib['LLVMBuildAShr'](param0, LHS, RHS, Name)
 func BuildAnd(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildAnd(param0, LHS, RHS, Name)
+    return lib['LLVMBuildAnd'](param0, LHS, RHS, Name)
 func BuildOr(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildOr(param0, LHS, RHS, Name)
+    return lib['LLVMBuildOr'](param0, LHS, RHS, Name)
 func BuildXor(param0 *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildXor(param0, LHS, RHS, Name)
+    return lib['LLVMBuildXor'](param0, LHS, RHS, Name)
 func BuildBinOp(B *void, Op Opcode, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildBinOp(B, Op, LHS, RHS, Name)
+    return lib['LLVMBuildBinOp'](B, Op, LHS, RHS, Name)
 func BuildNeg(param0 *void, V *void, Name *void) ValueRef:
-    return lib.LLVMBuildNeg(param0, V, Name)
+    return lib['LLVMBuildNeg'](param0, V, Name)
 func BuildNSWNeg(B *void, V *void, Name *void) ValueRef:
-    return lib.LLVMBuildNSWNeg(B, V, Name)
+    return lib['LLVMBuildNSWNeg'](B, V, Name)
 func BuildNUWNeg(B *void, V *void, Name *void) ValueRef:
-    return lib.LLVMBuildNUWNeg(B, V, Name)
+    return lib['LLVMBuildNUWNeg'](B, V, Name)
 func BuildFNeg(param0 *void, V *void, Name *void) ValueRef:
-    return lib.LLVMBuildFNeg(param0, V, Name)
+    return lib['LLVMBuildFNeg'](param0, V, Name)
 func BuildNot(param0 *void, V *void, Name *void) ValueRef:
-    return lib.LLVMBuildNot(param0, V, Name)
+    return lib['LLVMBuildNot'](param0, V, Name)
 func GetNUW(ArithInst *void) Bool:
-    return lib.LLVMGetNUW(ArithInst)
+    return lib['LLVMGetNUW'](ArithInst)
 func SetNUW(ArithInst *void, HasNUW Bool) void:
-    return lib.LLVMSetNUW(ArithInst, HasNUW)
+    return lib['LLVMSetNUW'](ArithInst, HasNUW)
 func GetNSW(ArithInst *void) Bool:
-    return lib.LLVMGetNSW(ArithInst)
+    return lib['LLVMGetNSW'](ArithInst)
 func SetNSW(ArithInst *void, HasNSW Bool) void:
-    return lib.LLVMSetNSW(ArithInst, HasNSW)
+    return lib['LLVMSetNSW'](ArithInst, HasNSW)
 func GetExact(DivOrShrInst *void) Bool:
-    return lib.LLVMGetExact(DivOrShrInst)
+    return lib['LLVMGetExact'](DivOrShrInst)
 func SetExact(DivOrShrInst *void, IsExact Bool) void:
-    return lib.LLVMSetExact(DivOrShrInst, IsExact)
+    return lib['LLVMSetExact'](DivOrShrInst, IsExact)
 func GetNNeg(NonNegInst *void) Bool:
-    return lib.LLVMGetNNeg(NonNegInst)
+    return lib['LLVMGetNNeg'](NonNegInst)
 func SetNNeg(NonNegInst *void, IsNonNeg Bool) void:
-    return lib.LLVMSetNNeg(NonNegInst, IsNonNeg)
+    return lib['LLVMSetNNeg'](NonNegInst, IsNonNeg)
 func GetFastMathFlags(FPMathInst *void) FastMathFlags:
-    return lib.LLVMGetFastMathFlags(FPMathInst)
+    return lib['LLVMGetFastMathFlags'](FPMathInst)
 func SetFastMathFlags(FPMathInst *void, FMF FastMathFlags) void:
-    return lib.LLVMSetFastMathFlags(FPMathInst, FMF)
+    return lib['LLVMSetFastMathFlags'](FPMathInst, FMF)
 func CanValueUseFastMathFlags(Inst *void) Bool:
-    return lib.LLVMCanValueUseFastMathFlags(Inst)
+    return lib['LLVMCanValueUseFastMathFlags'](Inst)
 func GetIsDisjoint(Inst *void) Bool:
-    return lib.LLVMGetIsDisjoint(Inst)
+    return lib['LLVMGetIsDisjoint'](Inst)
 func SetIsDisjoint(Inst *void, IsDisjoint Bool) void:
-    return lib.LLVMSetIsDisjoint(Inst, IsDisjoint)
+    return lib['LLVMSetIsDisjoint'](Inst, IsDisjoint)
 func BuildMalloc(param0 *void, Ty *void, Name *void) ValueRef:
-    return lib.LLVMBuildMalloc(param0, Ty, Name)
+    return lib['LLVMBuildMalloc'](param0, Ty, Name)
 func BuildArrayMalloc(param0 *void, Ty *void, Val *void, Name *void) ValueRef:
-    return lib.LLVMBuildArrayMalloc(param0, Ty, Val, Name)
+    return lib['LLVMBuildArrayMalloc'](param0, Ty, Val, Name)
 func BuildMemSet(B *void, Ptr *void, Val *void, Len *void, Align int) ValueRef:
-    return lib.LLVMBuildMemSet(B, Ptr, Val, Len, Align)
+    return lib['LLVMBuildMemSet'](B, Ptr, Val, Len, Align)
 func BuildMemCpy(B *void, Dst *void, DstAlign int, Src *void, SrcAlign int, Size *void) ValueRef:
-    return lib.LLVMBuildMemCpy(B, Dst, DstAlign, Src, SrcAlign, Size)
+    return lib['LLVMBuildMemCpy'](B, Dst, DstAlign, Src, SrcAlign, Size)
 func BuildMemMove(B *void, Dst *void, DstAlign int, Src *void, SrcAlign int, Size *void) ValueRef:
-    return lib.LLVMBuildMemMove(B, Dst, DstAlign, Src, SrcAlign, Size)
+    return lib['LLVMBuildMemMove'](B, Dst, DstAlign, Src, SrcAlign, Size)
 func BuildAlloca(param0 *void, Ty *void, Name *void) ValueRef:
-    return lib.LLVMBuildAlloca(param0, Ty, Name)
+    return lib['LLVMBuildAlloca'](param0, Ty, Name)
 func BuildArrayAlloca(param0 *void, Ty *void, Val *void, Name *void) ValueRef:
-    return lib.LLVMBuildArrayAlloca(param0, Ty, Val, Name)
+    return lib['LLVMBuildArrayAlloca'](param0, Ty, Val, Name)
 func BuildFree(param0 *void, PointerVal *void) ValueRef:
-    return lib.LLVMBuildFree(param0, PointerVal)
+    return lib['LLVMBuildFree'](param0, PointerVal)
 func BuildLoad2(param0 *void, Ty *void, PointerVal *void, Name *void) ValueRef:
-    return lib.LLVMBuildLoad2(param0, Ty, PointerVal, Name)
+    return lib['LLVMBuildLoad2'](param0, Ty, PointerVal, Name)
 func BuildStore(param0 *void, Val *void, Ptr *void) ValueRef:
-    return lib.LLVMBuildStore(param0, Val, Ptr)
+    return lib['LLVMBuildStore'](param0, Val, Ptr)
 func BuildGEP2(B *void, Ty *void, Pointer *void, Indices *void, NumIndices int, Name *void) ValueRef:
-    return lib.LLVMBuildGEP2(B, Ty, Pointer, Indices, NumIndices, Name)
+    return lib['LLVMBuildGEP2'](B, Ty, Pointer, Indices, NumIndices, Name)
 func BuildInBoundsGEP2(B *void, Ty *void, Pointer *void, Indices *void, NumIndices int, Name *void) ValueRef:
-    return lib.LLVMBuildInBoundsGEP2(B, Ty, Pointer, Indices, NumIndices, Name)
+    return lib['LLVMBuildInBoundsGEP2'](B, Ty, Pointer, Indices, NumIndices, Name)
 func BuildStructGEP2(B *void, Ty *void, Pointer *void, Idx int, Name *void) ValueRef:
-    return lib.LLVMBuildStructGEP2(B, Ty, Pointer, Idx, Name)
+    return lib['LLVMBuildStructGEP2'](B, Ty, Pointer, Idx, Name)
 func BuildGlobalString(B *void, Str *void, Name *void) ValueRef:
-    return lib.LLVMBuildGlobalString(B, Str, Name)
+    return lib['LLVMBuildGlobalString'](B, Str, Name)
 func BuildGlobalStringPtr(B *void, Str *void, Name *void) ValueRef:
-    return lib.LLVMBuildGlobalStringPtr(B, Str, Name)
+    return lib['LLVMBuildGlobalStringPtr'](B, Str, Name)
 func GetVolatile(MemoryAccessInst *void) Bool:
-    return lib.LLVMGetVolatile(MemoryAccessInst)
+    return lib['LLVMGetVolatile'](MemoryAccessInst)
 func SetVolatile(MemoryAccessInst *void, IsVolatile Bool) void:
-    return lib.LLVMSetVolatile(MemoryAccessInst, IsVolatile)
+    return lib['LLVMSetVolatile'](MemoryAccessInst, IsVolatile)
 func GetWeak(CmpXchgInst *void) Bool:
-    return lib.LLVMGetWeak(CmpXchgInst)
+    return lib['LLVMGetWeak'](CmpXchgInst)
 func SetWeak(CmpXchgInst *void, IsWeak Bool) void:
-    return lib.LLVMSetWeak(CmpXchgInst, IsWeak)
+    return lib['LLVMSetWeak'](CmpXchgInst, IsWeak)
 func GetOrdering(MemoryAccessInst *void) AtomicOrdering:
-    return lib.LLVMGetOrdering(MemoryAccessInst)
+    return lib['LLVMGetOrdering'](MemoryAccessInst)
 func SetOrdering(MemoryAccessInst *void, Ordering AtomicOrdering) void:
-    return lib.LLVMSetOrdering(MemoryAccessInst, Ordering)
+    return lib['LLVMSetOrdering'](MemoryAccessInst, Ordering)
 func GetAtomicRMWBinOp(AtomicRMWInst *void) AtomicRMWBinOp:
-    return lib.LLVMGetAtomicRMWBinOp(AtomicRMWInst)
+    return lib['LLVMGetAtomicRMWBinOp'](AtomicRMWInst)
 func SetAtomicRMWBinOp(AtomicRMWInst *void, BinOp AtomicRMWBinOp) void:
-    return lib.LLVMSetAtomicRMWBinOp(AtomicRMWInst, BinOp)
+    return lib['LLVMSetAtomicRMWBinOp'](AtomicRMWInst, BinOp)
 func BuildTrunc(param0 *void, Val *void, DestTy *void, Name *void) ValueRef:
-    return lib.LLVMBuildTrunc(param0, Val, DestTy, Name)
+    return lib['LLVMBuildTrunc'](param0, Val, DestTy, Name)
 func BuildZExt(param0 *void, Val *void, DestTy *void, Name *void) ValueRef:
-    return lib.LLVMBuildZExt(param0, Val, DestTy, Name)
+    return lib['LLVMBuildZExt'](param0, Val, DestTy, Name)
 func BuildSExt(param0 *void, Val *void, DestTy *void, Name *void) ValueRef:
-    return lib.LLVMBuildSExt(param0, Val, DestTy, Name)
+    return lib['LLVMBuildSExt'](param0, Val, DestTy, Name)
 func BuildFPToUI(param0 *void, Val *void, DestTy *void, Name *void) ValueRef:
-    return lib.LLVMBuildFPToUI(param0, Val, DestTy, Name)
+    return lib['LLVMBuildFPToUI'](param0, Val, DestTy, Name)
 func BuildFPToSI(param0 *void, Val *void, DestTy *void, Name *void) ValueRef:
-    return lib.LLVMBuildFPToSI(param0, Val, DestTy, Name)
+    return lib['LLVMBuildFPToSI'](param0, Val, DestTy, Name)
 func BuildUIToFP(param0 *void, Val *void, DestTy *void, Name *void) ValueRef:
-    return lib.LLVMBuildUIToFP(param0, Val, DestTy, Name)
+    return lib['LLVMBuildUIToFP'](param0, Val, DestTy, Name)
 func BuildSIToFP(param0 *void, Val *void, DestTy *void, Name *void) ValueRef:
-    return lib.LLVMBuildSIToFP(param0, Val, DestTy, Name)
+    return lib['LLVMBuildSIToFP'](param0, Val, DestTy, Name)
 func BuildFPTrunc(param0 *void, Val *void, DestTy *void, Name *void) ValueRef:
-    return lib.LLVMBuildFPTrunc(param0, Val, DestTy, Name)
+    return lib['LLVMBuildFPTrunc'](param0, Val, DestTy, Name)
 func BuildFPExt(param0 *void, Val *void, DestTy *void, Name *void) ValueRef:
-    return lib.LLVMBuildFPExt(param0, Val, DestTy, Name)
+    return lib['LLVMBuildFPExt'](param0, Val, DestTy, Name)
 func BuildPtrToInt(param0 *void, Val *void, DestTy *void, Name *void) ValueRef:
-    return lib.LLVMBuildPtrToInt(param0, Val, DestTy, Name)
+    return lib['LLVMBuildPtrToInt'](param0, Val, DestTy, Name)
 func BuildIntToPtr(param0 *void, Val *void, DestTy *void, Name *void) ValueRef:
-    return lib.LLVMBuildIntToPtr(param0, Val, DestTy, Name)
+    return lib['LLVMBuildIntToPtr'](param0, Val, DestTy, Name)
 func BuildBitCast(param0 *void, Val *void, DestTy *void, Name *void) ValueRef:
-    return lib.LLVMBuildBitCast(param0, Val, DestTy, Name)
+    return lib['LLVMBuildBitCast'](param0, Val, DestTy, Name)
 func BuildAddrSpaceCast(param0 *void, Val *void, DestTy *void, Name *void) ValueRef:
-    return lib.LLVMBuildAddrSpaceCast(param0, Val, DestTy, Name)
+    return lib['LLVMBuildAddrSpaceCast'](param0, Val, DestTy, Name)
 func BuildZExtOrBitCast(param0 *void, Val *void, DestTy *void, Name *void) ValueRef:
-    return lib.LLVMBuildZExtOrBitCast(param0, Val, DestTy, Name)
+    return lib['LLVMBuildZExtOrBitCast'](param0, Val, DestTy, Name)
 func BuildSExtOrBitCast(param0 *void, Val *void, DestTy *void, Name *void) ValueRef:
-    return lib.LLVMBuildSExtOrBitCast(param0, Val, DestTy, Name)
+    return lib['LLVMBuildSExtOrBitCast'](param0, Val, DestTy, Name)
 func BuildTruncOrBitCast(param0 *void, Val *void, DestTy *void, Name *void) ValueRef:
-    return lib.LLVMBuildTruncOrBitCast(param0, Val, DestTy, Name)
+    return lib['LLVMBuildTruncOrBitCast'](param0, Val, DestTy, Name)
 func BuildCast(B *void, Op Opcode, Val *void, DestTy *void, Name *void) ValueRef:
-    return lib.LLVMBuildCast(B, Op, Val, DestTy, Name)
+    return lib['LLVMBuildCast'](B, Op, Val, DestTy, Name)
 func BuildPointerCast(param0 *void, Val *void, DestTy *void, Name *void) ValueRef:
-    return lib.LLVMBuildPointerCast(param0, Val, DestTy, Name)
+    return lib['LLVMBuildPointerCast'](param0, Val, DestTy, Name)
 func BuildIntCast2(param0 *void, Val *void, DestTy *void, IsSigned Bool, Name *void) ValueRef:
-    return lib.LLVMBuildIntCast2(param0, Val, DestTy, IsSigned, Name)
+    return lib['LLVMBuildIntCast2'](param0, Val, DestTy, IsSigned, Name)
 func BuildFPCast(param0 *void, Val *void, DestTy *void, Name *void) ValueRef:
-    return lib.LLVMBuildFPCast(param0, Val, DestTy, Name)
+    return lib['LLVMBuildFPCast'](param0, Val, DestTy, Name)
 func BuildIntCast(param0 *void, Val *void, DestTy *void, Name *void) ValueRef:
-    return lib.LLVMBuildIntCast(param0, Val, DestTy, Name)
+    return lib['LLVMBuildIntCast'](param0, Val, DestTy, Name)
 func GetCastOpcode(Src *void, SrcIsSigned Bool, DestTy *void, DestIsSigned Bool) Opcode:
-    return lib.LLVMGetCastOpcode(Src, SrcIsSigned, DestTy, DestIsSigned)
+    return lib['LLVMGetCastOpcode'](Src, SrcIsSigned, DestTy, DestIsSigned)
 func BuildICmp(param0 *void, Op IntPredicate, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildICmp(param0, Op, LHS, RHS, Name)
+    return lib['LLVMBuildICmp'](param0, Op, LHS, RHS, Name)
 func BuildFCmp(param0 *void, Op RealPredicate, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildFCmp(param0, Op, LHS, RHS, Name)
+    return lib['LLVMBuildFCmp'](param0, Op, LHS, RHS, Name)
 func BuildPhi(param0 *void, Ty *void, Name *void) ValueRef:
-    return lib.LLVMBuildPhi(param0, Ty, Name)
+    return lib['LLVMBuildPhi'](param0, Ty, Name)
 func BuildCall2(param0 *void, param1 *void, Fn *void, Args *void, NumArgs int, Name *void) ValueRef:
-    return lib.LLVMBuildCall2(param0, param1, Fn, Args, NumArgs, Name)
+    return lib['LLVMBuildCall2'](param0, param1, Fn, Args, NumArgs, Name)
 func BuildCallWithOperandBundles(param0 *void, param1 *void, Fn *void, Args *void, NumArgs int, Bundles *void, NumBundles int, Name *void) ValueRef:
-    return lib.LLVMBuildCallWithOperandBundles(param0, param1, Fn, Args, NumArgs, Bundles, NumBundles, Name)
+    return lib['LLVMBuildCallWithOperandBundles'](param0, param1, Fn, Args, NumArgs, Bundles, NumBundles, Name)
 func BuildSelect(param0 *void, If *void, Then *void, Else *void, Name *void) ValueRef:
-    return lib.LLVMBuildSelect(param0, If, Then, Else, Name)
+    return lib['LLVMBuildSelect'](param0, If, Then, Else, Name)
 func BuildVAArg(param0 *void, List *void, Ty *void, Name *void) ValueRef:
-    return lib.LLVMBuildVAArg(param0, List, Ty, Name)
+    return lib['LLVMBuildVAArg'](param0, List, Ty, Name)
 func BuildExtractElement(param0 *void, VecVal *void, Index *void, Name *void) ValueRef:
-    return lib.LLVMBuildExtractElement(param0, VecVal, Index, Name)
+    return lib['LLVMBuildExtractElement'](param0, VecVal, Index, Name)
 func BuildInsertElement(param0 *void, VecVal *void, EltVal *void, Index *void, Name *void) ValueRef:
-    return lib.LLVMBuildInsertElement(param0, VecVal, EltVal, Index, Name)
+    return lib['LLVMBuildInsertElement'](param0, VecVal, EltVal, Index, Name)
 func BuildShuffleVector(param0 *void, V1 *void, V2 *void, Mask *void, Name *void) ValueRef:
-    return lib.LLVMBuildShuffleVector(param0, V1, V2, Mask, Name)
+    return lib['LLVMBuildShuffleVector'](param0, V1, V2, Mask, Name)
 func BuildExtractValue(param0 *void, AggVal *void, Index int, Name *void) ValueRef:
-    return lib.LLVMBuildExtractValue(param0, AggVal, Index, Name)
+    return lib['LLVMBuildExtractValue'](param0, AggVal, Index, Name)
 func BuildInsertValue(param0 *void, AggVal *void, EltVal *void, Index int, Name *void) ValueRef:
-    return lib.LLVMBuildInsertValue(param0, AggVal, EltVal, Index, Name)
+    return lib['LLVMBuildInsertValue'](param0, AggVal, EltVal, Index, Name)
 func BuildFreeze(param0 *void, Val *void, Name *void) ValueRef:
-    return lib.LLVMBuildFreeze(param0, Val, Name)
+    return lib['LLVMBuildFreeze'](param0, Val, Name)
 func BuildIsNull(param0 *void, Val *void, Name *void) ValueRef:
-    return lib.LLVMBuildIsNull(param0, Val, Name)
+    return lib['LLVMBuildIsNull'](param0, Val, Name)
 func BuildIsNotNull(param0 *void, Val *void, Name *void) ValueRef:
-    return lib.LLVMBuildIsNotNull(param0, Val, Name)
+    return lib['LLVMBuildIsNotNull'](param0, Val, Name)
 func BuildPtrDiff2(param0 *void, ElemTy *void, LHS *void, RHS *void, Name *void) ValueRef:
-    return lib.LLVMBuildPtrDiff2(param0, ElemTy, LHS, RHS, Name)
+    return lib['LLVMBuildPtrDiff2'](param0, ElemTy, LHS, RHS, Name)
 func BuildFence(B *void, ordering AtomicOrdering, singleThread Bool, Name *void) ValueRef:
-    return lib.LLVMBuildFence(B, ordering, singleThread, Name)
+    return lib['LLVMBuildFence'](B, ordering, singleThread, Name)
 func BuildAtomicRMW(B *void, op AtomicRMWBinOp, PTR *void, Val *void, ordering AtomicOrdering, singleThread Bool) ValueRef:
-    return lib.LLVMBuildAtomicRMW(B, op, PTR, Val, ordering, singleThread)
+    return lib['LLVMBuildAtomicRMW'](B, op, PTR, Val, ordering, singleThread)
 func BuildAtomicCmpXchg(B *void, Ptr *void, Cmp *void, New *void, SuccessOrdering AtomicOrdering, FailureOrdering AtomicOrdering, SingleThread Bool) ValueRef:
-    return lib.LLVMBuildAtomicCmpXchg(B, Ptr, Cmp, New, SuccessOrdering, FailureOrdering, SingleThread)
+    return lib['LLVMBuildAtomicCmpXchg'](B, Ptr, Cmp, New, SuccessOrdering, FailureOrdering, SingleThread)
 func GetNumMaskElements(ShuffleVectorInst *void) int:
-    return lib.LLVMGetNumMaskElements(ShuffleVectorInst)
+    return lib['LLVMGetNumMaskElements'](ShuffleVectorInst)
 func GetUndefMaskElem() int:
-    return lib.LLVMGetUndefMaskElem()
+    return lib['LLVMGetUndefMaskElem']()
 func GetMaskValue(ShuffleVectorInst *void, Elt int) int:
-    return lib.LLVMGetMaskValue(ShuffleVectorInst, Elt)
+    return lib['LLVMGetMaskValue'](ShuffleVectorInst, Elt)
 func IsAtomicSingleThread(AtomicInst *void) Bool:
-    return lib.LLVMIsAtomicSingleThread(AtomicInst)
+    return lib['LLVMIsAtomicSingleThread'](AtomicInst)
 func SetAtomicSingleThread(AtomicInst *void, SingleThread Bool) void:
-    return lib.LLVMSetAtomicSingleThread(AtomicInst, SingleThread)
+    return lib['LLVMSetAtomicSingleThread'](AtomicInst, SingleThread)
 func GetCmpXchgSuccessOrdering(CmpXchgInst *void) AtomicOrdering:
-    return lib.LLVMGetCmpXchgSuccessOrdering(CmpXchgInst)
+    return lib['LLVMGetCmpXchgSuccessOrdering'](CmpXchgInst)
 func SetCmpXchgSuccessOrdering(CmpXchgInst *void, Ordering AtomicOrdering) void:
-    return lib.LLVMSetCmpXchgSuccessOrdering(CmpXchgInst, Ordering)
+    return lib['LLVMSetCmpXchgSuccessOrdering'](CmpXchgInst, Ordering)
 func GetCmpXchgFailureOrdering(CmpXchgInst *void) AtomicOrdering:
-    return lib.LLVMGetCmpXchgFailureOrdering(CmpXchgInst)
+    return lib['LLVMGetCmpXchgFailureOrdering'](CmpXchgInst)
 func SetCmpXchgFailureOrdering(CmpXchgInst *void, Ordering AtomicOrdering) void:
-    return lib.LLVMSetCmpXchgFailureOrdering(CmpXchgInst, Ordering)
+    return lib['LLVMSetCmpXchgFailureOrdering'](CmpXchgInst, Ordering)
 func CreateModuleProviderForExistingModule(M *void) ModuleProviderRef:
-    return lib.LLVMCreateModuleProviderForExistingModule(M)
+    return lib['LLVMCreateModuleProviderForExistingModule'](M)
 func DisposeModuleProvider(M *void) void:
-    return lib.LLVMDisposeModuleProvider(M)
+    return lib['LLVMDisposeModuleProvider'](M)
 func CreateMemoryBufferWithContentsOfFile(Path *void, OutMemBuf *void, OutMessage *void) Bool:
-    return lib.LLVMCreateMemoryBufferWithContentsOfFile(Path, OutMemBuf, OutMessage)
+    return lib['LLVMCreateMemoryBufferWithContentsOfFile'](Path, OutMemBuf, OutMessage)
 func CreateMemoryBufferWithSTDIN(OutMemBuf *void, OutMessage *void) Bool:
-    return lib.LLVMCreateMemoryBufferWithSTDIN(OutMemBuf, OutMessage)
+    return lib['LLVMCreateMemoryBufferWithSTDIN'](OutMemBuf, OutMessage)
 func CreateMemoryBufferWithMemoryRange(InputData *void, InputDataLength int, BufferName *void, RequiresNullTerminator Bool) MemoryBufferRef:
-    return lib.LLVMCreateMemoryBufferWithMemoryRange(InputData, InputDataLength, BufferName, RequiresNullTerminator)
+    return lib['LLVMCreateMemoryBufferWithMemoryRange'](InputData, InputDataLength, BufferName, RequiresNullTerminator)
 func CreateMemoryBufferWithMemoryRangeCopy(InputData *void, InputDataLength int, BufferName *void) MemoryBufferRef:
-    return lib.LLVMCreateMemoryBufferWithMemoryRangeCopy(InputData, InputDataLength, BufferName)
+    return lib['LLVMCreateMemoryBufferWithMemoryRangeCopy'](InputData, InputDataLength, BufferName)
 func GetBufferStart(MemBuf *void) *void:
-    return lib.LLVMGetBufferStart(MemBuf)
+    return lib['LLVMGetBufferStart'](MemBuf)
 func GetBufferSize(MemBuf *void) int:
-    return lib.LLVMGetBufferSize(MemBuf)
+    return lib['LLVMGetBufferSize'](MemBuf)
 func DisposeMemoryBuffer(MemBuf *void) void:
-    return lib.LLVMDisposeMemoryBuffer(MemBuf)
+    return lib['LLVMDisposeMemoryBuffer'](MemBuf)
 func CreatePassManager() PassManagerRef:
-    return lib.LLVMCreatePassManager()
+    return lib['LLVMCreatePassManager']()
 func CreateFunctionPassManagerForModule(M *void) PassManagerRef:
-    return lib.LLVMCreateFunctionPassManagerForModule(M)
+    return lib['LLVMCreateFunctionPassManagerForModule'](M)
 func CreateFunctionPassManager(MP *void) PassManagerRef:
-    return lib.LLVMCreateFunctionPassManager(MP)
+    return lib['LLVMCreateFunctionPassManager'](MP)
 func RunPassManager(PM *void, M *void) Bool:
-    return lib.LLVMRunPassManager(PM, M)
+    return lib['LLVMRunPassManager'](PM, M)
 func InitializeFunctionPassManager(FPM *void) Bool:
-    return lib.LLVMInitializeFunctionPassManager(FPM)
+    return lib['LLVMInitializeFunctionPassManager'](FPM)
 func RunFunctionPassManager(FPM *void, F *void) Bool:
-    return lib.LLVMRunFunctionPassManager(FPM, F)
+    return lib['LLVMRunFunctionPassManager'](FPM, F)
 func FinalizeFunctionPassManager(FPM *void) Bool:
-    return lib.LLVMFinalizeFunctionPassManager(FPM)
+    return lib['LLVMFinalizeFunctionPassManager'](FPM)
 func DisposePassManager(PM *void) void:
-    return lib.LLVMDisposePassManager(PM)
+    return lib['LLVMDisposePassManager'](PM)
 func StartMultithreaded() Bool:
-    return lib.LLVMStartMultithreaded()
+    return lib['LLVMStartMultithreaded']()
 func StopMultithreaded() void:
-    return lib.LLVMStopMultithreaded()
+    return lib['LLVMStopMultithreaded']()
 func IsMultithreaded() Bool:
-    return lib.LLVMIsMultithreaded()
-type OpaqueSectionIterator_S #int64_t
+    return lib['LLVMIsMultithreaded']()
+type OpaqueSectionIterator_S int
 type SectionIteratorRef -> *void
 
-type OpaqueSymbolIterator_S #int64_t
+type OpaqueSymbolIterator_S int
 type SymbolIteratorRef -> *void
 
-type OpaqueRelocationIterator_S #int64_t
+type OpaqueRelocationIterator_S int
 type RelocationIteratorRef -> *void
 
 type BinaryType -> int
@@ -1897,871 +1897,1261 @@ var .BinaryTypeWasm int = 14
 var .BinaryTypeOffload int = 15
 
 func CreateBinary(MemBuf *void, Context *void, ErrorMessage *void) BinaryRef:
-    return lib.LLVMCreateBinary(MemBuf, Context, ErrorMessage)
+    return lib['LLVMCreateBinary'](MemBuf, Context, ErrorMessage)
 func DisposeBinary(BR *void) void:
-    return lib.LLVMDisposeBinary(BR)
+    return lib['LLVMDisposeBinary'](BR)
 func BinaryCopyMemoryBuffer(BR *void) MemoryBufferRef:
-    return lib.LLVMBinaryCopyMemoryBuffer(BR)
+    return lib['LLVMBinaryCopyMemoryBuffer'](BR)
 func BinaryGetType(BR *void) BinaryType:
-    return lib.LLVMBinaryGetType(BR)
+    return lib['LLVMBinaryGetType'](BR)
 func MachOUniversalBinaryCopyObjectForArch(BR *void, Arch *void, ArchLen int, ErrorMessage *void) BinaryRef:
-    return lib.LLVMMachOUniversalBinaryCopyObjectForArch(BR, Arch, ArchLen, ErrorMessage)
+    return lib['LLVMMachOUniversalBinaryCopyObjectForArch'](BR, Arch, ArchLen, ErrorMessage)
 func ObjectFileCopySectionIterator(BR *void) SectionIteratorRef:
-    return lib.LLVMObjectFileCopySectionIterator(BR)
+    return lib['LLVMObjectFileCopySectionIterator'](BR)
 func ObjectFileIsSectionIteratorAtEnd(BR *void, SI *void) Bool:
-    return lib.LLVMObjectFileIsSectionIteratorAtEnd(BR, SI)
+    return lib['LLVMObjectFileIsSectionIteratorAtEnd'](BR, SI)
 func ObjectFileCopySymbolIterator(BR *void) SymbolIteratorRef:
-    return lib.LLVMObjectFileCopySymbolIterator(BR)
+    return lib['LLVMObjectFileCopySymbolIterator'](BR)
 func ObjectFileIsSymbolIteratorAtEnd(BR *void, SI *void) Bool:
-    return lib.LLVMObjectFileIsSymbolIteratorAtEnd(BR, SI)
+    return lib['LLVMObjectFileIsSymbolIteratorAtEnd'](BR, SI)
 func DisposeSectionIterator(SI *void) void:
-    return lib.LLVMDisposeSectionIterator(SI)
+    return lib['LLVMDisposeSectionIterator'](SI)
 func MoveToNextSection(SI *void) void:
-    return lib.LLVMMoveToNextSection(SI)
+    return lib['LLVMMoveToNextSection'](SI)
 func MoveToContainingSection(Sect *void, Sym *void) void:
-    return lib.LLVMMoveToContainingSection(Sect, Sym)
+    return lib['LLVMMoveToContainingSection'](Sect, Sym)
 func DisposeSymbolIterator(SI *void) void:
-    return lib.LLVMDisposeSymbolIterator(SI)
+    return lib['LLVMDisposeSymbolIterator'](SI)
 func MoveToNextSymbol(SI *void) void:
-    return lib.LLVMMoveToNextSymbol(SI)
+    return lib['LLVMMoveToNextSymbol'](SI)
 func GetSectionName(SI *void) *void:
-    return lib.LLVMGetSectionName(SI)
+    return lib['LLVMGetSectionName'](SI)
 func GetSectionSize(SI *void) int:
-    return lib.LLVMGetSectionSize(SI)
+    return lib['LLVMGetSectionSize'](SI)
 func GetSectionContents(SI *void) *void:
-    return lib.LLVMGetSectionContents(SI)
+    return lib['LLVMGetSectionContents'](SI)
 func GetSectionAddress(SI *void) int:
-    return lib.LLVMGetSectionAddress(SI)
+    return lib['LLVMGetSectionAddress'](SI)
 func GetSectionContainsSymbol(SI *void, Sym *void) Bool:
-    return lib.LLVMGetSectionContainsSymbol(SI, Sym)
+    return lib['LLVMGetSectionContainsSymbol'](SI, Sym)
 func GetRelocations(Section *void) RelocationIteratorRef:
-    return lib.LLVMGetRelocations(Section)
+    return lib['LLVMGetRelocations'](Section)
 func DisposeRelocationIterator(RI *void) void:
-    return lib.LLVMDisposeRelocationIterator(RI)
+    return lib['LLVMDisposeRelocationIterator'](RI)
 func IsRelocationIteratorAtEnd(Section *void, RI *void) Bool:
-    return lib.LLVMIsRelocationIteratorAtEnd(Section, RI)
+    return lib['LLVMIsRelocationIteratorAtEnd'](Section, RI)
 func MoveToNextRelocation(RI *void) void:
-    return lib.LLVMMoveToNextRelocation(RI)
+    return lib['LLVMMoveToNextRelocation'](RI)
 func GetSymbolName(SI *void) *void:
-    return lib.LLVMGetSymbolName(SI)
+    return lib['LLVMGetSymbolName'](SI)
 func GetSymbolAddress(SI *void) int:
-    return lib.LLVMGetSymbolAddress(SI)
+    return lib['LLVMGetSymbolAddress'](SI)
 func GetSymbolSize(SI *void) int:
-    return lib.LLVMGetSymbolSize(SI)
+    return lib['LLVMGetSymbolSize'](SI)
 func GetRelocationOffset(RI *void) int:
-    return lib.LLVMGetRelocationOffset(RI)
+    return lib['LLVMGetRelocationOffset'](RI)
 func GetRelocationSymbol(RI *void) SymbolIteratorRef:
-    return lib.LLVMGetRelocationSymbol(RI)
+    return lib['LLVMGetRelocationSymbol'](RI)
 func GetRelocationType(RI *void) int:
-    return lib.LLVMGetRelocationType(RI)
+    return lib['LLVMGetRelocationType'](RI)
 func GetRelocationTypeName(RI *void) *void:
-    return lib.LLVMGetRelocationTypeName(RI)
+    return lib['LLVMGetRelocationTypeName'](RI)
 func GetRelocationValueString(RI *void) *void:
-    return lib.LLVMGetRelocationValueString(RI)
-type OpaqueObjectFile_S #int64_t
+    return lib['LLVMGetRelocationValueString'](RI)
+type OpaqueObjectFile_S int
 type ObjectFileRef -> *void
 
 func CreateObjectFile(MemBuf *void) ObjectFileRef:
-    return lib.LLVMCreateObjectFile(MemBuf)
+    return lib['LLVMCreateObjectFile'](MemBuf)
 func DisposeObjectFile(ObjectFile *void) void:
-    return lib.LLVMDisposeObjectFile(ObjectFile)
+    return lib['LLVMDisposeObjectFile'](ObjectFile)
 func GetSections(ObjectFile *void) SectionIteratorRef:
-    return lib.LLVMGetSections(ObjectFile)
+    return lib['LLVMGetSections'](ObjectFile)
 func IsSectionIteratorAtEnd(ObjectFile *void, SI *void) Bool:
-    return lib.LLVMIsSectionIteratorAtEnd(ObjectFile, SI)
+    return lib['LLVMIsSectionIteratorAtEnd'](ObjectFile, SI)
 func GetSymbols(ObjectFile *void) SymbolIteratorRef:
-    return lib.LLVMGetSymbols(ObjectFile)
+    return lib['LLVMGetSymbols'](ObjectFile)
 func IsSymbolIteratorAtEnd(ObjectFile *void, SI *void) Bool:
-    return lib.LLVMIsSymbolIteratorAtEnd(ObjectFile, SI)
+    return lib['LLVMIsSymbolIteratorAtEnd'](ObjectFile, SI)
 
 use os
 dyn .ffi = false
-dyn .lib = load()
-func load() dyn:
-    ffi = os.newFFI()
-    ffi.cbind(OpaqueMemoryBuffer_S, {_})
-    ffi.cbind(OpaqueContext_S, {_})
-    ffi.cbind(OpaqueModule_S, {_})
-    ffi.cbind(OpaqueType_S, {_})
-    ffi.cbind(OpaqueValue_S, {_})
-    ffi.cbind(OpaqueBasicBlock_S, {_})
-    ffi.cbind(OpaqueMetadata_S, {_})
-    ffi.cbind(OpaqueNamedMDNode_S, {_})
-    ffi.cbind(OpaqueValueMetadataEntry_S, {_})
-    ffi.cbind(OpaqueBuilder_S, {_})
-    ffi.cbind(OpaqueDIBuilder_S, {_})
-    ffi.cbind(OpaqueModuleProvider_S, {_})
-    ffi.cbind(OpaquePassManager_S, {_})
-    ffi.cbind(OpaqueUse_S, {_})
-    ffi.cbind(OpaqueOperandBundle_S, {_})
-    ffi.cbind(OpaqueAttributeRef_S, {_})
-    ffi.cbind(OpaqueDiagnosticInfo_S, {_})
-    ffi.cbind(Comdat_S, {_})
-    ffi.cbind(OpaqueModuleFlagEntry_S, {_})
-    ffi.cbind(OpaqueJITEventListener_S, {_})
-    ffi.cbind(OpaqueBinary_S, {_})
-    ffi.cbind(OpaqueSectionIterator_S, {_})
-    ffi.cbind(OpaqueSymbolIterator_S, {_})
-    ffi.cbind(OpaqueRelocationIterator_S, {_})
-    ffi.cbind(OpaqueObjectFile_S, {_})
-    ffi.cfunc('LLVMInstallFatalErrorHandler', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMResetFatalErrorHandler', {_}, symbol.void)
-    ffi.cfunc('LLVMEnablePrettyStackTrace', {_}, symbol.void)
-    ffi.cfunc('LLVMShutdown', {_}, symbol.void)
-    ffi.cfunc('LLVMGetVersion', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMCreateMessage', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMDisposeMessage', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMContextCreate', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetGlobalContext', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMContextSetDiagnosticHandler', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMContextGetDiagnosticHandler', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMContextGetDiagnosticContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMContextSetYieldCallback', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMContextShouldDiscardValueNames', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMContextSetDiscardValueNames', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMContextDispose', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetDiagInfoDescription', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetDiagInfoSeverity', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMGetMDKindIDInContext', {symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.uint)
-    ffi.cfunc('LLVMGetMDKindID', {symbol.voidPtr, symbol.uint}, symbol.uint)
-    ffi.cfunc('LLVMGetEnumAttributeKindForName', {symbol.voidPtr, symbol.int}, symbol.uint)
-    ffi.cfunc('LLVMGetLastEnumAttributeKind', {_}, symbol.uint)
-    ffi.cfunc('LLVMCreateEnumAttribute', {symbol.voidPtr, symbol.uint, symbol.ulong}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetEnumAttributeKind', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMGetEnumAttributeValue', {symbol.voidPtr}, symbol.ulong)
-    ffi.cfunc('LLVMCreateTypeAttribute', {symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetTypeAttributeValue', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMCreateStringAttribute', {symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetStringAttributeKind', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetStringAttributeValue', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsEnumAttribute', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMIsStringAttribute', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMIsTypeAttribute', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMGetTypeByName2', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMModuleCreateWithName', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMModuleCreateWithNameInContext', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMCloneModule', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMDisposeModule', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetModuleIdentifier', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetModuleIdentifier', {symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGetSourceFileName', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetSourceFileName', {symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGetDataLayoutStr', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetDataLayout', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetDataLayout', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetTarget', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetTarget', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMCopyModuleFlagsMetadata', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMDisposeModuleFlagsMetadata', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMModuleFlagEntriesGetFlagBehavior', {symbol.voidPtr, symbol.uint}, symbol.int)
-    ffi.cfunc('LLVMModuleFlagEntriesGetKey', {symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMModuleFlagEntriesGetMetadata', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetModuleFlag', {symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMAddModuleFlag', {symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.int, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMDumpModule', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMPrintModuleToFile', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMPrintModuleToString', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetModuleInlineAsm', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetModuleInlineAsm2', {symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMAppendModuleInlineAsm', {symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGetInlineAsm', {symbol.voidPtr, symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.int, symbol.int, symbol.int, symbol.int, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetInlineAsmAsmString', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetInlineAsmConstraintString', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetInlineAsmDialect', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMGetInlineAsmFunctionType', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetInlineAsmHasSideEffects', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMGetInlineAsmNeedsAlignedStack', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMGetInlineAsmCanUnwind', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMGetModuleContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetTypeByName', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetFirstNamedMetadata', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetLastNamedMetadata', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNextNamedMetadata', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetPreviousNamedMetadata', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNamedMetadata', {symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetOrInsertNamedMetadata', {symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNamedMetadataName', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNamedMetadataNumOperands', {symbol.voidPtr, symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMGetNamedMetadataOperands', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMAddNamedMetadataOperand', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetDebugLocDirectory', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetDebugLocFilename', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetDebugLocLine', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMGetDebugLocColumn', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMAddFunction', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNamedFunction', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetFirstFunction', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetLastFunction', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNextFunction', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetPreviousFunction', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetModuleInlineAsm', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetTypeKind', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMTypeIsSized', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMGetTypeContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMDumpType', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMPrintTypeToString', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMInt1TypeInContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMInt8TypeInContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMInt16TypeInContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMInt32TypeInContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMInt64TypeInContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMInt128TypeInContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIntTypeInContext', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMInt1Type', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMInt8Type', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMInt16Type', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMInt32Type', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMInt64Type', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMInt128Type', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMIntType', {symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetIntTypeWidth', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMHalfTypeInContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBFloatTypeInContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMFloatTypeInContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMDoubleTypeInContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMX86FP80TypeInContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMFP128TypeInContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMPPCFP128TypeInContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMHalfType', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMBFloatType', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMFloatType', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMDoubleType', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMX86FP80Type', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMFP128Type', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMPPCFP128Type', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMFunctionType', {symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsFunctionVarArg', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMGetReturnType', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMCountParamTypes', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMGetParamTypes', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMStructTypeInContext', {symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMStructType', {symbol.voidPtr, symbol.uint, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMStructCreateNamed', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetStructName', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMStructSetBody', {symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMCountStructElementTypes', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMGetStructElementTypes', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMStructGetTypeAtIndex', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsPackedStruct', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMIsOpaqueStruct', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMIsLiteralStruct', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMGetElementType', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetSubtypes', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetNumContainedTypes', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMArrayType', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMArrayType2', {symbol.voidPtr, symbol.ulong}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetArrayLength', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMGetArrayLength2', {symbol.voidPtr}, symbol.ulong)
-    ffi.cfunc('LLVMPointerType', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMPointerTypeIsOpaque', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMPointerTypeInContext', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetPointerAddressSpace', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMVectorType', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMScalableVectorType', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetVectorSize', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMVoidTypeInContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMLabelTypeInContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMX86MMXTypeInContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMX86AMXTypeInContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMTokenTypeInContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMMetadataTypeInContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMVoidType', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMLabelType', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMX86MMXType', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMX86AMXType', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMTargetExtTypeInContext', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMTypeOf', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetValueKind', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMGetValueName2', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetValueName2', {symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMDumpValue', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMPrintValueToString', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMReplaceAllUsesWith', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMIsConstant', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMIsUndef', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMIsPoison', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMIsAArgument', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsABasicBlock', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAInlineAsm', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAUser', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAConstant', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsABlockAddress', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAConstantAggregateZero', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAConstantArray', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAConstantDataSequential', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAConstantDataArray', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAConstantDataVector', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAConstantExpr', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAConstantFP', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAConstantInt', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAConstantPointerNull', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAConstantStruct', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAConstantTokenNone', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAConstantVector', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAGlobalValue', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAGlobalAlias', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAGlobalObject', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAFunction', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAGlobalVariable', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAGlobalIFunc', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAUndefValue', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAPoisonValue', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAInstruction', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAUnaryOperator', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsABinaryOperator', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsACallInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAIntrinsicInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsADbgInfoIntrinsic', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsADbgVariableIntrinsic', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsADbgDeclareInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsADbgLabelInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAMemIntrinsic', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAMemCpyInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAMemMoveInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAMemSetInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsACmpInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAFCmpInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAICmpInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAExtractElementInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAGetElementPtrInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAInsertElementInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAInsertValueInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsALandingPadInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAPHINode', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsASelectInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAShuffleVectorInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAStoreInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsABranchInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAIndirectBrInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAInvokeInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAReturnInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsASwitchInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAUnreachableInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAResumeInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsACleanupReturnInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsACatchReturnInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsACatchSwitchInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsACallBrInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAFuncletPadInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsACatchPadInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsACleanupPadInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAUnaryInstruction', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAAllocaInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsACastInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAAddrSpaceCastInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsABitCastInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAFPExtInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAFPToSIInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAFPToUIInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAFPTruncInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAIntToPtrInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAPtrToIntInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsASExtInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsASIToFPInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsATruncInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAUIToFPInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAZExtInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAExtractValueInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsALoadInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAVAArgInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAFreezeInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAAtomicCmpXchgInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAAtomicRMWInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAFenceInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAMDNode', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAValueAsMetadata', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsAMDString', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetValueName', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetValueName', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetFirstUse', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNextUse', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetUser', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetUsedValue', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetOperand', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetOperandUse', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetOperand', {symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetNumOperands', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMConstNull', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstAllOnes', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetUndef', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetPoison', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsNull', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMConstPointerNull', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstInt', {symbol.voidPtr, symbol.ulong, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstIntOfArbitraryPrecision', {symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstIntOfString', {symbol.voidPtr, symbol.voidPtr, symbol.uchar}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstIntOfStringAndSize', {symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.uchar}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstReal', {symbol.voidPtr, symbol.double}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstRealOfString', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstRealOfStringAndSize', {symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstIntGetZExtValue', {symbol.voidPtr}, symbol.ulong)
-    ffi.cfunc('LLVMConstIntGetSExtValue', {symbol.voidPtr}, symbol.long)
-    ffi.cfunc('LLVMConstRealGetDouble', {symbol.voidPtr, symbol.voidPtr}, symbol.double)
-    ffi.cfunc('LLVMConstStringInContext', {symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstString', {symbol.voidPtr, symbol.uint, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsConstantString', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMGetAsString', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstStructInContext', {symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstStruct', {symbol.voidPtr, symbol.uint, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstArray', {symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstArray2', {symbol.voidPtr, symbol.voidPtr, symbol.ulong}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstNamedStruct', {symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetAggregateElement', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetElementAsConstant', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstVector', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetConstOpcode', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMAlignOf', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMSizeOf', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstNeg', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstNSWNeg', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstNUWNeg', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstNot', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstAdd', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstNSWAdd', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstNUWAdd', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstSub', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstNSWSub', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstNUWSub', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstMul', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstNSWMul', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstNUWMul', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstXor', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstICmp', {symbol.int, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstFCmp', {symbol.int, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstShl', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstGEP2', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstInBoundsGEP2', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstTrunc', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstPtrToInt', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstIntToPtr', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstBitCast', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstAddrSpaceCast', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstTruncOrBitCast', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstPointerCast', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstExtractElement', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstInsertElement', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstShuffleVector', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBlockAddress', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMConstInlineAsm', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.int, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetGlobalParent', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsDeclaration', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMGetLinkage', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetLinkage', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGetSection', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetSection', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetVisibility', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetVisibility', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGetDLLStorageClass', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetDLLStorageClass', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGetUnnamedAddress', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetUnnamedAddress', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGlobalGetValueType', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMHasUnnamedAddr', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetUnnamedAddr', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGetAlignment', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMSetAlignment', {symbol.voidPtr, symbol.uint}, symbol.void)
-    ffi.cfunc('LLVMGlobalSetMetadata', {symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGlobalEraseMetadata', {symbol.voidPtr, symbol.uint}, symbol.void)
-    ffi.cfunc('LLVMGlobalClearMetadata', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGlobalCopyAllMetadata', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMDisposeValueMetadataEntries', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMValueMetadataEntriesGetKind', {symbol.voidPtr, symbol.uint}, symbol.uint)
-    ffi.cfunc('LLVMValueMetadataEntriesGetMetadata', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMAddGlobal', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMAddGlobalInAddressSpace', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNamedGlobal', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetFirstGlobal', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetLastGlobal', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNextGlobal', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetPreviousGlobal', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMDeleteGlobal', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetInitializer', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetInitializer', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMIsThreadLocal', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetThreadLocal', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMIsGlobalConstant', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetGlobalConstant', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGetThreadLocalMode', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetThreadLocalMode', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMIsExternallyInitialized', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetExternallyInitialized', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMAddAlias2', {symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNamedGlobalAlias', {symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetFirstGlobalAlias', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetLastGlobalAlias', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNextGlobalAlias', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetPreviousGlobalAlias', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMAliasGetAliasee', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMAliasSetAliasee', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMDeleteFunction', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMHasPersonalityFn', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMGetPersonalityFn', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetPersonalityFn', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMLookupIntrinsicID', {symbol.voidPtr, symbol.int}, symbol.uint)
-    ffi.cfunc('LLVMGetIntrinsicID', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMGetIntrinsicDeclaration', {symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMIntrinsicGetType', {symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMIntrinsicGetName', {symbol.uint, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIntrinsicCopyOverloadedName', {symbol.uint, symbol.voidPtr, symbol.int, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIntrinsicCopyOverloadedName2', {symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.int, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIntrinsicIsOverloaded', {symbol.uint}, symbol.int)
-    ffi.cfunc('LLVMGetFunctionCallConv', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMSetFunctionCallConv', {symbol.voidPtr, symbol.uint}, symbol.void)
-    ffi.cfunc('LLVMGetGC', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetGC', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMAddAttributeAtIndex', {symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetAttributeCountAtIndex', {symbol.voidPtr, symbol.uint}, symbol.uint)
-    ffi.cfunc('LLVMGetAttributesAtIndex', {symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetEnumAttributeAtIndex', {symbol.voidPtr, symbol.uint, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetStringAttributeAtIndex', {symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMRemoveEnumAttributeAtIndex', {symbol.voidPtr, symbol.uint, symbol.uint}, symbol.void)
-    ffi.cfunc('LLVMRemoveStringAttributeAtIndex', {symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.uint}, symbol.void)
-    ffi.cfunc('LLVMAddTargetDependentFunctionAttr', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMCountParams', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMGetParams', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetParam', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetParamParent', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetFirstParam', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetLastParam', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNextParam', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetPreviousParam', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetParamAlignment', {symbol.voidPtr, symbol.uint}, symbol.void)
-    ffi.cfunc('LLVMAddGlobalIFunc', {symbol.voidPtr, symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNamedGlobalIFunc', {symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetFirstGlobalIFunc', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetLastGlobalIFunc', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNextGlobalIFunc', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetPreviousGlobalIFunc', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetGlobalIFuncResolver', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetGlobalIFuncResolver', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMEraseGlobalIFunc', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMRemoveGlobalIFunc', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMMDStringInContext2', {symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMMDNodeInContext2', {symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMMetadataAsValue', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMValueAsMetadata', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetMDString', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetMDNodeNumOperands', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMGetMDNodeOperands', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMReplaceMDNodeOperandWith', {symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMMDStringInContext', {symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMMDString', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMMDNodeInContext', {symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMMDNode', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMCreateOperandBundle', {symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMDisposeOperandBundle', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetOperandBundleTag', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNumOperandBundleArgs', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMGetOperandBundleArgAtIndex', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMBasicBlockAsValue', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMValueIsBasicBlock', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMValueAsBasicBlock', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetBasicBlockName', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetBasicBlockParent', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetBasicBlockTerminator', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMCountBasicBlocks', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMGetBasicBlocks', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetFirstBasicBlock', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetLastBasicBlock', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNextBasicBlock', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetPreviousBasicBlock', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetEntryBasicBlock', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMInsertExistingBasicBlockAfterInsertBlock', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMAppendExistingBasicBlock', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMCreateBasicBlockInContext', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMAppendBasicBlockInContext', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMAppendBasicBlock', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMInsertBasicBlockInContext', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMInsertBasicBlock', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMDeleteBasicBlock', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMRemoveBasicBlockFromParent', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMMoveBasicBlockBefore', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMMoveBasicBlockAfter', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetFirstInstruction', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetLastInstruction', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMHasMetadata', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMGetMetadata', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetMetadata', {symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMInstructionGetAllMetadataOtherThanDebugLoc', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetInstructionParent', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNextInstruction', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetPreviousInstruction', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMInstructionRemoveFromParent', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMInstructionEraseFromParent', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMDeleteInstruction', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetInstructionOpcode', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMGetICmpPredicate', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMGetFCmpPredicate', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMInstructionClone', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsATerminatorInst', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNumArgOperands', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMSetInstructionCallConv', {symbol.voidPtr, symbol.uint}, symbol.void)
-    ffi.cfunc('LLVMGetInstructionCallConv', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMSetInstrParamAlignment', {symbol.voidPtr, symbol.uint, symbol.uint}, symbol.void)
-    ffi.cfunc('LLVMAddCallSiteAttribute', {symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetCallSiteAttributeCount', {symbol.voidPtr, symbol.uint}, symbol.uint)
-    ffi.cfunc('LLVMGetCallSiteAttributes', {symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetCallSiteEnumAttribute', {symbol.voidPtr, symbol.uint, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetCallSiteStringAttribute', {symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMRemoveCallSiteEnumAttribute', {symbol.voidPtr, symbol.uint, symbol.uint}, symbol.void)
-    ffi.cfunc('LLVMRemoveCallSiteStringAttribute', {symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.uint}, symbol.void)
-    ffi.cfunc('LLVMGetCalledFunctionType', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetCalledValue', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNumOperandBundles', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMGetOperandBundleAtIndex', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsTailCall', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetTailCall', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGetTailCallKind', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetTailCallKind', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGetNormalDest', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetUnwindDest', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetNormalDest', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMSetUnwindDest', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetNumSuccessors', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMGetSuccessor', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetSuccessor', {symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMIsConditional', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMGetCondition', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetCondition', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetSwitchDefaultDest', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetAllocatedType', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsInBounds', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetIsInBounds', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGetGEPSourceElementType', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMAddIncoming', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.void)
-    ffi.cfunc('LLVMCountIncoming', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMGetIncomingValue', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetIncomingBlock', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNumIndices', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMGetIndices', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMCreateBuilderInContext', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMCreateBuilder', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMPositionBuilder', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMPositionBuilderBefore', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMPositionBuilderAtEnd', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetInsertBlock', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMClearInsertionPosition', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMInsertIntoBuilder', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMInsertIntoBuilderWithName', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMDisposeBuilder', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetCurrentDebugLocation2', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetCurrentDebugLocation2', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMSetInstDebugLocation', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMAddMetadataToInst', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMBuilderGetDefaultFPMathTag', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuilderSetDefaultFPMathTag', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMSetCurrentDebugLocation', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetCurrentDebugLocation', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildRetVoid', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildRet', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildAggregateRet', {symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildBr', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildCondBr', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildSwitch', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildIndirectBr', {symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildInvoke2', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildInvokeWithOperandBundles', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildUnreachable', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildResume', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildLandingPad', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildCleanupRet', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildCatchRet', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildCatchPad', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildCleanupPad', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildCatchSwitch', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMAddCase', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMAddDestination', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetNumClauses', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMGetClause', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMAddClause', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMIsCleanup', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetCleanup', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMAddHandler', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetNumHandlers', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMGetHandlers', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetArgOperand', {symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetArgOperand', {symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetParentCatchSwitch', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMSetParentCatchSwitch', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMBuildAdd', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildNSWAdd', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildNUWAdd', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildFAdd', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildSub', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildNSWSub', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildNUWSub', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildFSub', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildMul', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildNSWMul', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildNUWMul', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildFMul', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildUDiv', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildExactUDiv', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildSDiv', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildExactSDiv', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildFDiv', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildURem', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildSRem', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildFRem', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildShl', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildLShr', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildAShr', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildAnd', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildOr', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildXor', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildBinOp', {symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildNeg', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildNSWNeg', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildNUWNeg', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildFNeg', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildNot', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNUW', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetNUW', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGetNSW', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetNSW', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGetExact', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetExact', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGetNNeg', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetNNeg', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGetFastMathFlags', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMSetFastMathFlags', {symbol.voidPtr, symbol.uint}, symbol.void)
-    ffi.cfunc('LLVMCanValueUseFastMathFlags', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMGetIsDisjoint', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetIsDisjoint', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMBuildMalloc', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildArrayMalloc', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildMemSet', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildMemCpy', {symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildMemMove', {symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildAlloca', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildArrayAlloca', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildFree', {symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildLoad2', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildStore', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildGEP2', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildInBoundsGEP2', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildStructGEP2', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildGlobalString', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildGlobalStringPtr', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetVolatile', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetVolatile', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGetWeak', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetWeak', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGetOrdering', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetOrdering', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGetAtomicRMWBinOp', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetAtomicRMWBinOp', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMBuildTrunc', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildZExt', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildSExt', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildFPToUI', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildFPToSI', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildUIToFP', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildSIToFP', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildFPTrunc', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildFPExt', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildPtrToInt', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildIntToPtr', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildBitCast', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildAddrSpaceCast', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildZExtOrBitCast', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildSExtOrBitCast', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildTruncOrBitCast', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildCast', {symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildPointerCast', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildIntCast2', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.int, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildFPCast', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildIntCast', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetCastOpcode', {symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.int}, symbol.int)
-    ffi.cfunc('LLVMBuildICmp', {symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildFCmp', {symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildPhi', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildCall2', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildCallWithOperandBundles', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildSelect', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildVAArg', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildExtractElement', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildInsertElement', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildShuffleVector', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildExtractValue', {symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildInsertValue', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildFreeze', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildIsNull', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildIsNotNull', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildPtrDiff2', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildFence', {symbol.voidPtr, symbol.int, symbol.int, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildAtomicRMW', {symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.voidPtr, symbol.int, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMBuildAtomicCmpXchg', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.int, symbol.int, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetNumMaskElements', {symbol.voidPtr}, symbol.uint)
-    ffi.cfunc('LLVMGetUndefMaskElem', {_}, symbol.int)
-    ffi.cfunc('LLVMGetMaskValue', {symbol.voidPtr, symbol.uint}, symbol.int)
-    ffi.cfunc('LLVMIsAtomicSingleThread', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetAtomicSingleThread', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGetCmpXchgSuccessOrdering', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetCmpXchgSuccessOrdering', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMGetCmpXchgFailureOrdering', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMSetCmpXchgFailureOrdering', {symbol.voidPtr, symbol.int}, symbol.void)
-    ffi.cfunc('LLVMCreateModuleProviderForExistingModule', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMDisposeModuleProvider', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMCreateMemoryBufferWithContentsOfFile', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMCreateMemoryBufferWithSTDIN', {symbol.voidPtr, symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMCreateMemoryBufferWithMemoryRange', {symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.int}, symbol.voidPtr)
-    ffi.cfunc('LLVMCreateMemoryBufferWithMemoryRangeCopy', {symbol.voidPtr, symbol.int, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetBufferStart', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetBufferSize', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMDisposeMemoryBuffer', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMCreatePassManager', {_}, symbol.voidPtr)
-    ffi.cfunc('LLVMCreateFunctionPassManagerForModule', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMCreateFunctionPassManager', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMRunPassManager', {symbol.voidPtr, symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMInitializeFunctionPassManager', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMRunFunctionPassManager', {symbol.voidPtr, symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMFinalizeFunctionPassManager', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMDisposePassManager', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMStartMultithreaded', {_}, symbol.int)
-    ffi.cfunc('LLVMStopMultithreaded', {_}, symbol.void)
-    ffi.cfunc('LLVMIsMultithreaded', {_}, symbol.int)
-    ffi.cfunc('LLVMCreateBinary', {symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMDisposeBinary', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMBinaryCopyMemoryBuffer', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMBinaryGetType', {symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMMachOUniversalBinaryCopyObjectForArch', {symbol.voidPtr, symbol.voidPtr, symbol.int, symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMObjectFileCopySectionIterator', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMObjectFileIsSectionIteratorAtEnd', {symbol.voidPtr, symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMObjectFileCopySymbolIterator', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMObjectFileIsSymbolIteratorAtEnd', {symbol.voidPtr, symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMDisposeSectionIterator', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMMoveToNextSection', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMMoveToContainingSection', {symbol.voidPtr, symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMDisposeSymbolIterator', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMMoveToNextSymbol', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetSectionName', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetSectionSize', {symbol.voidPtr}, symbol.ulong)
-    ffi.cfunc('LLVMGetSectionContents', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetSectionAddress', {symbol.voidPtr}, symbol.ulong)
-    ffi.cfunc('LLVMGetSectionContainsSymbol', {symbol.voidPtr, symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMGetRelocations', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMDisposeRelocationIterator', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMIsRelocationIteratorAtEnd', {symbol.voidPtr, symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMMoveToNextRelocation', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetSymbolName', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetSymbolAddress', {symbol.voidPtr}, symbol.ulong)
-    ffi.cfunc('LLVMGetSymbolSize', {symbol.voidPtr}, symbol.ulong)
-    ffi.cfunc('LLVMGetRelocationOffset', {symbol.voidPtr}, symbol.ulong)
-    ffi.cfunc('LLVMGetRelocationSymbol', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetRelocationType', {symbol.voidPtr}, symbol.ulong)
-    ffi.cfunc('LLVMGetRelocationTypeName', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMGetRelocationValueString', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMCreateObjectFile', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMDisposeObjectFile', {symbol.voidPtr}, symbol.void)
-    ffi.cfunc('LLVMGetSections', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsSectionIteratorAtEnd', {symbol.voidPtr, symbol.voidPtr}, symbol.int)
-    ffi.cfunc('LLVMGetSymbols', {symbol.voidPtr}, symbol.voidPtr)
-    ffi.cfunc('LLVMIsSymbolIteratorAtEnd', {symbol.voidPtr, symbol.voidPtr}, symbol.int)
-    dyn lib = ffi.bindLib(Option[String].some('libLLVM.dylib'), {gen_table=false})
+var .lib = load()
+func load() Map:
+    var ffi_ = os.newFFI()
+    ffi_.cbind(OpaqueMemoryBuffer_S, .{})
+    ffi_.cbind(OpaqueContext_S, .{})
+    ffi_.cbind(OpaqueModule_S, .{})
+    ffi_.cbind(OpaqueType_S, .{})
+    ffi_.cbind(OpaqueValue_S, .{})
+    ffi_.cbind(OpaqueBasicBlock_S, .{})
+    ffi_.cbind(OpaqueMetadata_S, .{})
+    ffi_.cbind(OpaqueNamedMDNode_S, .{})
+    ffi_.cbind(OpaqueValueMetadataEntry_S, .{})
+    ffi_.cbind(OpaqueBuilder_S, .{})
+    ffi_.cbind(OpaqueDIBuilder_S, .{})
+    ffi_.cbind(OpaqueModuleProvider_S, .{})
+    ffi_.cbind(OpaquePassManager_S, .{})
+    ffi_.cbind(OpaqueUse_S, .{})
+    ffi_.cbind(OpaqueOperandBundle_S, .{})
+    ffi_.cbind(OpaqueAttributeRef_S, .{})
+    ffi_.cbind(OpaqueDiagnosticInfo_S, .{})
+    ffi_.cbind(Comdat_S, .{})
+    ffi_.cbind(OpaqueModuleFlagEntry_S, .{})
+    ffi_.cbind(OpaqueJITEventListener_S, .{})
+    ffi_.cbind(OpaqueBinary_S, .{})
+    ffi_.cbind(OpaqueSectionIterator_S, .{})
+    ffi_.cbind(OpaqueSymbolIterator_S, .{})
+    ffi_.cbind(OpaqueRelocationIterator_S, .{})
+    ffi_.cbind(OpaqueObjectFile_S, .{})
+    ffi_.cfunc('LLVMInstallFatalErrorHandler', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMResetFatalErrorHandler', .{}, symbol.void)
+    ffi_.cfunc('LLVMEnablePrettyStackTrace', .{}, symbol.void)
+    ffi_.cfunc('LLVMShutdown', .{}, symbol.void)
+    ffi_.cfunc('LLVMGetVersion', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMCreateMessage', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMDisposeMessage', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMContextCreate', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetGlobalContext', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMContextSetDiagnosticHandler', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMContextGetDiagnosticHandler', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMContextGetDiagnosticContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMContextSetYieldCallback', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMContextShouldDiscardValueNames', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMContextSetDiscardValueNames', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMContextDispose', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetDiagInfoDescription', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetDiagInfoSeverity', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMGetMDKindIDInContext', .{symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.uint)
+    ffi_.cfunc('LLVMGetMDKindID', .{symbol.voidPtr, symbol.uint}, symbol.uint)
+    ffi_.cfunc('LLVMGetEnumAttributeKindForName', .{symbol.voidPtr, symbol.int}, symbol.uint)
+    ffi_.cfunc('LLVMGetLastEnumAttributeKind', .{}, symbol.uint)
+    ffi_.cfunc('LLVMCreateEnumAttribute', .{symbol.voidPtr, symbol.uint, symbol.ulong}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetEnumAttributeKind', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMGetEnumAttributeValue', .{symbol.voidPtr}, symbol.ulong)
+    ffi_.cfunc('LLVMCreateTypeAttribute', .{symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetTypeAttributeValue', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMCreateStringAttribute', .{symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetStringAttributeKind', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetStringAttributeValue', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsEnumAttribute', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMIsStringAttribute', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMIsTypeAttribute', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMGetTypeByName2', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMModuleCreateWithName', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMModuleCreateWithNameInContext', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMCloneModule', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMDisposeModule', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetModuleIdentifier', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetModuleIdentifier', .{symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGetSourceFileName', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetSourceFileName', .{symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGetDataLayoutStr', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetDataLayout', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetDataLayout', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetTarget', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetTarget', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMCopyModuleFlagsMetadata', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMDisposeModuleFlagsMetadata', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMModuleFlagEntriesGetFlagBehavior', .{symbol.voidPtr, symbol.uint}, symbol.int)
+    ffi_.cfunc('LLVMModuleFlagEntriesGetKey', .{symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMModuleFlagEntriesGetMetadata', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetModuleFlag', .{symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMAddModuleFlag', .{symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.int, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMDumpModule', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMPrintModuleToFile', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMPrintModuleToString', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetModuleInlineAsm', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetModuleInlineAsm2', .{symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMAppendModuleInlineAsm', .{symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGetInlineAsm', .{symbol.voidPtr, symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.int, symbol.int, symbol.int, symbol.int, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetInlineAsmAsmString', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetInlineAsmConstraintString', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetInlineAsmDialect', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMGetInlineAsmFunctionType', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetInlineAsmHasSideEffects', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMGetInlineAsmNeedsAlignedStack', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMGetInlineAsmCanUnwind', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMGetModuleContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetTypeByName', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetFirstNamedMetadata', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetLastNamedMetadata', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNextNamedMetadata', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetPreviousNamedMetadata', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNamedMetadata', .{symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetOrInsertNamedMetadata', .{symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNamedMetadataName', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNamedMetadataNumOperands', .{symbol.voidPtr, symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMGetNamedMetadataOperands', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMAddNamedMetadataOperand', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetDebugLocDirectory', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetDebugLocFilename', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetDebugLocLine', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMGetDebugLocColumn', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMAddFunction', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNamedFunction', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetFirstFunction', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetLastFunction', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNextFunction', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetPreviousFunction', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetModuleInlineAsm', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetTypeKind', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMTypeIsSized', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMGetTypeContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMDumpType', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMPrintTypeToString', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMInt1TypeInContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMInt8TypeInContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMInt16TypeInContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMInt32TypeInContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMInt64TypeInContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMInt128TypeInContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIntTypeInContext', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMInt1Type', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMInt8Type', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMInt16Type', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMInt32Type', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMInt64Type', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMInt128Type', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIntType', .{symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetIntTypeWidth', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMHalfTypeInContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBFloatTypeInContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMFloatTypeInContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMDoubleTypeInContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMX86FP80TypeInContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMFP128TypeInContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMPPCFP128TypeInContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMHalfType', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBFloatType', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMFloatType', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMDoubleType', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMX86FP80Type', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMFP128Type', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMPPCFP128Type', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMFunctionType', .{symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsFunctionVarArg', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMGetReturnType', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMCountParamTypes', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMGetParamTypes', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMStructTypeInContext', .{symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMStructType', .{symbol.voidPtr, symbol.uint, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMStructCreateNamed', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetStructName', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMStructSetBody', .{symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMCountStructElementTypes', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMGetStructElementTypes', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMStructGetTypeAtIndex', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsPackedStruct', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMIsOpaqueStruct', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMIsLiteralStruct', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMGetElementType', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetSubtypes', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetNumContainedTypes', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMArrayType', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMArrayType2', .{symbol.voidPtr, symbol.ulong}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetArrayLength', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMGetArrayLength2', .{symbol.voidPtr}, symbol.ulong)
+    ffi_.cfunc('LLVMPointerType', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMPointerTypeIsOpaque', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMPointerTypeInContext', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetPointerAddressSpace', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMVectorType', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMScalableVectorType', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetVectorSize', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMVoidTypeInContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMLabelTypeInContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMX86MMXTypeInContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMX86AMXTypeInContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMTokenTypeInContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMMetadataTypeInContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMVoidType', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMLabelType', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMX86MMXType', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMX86AMXType', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMTargetExtTypeInContext', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMTypeOf', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetValueKind', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMGetValueName2', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetValueName2', .{symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMDumpValue', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMPrintValueToString', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMReplaceAllUsesWith', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMIsConstant', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMIsUndef', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMIsPoison', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMIsAArgument', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsABasicBlock', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAInlineAsm', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAUser', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAConstant', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsABlockAddress', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAConstantAggregateZero', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAConstantArray', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAConstantDataSequential', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAConstantDataArray', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAConstantDataVector', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAConstantExpr', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAConstantFP', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAConstantInt', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAConstantPointerNull', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAConstantStruct', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAConstantTokenNone', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAConstantVector', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAGlobalValue', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAGlobalAlias', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAGlobalObject', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAFunction', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAGlobalVariable', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAGlobalIFunc', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAUndefValue', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAPoisonValue', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAInstruction', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAUnaryOperator', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsABinaryOperator', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsACallInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAIntrinsicInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsADbgInfoIntrinsic', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsADbgVariableIntrinsic', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsADbgDeclareInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsADbgLabelInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAMemIntrinsic', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAMemCpyInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAMemMoveInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAMemSetInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsACmpInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAFCmpInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAICmpInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAExtractElementInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAGetElementPtrInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAInsertElementInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAInsertValueInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsALandingPadInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAPHINode', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsASelectInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAShuffleVectorInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAStoreInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsABranchInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAIndirectBrInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAInvokeInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAReturnInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsASwitchInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAUnreachableInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAResumeInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsACleanupReturnInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsACatchReturnInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsACatchSwitchInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsACallBrInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAFuncletPadInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsACatchPadInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsACleanupPadInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAUnaryInstruction', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAAllocaInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsACastInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAAddrSpaceCastInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsABitCastInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAFPExtInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAFPToSIInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAFPToUIInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAFPTruncInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAIntToPtrInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAPtrToIntInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsASExtInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsASIToFPInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsATruncInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAUIToFPInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAZExtInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAExtractValueInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsALoadInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAVAArgInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAFreezeInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAAtomicCmpXchgInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAAtomicRMWInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAFenceInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAMDNode', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAValueAsMetadata', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsAMDString', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetValueName', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetValueName', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetFirstUse', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNextUse', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetUser', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetUsedValue', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetOperand', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetOperandUse', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetOperand', .{symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetNumOperands', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMConstNull', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstAllOnes', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetUndef', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetPoison', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsNull', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMConstPointerNull', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstInt', .{symbol.voidPtr, symbol.ulong, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstIntOfArbitraryPrecision', .{symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstIntOfString', .{symbol.voidPtr, symbol.voidPtr, symbol.uchar}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstIntOfStringAndSize', .{symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.uchar}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstReal', .{symbol.voidPtr, symbol.double}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstRealOfString', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstRealOfStringAndSize', .{symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstIntGetZExtValue', .{symbol.voidPtr}, symbol.ulong)
+    ffi_.cfunc('LLVMConstIntGetSExtValue', .{symbol.voidPtr}, symbol.long)
+    ffi_.cfunc('LLVMConstRealGetDouble', .{symbol.voidPtr, symbol.voidPtr}, symbol.double)
+    ffi_.cfunc('LLVMConstStringInContext', .{symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstString', .{symbol.voidPtr, symbol.uint, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsConstantString', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMGetAsString', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstStructInContext', .{symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstStruct', .{symbol.voidPtr, symbol.uint, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstArray', .{symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstArray2', .{symbol.voidPtr, symbol.voidPtr, symbol.ulong}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstNamedStruct', .{symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetAggregateElement', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetElementAsConstant', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstVector', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetConstOpcode', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMAlignOf', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSizeOf', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstNeg', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstNSWNeg', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstNUWNeg', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstNot', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstAdd', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstNSWAdd', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstNUWAdd', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstSub', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstNSWSub', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstNUWSub', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstMul', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstNSWMul', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstNUWMul', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstXor', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstICmp', .{symbol.int, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstFCmp', .{symbol.int, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstShl', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstGEP2', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstInBoundsGEP2', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstTrunc', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstPtrToInt', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstIntToPtr', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstBitCast', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstAddrSpaceCast', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstTruncOrBitCast', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstPointerCast', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstExtractElement', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstInsertElement', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstShuffleVector', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBlockAddress', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMConstInlineAsm', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.int, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetGlobalParent', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsDeclaration', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMGetLinkage', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetLinkage', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGetSection', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetSection', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetVisibility', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetVisibility', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGetDLLStorageClass', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetDLLStorageClass', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGetUnnamedAddress', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetUnnamedAddress', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGlobalGetValueType', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMHasUnnamedAddr', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetUnnamedAddr', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGetAlignment', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMSetAlignment', .{symbol.voidPtr, symbol.uint}, symbol.void)
+    ffi_.cfunc('LLVMGlobalSetMetadata', .{symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGlobalEraseMetadata', .{symbol.voidPtr, symbol.uint}, symbol.void)
+    ffi_.cfunc('LLVMGlobalClearMetadata', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGlobalCopyAllMetadata', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMDisposeValueMetadataEntries', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMValueMetadataEntriesGetKind', .{symbol.voidPtr, symbol.uint}, symbol.uint)
+    ffi_.cfunc('LLVMValueMetadataEntriesGetMetadata', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMAddGlobal', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMAddGlobalInAddressSpace', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNamedGlobal', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetFirstGlobal', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetLastGlobal', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNextGlobal', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetPreviousGlobal', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMDeleteGlobal', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetInitializer', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetInitializer', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMIsThreadLocal', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetThreadLocal', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMIsGlobalConstant', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetGlobalConstant', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGetThreadLocalMode', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetThreadLocalMode', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMIsExternallyInitialized', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetExternallyInitialized', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMAddAlias2', .{symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNamedGlobalAlias', .{symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetFirstGlobalAlias', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetLastGlobalAlias', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNextGlobalAlias', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetPreviousGlobalAlias', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMAliasGetAliasee', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMAliasSetAliasee', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMDeleteFunction', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMHasPersonalityFn', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMGetPersonalityFn', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetPersonalityFn', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMLookupIntrinsicID', .{symbol.voidPtr, symbol.int}, symbol.uint)
+    ffi_.cfunc('LLVMGetIntrinsicID', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMGetIntrinsicDeclaration', .{symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIntrinsicGetType', .{symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIntrinsicGetName', .{symbol.uint, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIntrinsicCopyOverloadedName', .{symbol.uint, symbol.voidPtr, symbol.int, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIntrinsicCopyOverloadedName2', .{symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.int, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIntrinsicIsOverloaded', .{symbol.uint}, symbol.int)
+    ffi_.cfunc('LLVMGetFunctionCallConv', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMSetFunctionCallConv', .{symbol.voidPtr, symbol.uint}, symbol.void)
+    ffi_.cfunc('LLVMGetGC', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetGC', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMAddAttributeAtIndex', .{symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetAttributeCountAtIndex', .{symbol.voidPtr, symbol.uint}, symbol.uint)
+    ffi_.cfunc('LLVMGetAttributesAtIndex', .{symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetEnumAttributeAtIndex', .{symbol.voidPtr, symbol.uint, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetStringAttributeAtIndex', .{symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMRemoveEnumAttributeAtIndex', .{symbol.voidPtr, symbol.uint, symbol.uint}, symbol.void)
+    ffi_.cfunc('LLVMRemoveStringAttributeAtIndex', .{symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.uint}, symbol.void)
+    ffi_.cfunc('LLVMAddTargetDependentFunctionAttr', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMCountParams', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMGetParams', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetParam', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetParamParent', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetFirstParam', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetLastParam', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNextParam', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetPreviousParam', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetParamAlignment', .{symbol.voidPtr, symbol.uint}, symbol.void)
+    ffi_.cfunc('LLVMAddGlobalIFunc', .{symbol.voidPtr, symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNamedGlobalIFunc', .{symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetFirstGlobalIFunc', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetLastGlobalIFunc', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNextGlobalIFunc', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetPreviousGlobalIFunc', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetGlobalIFuncResolver', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetGlobalIFuncResolver', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMEraseGlobalIFunc', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMRemoveGlobalIFunc', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMMDStringInContext2', .{symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMMDNodeInContext2', .{symbol.voidPtr, symbol.voidPtr, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMMetadataAsValue', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMValueAsMetadata', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetMDString', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetMDNodeNumOperands', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMGetMDNodeOperands', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMReplaceMDNodeOperandWith', .{symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMMDStringInContext', .{symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMMDString', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMMDNodeInContext', .{symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMMDNode', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMCreateOperandBundle', .{symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMDisposeOperandBundle', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetOperandBundleTag', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNumOperandBundleArgs', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMGetOperandBundleArgAtIndex', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBasicBlockAsValue', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMValueIsBasicBlock', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMValueAsBasicBlock', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetBasicBlockName', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetBasicBlockParent', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetBasicBlockTerminator', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMCountBasicBlocks', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMGetBasicBlocks', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetFirstBasicBlock', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetLastBasicBlock', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNextBasicBlock', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetPreviousBasicBlock', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetEntryBasicBlock', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMInsertExistingBasicBlockAfterInsertBlock', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMAppendExistingBasicBlock', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMCreateBasicBlockInContext', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMAppendBasicBlockInContext', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMAppendBasicBlock', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMInsertBasicBlockInContext', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMInsertBasicBlock', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMDeleteBasicBlock', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMRemoveBasicBlockFromParent', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMMoveBasicBlockBefore', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMMoveBasicBlockAfter', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetFirstInstruction', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetLastInstruction', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMHasMetadata', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMGetMetadata', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetMetadata', .{symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMInstructionGetAllMetadataOtherThanDebugLoc', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetInstructionParent', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNextInstruction', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetPreviousInstruction', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMInstructionRemoveFromParent', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMInstructionEraseFromParent', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMDeleteInstruction', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetInstructionOpcode', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMGetICmpPredicate', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMGetFCmpPredicate', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMInstructionClone', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsATerminatorInst', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNumArgOperands', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMSetInstructionCallConv', .{symbol.voidPtr, symbol.uint}, symbol.void)
+    ffi_.cfunc('LLVMGetInstructionCallConv', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMSetInstrParamAlignment', .{symbol.voidPtr, symbol.uint, symbol.uint}, symbol.void)
+    ffi_.cfunc('LLVMAddCallSiteAttribute', .{symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetCallSiteAttributeCount', .{symbol.voidPtr, symbol.uint}, symbol.uint)
+    ffi_.cfunc('LLVMGetCallSiteAttributes', .{symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetCallSiteEnumAttribute', .{symbol.voidPtr, symbol.uint, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetCallSiteStringAttribute', .{symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMRemoveCallSiteEnumAttribute', .{symbol.voidPtr, symbol.uint, symbol.uint}, symbol.void)
+    ffi_.cfunc('LLVMRemoveCallSiteStringAttribute', .{symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.uint}, symbol.void)
+    ffi_.cfunc('LLVMGetCalledFunctionType', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetCalledValue', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNumOperandBundles', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMGetOperandBundleAtIndex', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsTailCall', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetTailCall', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGetTailCallKind', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetTailCallKind', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGetNormalDest', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetUnwindDest', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetNormalDest', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMSetUnwindDest', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetNumSuccessors', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMGetSuccessor', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetSuccessor', .{symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMIsConditional', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMGetCondition', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetCondition', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetSwitchDefaultDest', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetAllocatedType', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsInBounds', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetIsInBounds', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGetGEPSourceElementType', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMAddIncoming', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.void)
+    ffi_.cfunc('LLVMCountIncoming', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMGetIncomingValue', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetIncomingBlock', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNumIndices', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMGetIndices', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMCreateBuilderInContext', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMCreateBuilder', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMPositionBuilder', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMPositionBuilderBefore', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMPositionBuilderAtEnd', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetInsertBlock', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMClearInsertionPosition', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMInsertIntoBuilder', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMInsertIntoBuilderWithName', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMDisposeBuilder', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetCurrentDebugLocation2', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetCurrentDebugLocation2', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMSetInstDebugLocation', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMAddMetadataToInst', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMBuilderGetDefaultFPMathTag', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuilderSetDefaultFPMathTag', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMSetCurrentDebugLocation', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetCurrentDebugLocation', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildRetVoid', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildRet', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildAggregateRet', .{symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildBr', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildCondBr', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildSwitch', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildIndirectBr', .{symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildInvoke2', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildInvokeWithOperandBundles', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildUnreachable', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildResume', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildLandingPad', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildCleanupRet', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildCatchRet', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildCatchPad', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildCleanupPad', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildCatchSwitch', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMAddCase', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMAddDestination', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetNumClauses', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMGetClause', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMAddClause', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMIsCleanup', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetCleanup', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMAddHandler', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetNumHandlers', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMGetHandlers', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetArgOperand', .{symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetArgOperand', .{symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetParentCatchSwitch', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMSetParentCatchSwitch', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMBuildAdd', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildNSWAdd', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildNUWAdd', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildFAdd', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildSub', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildNSWSub', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildNUWSub', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildFSub', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildMul', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildNSWMul', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildNUWMul', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildFMul', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildUDiv', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildExactUDiv', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildSDiv', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildExactSDiv', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildFDiv', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildURem', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildSRem', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildFRem', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildShl', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildLShr', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildAShr', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildAnd', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildOr', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildXor', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildBinOp', .{symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildNeg', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildNSWNeg', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildNUWNeg', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildFNeg', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildNot', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNUW', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetNUW', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGetNSW', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetNSW', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGetExact', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetExact', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGetNNeg', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetNNeg', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGetFastMathFlags', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMSetFastMathFlags', .{symbol.voidPtr, symbol.uint}, symbol.void)
+    ffi_.cfunc('LLVMCanValueUseFastMathFlags', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMGetIsDisjoint', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetIsDisjoint', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMBuildMalloc', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildArrayMalloc', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildMemSet', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildMemCpy', .{symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildMemMove', .{symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildAlloca', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildArrayAlloca', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildFree', .{symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildLoad2', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildStore', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildGEP2', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildInBoundsGEP2', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildStructGEP2', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildGlobalString', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildGlobalStringPtr', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetVolatile', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetVolatile', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGetWeak', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetWeak', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGetOrdering', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetOrdering', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGetAtomicRMWBinOp', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetAtomicRMWBinOp', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMBuildTrunc', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildZExt', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildSExt', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildFPToUI', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildFPToSI', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildUIToFP', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildSIToFP', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildFPTrunc', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildFPExt', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildPtrToInt', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildIntToPtr', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildBitCast', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildAddrSpaceCast', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildZExtOrBitCast', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildSExtOrBitCast', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildTruncOrBitCast', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildCast', .{symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildPointerCast', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildIntCast2', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.int, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildFPCast', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildIntCast', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetCastOpcode', .{symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.int}, symbol.int)
+    ffi_.cfunc('LLVMBuildICmp', .{symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildFCmp', .{symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildPhi', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildCall2', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildCallWithOperandBundles', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildSelect', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildVAArg', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildExtractElement', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildInsertElement', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildShuffleVector', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildExtractValue', .{symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildInsertValue', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.uint, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildFreeze', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildIsNull', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildIsNotNull', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildPtrDiff2', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildFence', .{symbol.voidPtr, symbol.int, symbol.int, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildAtomicRMW', .{symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.voidPtr, symbol.int, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBuildAtomicCmpXchg', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.int, symbol.int, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetNumMaskElements', .{symbol.voidPtr}, symbol.uint)
+    ffi_.cfunc('LLVMGetUndefMaskElem', .{}, symbol.int)
+    ffi_.cfunc('LLVMGetMaskValue', .{symbol.voidPtr, symbol.uint}, symbol.int)
+    ffi_.cfunc('LLVMIsAtomicSingleThread', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetAtomicSingleThread', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGetCmpXchgSuccessOrdering', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetCmpXchgSuccessOrdering', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMGetCmpXchgFailureOrdering', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMSetCmpXchgFailureOrdering', .{symbol.voidPtr, symbol.int}, symbol.void)
+    ffi_.cfunc('LLVMCreateModuleProviderForExistingModule', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMDisposeModuleProvider', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMCreateMemoryBufferWithContentsOfFile', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMCreateMemoryBufferWithSTDIN', .{symbol.voidPtr, symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMCreateMemoryBufferWithMemoryRange', .{symbol.voidPtr, symbol.int, symbol.voidPtr, symbol.int}, symbol.voidPtr)
+    ffi_.cfunc('LLVMCreateMemoryBufferWithMemoryRangeCopy', .{symbol.voidPtr, symbol.int, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetBufferStart', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetBufferSize', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMDisposeMemoryBuffer', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMCreatePassManager', .{}, symbol.voidPtr)
+    ffi_.cfunc('LLVMCreateFunctionPassManagerForModule', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMCreateFunctionPassManager', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMRunPassManager', .{symbol.voidPtr, symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMInitializeFunctionPassManager', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMRunFunctionPassManager', .{symbol.voidPtr, symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMFinalizeFunctionPassManager', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMDisposePassManager', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMStartMultithreaded', .{}, symbol.int)
+    ffi_.cfunc('LLVMStopMultithreaded', .{}, symbol.void)
+    ffi_.cfunc('LLVMIsMultithreaded', .{}, symbol.int)
+    ffi_.cfunc('LLVMCreateBinary', .{symbol.voidPtr, symbol.voidPtr, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMDisposeBinary', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMBinaryCopyMemoryBuffer', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMBinaryGetType', .{symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMMachOUniversalBinaryCopyObjectForArch', .{symbol.voidPtr, symbol.voidPtr, symbol.int, symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMObjectFileCopySectionIterator', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMObjectFileIsSectionIteratorAtEnd', .{symbol.voidPtr, symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMObjectFileCopySymbolIterator', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMObjectFileIsSymbolIteratorAtEnd', .{symbol.voidPtr, symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMDisposeSectionIterator', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMMoveToNextSection', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMMoveToContainingSection', .{symbol.voidPtr, symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMDisposeSymbolIterator', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMMoveToNextSymbol', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetSectionName', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetSectionSize', .{symbol.voidPtr}, symbol.ulong)
+    ffi_.cfunc('LLVMGetSectionContents', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetSectionAddress', .{symbol.voidPtr}, symbol.ulong)
+    ffi_.cfunc('LLVMGetSectionContainsSymbol', .{symbol.voidPtr, symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMGetRelocations', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMDisposeRelocationIterator', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMIsRelocationIteratorAtEnd', .{symbol.voidPtr, symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMMoveToNextRelocation', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetSymbolName', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetSymbolAddress', .{symbol.voidPtr}, symbol.ulong)
+    ffi_.cfunc('LLVMGetSymbolSize', .{symbol.voidPtr}, symbol.ulong)
+    ffi_.cfunc('LLVMGetRelocationOffset', .{symbol.voidPtr}, symbol.ulong)
+    ffi_.cfunc('LLVMGetRelocationSymbol', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetRelocationType', .{symbol.voidPtr}, symbol.ulong)
+    ffi_.cfunc('LLVMGetRelocationTypeName', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMGetRelocationValueString', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMCreateObjectFile', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMDisposeObjectFile', .{symbol.voidPtr}, symbol.void)
+    ffi_.cfunc('LLVMGetSections', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsSectionIteratorAtEnd', .{symbol.voidPtr, symbol.voidPtr}, symbol.int)
+    ffi_.cfunc('LLVMGetSymbols', .{symbol.voidPtr}, symbol.voidPtr)
+    ffi_.cfunc('LLVMIsSymbolIteratorAtEnd', .{symbol.voidPtr, symbol.voidPtr}, symbol.int)
+    ffi = ffi_
+    var lib = ffi.bindLib(Option[String].some('libLLVM.dylib'))
     return lib
 
 -- Macros
+var ._llvm__ int = 1
+var ._clang__ int = 1
+var ._clang_major__ int = 18
+var ._clang_minor__ int = 1
+var ._clang_patchlevel__ int = 8
+var ._clang_version__ String = "18.1.8 "
+var ._GNUC__ int = 4
+var ._GNUC_MINOR__ int = 2
+var ._GNUC_PATCHLEVEL__ int = 1
+var ._GXX_ABI_VERSION int = 1002
+var ._ATOMIC_RELAXED int = 0
+var ._ATOMIC_CONSUME int = 1
+var ._ATOMIC_ACQUIRE int = 2
+var ._ATOMIC_RELEASE int = 3
+var ._ATOMIC_ACQ_REL int = 4
+var ._ATOMIC_SEQ_CST int = 5
+var ._MEMORY_SCOPE_SYSTEM int = 0
+var ._MEMORY_SCOPE_DEVICE int = 1
+var ._MEMORY_SCOPE_WRKGRP int = 2
+var ._MEMORY_SCOPE_WVFRNT int = 3
+var ._MEMORY_SCOPE_SINGLE int = 4
+var ._OPENCL_MEMORY_SCOPE_WORK_ITEM int = 0
+var ._OPENCL_MEMORY_SCOPE_WORK_GROUP int = 1
+var ._OPENCL_MEMORY_SCOPE_DEVICE int = 2
+var ._OPENCL_MEMORY_SCOPE_ALL_SVM_DEVICES int = 3
+var ._OPENCL_MEMORY_SCOPE_SUB_GROUP int = 4
+var ._FPCLASS_SNAN int = 1
+var ._FPCLASS_QNAN int = 2
+var ._FPCLASS_NEGINF int = 4
+var ._FPCLASS_NEGNORMAL int = 8
+var ._FPCLASS_NEGSUBNORMAL int = 16
+var ._FPCLASS_NEGZERO int = 32
+var ._FPCLASS_POSZERO int = 64
+var ._FPCLASS_POSSUBNORMAL int = 128
+var ._FPCLASS_POSNORMAL int = 256
+var ._FPCLASS_POSINF int = 512
+var ._PRAGMA_REDEFINE_EXTNAME int = 1
+var ._VERSION__ String = "Homebrew Clang 18.1.8"
+var ._OBJC_BOOL_IS_BOOL int = 1
+var ._CONSTANT_CFSTRINGS__ int = 1
+var ._BLOCKS__ int = 1
+var ._clang_literal_encoding__ String = "UTF-8"
+var ._clang_wide_literal_encoding__ String = "UTF-32"
+var ._ORDER_LITTLE_ENDIAN__ int = 1234
+var ._ORDER_BIG_ENDIAN__ int = 4321
+var ._ORDER_PDP_ENDIAN__ int = 3412
+var ._BYTE_ORDER__ int = 1234
+var ._LITTLE_ENDIAN__ int = 1
+var .LP64 int = 1
+var ._LP64__ int = 1
+var ._CHAR_BIT__ int = 8
+var ._BOOL_WIDTH__ int = 8
+var ._SHRT_WIDTH__ int = 16
+var ._INT_WIDTH__ int = 32
+var ._LONG_WIDTH__ int = 64
+var ._LLONG_WIDTH__ int = 64
+var ._BITINT_MAXWIDTH__ int = 128
+var ._SCHAR_MAX__ int = 127
+var ._SHRT_MAX__ int = 32767
+var ._INT_MAX__ int = 2147483647
+var ._LONG_MAX__ int = 9223372036854775807
+var ._LONG_LONG_MAX__ int = 9223372036854775807
+var ._WCHAR_MAX__ int = 2147483647
+var ._WCHAR_WIDTH__ int = 32
+var ._WINT_MAX__ int = 2147483647
+var ._WINT_WIDTH__ int = 32
+var ._INTMAX_MAX__ int = 9223372036854775807
+var ._INTMAX_WIDTH__ int = 64
+var ._SIZE_MAX__ int = -1
+var ._SIZE_WIDTH__ int = 64
+var ._UINTMAX_MAX__ int = -1
+var ._UINTMAX_WIDTH__ int = 64
+var ._PTRDIFF_MAX__ int = 9223372036854775807
+var ._PTRDIFF_WIDTH__ int = 64
+var ._INTPTR_MAX__ int = 9223372036854775807
+var ._INTPTR_WIDTH__ int = 64
+var ._UINTPTR_MAX__ int = -1
+var ._UINTPTR_WIDTH__ int = 64
+var ._SIZEOF_DOUBLE__ int = 8
+var ._SIZEOF_FLOAT__ int = 4
+var ._SIZEOF_INT__ int = 4
+var ._SIZEOF_LONG__ int = 8
+var ._SIZEOF_LONG_DOUBLE__ int = 8
+var ._SIZEOF_LONG_LONG__ int = 8
+var ._SIZEOF_POINTER__ int = 8
+var ._SIZEOF_SHORT__ int = 2
+var ._SIZEOF_PTRDIFF_T__ int = 8
+var ._SIZEOF_SIZE_T__ int = 8
+var ._SIZEOF_WCHAR_T__ int = 4
+var ._SIZEOF_WINT_T__ int = 4
+var ._SIZEOF_INT128__ int = 16
+var ._INTMAX_FMTd__ String = "ld"
+var ._INTMAX_FMTi__ String = "li"
+var ._UINTMAX_FMTo__ String = "lo"
+var ._UINTMAX_FMTu__ String = "lu"
+var ._UINTMAX_FMTx__ String = "lx"
+var ._UINTMAX_FMTX__ String = "lX"
+var ._PTRDIFF_FMTd__ String = "ld"
+var ._PTRDIFF_FMTi__ String = "li"
+var ._INTPTR_FMTd__ String = "ld"
+var ._INTPTR_FMTi__ String = "li"
+var ._SIZE_FMTo__ String = "lo"
+var ._SIZE_FMTu__ String = "lu"
+var ._SIZE_FMTx__ String = "lx"
+var ._SIZE_FMTX__ String = "lX"
+var ._SIG_ATOMIC_MAX__ int = 2147483647
+var ._SIG_ATOMIC_WIDTH__ int = 32
+var ._UINTPTR_FMTo__ String = "lo"
+var ._UINTPTR_FMTu__ String = "lu"
+var ._UINTPTR_FMTx__ String = "lx"
+var ._UINTPTR_FMTX__ String = "lX"
+var ._FLT16_DENORM_MIN__ float = 0.00000005960464477539063
+var ._FLT16_HAS_DENORM__ int = 1
+var ._FLT16_DIG__ int = 3
+var ._FLT16_DECIMAL_DIG__ int = 5
+var ._FLT16_EPSILON__ float = 0.0009765625
+var ._FLT16_HAS_INFINITY__ int = 1
+var ._FLT16_HAS_QUIET_NAN__ int = 1
+var ._FLT16_MANT_DIG__ int = 11
+var ._FLT16_MAX_10_EXP__ int = 4
+var ._FLT16_MAX_EXP__ int = 16
+var ._FLT16_MAX__ float = 65504.0
+var ._FLT16_MIN_10_EXP__ int = -4
+var ._FLT16_MIN_EXP__ int = -13
+var ._FLT16_MIN__ float = 0.00006103515625
+var ._FLT_DENORM_MIN__ float = 0.000000000000000000000000000000000000000000001401298464324817
+var ._FLT_HAS_DENORM__ int = 1
+var ._FLT_DIG__ int = 6
+var ._FLT_DECIMAL_DIG__ int = 9
+var ._FLT_EPSILON__ float = 0.00000011920928955078125
+var ._FLT_HAS_INFINITY__ int = 1
+var ._FLT_HAS_QUIET_NAN__ int = 1
+var ._FLT_MANT_DIG__ int = 24
+var ._FLT_MAX_10_EXP__ int = 38
+var ._FLT_MAX_EXP__ int = 128
+var ._FLT_MAX__ float = 340282346638528860000000000000000000000.0
+var ._FLT_MIN_10_EXP__ int = -37
+var ._FLT_MIN_EXP__ int = -125
+var ._FLT_MIN__ float = 0.000000000000000000000000000000000000011754943508222875
+var ._DBL_DENORM_MIN__ float = 0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005
+var ._DBL_HAS_DENORM__ int = 1
+var ._DBL_DIG__ int = 15
+var ._DBL_DECIMAL_DIG__ int = 17
+var ._DBL_EPSILON__ float = 0.0000000000000002220446049250313
+var ._DBL_HAS_INFINITY__ int = 1
+var ._DBL_HAS_QUIET_NAN__ int = 1
+var ._DBL_MANT_DIG__ int = 53
+var ._DBL_MAX_10_EXP__ int = 308
+var ._DBL_MAX_EXP__ int = 1024
+var ._DBL_MAX__ float = 179769313486231570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.0
+var ._DBL_MIN_10_EXP__ int = -307
+var ._DBL_MIN_EXP__ int = -1021
+var ._DBL_MIN__ float = 0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000022250738585072014
+var ._LDBL_DENORM_MIN__ float = 0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005
+var ._LDBL_HAS_DENORM__ int = 1
+var ._LDBL_DIG__ int = 15
+var ._LDBL_DECIMAL_DIG__ int = 17
+var ._LDBL_EPSILON__ float = 0.0000000000000002220446049250313
+var ._LDBL_HAS_INFINITY__ int = 1
+var ._LDBL_HAS_QUIET_NAN__ int = 1
+var ._LDBL_MANT_DIG__ int = 53
+var ._LDBL_MAX_10_EXP__ int = 308
+var ._LDBL_MAX_EXP__ int = 1024
+var ._LDBL_MAX__ float = 179769313486231570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.0
+var ._LDBL_MIN_10_EXP__ int = -307
+var ._LDBL_MIN_EXP__ int = -1021
+var ._LDBL_MIN__ float = 0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000022250738585072014
+var ._POINTER_WIDTH__ int = 64
+var ._BIGGEST_ALIGNMENT__ int = 8
+var ._INT8_FMTd__ String = "hhd"
+var ._INT8_FMTi__ String = "hhi"
+var ._INT16_FMTd__ String = "hd"
+var ._INT16_FMTi__ String = "hi"
+var ._INT32_FMTd__ String = "d"
+var ._INT32_FMTi__ String = "i"
+var ._INT64_FMTd__ String = "lld"
+var ._INT64_FMTi__ String = "lli"
+var ._UINT8_FMTo__ String = "hho"
+var ._UINT8_FMTu__ String = "hhu"
+var ._UINT8_FMTx__ String = "hhx"
+var ._UINT8_FMTX__ String = "hhX"
+var ._UINT8_MAX__ int = 255
+var ._INT8_MAX__ int = 127
+var ._UINT16_FMTo__ String = "ho"
+var ._UINT16_FMTu__ String = "hu"
+var ._UINT16_FMTx__ String = "hx"
+var ._UINT16_FMTX__ String = "hX"
+var ._UINT16_MAX__ int = 65535
+var ._INT16_MAX__ int = 32767
+var ._UINT32_FMTo__ String = "o"
+var ._UINT32_FMTu__ String = "u"
+var ._UINT32_FMTx__ String = "x"
+var ._UINT32_FMTX__ String = "X"
+var ._UINT32_MAX__ int = 4294967295
+var ._INT32_MAX__ int = 2147483647
+var ._UINT64_FMTo__ String = "llo"
+var ._UINT64_FMTu__ String = "llu"
+var ._UINT64_FMTx__ String = "llx"
+var ._UINT64_FMTX__ String = "llX"
+var ._UINT64_MAX__ int = -1
+var ._INT64_MAX__ int = 9223372036854775807
+var ._INT_LEAST8_MAX__ int = 127
+var ._INT_LEAST8_WIDTH__ int = 8
+var ._INT_LEAST8_FMTd__ String = "hhd"
+var ._INT_LEAST8_FMTi__ String = "hhi"
+var ._UINT_LEAST8_MAX__ int = 255
+var ._UINT_LEAST8_FMTo__ String = "hho"
+var ._UINT_LEAST8_FMTu__ String = "hhu"
+var ._UINT_LEAST8_FMTx__ String = "hhx"
+var ._UINT_LEAST8_FMTX__ String = "hhX"
+var ._INT_LEAST16_MAX__ int = 32767
+var ._INT_LEAST16_WIDTH__ int = 16
+var ._INT_LEAST16_FMTd__ String = "hd"
+var ._INT_LEAST16_FMTi__ String = "hi"
+var ._UINT_LEAST16_MAX__ int = 65535
+var ._UINT_LEAST16_FMTo__ String = "ho"
+var ._UINT_LEAST16_FMTu__ String = "hu"
+var ._UINT_LEAST16_FMTx__ String = "hx"
+var ._UINT_LEAST16_FMTX__ String = "hX"
+var ._INT_LEAST32_MAX__ int = 2147483647
+var ._INT_LEAST32_WIDTH__ int = 32
+var ._INT_LEAST32_FMTd__ String = "d"
+var ._INT_LEAST32_FMTi__ String = "i"
+var ._UINT_LEAST32_MAX__ int = 4294967295
+var ._UINT_LEAST32_FMTo__ String = "o"
+var ._UINT_LEAST32_FMTu__ String = "u"
+var ._UINT_LEAST32_FMTx__ String = "x"
+var ._UINT_LEAST32_FMTX__ String = "X"
+var ._INT_LEAST64_MAX__ int = 9223372036854775807
+var ._INT_LEAST64_WIDTH__ int = 64
+var ._INT_LEAST64_FMTd__ String = "lld"
+var ._INT_LEAST64_FMTi__ String = "lli"
+var ._UINT_LEAST64_MAX__ int = -1
+var ._UINT_LEAST64_FMTo__ String = "llo"
+var ._UINT_LEAST64_FMTu__ String = "llu"
+var ._UINT_LEAST64_FMTx__ String = "llx"
+var ._UINT_LEAST64_FMTX__ String = "llX"
+var ._INT_FAST8_MAX__ int = 127
+var ._INT_FAST8_WIDTH__ int = 8
+var ._INT_FAST8_FMTd__ String = "hhd"
+var ._INT_FAST8_FMTi__ String = "hhi"
+var ._UINT_FAST8_MAX__ int = 255
+var ._UINT_FAST8_FMTo__ String = "hho"
+var ._UINT_FAST8_FMTu__ String = "hhu"
+var ._UINT_FAST8_FMTx__ String = "hhx"
+var ._UINT_FAST8_FMTX__ String = "hhX"
+var ._INT_FAST16_MAX__ int = 32767
+var ._INT_FAST16_WIDTH__ int = 16
+var ._INT_FAST16_FMTd__ String = "hd"
+var ._INT_FAST16_FMTi__ String = "hi"
+var ._UINT_FAST16_MAX__ int = 65535
+var ._UINT_FAST16_FMTo__ String = "ho"
+var ._UINT_FAST16_FMTu__ String = "hu"
+var ._UINT_FAST16_FMTx__ String = "hx"
+var ._UINT_FAST16_FMTX__ String = "hX"
+var ._INT_FAST32_MAX__ int = 2147483647
+var ._INT_FAST32_WIDTH__ int = 32
+var ._INT_FAST32_FMTd__ String = "d"
+var ._INT_FAST32_FMTi__ String = "i"
+var ._UINT_FAST32_MAX__ int = 4294967295
+var ._UINT_FAST32_FMTo__ String = "o"
+var ._UINT_FAST32_FMTu__ String = "u"
+var ._UINT_FAST32_FMTx__ String = "x"
+var ._UINT_FAST32_FMTX__ String = "X"
+var ._INT_FAST64_MAX__ int = 9223372036854775807
+var ._INT_FAST64_WIDTH__ int = 64
+var ._INT_FAST64_FMTd__ String = "lld"
+var ._INT_FAST64_FMTi__ String = "lli"
+var ._UINT_FAST64_MAX__ int = -1
+var ._UINT_FAST64_FMTo__ String = "llo"
+var ._UINT_FAST64_FMTu__ String = "llu"
+var ._UINT_FAST64_FMTx__ String = "llx"
+var ._UINT_FAST64_FMTX__ String = "llX"
+var ._NO_MATH_ERRNO__ int = 1
+var ._FINITE_MATH_ONLY__ int = 0
+var ._GCC_ATOMIC_TEST_AND_SET_TRUEVAL int = 1
+var ._CLANG_ATOMIC_BOOL_LOCK_FREE int = 2
+var ._CLANG_ATOMIC_CHAR_LOCK_FREE int = 2
+var ._CLANG_ATOMIC_CHAR16_T_LOCK_FREE int = 2
+var ._CLANG_ATOMIC_CHAR32_T_LOCK_FREE int = 2
+var ._CLANG_ATOMIC_WCHAR_T_LOCK_FREE int = 2
+var ._CLANG_ATOMIC_SHORT_LOCK_FREE int = 2
+var ._CLANG_ATOMIC_INT_LOCK_FREE int = 2
+var ._CLANG_ATOMIC_LONG_LOCK_FREE int = 2
+var ._CLANG_ATOMIC_LLONG_LOCK_FREE int = 2
+var ._CLANG_ATOMIC_POINTER_LOCK_FREE int = 2
+var ._GCC_ATOMIC_BOOL_LOCK_FREE int = 2
+var ._GCC_ATOMIC_CHAR_LOCK_FREE int = 2
+var ._GCC_ATOMIC_CHAR16_T_LOCK_FREE int = 2
+var ._GCC_ATOMIC_CHAR32_T_LOCK_FREE int = 2
+var ._GCC_ATOMIC_WCHAR_T_LOCK_FREE int = 2
+var ._GCC_ATOMIC_SHORT_LOCK_FREE int = 2
+var ._GCC_ATOMIC_INT_LOCK_FREE int = 2
+var ._GCC_ATOMIC_LONG_LOCK_FREE int = 2
+var ._GCC_ATOMIC_LLONG_LOCK_FREE int = 2
+var ._GCC_ATOMIC_POINTER_LOCK_FREE int = 2
+var ._NO_INLINE__ int = 1
+var ._PIC__ int = 2
+var ._pic__ int = 2
+var ._FLT_RADIX__ int = 2
+var ._DECIMAL_DIG__ int = 17
+var ._SSP__ int = 1
+var .TARGET_OS_WIN32 int = 0
+var .TARGET_OS_WINDOWS int = 0
+var .TARGET_OS_LINUX int = 0
+var .TARGET_OS_UNIX int = 0
+var .TARGET_OS_MAC int = 1
+var .TARGET_OS_OSX int = 1
+var .TARGET_OS_IPHONE int = 0
+var .TARGET_OS_IOS int = 0
+var .TARGET_OS_TV int = 0
+var .TARGET_OS_WATCH int = 0
+var .TARGET_OS_DRIVERKIT int = 0
+var .TARGET_OS_MACCATALYST int = 0
+var .TARGET_OS_SIMULATOR int = 0
+var .TARGET_OS_EMBEDDED int = 0
+var .TARGET_OS_NANO int = 0
+var .TARGET_IPHONE_SIMULATOR int = 0
+var .TARGET_OS_UIKITFORMAC int = 0
+var ._AARCH64EL__ int = 1
+var ._aarch64__ int = 1
+var ._GCC_ASM_FLAG_OUTPUTS__ int = 1
+var ._AARCH64_CMODEL_SMALL__ int = 1
+var ._ARM_ACLE int = 200
+var ._ARM_ARCH int = 8
+var ._ARM_ARCH_PROFILE int = 65
+var ._ARM_64BIT_STATE int = 1
+var ._ARM_PCS_AAPCS64 int = 1
+var ._ARM_ARCH_ISA_A64 int = 1
+var ._ARM_FEATURE_CLZ int = 1
+var ._ARM_FEATURE_FMA int = 1
+var ._ARM_FEATURE_LDREX int = 15
+var ._ARM_FEATURE_IDIV int = 1
+var ._ARM_FEATURE_DIV int = 1
+var ._ARM_FEATURE_NUMERIC_MAXMIN int = 1
+var ._ARM_FEATURE_DIRECTED_ROUNDING int = 1
+var ._ARM_ALIGN_MAX_STACK_PWR int = 4
+var ._ARM_STATE_ZA int = 1
+var ._ARM_STATE_ZT0 int = 1
+var ._ARM_FP int = 14
+var ._ARM_FP16_FORMAT_IEEE int = 1
+var ._ARM_FP16_ARGS int = 1
+var ._ARM_SIZEOF_WCHAR_T int = 4
+var ._ARM_SIZEOF_MINIMAL_ENUM int = 4
+var ._ARM_NEON int = 1
+var ._ARM_NEON_FP int = 14
+var ._ARM_FEATURE_CRC32 int = 1
+var ._ARM_FEATURE_RCPC int = 1
+var ._HAVE_FUNCTION_MULTI_VERSIONING int = 1
+var ._ARM_FEATURE_CRYPTO int = 1
+var ._ARM_FEATURE_AES int = 1
+var ._ARM_FEATURE_SHA2 int = 1
+var ._ARM_FEATURE_SHA3 int = 1
+var ._ARM_FEATURE_SHA512 int = 1
+var ._ARM_FEATURE_PAUTH int = 1
+var ._ARM_FEATURE_UNALIGNED int = 1
+var ._ARM_FEATURE_FP16_VECTOR_ARITHMETIC int = 1
+var ._ARM_FEATURE_FP16_SCALAR_ARITHMETIC int = 1
+var ._ARM_FEATURE_DOTPROD int = 1
+var ._ARM_FEATURE_ATOMICS int = 1
+var ._ARM_FEATURE_FP16_FML int = 1
+var ._ARM_FEATURE_FRINT int = 1
+var ._ARM_FEATURE_BTI int = 1
+var ._ARM_FEATURE_COMPLEX int = 1
+var ._ARM_FEATURE_JCVT int = 1
+var ._ARM_FEATURE_QRDMX int = 1
+var ._GCC_HAVE_SYNC_COMPARE_AND_SWAP_1 int = 1
+var ._GCC_HAVE_SYNC_COMPARE_AND_SWAP_2 int = 1
+var ._GCC_HAVE_SYNC_COMPARE_AND_SWAP_4 int = 1
+var ._GCC_HAVE_SYNC_COMPARE_AND_SWAP_8 int = 1
+var ._GCC_HAVE_SYNC_COMPARE_AND_SWAP_16 int = 1
+var ._FP_FAST_FMA int = 1
+var ._FP_FAST_FMAF int = 1
+var ._AARCH64_SIMD__ int = 1
+var ._ARM64_ARCH_8__ int = 1
+var ._ARM_NEON__ int = 1
+var ._arm64 int = 1
+var ._arm64__ int = 1
+var ._APPLE_CC__ int = 6000
+var ._APPLE__ int = 1
+var ._STDC_NO_THREADS__ int = 1
+var ._DYNAMIC__ int = 1
+var ._ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ int = 140000
+var ._ENVIRONMENT_OS_VERSION_MIN_REQUIRED__ int = 140000
+var ._MACH__ int = 1
+var ._STDC__ int = 1
+var ._STDC_HOSTED__ int = 1
+var ._STDC_UTF_16__ int = 1
+var ._STDC_UTF_32__ int = 1
 var ._GCC_HAVE_DWARF2_CFI_ASM int = 1
 var .INT64_MAX int = 9223372036854775807
 var .INT64_MIN int = -9223372036854775808

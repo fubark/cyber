@@ -617,15 +617,10 @@ pub fn bindLib(vm: *cy.VM) anyerror!Value {
 pub fn bindLibExt(vm: *cy.VM) anyerror!Value {
     if (!cy.hasFFI) return vm.prepPanic("Unsupported.");
 
-    var configV = vm.getValue(2);
-    const gen_table = try vm.retainOrAllocAstring("gen_table");
-    defer vm.release(gen_table);
-    var config: ffi.BindLibConfig = .{};
-    const val = configV.asHeapObject().table.get(gen_table) orelse Value.False;
-    if (val.isTrue()) {
-        config.gen_table = true;
-    }
-    return @call(.never_inline, ffi.ffiBindLib, .{ vm, config });
+    const configV = vm.getValue(2);
+    _ = configV;
+    const config: ffi.BindLibConfig = .{};
+    return @call(.never_inline, ffi.ffiBindLib, .{vm, config});
 }
 
 pub extern fn hostFileWrite(fid: u32, str: [*]const u8, strLen: usize) void;

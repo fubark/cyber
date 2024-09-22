@@ -8,16 +8,14 @@ else os.system == 'windows':
   libPath = 'test/ffi/win_lib.dll'
 
 var ffi = os.newFFI()
-ffi.cfunc('testAdd', {symbol.int, symbol.int}, symbol.int)
+ffi.cfunc('testAdd', .{symbol.int, symbol.int}, symbol.int)
 dyn lib = ffi.bindLib(libPath)
-lib.testAdd(123, 234, 345)
+lib['testAdd'](123, 234, 345)
 
 --cytest: error
---panic: Can not find compatible method for call: `(BindLib1) testAdd(int, int, int)`.
---Methods named `testAdd`:
---    func testAdd(any, int, int) int
+--panic: error.InvalidSignature
 --
 --main:13:1 main:
---lib.testAdd(123, 234, 345)
+--lib['testAdd'](123, 234, 345)
 --^
 --

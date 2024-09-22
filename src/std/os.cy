@@ -196,14 +196,13 @@ type FFI _:
     @host func bindCallback(self, fn any, params List[dyn], ret symbol) ExternFunc
 
     --| Calls `bindLib(path, [:])`. 
-    @host func bindLib(self, path ?String) any
+    @host func bindLib(self, path ?String) Map
 
     --| Creates a handle to a dynamic library and functions declared from `cfunc`.
-    --| By default, an anonymous object is returned with the C-functions binded as the object's methods.
-    --| If `config` contains `gen_table: true`, a `Table` is returned instead with C-functions
-    --| binded as function values.
+    --| A map of function names to C-functions is returned.
+    --| There are currently no valid options in `config`.
     @host='FFI.bindLib2'
-    func bindLib(self, path ?String, config Table) any
+    func bindLib(self, path ?String, config Map) Map
 
     --| Returns a Cyber object's pointer. Operations on the pointer is unsafe,
     --| but it can be useful when passing it to C as an opaque pointer.

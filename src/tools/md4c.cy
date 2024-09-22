@@ -62,76 +62,109 @@ var .ALIGN_RIGHT int = 3
 
 type ATTRIBUTE_S:
     text *void -- const MD_CHAR *
-    size SIZE
+    size SIZE -- MD_SIZE
     substr_types *void -- const MD_TEXTTYPE *
     substr_offsets *void -- const MD_OFFSET *
+
+func ptrToATTRIBUTE_S(ptr *void) ATTRIBUTE_S:
+    return lib['ptrToATTRIBUTE_S'](ptr)
 
 type ATTRIBUTE -> ATTRIBUTE_S
 
 type BLOCK_UL_DETAIL_S:
-    is_tight int
-    mark CHAR
+    is_tight int -- int
+    mark CHAR -- MD_CHAR
+
+func ptrToBLOCK_UL_DETAIL_S(ptr *void) BLOCK_UL_DETAIL_S:
+    return lib['ptrToBLOCK_UL_DETAIL_S'](ptr)
 
 type BLOCK_UL_DETAIL -> BLOCK_UL_DETAIL_S
 
 type BLOCK_OL_DETAIL_S:
-    start int
-    is_tight int
-    mark_delimiter CHAR
+    start int -- unsigned int
+    is_tight int -- int
+    mark_delimiter CHAR -- MD_CHAR
+
+func ptrToBLOCK_OL_DETAIL_S(ptr *void) BLOCK_OL_DETAIL_S:
+    return lib['ptrToBLOCK_OL_DETAIL_S'](ptr)
 
 type BLOCK_OL_DETAIL -> BLOCK_OL_DETAIL_S
 
 type BLOCK_LI_DETAIL_S:
-    is_task int
-    task_mark CHAR
-    task_mark_offset OFFSET
+    is_task int -- int
+    task_mark CHAR -- MD_CHAR
+    task_mark_offset OFFSET -- MD_OFFSET
+
+func ptrToBLOCK_LI_DETAIL_S(ptr *void) BLOCK_LI_DETAIL_S:
+    return lib['ptrToBLOCK_LI_DETAIL_S'](ptr)
 
 type BLOCK_LI_DETAIL -> BLOCK_LI_DETAIL_S
 
 type BLOCK_H_DETAIL_S:
-    level int
+    level int -- unsigned int
+
+func ptrToBLOCK_H_DETAIL_S(ptr *void) BLOCK_H_DETAIL_S:
+    return lib['ptrToBLOCK_H_DETAIL_S'](ptr)
 
 type BLOCK_H_DETAIL -> BLOCK_H_DETAIL_S
 
 type BLOCK_CODE_DETAIL_S:
-    info ATTRIBUTE
-    lang ATTRIBUTE
-    fence_char CHAR
+    info ATTRIBUTE -- MD_ATTRIBUTE
+    lang ATTRIBUTE -- MD_ATTRIBUTE
+    fence_char CHAR -- MD_CHAR
+
+func ptrToBLOCK_CODE_DETAIL_S(ptr *void) BLOCK_CODE_DETAIL_S:
+    return lib['ptrToBLOCK_CODE_DETAIL_S'](ptr)
 
 type BLOCK_CODE_DETAIL -> BLOCK_CODE_DETAIL_S
 
 type BLOCK_TABLE_DETAIL_S:
-    col_count int
-    head_row_count int
-    body_row_count int
+    col_count int -- unsigned int
+    head_row_count int -- unsigned int
+    body_row_count int -- unsigned int
+
+func ptrToBLOCK_TABLE_DETAIL_S(ptr *void) BLOCK_TABLE_DETAIL_S:
+    return lib['ptrToBLOCK_TABLE_DETAIL_S'](ptr)
 
 type BLOCK_TABLE_DETAIL -> BLOCK_TABLE_DETAIL_S
 
 type BLOCK_TD_DETAIL_S:
-    align ALIGN
+    align ALIGN -- MD_ALIGN
+
+func ptrToBLOCK_TD_DETAIL_S(ptr *void) BLOCK_TD_DETAIL_S:
+    return lib['ptrToBLOCK_TD_DETAIL_S'](ptr)
 
 type BLOCK_TD_DETAIL -> BLOCK_TD_DETAIL_S
 
 type SPAN_A_DETAIL_S:
-    href ATTRIBUTE
-    title ATTRIBUTE
+    href ATTRIBUTE -- MD_ATTRIBUTE
+    title ATTRIBUTE -- MD_ATTRIBUTE
+
+func ptrToSPAN_A_DETAIL_S(ptr *void) SPAN_A_DETAIL_S:
+    return lib['ptrToSPAN_A_DETAIL_S'](ptr)
 
 type SPAN_A_DETAIL -> SPAN_A_DETAIL_S
 
 type SPAN_IMG_DETAIL_S:
-    src ATTRIBUTE
-    title ATTRIBUTE
+    src ATTRIBUTE -- MD_ATTRIBUTE
+    title ATTRIBUTE -- MD_ATTRIBUTE
+
+func ptrToSPAN_IMG_DETAIL_S(ptr *void) SPAN_IMG_DETAIL_S:
+    return lib['ptrToSPAN_IMG_DETAIL_S'](ptr)
 
 type SPAN_IMG_DETAIL -> SPAN_IMG_DETAIL_S
 
 type SPAN_WIKILINK_S:
-    target ATTRIBUTE
+    target ATTRIBUTE -- MD_ATTRIBUTE
+
+func ptrToSPAN_WIKILINK_S(ptr *void) SPAN_WIKILINK_S:
+    return lib['ptrToSPAN_WIKILINK_S'](ptr)
 
 type SPAN_WIKILINK_DETAIL -> SPAN_WIKILINK_S
 
 type PARSER_S:
-    abi_version int
-    flags int
+    abi_version int -- unsigned int
+    flags int -- unsigned int
     enter_block *void -- int (*)(MD_BLOCKTYPE, void *, void *)
     leave_block *void -- int (*)(MD_BLOCKTYPE, void *, void *)
     enter_span *void -- int (*)(MD_SPANTYPE, void *, void *)
@@ -140,35 +173,428 @@ type PARSER_S:
     debug_log *void -- void (*)(const char *, void *)
     syntax *void -- void (*)(void)
 
+func ptrToPARSER_S(ptr *void) PARSER_S:
+    return lib['ptrToPARSER_S'](ptr)
+
 type PARSER -> PARSER_S
 
 type RENDERER -> PARSER
 
 func md_parse(text *void, size SIZE, parser *void, userdata *void) int:
-    return lib.md_parse(text, size, parser, userdata)
+    return lib['md_parse'](text, size, parser, userdata)
 
 use os
 dyn .ffi = false
-dyn .lib = load()
-func load() dyn:
-    ffi = os.newFFI()
-    ffi.cbind(ATTRIBUTE_S, {symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.voidPtr})
-    ffi.cbind(BLOCK_UL_DETAIL_S, {symbol.int, symbol.char})
-    ffi.cbind(BLOCK_OL_DETAIL_S, {symbol.uint, symbol.int, symbol.char})
-    ffi.cbind(BLOCK_LI_DETAIL_S, {symbol.int, symbol.char, symbol.uint})
-    ffi.cbind(BLOCK_H_DETAIL_S, {symbol.uint})
-    ffi.cbind(BLOCK_CODE_DETAIL_S, {ATTRIBUTE, ATTRIBUTE, symbol.char})
-    ffi.cbind(BLOCK_TABLE_DETAIL_S, {symbol.uint, symbol.uint, symbol.uint})
-    ffi.cbind(BLOCK_TD_DETAIL_S, {symbol.int})
-    ffi.cbind(SPAN_A_DETAIL_S, {ATTRIBUTE, ATTRIBUTE})
-    ffi.cbind(SPAN_IMG_DETAIL_S, {ATTRIBUTE, ATTRIBUTE})
-    ffi.cbind(SPAN_WIKILINK_S, {ATTRIBUTE})
-    ffi.cbind(PARSER_S, {symbol.uint, symbol.uint, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr})
-    ffi.cfunc('md_parse', {symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.voidPtr}, symbol.int)
-    dyn lib = ffi.bindLib(Option[String].some(libPath), {gen_table=false})
+var .lib = load()
+func load() Map:
+    var ffi_ = os.newFFI()
+    ffi_.cbind(ATTRIBUTE_S, .{symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.voidPtr})
+    ffi_.cbind(BLOCK_UL_DETAIL_S, .{symbol.int, symbol.char})
+    ffi_.cbind(BLOCK_OL_DETAIL_S, .{symbol.uint, symbol.int, symbol.char})
+    ffi_.cbind(BLOCK_LI_DETAIL_S, .{symbol.int, symbol.char, symbol.uint})
+    ffi_.cbind(BLOCK_H_DETAIL_S, .{symbol.uint})
+    ffi_.cbind(BLOCK_CODE_DETAIL_S, .{ATTRIBUTE, ATTRIBUTE, symbol.char})
+    ffi_.cbind(BLOCK_TABLE_DETAIL_S, .{symbol.uint, symbol.uint, symbol.uint})
+    ffi_.cbind(BLOCK_TD_DETAIL_S, .{symbol.int})
+    ffi_.cbind(SPAN_A_DETAIL_S, .{ATTRIBUTE, ATTRIBUTE})
+    ffi_.cbind(SPAN_IMG_DETAIL_S, .{ATTRIBUTE, ATTRIBUTE})
+    ffi_.cbind(SPAN_WIKILINK_S, .{ATTRIBUTE})
+    ffi_.cbind(PARSER_S, .{symbol.uint, symbol.uint, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr})
+    ffi_.cfunc('md_parse', .{symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.voidPtr}, symbol.int)
+    ffi = ffi_
+    var lib = ffi.bindLib(Option[String].some(libPath))
     return lib
 
 -- Macros
+var ._llvm__ int = 1
+var ._clang__ int = 1
+var ._clang_major__ int = 18
+var ._clang_minor__ int = 1
+var ._clang_patchlevel__ int = 8
+var ._clang_version__ String = "18.1.8 "
+var ._GNUC__ int = 4
+var ._GNUC_MINOR__ int = 2
+var ._GNUC_PATCHLEVEL__ int = 1
+var ._GXX_ABI_VERSION int = 1002
+var ._ATOMIC_RELAXED int = 0
+var ._ATOMIC_CONSUME int = 1
+var ._ATOMIC_ACQUIRE int = 2
+var ._ATOMIC_RELEASE int = 3
+var ._ATOMIC_ACQ_REL int = 4
+var ._ATOMIC_SEQ_CST int = 5
+var ._MEMORY_SCOPE_SYSTEM int = 0
+var ._MEMORY_SCOPE_DEVICE int = 1
+var ._MEMORY_SCOPE_WRKGRP int = 2
+var ._MEMORY_SCOPE_WVFRNT int = 3
+var ._MEMORY_SCOPE_SINGLE int = 4
+var ._OPENCL_MEMORY_SCOPE_WORK_ITEM int = 0
+var ._OPENCL_MEMORY_SCOPE_WORK_GROUP int = 1
+var ._OPENCL_MEMORY_SCOPE_DEVICE int = 2
+var ._OPENCL_MEMORY_SCOPE_ALL_SVM_DEVICES int = 3
+var ._OPENCL_MEMORY_SCOPE_SUB_GROUP int = 4
+var ._FPCLASS_SNAN int = 1
+var ._FPCLASS_QNAN int = 2
+var ._FPCLASS_NEGINF int = 4
+var ._FPCLASS_NEGNORMAL int = 8
+var ._FPCLASS_NEGSUBNORMAL int = 16
+var ._FPCLASS_NEGZERO int = 32
+var ._FPCLASS_POSZERO int = 64
+var ._FPCLASS_POSSUBNORMAL int = 128
+var ._FPCLASS_POSNORMAL int = 256
+var ._FPCLASS_POSINF int = 512
+var ._PRAGMA_REDEFINE_EXTNAME int = 1
+var ._VERSION__ String = "Homebrew Clang 18.1.8"
+var ._OBJC_BOOL_IS_BOOL int = 1
+var ._CONSTANT_CFSTRINGS__ int = 1
+var ._BLOCKS__ int = 1
+var ._clang_literal_encoding__ String = "UTF-8"
+var ._clang_wide_literal_encoding__ String = "UTF-32"
+var ._ORDER_LITTLE_ENDIAN__ int = 1234
+var ._ORDER_BIG_ENDIAN__ int = 4321
+var ._ORDER_PDP_ENDIAN__ int = 3412
+var ._BYTE_ORDER__ int = 1234
+var ._LITTLE_ENDIAN__ int = 1
+var .LP64 int = 1
+var ._LP64__ int = 1
+var ._CHAR_BIT__ int = 8
+var ._BOOL_WIDTH__ int = 8
+var ._SHRT_WIDTH__ int = 16
+var ._INT_WIDTH__ int = 32
+var ._LONG_WIDTH__ int = 64
+var ._LLONG_WIDTH__ int = 64
+var ._BITINT_MAXWIDTH__ int = 128
+var ._SCHAR_MAX__ int = 127
+var ._SHRT_MAX__ int = 32767
+var ._INT_MAX__ int = 2147483647
+var ._LONG_MAX__ int = 9223372036854775807
+var ._LONG_LONG_MAX__ int = 9223372036854775807
+var ._WCHAR_MAX__ int = 2147483647
+var ._WCHAR_WIDTH__ int = 32
+var ._WINT_MAX__ int = 2147483647
+var ._WINT_WIDTH__ int = 32
+var ._INTMAX_MAX__ int = 9223372036854775807
+var ._INTMAX_WIDTH__ int = 64
+var ._SIZE_MAX__ int = -1
+var ._SIZE_WIDTH__ int = 64
+var ._UINTMAX_MAX__ int = -1
+var ._UINTMAX_WIDTH__ int = 64
+var ._PTRDIFF_MAX__ int = 9223372036854775807
+var ._PTRDIFF_WIDTH__ int = 64
+var ._INTPTR_MAX__ int = 9223372036854775807
+var ._INTPTR_WIDTH__ int = 64
+var ._UINTPTR_MAX__ int = -1
+var ._UINTPTR_WIDTH__ int = 64
+var ._SIZEOF_DOUBLE__ int = 8
+var ._SIZEOF_FLOAT__ int = 4
+var ._SIZEOF_INT__ int = 4
+var ._SIZEOF_LONG__ int = 8
+var ._SIZEOF_LONG_DOUBLE__ int = 8
+var ._SIZEOF_LONG_LONG__ int = 8
+var ._SIZEOF_POINTER__ int = 8
+var ._SIZEOF_SHORT__ int = 2
+var ._SIZEOF_PTRDIFF_T__ int = 8
+var ._SIZEOF_SIZE_T__ int = 8
+var ._SIZEOF_WCHAR_T__ int = 4
+var ._SIZEOF_WINT_T__ int = 4
+var ._SIZEOF_INT128__ int = 16
+var ._INTMAX_FMTd__ String = "ld"
+var ._INTMAX_FMTi__ String = "li"
+var ._UINTMAX_FMTo__ String = "lo"
+var ._UINTMAX_FMTu__ String = "lu"
+var ._UINTMAX_FMTx__ String = "lx"
+var ._UINTMAX_FMTX__ String = "lX"
+var ._PTRDIFF_FMTd__ String = "ld"
+var ._PTRDIFF_FMTi__ String = "li"
+var ._INTPTR_FMTd__ String = "ld"
+var ._INTPTR_FMTi__ String = "li"
+var ._SIZE_FMTo__ String = "lo"
+var ._SIZE_FMTu__ String = "lu"
+var ._SIZE_FMTx__ String = "lx"
+var ._SIZE_FMTX__ String = "lX"
+var ._SIG_ATOMIC_MAX__ int = 2147483647
+var ._SIG_ATOMIC_WIDTH__ int = 32
+var ._UINTPTR_FMTo__ String = "lo"
+var ._UINTPTR_FMTu__ String = "lu"
+var ._UINTPTR_FMTx__ String = "lx"
+var ._UINTPTR_FMTX__ String = "lX"
+var ._FLT16_DENORM_MIN__ float = 0.00000005960464477539063
+var ._FLT16_HAS_DENORM__ int = 1
+var ._FLT16_DIG__ int = 3
+var ._FLT16_DECIMAL_DIG__ int = 5
+var ._FLT16_EPSILON__ float = 0.0009765625
+var ._FLT16_HAS_INFINITY__ int = 1
+var ._FLT16_HAS_QUIET_NAN__ int = 1
+var ._FLT16_MANT_DIG__ int = 11
+var ._FLT16_MAX_10_EXP__ int = 4
+var ._FLT16_MAX_EXP__ int = 16
+var ._FLT16_MAX__ float = 65504.0
+var ._FLT16_MIN_10_EXP__ int = -4
+var ._FLT16_MIN_EXP__ int = -13
+var ._FLT16_MIN__ float = 0.00006103515625
+var ._FLT_DENORM_MIN__ float = 0.000000000000000000000000000000000000000000001401298464324817
+var ._FLT_HAS_DENORM__ int = 1
+var ._FLT_DIG__ int = 6
+var ._FLT_DECIMAL_DIG__ int = 9
+var ._FLT_EPSILON__ float = 0.00000011920928955078125
+var ._FLT_HAS_INFINITY__ int = 1
+var ._FLT_HAS_QUIET_NAN__ int = 1
+var ._FLT_MANT_DIG__ int = 24
+var ._FLT_MAX_10_EXP__ int = 38
+var ._FLT_MAX_EXP__ int = 128
+var ._FLT_MAX__ float = 340282346638528860000000000000000000000.0
+var ._FLT_MIN_10_EXP__ int = -37
+var ._FLT_MIN_EXP__ int = -125
+var ._FLT_MIN__ float = 0.000000000000000000000000000000000000011754943508222875
+var ._DBL_DENORM_MIN__ float = 0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005
+var ._DBL_HAS_DENORM__ int = 1
+var ._DBL_DIG__ int = 15
+var ._DBL_DECIMAL_DIG__ int = 17
+var ._DBL_EPSILON__ float = 0.0000000000000002220446049250313
+var ._DBL_HAS_INFINITY__ int = 1
+var ._DBL_HAS_QUIET_NAN__ int = 1
+var ._DBL_MANT_DIG__ int = 53
+var ._DBL_MAX_10_EXP__ int = 308
+var ._DBL_MAX_EXP__ int = 1024
+var ._DBL_MAX__ float = 179769313486231570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.0
+var ._DBL_MIN_10_EXP__ int = -307
+var ._DBL_MIN_EXP__ int = -1021
+var ._DBL_MIN__ float = 0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000022250738585072014
+var ._LDBL_DENORM_MIN__ float = 0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005
+var ._LDBL_HAS_DENORM__ int = 1
+var ._LDBL_DIG__ int = 15
+var ._LDBL_DECIMAL_DIG__ int = 17
+var ._LDBL_EPSILON__ float = 0.0000000000000002220446049250313
+var ._LDBL_HAS_INFINITY__ int = 1
+var ._LDBL_HAS_QUIET_NAN__ int = 1
+var ._LDBL_MANT_DIG__ int = 53
+var ._LDBL_MAX_10_EXP__ int = 308
+var ._LDBL_MAX_EXP__ int = 1024
+var ._LDBL_MAX__ float = 179769313486231570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.0
+var ._LDBL_MIN_10_EXP__ int = -307
+var ._LDBL_MIN_EXP__ int = -1021
+var ._LDBL_MIN__ float = 0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000022250738585072014
+var ._POINTER_WIDTH__ int = 64
+var ._BIGGEST_ALIGNMENT__ int = 8
+var ._INT8_FMTd__ String = "hhd"
+var ._INT8_FMTi__ String = "hhi"
+var ._INT16_FMTd__ String = "hd"
+var ._INT16_FMTi__ String = "hi"
+var ._INT32_FMTd__ String = "d"
+var ._INT32_FMTi__ String = "i"
+var ._INT64_FMTd__ String = "lld"
+var ._INT64_FMTi__ String = "lli"
+var ._UINT8_FMTo__ String = "hho"
+var ._UINT8_FMTu__ String = "hhu"
+var ._UINT8_FMTx__ String = "hhx"
+var ._UINT8_FMTX__ String = "hhX"
+var ._UINT8_MAX__ int = 255
+var ._INT8_MAX__ int = 127
+var ._UINT16_FMTo__ String = "ho"
+var ._UINT16_FMTu__ String = "hu"
+var ._UINT16_FMTx__ String = "hx"
+var ._UINT16_FMTX__ String = "hX"
+var ._UINT16_MAX__ int = 65535
+var ._INT16_MAX__ int = 32767
+var ._UINT32_FMTo__ String = "o"
+var ._UINT32_FMTu__ String = "u"
+var ._UINT32_FMTx__ String = "x"
+var ._UINT32_FMTX__ String = "X"
+var ._UINT32_MAX__ int = 4294967295
+var ._INT32_MAX__ int = 2147483647
+var ._UINT64_FMTo__ String = "llo"
+var ._UINT64_FMTu__ String = "llu"
+var ._UINT64_FMTx__ String = "llx"
+var ._UINT64_FMTX__ String = "llX"
+var ._UINT64_MAX__ int = -1
+var ._INT64_MAX__ int = 9223372036854775807
+var ._INT_LEAST8_MAX__ int = 127
+var ._INT_LEAST8_WIDTH__ int = 8
+var ._INT_LEAST8_FMTd__ String = "hhd"
+var ._INT_LEAST8_FMTi__ String = "hhi"
+var ._UINT_LEAST8_MAX__ int = 255
+var ._UINT_LEAST8_FMTo__ String = "hho"
+var ._UINT_LEAST8_FMTu__ String = "hhu"
+var ._UINT_LEAST8_FMTx__ String = "hhx"
+var ._UINT_LEAST8_FMTX__ String = "hhX"
+var ._INT_LEAST16_MAX__ int = 32767
+var ._INT_LEAST16_WIDTH__ int = 16
+var ._INT_LEAST16_FMTd__ String = "hd"
+var ._INT_LEAST16_FMTi__ String = "hi"
+var ._UINT_LEAST16_MAX__ int = 65535
+var ._UINT_LEAST16_FMTo__ String = "ho"
+var ._UINT_LEAST16_FMTu__ String = "hu"
+var ._UINT_LEAST16_FMTx__ String = "hx"
+var ._UINT_LEAST16_FMTX__ String = "hX"
+var ._INT_LEAST32_MAX__ int = 2147483647
+var ._INT_LEAST32_WIDTH__ int = 32
+var ._INT_LEAST32_FMTd__ String = "d"
+var ._INT_LEAST32_FMTi__ String = "i"
+var ._UINT_LEAST32_MAX__ int = 4294967295
+var ._UINT_LEAST32_FMTo__ String = "o"
+var ._UINT_LEAST32_FMTu__ String = "u"
+var ._UINT_LEAST32_FMTx__ String = "x"
+var ._UINT_LEAST32_FMTX__ String = "X"
+var ._INT_LEAST64_MAX__ int = 9223372036854775807
+var ._INT_LEAST64_WIDTH__ int = 64
+var ._INT_LEAST64_FMTd__ String = "lld"
+var ._INT_LEAST64_FMTi__ String = "lli"
+var ._UINT_LEAST64_MAX__ int = -1
+var ._UINT_LEAST64_FMTo__ String = "llo"
+var ._UINT_LEAST64_FMTu__ String = "llu"
+var ._UINT_LEAST64_FMTx__ String = "llx"
+var ._UINT_LEAST64_FMTX__ String = "llX"
+var ._INT_FAST8_MAX__ int = 127
+var ._INT_FAST8_WIDTH__ int = 8
+var ._INT_FAST8_FMTd__ String = "hhd"
+var ._INT_FAST8_FMTi__ String = "hhi"
+var ._UINT_FAST8_MAX__ int = 255
+var ._UINT_FAST8_FMTo__ String = "hho"
+var ._UINT_FAST8_FMTu__ String = "hhu"
+var ._UINT_FAST8_FMTx__ String = "hhx"
+var ._UINT_FAST8_FMTX__ String = "hhX"
+var ._INT_FAST16_MAX__ int = 32767
+var ._INT_FAST16_WIDTH__ int = 16
+var ._INT_FAST16_FMTd__ String = "hd"
+var ._INT_FAST16_FMTi__ String = "hi"
+var ._UINT_FAST16_MAX__ int = 65535
+var ._UINT_FAST16_FMTo__ String = "ho"
+var ._UINT_FAST16_FMTu__ String = "hu"
+var ._UINT_FAST16_FMTx__ String = "hx"
+var ._UINT_FAST16_FMTX__ String = "hX"
+var ._INT_FAST32_MAX__ int = 2147483647
+var ._INT_FAST32_WIDTH__ int = 32
+var ._INT_FAST32_FMTd__ String = "d"
+var ._INT_FAST32_FMTi__ String = "i"
+var ._UINT_FAST32_MAX__ int = 4294967295
+var ._UINT_FAST32_FMTo__ String = "o"
+var ._UINT_FAST32_FMTu__ String = "u"
+var ._UINT_FAST32_FMTx__ String = "x"
+var ._UINT_FAST32_FMTX__ String = "X"
+var ._INT_FAST64_MAX__ int = 9223372036854775807
+var ._INT_FAST64_WIDTH__ int = 64
+var ._INT_FAST64_FMTd__ String = "lld"
+var ._INT_FAST64_FMTi__ String = "lli"
+var ._UINT_FAST64_MAX__ int = -1
+var ._UINT_FAST64_FMTo__ String = "llo"
+var ._UINT_FAST64_FMTu__ String = "llu"
+var ._UINT_FAST64_FMTx__ String = "llx"
+var ._UINT_FAST64_FMTX__ String = "llX"
+var ._NO_MATH_ERRNO__ int = 1
+var ._FINITE_MATH_ONLY__ int = 0
+var ._GCC_ATOMIC_TEST_AND_SET_TRUEVAL int = 1
+var ._CLANG_ATOMIC_BOOL_LOCK_FREE int = 2
+var ._CLANG_ATOMIC_CHAR_LOCK_FREE int = 2
+var ._CLANG_ATOMIC_CHAR16_T_LOCK_FREE int = 2
+var ._CLANG_ATOMIC_CHAR32_T_LOCK_FREE int = 2
+var ._CLANG_ATOMIC_WCHAR_T_LOCK_FREE int = 2
+var ._CLANG_ATOMIC_SHORT_LOCK_FREE int = 2
+var ._CLANG_ATOMIC_INT_LOCK_FREE int = 2
+var ._CLANG_ATOMIC_LONG_LOCK_FREE int = 2
+var ._CLANG_ATOMIC_LLONG_LOCK_FREE int = 2
+var ._CLANG_ATOMIC_POINTER_LOCK_FREE int = 2
+var ._GCC_ATOMIC_BOOL_LOCK_FREE int = 2
+var ._GCC_ATOMIC_CHAR_LOCK_FREE int = 2
+var ._GCC_ATOMIC_CHAR16_T_LOCK_FREE int = 2
+var ._GCC_ATOMIC_CHAR32_T_LOCK_FREE int = 2
+var ._GCC_ATOMIC_WCHAR_T_LOCK_FREE int = 2
+var ._GCC_ATOMIC_SHORT_LOCK_FREE int = 2
+var ._GCC_ATOMIC_INT_LOCK_FREE int = 2
+var ._GCC_ATOMIC_LONG_LOCK_FREE int = 2
+var ._GCC_ATOMIC_LLONG_LOCK_FREE int = 2
+var ._GCC_ATOMIC_POINTER_LOCK_FREE int = 2
+var ._NO_INLINE__ int = 1
+var ._PIC__ int = 2
+var ._pic__ int = 2
+var ._FLT_RADIX__ int = 2
+var ._DECIMAL_DIG__ int = 17
+var ._SSP__ int = 1
+var .TARGET_OS_WIN32 int = 0
+var .TARGET_OS_WINDOWS int = 0
+var .TARGET_OS_LINUX int = 0
+var .TARGET_OS_UNIX int = 0
+var .TARGET_OS_MAC int = 1
+var .TARGET_OS_OSX int = 1
+var .TARGET_OS_IPHONE int = 0
+var .TARGET_OS_IOS int = 0
+var .TARGET_OS_TV int = 0
+var .TARGET_OS_WATCH int = 0
+var .TARGET_OS_DRIVERKIT int = 0
+var .TARGET_OS_MACCATALYST int = 0
+var .TARGET_OS_SIMULATOR int = 0
+var .TARGET_OS_EMBEDDED int = 0
+var .TARGET_OS_NANO int = 0
+var .TARGET_IPHONE_SIMULATOR int = 0
+var .TARGET_OS_UIKITFORMAC int = 0
+var ._AARCH64EL__ int = 1
+var ._aarch64__ int = 1
+var ._GCC_ASM_FLAG_OUTPUTS__ int = 1
+var ._AARCH64_CMODEL_SMALL__ int = 1
+var ._ARM_ACLE int = 200
+var ._ARM_ARCH int = 8
+var ._ARM_ARCH_PROFILE int = 65
+var ._ARM_64BIT_STATE int = 1
+var ._ARM_PCS_AAPCS64 int = 1
+var ._ARM_ARCH_ISA_A64 int = 1
+var ._ARM_FEATURE_CLZ int = 1
+var ._ARM_FEATURE_FMA int = 1
+var ._ARM_FEATURE_LDREX int = 15
+var ._ARM_FEATURE_IDIV int = 1
+var ._ARM_FEATURE_DIV int = 1
+var ._ARM_FEATURE_NUMERIC_MAXMIN int = 1
+var ._ARM_FEATURE_DIRECTED_ROUNDING int = 1
+var ._ARM_ALIGN_MAX_STACK_PWR int = 4
+var ._ARM_STATE_ZA int = 1
+var ._ARM_STATE_ZT0 int = 1
+var ._ARM_FP int = 14
+var ._ARM_FP16_FORMAT_IEEE int = 1
+var ._ARM_FP16_ARGS int = 1
+var ._ARM_SIZEOF_WCHAR_T int = 4
+var ._ARM_SIZEOF_MINIMAL_ENUM int = 4
+var ._ARM_NEON int = 1
+var ._ARM_NEON_FP int = 14
+var ._ARM_FEATURE_CRC32 int = 1
+var ._ARM_FEATURE_RCPC int = 1
+var ._HAVE_FUNCTION_MULTI_VERSIONING int = 1
+var ._ARM_FEATURE_CRYPTO int = 1
+var ._ARM_FEATURE_AES int = 1
+var ._ARM_FEATURE_SHA2 int = 1
+var ._ARM_FEATURE_SHA3 int = 1
+var ._ARM_FEATURE_SHA512 int = 1
+var ._ARM_FEATURE_PAUTH int = 1
+var ._ARM_FEATURE_UNALIGNED int = 1
+var ._ARM_FEATURE_FP16_VECTOR_ARITHMETIC int = 1
+var ._ARM_FEATURE_FP16_SCALAR_ARITHMETIC int = 1
+var ._ARM_FEATURE_DOTPROD int = 1
+var ._ARM_FEATURE_ATOMICS int = 1
+var ._ARM_FEATURE_FP16_FML int = 1
+var ._ARM_FEATURE_FRINT int = 1
+var ._ARM_FEATURE_BTI int = 1
+var ._ARM_FEATURE_COMPLEX int = 1
+var ._ARM_FEATURE_JCVT int = 1
+var ._ARM_FEATURE_QRDMX int = 1
+var ._GCC_HAVE_SYNC_COMPARE_AND_SWAP_1 int = 1
+var ._GCC_HAVE_SYNC_COMPARE_AND_SWAP_2 int = 1
+var ._GCC_HAVE_SYNC_COMPARE_AND_SWAP_4 int = 1
+var ._GCC_HAVE_SYNC_COMPARE_AND_SWAP_8 int = 1
+var ._GCC_HAVE_SYNC_COMPARE_AND_SWAP_16 int = 1
+var ._FP_FAST_FMA int = 1
+var ._FP_FAST_FMAF int = 1
+var ._AARCH64_SIMD__ int = 1
+var ._ARM64_ARCH_8__ int = 1
+var ._ARM_NEON__ int = 1
+var ._arm64 int = 1
+var ._arm64__ int = 1
+var ._APPLE_CC__ int = 6000
+var ._APPLE__ int = 1
+var ._STDC_NO_THREADS__ int = 1
+var ._DYNAMIC__ int = 1
+var ._ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ int = 140000
+var ._ENVIRONMENT_OS_VERSION_MIN_REQUIRED__ int = 140000
+var ._MACH__ int = 1
+var ._STDC__ int = 1
+var ._STDC_HOSTED__ int = 1
+var ._STDC_UTF_16__ int = 1
+var ._STDC_UTF_32__ int = 1
 var ._GCC_HAVE_DWARF2_CFI_ASM int = 1
 var .FLAG_COLLAPSEWHITESPACE int = 1
 var .FLAG_PERMISSIVEATXHEADERS int = 2

@@ -1939,60 +1939,52 @@ fn floatCall(vm: *cy.VM) Value {
 
 pub fn intNone(vm: *cy.VM) !Value {
     const data = vm.getData(*BuiltinsData, "builtins");
-    return vm.allocObjectSmall(data.OptionInt, &.{ Value.initInt(0), Value.initInt(0) });
+    return vm.newNone(data.OptionInt);
 }
 
-pub fn intSome(vm: *cy.VM, v: i48) !Value {
+pub fn intSome(vm: *cy.VM, v: i64) !Value {
     const data = vm.getData(*BuiltinsData, "builtins");
-    return vm.allocObjectSmall(data.OptionInt, &.{ Value.initInt(1), Value.initInt(v) });
+    return vm.newSome(data.OptionInt, Value.initInt(v));
 }
 
 pub fn anyNone(vm: *cy.VM) !Value {
     const data = vm.getData(*BuiltinsData, "builtins");
-    return vm.allocObjectSmall(data.OptionAny, &.{ Value.initInt(0), Value.initInt(0) });
+    return vm.newNone(data.OptionAny);
 }
 
 pub fn anySome(vm: *cy.VM, v: Value) !Value {
     const data = vm.getData(*BuiltinsData, "builtins");
-    return vm.allocObjectSmall(data.OptionAny, &.{ Value.initInt(1), v });
-}
-
-pub fn optionNone(vm: *cy.VM, option_t: cy.TypeId) !Value {
-    return vm.allocObjectSmall(option_t, &.{ Value.initInt(0), Value.initInt(0) });
-}
-
-pub fn optionSome(vm: *cy.VM, option_t: cy.TypeId, v: Value) !Value {
-    return vm.allocObjectSmall(option_t, &.{ Value.initInt(1), v });
+    return vm.newSome(data.OptionAny, v);
 }
 
 pub fn TupleNone(vm: *cy.VM) !Value {
     const data = vm.getData(*BuiltinsData, "builtins");
-    return vm.allocObjectSmall(data.OptionTuple, &.{ Value.initInt(0), Value.initInt(0) });
+    return vm.newNone(data.OptionTuple);
 }
 
 pub fn TupleSome(vm: *cy.VM, v: Value) !Value {
     const data = vm.getData(*BuiltinsData, "builtins");
-    return vm.allocObjectSmall(data.OptionTuple, &.{ Value.initInt(1), v });
+    return vm.newSome(data.OptionTuple, v);
 }
 
 pub fn MapNone(vm: *cy.VM) !Value {
     const data = vm.getData(*BuiltinsData, "builtins");
-    return vm.allocObjectSmall(data.OptionMap, &.{ Value.initInt(0), Value.initInt(0) });
+    return vm.newNone(data.OptionMap);
 }
 
 pub fn MapSome(vm: *cy.VM, v: Value) !Value {
     const data = vm.getData(*BuiltinsData, "builtins");
-    return vm.allocObjectSmall(data.OptionMap, &.{ Value.initInt(1), v });
+    return vm.newSome(data.OptionMap, v);
 }
 
 pub fn StringNone(vm: *cy.VM) !Value {
     const data = vm.getData(*BuiltinsData, "builtins");
-    return vm.allocObjectSmall(data.OptionString, &.{ Value.initInt(0), Value.initInt(0) });
+    return vm.newNone(data.OptionString);
 }
 
 pub fn StringSome(vm: *cy.VM, v: Value) !Value {
     const data = vm.getData(*BuiltinsData, "builtins");
-    return vm.allocObjectSmall(data.OptionString, &.{ Value.initInt(1), v });
+    return vm.newSome(data.OptionString, v);
 }
 
 fn ExprType_getType(vm: *cy.VM) anyerror!Value {

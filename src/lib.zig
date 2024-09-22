@@ -664,31 +664,23 @@ test "clNewInstance()" {
     try t.eqStr(C.asString(vm.getField(val, "b")), "abc");
 }
 
-export fn clNewChoice(vm: *cy.VM, choice_t: cy.TypeId, name: c.Str, val: cy.Value) cy.Value {
-    const type_e = vm.c.types[choice_t];
-    if (type_e.kind != .choice) {
-        return cy.panicFmt("Expected choice type. Found `{}`.", .{type_e.kind});
-    }
+export fn clNewNone(vm: *cy.VM, option_t: *cy.Type) cy.Value {
+    return vm.newNone(option_t) catch @panic("error");
+}
 
-    const zname = c.fromStr(name);
-    const sym = type_e.sym.getMod().?.getSym(zname) orelse {
-        return cy.panicFmt("Can not find case `{s}`.", .{zname});
-    };
-    if (sym.type != .enumMember) {
-        return cy.panicFmt("`{s}` is not choice case.", .{zname});
-    }
-    const case = sym.cast(.enumMember);
-    return cy.heap.allocObjectSmall(vm, choice_t, &.{
-        @bitCast(c.int(@intCast(case.val))),
-        val,
-    }) catch cy.fatal();
+export fn clNewSome(vm: *cy.VM, option_t: *cy.Type, val: cy.Value) cy.Value {
+    return vm.newSome(option_t, val) catch @panic("error");
+}
+
+export fn clNewChoice(vm: *cy.VM, choice_t: *cy.Type, name: C.Str, val: cy.Value) cy.Value {
+    return vm.newChoice(choice_t, C.fromStr(name), val) catch @panic("error");
 }
 
 test "clNewChoice()" {
-    const vm = c.create();
+    const vm = C.create();
     defer vm.destroy();
 
-    var res: c.Value = undefined;
+    var res: C.Value = undefined;
     vm.evalMust( 
         \\type Foo enum:
         \\    case a int

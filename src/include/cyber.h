@@ -599,6 +599,12 @@ CLValue clGetField(CLVM* vm, CLValue rec, CLStr name);
 CLValue clHostObject(void* ptr);
 CLValue clVmObject(void* ptr);
 
+// Returns a new option with the some case.
+CLValue clNewSome(CLVM* vm, CLType* option_t, CLValue val);
+
+// Returns a new option with the none case.
+CLValue clNewNone(CLVM* vm, CLType* option_t);
+
 // Returns a new choice of a given case name and value.
 CLValue clNewChoice(CLVM* vm, CLType* choice_t, CLStr name, CLValue val);
 

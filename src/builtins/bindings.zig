@@ -91,9 +91,6 @@ const TupleSome = cy.builtins.TupleSome;
 const anyNone = cy.builtins.anyNone;
 const anySome = cy.builtins.anySome;
 
-const optionSome = cy.builtins.optionSome;
-const optionNone = cy.builtins.optionNone;
-
 pub fn getBuiltinSymbol(id: u32) ?Symbol {
     return std.meta.intToEnum(Symbol, id) catch {
         return null;
@@ -364,15 +361,15 @@ pub fn listAppend(vm: *cy.VM) anyerror!Value {
 
 pub fn listIteratorNext(vm: *cy.VM) anyerror!Value {
     const obj = vm.getValue(0).asHeapObject();
-    const option_t: cy.TypeId = @intCast(vm.getInt(1));
+    const option_t = vm.getType(@intCast(vm.getInt(1)));
     const list = &obj.listIter.inner.list.asHeapObject().list;
     if (obj.listIter.inner.nextIdx < list.list.len) {
         defer obj.listIter.inner.nextIdx += 1;
         const val = list.list.ptr[obj.listIter.inner.nextIdx];
         vm.retain(val);
-        return optionSome(vm, option_t, val);
+        return vm.newSome(option_t, val);
     } else {
-        return optionNone(vm, option_t);
+        return vm.newNone(option_t);
     }
 }
 

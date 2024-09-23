@@ -999,7 +999,6 @@ const DebugMarker = extern struct {
     }
 };
 
-pub const CallObjSymInstLen = vmc.CALL_OBJ_SYM_INST_LEN;
 pub const CallSymInstLen = vmc.CALL_SYM_INST_LEN;
 pub const CallInstLen = vmc.CALL_INST_LEN;
 pub const CallValueInstLen = vmc.CALL_VALUE_INST_LEN;
@@ -1032,6 +1031,8 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numVars = pc[1].val;
             return 2 + numVars;
         },
+        .negFloat,
+        .negInt,
         .ref,
         .addr_local,
         .copy_struct,
@@ -1055,6 +1056,34 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .symbol => {
             return 3;
         },
+        .bitwiseNot,
+        .lessFloat,
+        .greaterFloat,
+        .lessEqualFloat,
+        .greaterEqualFloat,
+        .lessInt,
+        .greaterInt,
+        .lessEqualInt,
+        .greaterEqualInt,
+        .addFloat,
+        .subFloat,
+        .mulFloat,
+        .divFloat,
+        .powFloat,
+        .modFloat,
+        .addInt,
+        .subInt,
+        .mulInt,
+        .divInt,
+        .powInt,
+        .modInt,
+        .bitwiseAnd,
+        .bitwiseOr,
+        .bitwiseXor,
+        .bitwiseLeftShift,
+        .bitwiseRightShift,
+        .appendList,
+        .sliceList,
         .set_deref_ptr,
         .addr_const_index,
         .addr_index,
@@ -1069,6 +1098,10 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .jumpNotCond => {
             return 4;
         },
+        .setIndexList,
+        .setIndexMap,
+        .indexList,
+        .indexMap,
         .addr_static,
         .set_deref_struct_ptr,
         .set,
@@ -1136,42 +1169,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .callNativeFuncIC,
         .callFuncIC => {
             return CallSymInstLen;
-        },
-        .appendList,
-        .lessFloat,
-        .greaterFloat,
-        .lessEqualFloat,
-        .greaterEqualFloat,
-        .lessInt,
-        .greaterInt,
-        .lessEqualInt,
-        .greaterEqualInt,
-        .sliceList,
-        .indexList,
-        .indexMap,
-        .addFloat,
-        .subFloat,
-        .mulFloat,
-        .divFloat,
-        .powFloat,
-        .modFloat,
-        .addInt,
-        .subInt,
-        .mulInt,
-        .divInt,
-        .powInt,
-        .modInt,
-        .negFloat,
-        .negInt,
-        .bitwiseNot,
-        .bitwiseAnd,
-        .bitwiseOr,
-        .bitwiseXor,
-        .bitwiseLeftShift,
-        .bitwiseRightShift,
-        .setIndexList,
-        .setIndexMap => {
-            return CallObjSymInstLen;
         },
     }
 }

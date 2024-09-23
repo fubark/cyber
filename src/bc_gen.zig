@@ -3982,15 +3982,15 @@ pub fn reserveTemp(c: *Chunk, type_: *cy.Type) !u8 {
 }
 
 fn pushInlineUnExpr(c: *cy.Chunk, code: cy.OpCode, child: u8, dst: u8, node: *ast.Node) !void {
-    try c.pushFCode(code, &.{ child, dst, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, node);
+    try c.pushFCode(code, &.{ child, dst }, node);
 }
 
 fn pushInlineBinExpr(c: *cy.Chunk, code: cy.OpCode, left: u8, right: u8, dst: u8, node: *ast.Node) !void {
-    try c.pushFCode(code, &.{ left, right, dst, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, node);
+    try c.pushFCode(code, &.{ left, right, dst }, node);
 }
 
 fn pushInlineTernExpr(c: *cy.Chunk, code: cy.OpCode, a: u8, b: u8, c_: u8, dst: u8, node: *ast.Node) !void {
-    try c.pushFCode(code, &.{ a, b, c_, dst, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, node);
+    try c.pushFCode(code, &.{ a, b, c_, dst }, node);
 }
 
 fn mainEnd(c: *cy.Chunk, reg: ?u8) !void {

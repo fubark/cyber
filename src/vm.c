@@ -535,7 +535,7 @@ static void panicCastFail(VM* vm, TypeId actTypeId, TypeId expTypeId) {
     i64 val = BITCAST(i64, stack[pc[1]]); \
     /* Body... */ \
     __VA_ARGS__; \
-    pc += CALL_OBJ_SYM_INST_LEN; \
+    pc += 3; \
     NEXT(); \
 
 #define INTEGER_BINOP(...) \
@@ -543,14 +543,14 @@ static void panicCastFail(VM* vm, TypeId actTypeId, TypeId expTypeId) {
     i64 right = BITCAST(i64, stack[pc[2]]); \
     /* Body... */ \
     __VA_ARGS__; \
-    pc += CALL_OBJ_SYM_INST_LEN; \
+    pc += 4; \
     NEXT();
 
 #define FLOAT_UNOP(...) \
     Value val = stack[pc[1]]; \
     /* Body... */ \
     __VA_ARGS__; \
-    pc += CALL_OBJ_SYM_INST_LEN; \
+    pc += 3; \
     NEXT();
 
 #define FLOAT_BINOP(...) \
@@ -558,7 +558,7 @@ static void panicCastFail(VM* vm, TypeId actTypeId, TypeId expTypeId) {
     Value right = stack[pc[2]]; \
     /* Body... */ \
     __VA_ARGS__; \
-    pc += CALL_OBJ_SYM_INST_LEN; \
+    pc += 4; \
     NEXT();
 
 ResultCode execBytecode(VM* vm) {
@@ -867,7 +867,7 @@ beginSwitch:
             retain(vm, right);
             ((Value*)listo->list.list.buf)[idx] = right;
             stack[pc[4]] = VALUE_VOID;
-            pc += CALL_OBJ_SYM_INST_LEN;
+            pc += 5;
             NEXT();
         } else {
             panicOutOfBounds(vm);
@@ -882,7 +882,7 @@ beginSwitch:
         ResultCode code = zMapSet(vm, mapo, index, right);
         if (LIKELY(code == RES_CODE_SUCCESS)) {
             stack[pc[4]] = VALUE_VOID;
-            pc += CALL_OBJ_SYM_INST_LEN;
+            pc += 5;
             NEXT();
         }
         RETURN(code);
@@ -897,7 +897,7 @@ beginSwitch:
             Value val = ((Value*)listo->list.list.buf)[idx];
             retain(vm, val);
             stack[pc[3]] = val;
-            pc += CALL_OBJ_SYM_INST_LEN;
+            pc += 4;
             NEXT();
         } else {
             panicOutOfBounds(vm);
@@ -917,7 +917,7 @@ beginSwitch:
             panicFieldMissing(vm);
             RETURN(RES_CODE_PANIC);
         }
-        pc += CALL_OBJ_SYM_INST_LEN;
+        pc += 4;
         NEXT();
     }
     CASE(AppendList): {
@@ -940,7 +940,7 @@ beginSwitch:
         listo->list.list.len = len + 1;
         stack[pc[3]] = VALUE_VOID;
 
-        pc += CALL_OBJ_SYM_INST_LEN;
+        pc += 4;
         NEXT();
     }
     CASE(List): {
@@ -1008,7 +1008,7 @@ beginSwitch:
             RETURN(res.code);
         }
         stack[pc[3]] = res.val;
-        pc += CALL_OBJ_SYM_INST_LEN;
+        pc += 4;
         NEXT();
     }
     CASE(JumpNotCond): {

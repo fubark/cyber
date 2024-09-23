@@ -184,7 +184,6 @@ typedef struct FmtValue {
     u8 type;
 } FmtValue;
 
-#define CALL_OBJ_SYM_INST_LEN 16
 #define CALL_SYM_INST_LEN 12
 #define CALL_INST_LEN 4
 #define CALL_VALUE_INST_LEN 3

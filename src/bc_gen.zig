@@ -1610,9 +1610,7 @@ fn genBinOp(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
             //     } else {
             //         try pushInlineBinExpr(c, .indexList, leftv.reg, rightv.reg, inst.dst, node);
             //     }
-            if (data.leftT.id() == bt.Tuple) {
-                try pushInlineBinExpr(c, .indexTuple, leftv.reg, rightv.reg, inst.dst, node);
-            } else if (data.leftT.id() == bt.Map) {
+            if (data.leftT.id() == bt.Map) {
                 try pushInlineBinExpr(c, .indexMap, leftv.reg, rightv.reg, inst.dst, node);
             } else return error.Unexpected;
             retained = true;

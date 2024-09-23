@@ -214,6 +214,7 @@ type float _:
 @host type placeholder3 _
 @host type placeholder4 _
 @host type placeholder5 _
+@host type placeholder6 _
 @host type taglit _
 
 @host type dyn _
@@ -381,10 +382,6 @@ func List.fill[T](val T, n int) List[T]:
         return self.next_(typeid[Option[T]])
 
     @host func next_(self, ret_t int) ?T
-
-@host
-type Tuple _:
-    @host func $index(self, idx int) any
 
 @host type FuncSig int
 

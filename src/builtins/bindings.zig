@@ -87,8 +87,6 @@ pub const Symbol = enum {
     unknown,
 };
 
-const TupleNone = cy.builtins.TupleNone;
-const TupleSome = cy.builtins.TupleSome;
 const anyNone = cy.builtins.anyNone;
 const anySome = cy.builtins.anySome;
 
@@ -214,17 +212,6 @@ pub fn mapSetIndex(vm: *cy.VM) anyerror!Value {
     const map = vm.getValue(0).asHeapObject();
     try map.map.set(vm, vm.getValue(1), vm.getValue(2));
     return Value.Void;
-}
-
-pub fn tupleIndex(vm: *cy.VM) Value {
-    const index: i64 = @intCast(vm.getInt(1));
-    const tuple = vm.getValue(0).asHeapObject();
-    if (index < 0 or index > tuple.tuple.len) {
-        return vm.prepPanic("Out of bounds.");
-    } 
-    const value = tuple.tuple.getElemsPtr()[@intCast(index)];
-    vm.retain(value);
-    return value;
 }
 
 pub fn listIndex(vm: *cy.VM) Value {

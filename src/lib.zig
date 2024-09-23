@@ -555,14 +555,6 @@ export fn clNewUstring(vm: *cy.VM, cstr: C.Str) Value {
     return vm.retainOrAllocUstring(C.fromStr(cstr)) catch fatal();
 }
 
-export fn clNewTuple(vm: *cy.VM, ptr: [*]const Value, len: usize) Value {
-    const elems = ptr[0..len];
-    for (elems) |elem| {
-        cy.arc.retain(vm, elem);
-    }
-    return cy.heap.allocTuple(vm, elems) catch fatal();
-}
-
 export fn clNewList(vm: *cy.VM, list_t: *cy.Type, ptr: [*]const Value, len: usize) Value {
     const elems = ptr[0..len];
     for (elems) |elem| {
@@ -885,7 +877,6 @@ test "Constants." {
     try t.eq(C.TypeExternFunc, bt.ExternFunc);
     try t.eq(C.TypeType, bt.Type);
     try t.eq(C.TypeTccState, bt.TccState);
-    try t.eq(C.TypeTuple, bt.Tuple);
     try t.eq(C.TypeFuncSig, bt.FuncSig);
     try t.eq(C.TypeExprType, bt.ExprType);
 }

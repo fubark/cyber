@@ -380,6 +380,7 @@ pub const Compiler = struct {
             try resolveSym(c, mod.getSym("placeholder3").?);
             try resolveSym(c, mod.getSym("placeholder4").?);
             try resolveSym(c, mod.getSym("placeholder5").?);
+            try resolveSym(c, mod.getSym("placeholder6").?);
             try resolveSym(c, mod.getSym("FuncSig").?);
             try resolveSym(c, mod.getSym("ExprType").?);
             try resolveSym(c, @ptrCast(c.sema.option_tmpl));
@@ -413,12 +414,12 @@ pub const Compiler = struct {
             std.debug.assert(self.sema.fiber_t.id() == bt.Fiber);
             std.debug.assert(self.sema.range_t.id() == bt.Range);
             std.debug.assert(self.sema.memory_t.id() == bt.Memory);
-            std.debug.assert(self.sema.tuple_t.id() == bt.Tuple);
             std.debug.assert(self.sema.placeholder1_t.id() == bt.Placeholder1);
             std.debug.assert(self.sema.placeholder2_t.id() == bt.Placeholder2);
             std.debug.assert(self.sema.placeholder3_t.id() == bt.Placeholder3);
             std.debug.assert(self.sema.placeholder4_t.id() == bt.Placeholder4);
             std.debug.assert(self.sema.placeholder5_t.id() == bt.Placeholder5);
+            std.debug.assert(self.sema.placeholder6_t.id() == bt.Placeholder6);
             
             try self.context_vars.put(self.alloc, "mem", .{
                 .type = self.sema.memory_t,
@@ -1018,7 +1019,7 @@ fn reserveCoreTypes(self: *Compiler) !void {
         bt.Type,
 
         // Object types.
-        bt.Tuple,
+        bt.Placeholder6,
         bt.Placeholder4,
         bt.Placeholder5,
         bt.Map,

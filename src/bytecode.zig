@@ -1148,7 +1148,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .greaterEqualInt,
         .sliceList,
         .indexList,
-        .indexTuple,
         .indexMap,
         .addFloat,
         .subFloat,
@@ -1204,7 +1203,6 @@ pub const OpCode = enum(u8) {
     setIndexMap = vmc.CodeSetIndexMap,
 
     indexList = vmc.CodeIndexList,
-    indexTuple = vmc.CodeIndexTuple,
     indexMap = vmc.CodeIndexMap,
 
     appendList = vmc.CodeAppendList,
@@ -1363,7 +1361,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 124);
+    try t.eq(std.enums.values(OpCode).len, 123);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

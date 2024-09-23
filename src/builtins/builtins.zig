@@ -153,9 +153,6 @@ const funcs = [_]C.HostFuncEntry{
     // func("RefSlice.startsWith",         RefSlice_startsWith),
     // func("RefSlice.trim", sliceTrim),
 
-    // Tuple
-    func("Tuple.$index",       bindings.tupleIndex),
-
     // Table
     func("Table.$initPair",    zErrFunc(bindings.tableInitPair)),
     func("Table.$get",         bindings.tableGet),
@@ -436,7 +433,6 @@ fn createListIterType(vm: ?*C.VM, c_mod: C.Sym, decl: C.Node) callconv(.C) *C.Ty
 pub const BuiltinsData = struct {
     OptionInt: *cy.Type,
     OptionAny: *cy.Type,
-    OptionTuple: *cy.Type,
     OptionMap: *cy.Type,
     OptionString: *cy.Type,
     PtrVoid: *cy.Type,
@@ -461,6 +457,7 @@ pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
         htype("placeholder3",   CS.RESERVE_HOBJ_TYPE(bt.Placeholder3, &vm.sema.placeholder3_t)), 
         htype("placeholder4",   CS.RESERVE_HOBJ_TYPE(bt.Placeholder4, &vm.sema.placeholder4_t)), 
         htype("placeholder5",   CS.RESERVE_HOBJ_TYPE(bt.Placeholder5, &vm.sema.placeholder5_t)), 
+        htype("placeholder6",   CS.RESERVE_HOBJ_TYPE(bt.Placeholder6, &vm.sema.placeholder6_t)), 
         htype("byte",           C.CREATE_TYPE(createByteType)), 
         htype("taglit",         CS.RESERVE_HOBJ_TYPE(bt.TagLit, &vm.sema.taglit_t)), 
         htype("dyn",            CS.RESERVE_HOBJ_TYPE(bt.Dyn, &vm.sema.dyn_t)),
@@ -469,7 +466,6 @@ pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
         htype("ExprType",       CS.RESERVE_DECL_TYPE(bt.ExprType, &vm.sema.exprtype_t)),
         htype("List",           C.CREATE_TYPE(createListType)),
         htype("ListIterator",   C.CREATE_TYPE(createListIterType)),
-        htype("Tuple",          CS.RESERVE_HOBJ_TYPE(bt.Tuple, &vm.sema.tuple_t)),
         htype("Table",          CS.RESERVE_DECL_TYPE(bt.Table, &vm.sema.table_t)),
         htype("Map",            CS.RESERVE_HOBJ_TYPE(bt.Map, &vm.sema.map_t)),
         htype("MapIterator",    CS.RESERVE_HOBJ_TYPE(bt.MapIter, null)),
@@ -528,10 +524,6 @@ fn onLoadZ(vm: *cy.VM, mod: *cy.Sym) !void {
     const any_t = try vm.allocType(bt.Any);
     defer vm.release(any_t);
     data.OptionAny = (try vm.expandTemplateType(option_tmpl, &.{any_t})).?;
-
-    const tuple_t = try vm.allocType(bt.Tuple);
-    defer vm.release(tuple_t);
-    data.OptionTuple = (try vm.expandTemplateType(option_tmpl, &.{tuple_t})).?;
 
     const map_t = try vm.allocType(bt.Map);
     defer vm.release(map_t);
@@ -1955,16 +1947,6 @@ pub fn anyNone(vm: *cy.VM) !Value {
 pub fn anySome(vm: *cy.VM, v: Value) !Value {
     const data = vm.getData(*BuiltinsData, "builtins");
     return vm.newSome(data.OptionAny, v);
-}
-
-pub fn TupleNone(vm: *cy.VM) !Value {
-    const data = vm.getData(*BuiltinsData, "builtins");
-    return vm.newNone(data.OptionTuple);
-}
-
-pub fn TupleSome(vm: *cy.VM, v: Value) !Value {
-    const data = vm.getData(*BuiltinsData, "builtins");
-    return vm.newSome(data.OptionTuple, v);
 }
 
 pub fn MapNone(vm: *cy.VM) !Value {

@@ -604,7 +604,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(SetIndexList),
         JENTRY(SetIndexMap),
         JENTRY(IndexList),
-        JENTRY(IndexTuple),
         JENTRY(IndexMap),
         JENTRY(AppendList),
         JENTRY(List),
@@ -896,27 +895,6 @@ beginSwitch:
         i64 idx = VALUE_AS_INTEGER(index);
         if (idx >= 0 && idx < listo->list.list.len) {
             Value val = ((Value*)listo->list.list.buf)[idx];
-            retain(vm, val);
-            stack[pc[3]] = val;
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
-        } else {
-            panicOutOfBounds(vm);
-            RETURN(RES_CODE_PANIC);
-        }
-    }
-    CASE(IndexTuple): {
-        Value tuplev = stack[pc[1]];
-        Value index = stack[pc[2]];
-        Tuple* tuple = (Tuple*)VALUE_AS_HEAPOBJECT(tuplev);
-
-        i64 idx = VALUE_AS_INTEGER(index);
-        if (idx < 0) {
-            // Reverse index.
-            idx = tuple->len + idx;
-        }
-        if (idx >= 0 && idx < tuple->len) {
-            Value val = ((Value*)&tuple->firstValue)[idx];
             retain(vm, val);
             stack[pc[3]] = val;
             pc += CALL_OBJ_SYM_INST_LEN;

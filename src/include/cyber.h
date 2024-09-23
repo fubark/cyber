@@ -563,8 +563,6 @@ CLValue clNewUstring(CLVM* vm, CLStr str, uint32_t charLen);
 CLStr clAsString(CLValue val);
 CLStr clToTempString(CLVM* vm, CLValue val);  // Conversion from value to a basic string description.
 
-CLValue clNewTuple(CLVM* vm, const CLValue* vals, size_t len);
-
 // Functions.
 CLFuncSig clGetFuncSig(CLVM* vm, const CLType* params, size_t nparams, CLType ret_t);
 CLFuncSig clGetFuncSigDyn(CLVM* vm, size_t nparams);

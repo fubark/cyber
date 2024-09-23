@@ -227,7 +227,6 @@ typedef enum {
     CodeSetIndexMap,
 
     CodeIndexList,
-    CodeIndexTuple,
     CodeIndexMap,
     CodeAppendList,
     CodeList,
@@ -366,7 +365,7 @@ enum {
     // VM exclusive types.
     TYPE_TYPE = 11,
 
-    TYPE_TUPLE = 12,
+    TYPE_PLACEHOLDER6 = 12,
     TYPE_PLACEHOLDER4 = 13,
     TYPE_PLACEHOLDER5 = 14,
     TYPE_MAP = 15,
@@ -606,14 +605,6 @@ typedef struct Map {
     ValueMap inner;
 } Map;
 
-typedef struct Tuple {
-    TypeId typeId;
-    u32 rc;
-    u32 len;
-    u32 padding;
-    Value firstValue;
-} Tuple;
-
 typedef struct List {
     TypeId typeId;
     u32 rc;
@@ -654,7 +645,6 @@ typedef union HeapObject {
     FuncSym func_sym;
     Map map;
     List list;
-    Tuple tuple;
     Pointer pointer;
     Int integer;
 } HeapObject;

@@ -6940,7 +6940,7 @@ pub const Sema = struct {
     placeholder3_t: *cy.Type = undefined,
     placeholder4_t: *cy.Type = undefined,
     placeholder5_t: *cy.Type = undefined,
-    tuple_t: *cy.Type = undefined,
+    placeholder6_t: *cy.Type = undefined,
     option_int_t: *cy.Type = undefined,
 
     future_tmpl: *cy.sym.Template,

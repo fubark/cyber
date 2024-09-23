@@ -154,7 +154,6 @@ pub const HeapObject = extern union {
         start: *HeapObject,
         next: ?*HeapObject,
     },
-    tuple: Tuple,
     list: List,
     listIter: ListIterator,
     table: Table,
@@ -232,18 +231,6 @@ pub const Type = extern struct {
     typeId: cy.TypeId align(8),
     rc: u32,
     type: cy.TypeId,
-};
-
-pub const Tuple = extern struct {
-    typeId: cy.TypeId,
-    rc: u32,
-    len: u32,
-    padding: u32,
-    firstValue: Value,
-
-    pub fn getElemsPtr(self: *Tuple) [*]Value {
-        return @ptrCast(&self.firstValue);
-    }
 };
 
 pub const Range = extern struct {
@@ -1050,25 +1037,6 @@ pub fn allocHostObject(vm: *cy.VM, typeId: cy.TypeId, numBytes: usize) !*align(8
         };
         return @ptrFromInt(@intFromPtr(obj) + 8);
     }
-}
-
-pub fn allocTuple(vm: *cy.VM, elems: []const Value) !Value {
-    var obj: *HeapObject = undefined;
-    if (elems.len <= 3) {
-        obj = try allocPoolObject(vm);
-    } else {
-        obj = try allocExternalObject(vm, elems.len * 8 + 16);
-    }
-    obj.tuple = .{
-        .typeId = bt.Tuple,
-        .rc = 1,
-        .len = @intCast(elems.len),
-        .padding = undefined,
-        .firstValue = undefined,
-    };
-    const dst = obj.tuple.getElemsPtr()[0..elems.len];
-    @memcpy(dst, elems);
-    return Value.initPtr(obj);
 }
 
 /// Reuse `Object` so that address_of refers to the first element for both structs and arrays.
@@ -1881,16 +1849,6 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
     }
     const typeId = obj.getTypeId();
     switch (typeId) {
-        bt.Tuple => {
-            for (obj.tuple.getElemsPtr()[0..obj.tuple.len]) |it| {
-                cy.arc.release2(vm, it, gc, res);
-            }
-            if (obj.tuple.len <= 3) {
-                freePoolObject(vm, obj);
-            } else {
-                freeExternalObject(vm, obj, (2 + obj.tuple.len) * @sizeOf(Value), gc);
-            }
-        },
         bt.Range => {
             freePoolObject(vm, obj);
         },

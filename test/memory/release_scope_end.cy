@@ -1,7 +1,7 @@
 type S:
     value any
 
-    func foo(self):
+    fn foo(self):
         var a = S{value=123}
         if false:
             var a = S{value=123}

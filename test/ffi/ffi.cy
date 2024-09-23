@@ -95,7 +95,7 @@ t.eq(lib['testBool'](false), false)
 -- Callback.
 ffi = os.newFFI()
 ffi.cfunc('testCallback', .{symbol.int, symbol.int, symbol.funcPtr}, symbol.int)
-var add = func(a int, b int) int:
+var add = fn(a int, b int) int:
     return a + b
 lib = ffi.bindLib(libPath)
 var cadd = ffi.bindCallback(add, .{symbol.int, symbol.int}, symbol.int)

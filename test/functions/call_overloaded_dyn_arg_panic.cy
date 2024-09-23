@@ -1,7 +1,7 @@
-func foo(a int):
+fn foo(a int):
     pass
 
-func foo(a bool):
+fn foo(a bool):
     pass
 
 dyn arg = '123'
@@ -10,8 +10,8 @@ foo(arg)
 --cytest: error
 --panic: Can not find compatible function for call: `foo(string)`.
 --Functions named `foo`:
---    func foo(int) void
---    func foo(bool) void
+--    fn foo(int) void
+--    fn foo(bool) void
 --
 --main:8:1 main:
 --foo(arg)

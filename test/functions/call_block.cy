@@ -2,14 +2,14 @@ use test
 
 var .n int = 0
 
-func foo(fn func()):
-    fn()
+fn foo(func fn()):
+    func()
 
-func fooRet(fn func() int) int:
-    return fn()
+fn fooRet(func fn() int) int:
+    return func()
 
-func fooRet2(a int, fn func() int) int:
-    return a + fn()
+fn fooRet2(a int, func fn() int) int:
+    return a + func()
 
 -- Expression stmt.
 n = 123

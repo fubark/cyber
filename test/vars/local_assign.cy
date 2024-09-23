@@ -15,7 +15,7 @@ var b = a + 2
 t.eq(b, 3)
 
 -- Using a variable that was conditionally assigned.
-var f = func() int:
+var f = fn() int:
     var a = 0
     if true:
         a = 1
@@ -23,7 +23,7 @@ var f = func() int:
 t.eq(f(), 1)
 
 -- Using a variable that was conditionally not assigned.
-f = func() int:
+f = fn() int:
     var a = 0
     if false:
         a = 1
@@ -31,7 +31,7 @@ f = func() int:
 t.eq(f(), 0)
 
 -- Using a variable that was assigned in a loop.
-f = func() int:
+f = fn() int:
     var a = 0
     for 2..3 -> i:
         a = i
@@ -39,7 +39,7 @@ f = func() int:
 t.eq(f(), 2)
 
 -- Using a variable that was not assigned in a loop.
-f = func() int:
+f = fn() int:
     var a = 0
     for 2..2 -> i:
         a = i

@@ -3,7 +3,7 @@ use t 'test'
 type Foo:
     a int
 
-func foo(a Foo) bool:
+fn foo(a Foo) bool:
     return a.a == 123
 
 -- Literal.

@@ -1,5 +1,5 @@
 var a = 123
-func foo():
+fn foo():
     a = 234
 
 --cytest: error

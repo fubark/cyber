@@ -173,7 +173,7 @@ test "ARC for passing call args." {
     // Temp list is not retained when passed into function.
     try eval(.{},
         \\use t 'test'
-        \\func foo(list List[int]) int:
+        \\fn foo(list List[int]) int:
         \\  return list[0]
         \\t.eq(foo({1}), 1)
     , struct { fn func(run: *Runner, res: EvalResult) !void {
@@ -190,7 +190,7 @@ test "ARC for function return values." {
         \\use t 'test'
         \\type S:
         \\  value any
-        \\func foo() S:
+        \\fn foo() S:
         \\  var a = S{value=123}
         \\  return a
         \\dyn s = foo()
@@ -206,7 +206,7 @@ test "ARC for function return values." {
     try eval(.{},
         \\type S:
         \\  value any
-        \\func foo() S:
+        \\fn foo() S:
         \\  return S{value=123}
         \\foo()
         \\return
@@ -302,7 +302,7 @@ test "ARC in loops." {
     // For iter initializes the temp value as the `any` type if the iterator has an `any` type,
     // so using it as a call arg will attempt to retain it.
     try eval(.{},
-        \\func foo(it int):
+        \\fn foo(it int):
         \\  pass
         \\var list = {123, 234} -- +1a +1 
         \\for list -> it:       -- +4a +4 (iterator is retained once, list is retained for iterator, and 2 retains for next() returning the child item.)
@@ -521,7 +521,7 @@ test "Stack trace unwinding." {
     // Function stack trace.
     try eval(.{ .silent = true },
         \\use test
-        \\func foo() int:
+        \\fn foo() int:
         \\  dyn a = 123
         \\  return 1 + a.foo
         \\foo()
@@ -544,14 +544,14 @@ test "Stack trace unwinding." {
             .chunkId = 1,
             .line = 3,
             .col = 15,
-            .lineStartPos = 39,
+            .lineStartPos = 37,
         });
         try eqStackFrame(trace.frames[1], .{
             .name = "main",
             .chunkId = 1,
             .line = 4,
             .col = 0,
-            .lineStartPos = 58,
+            .lineStartPos = 56,
         });
     }}.func);
 

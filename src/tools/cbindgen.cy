@@ -12,6 +12,10 @@ var POST_HEADER = '''
 
 var .args = os.parseArgs()
 var .prefix = args.get('stripPrefix') ?else 'DONT_MATCH'
+var .reserved_keywords = Map{
+    type = true,
+    'Fn' = true,
+}
 
 var out_path = args.get('o') ?else 'bindings.cy'
 
@@ -77,7 +81,7 @@ clang.visitChildren(cursor, cvisitorFunc(), cstate)
 out += "\nuse os\n"
 out += "var .ffi = load(lib)\n"
 out += "var .lib = Map{}\n"
-out += "func load(dep any) os.FFI:\n"
+out += "fn load(dep any) os.FFI:\n"
 out += "    var ffi_ = os.newFFI()\n"
 for structs -> name:
     var fieldTypes = structMap[name].fieldTypes as List[dyn]
@@ -90,19 +94,19 @@ for structs -> name:
         out += "    ffi_.cbind(${getApiName(name)}, .{})\n"
     else:
         out += "    ffi_.cbind(${getApiName(name)}, .{${finalFieldTypes.join(', ')}})\n"
-for funcs -> fn:
+for funcs -> func:
     var finalParams = List[dyn]{}
-    for fn.params as List[dyn] -> param:
+    for func.params as List[dyn] -> param:
         param = ensureBindType(param)
         if type(param) == string:
             finalParams.append(getApiName(param))
         else:
             finalParams.append(param as symbol)
-    var finalRet = ensureBindType(fn.ret)
+    var finalRet = ensureBindType(func.ret)
     if finalParams.len() == 0:
-        out += "    ffi_.cfunc('${fn.name}', .{}, ${finalRet})\n"
+        out += "    ffi_.cfunc('${func.name}', .{}, ${finalRet})\n"
     else:
-        out += "    ffi_.cfunc('${fn.name}', .{${finalParams.join(', ')}}, ${finalRet})\n"
+        out += "    ffi_.cfunc('${func.name}', .{${finalParams.join(', ')}}, ${finalRet})\n"
 var libPath = if (existingLibPath) 'libPath' else "'${args.get('libpath') ?else 'lib.dll'}'"
 out += "    lib = ffi_.bindLib(Option[string].some(${libPath}))\n"
 out += "    return ffi_\n\n"
@@ -120,7 +124,7 @@ os.writeFile(out_path, out)
 var .skipMap = Map{}
 var .macros = List[dyn]{}
 dyn .cvisitor = pointer.fromAddr(void, 0)
-func cvisitorFunc() *void: -- TODO: Remove after implementing zero init.
+fn cvisitorFunc() *void: -- TODO: Remove after implementing zero init.
     return (cvisitor as ExternFunc).ptr()
 
 -- Build output string.
@@ -140,7 +144,7 @@ var .funcs = List[dyn]{}
 -- var .arrays = List[dyn]{}     -- [n]typeName -> true
 -- var vars = List[dyn]{}            -- varName -> bindingType
 
-func getTranslationUnit(headerPath string) dyn:
+fn getTranslationUnit(headerPath string) dyn:
     var clang_args = args.getAll('clang')
 
     var cargs = os.malloc(8 * clang_args.len())
@@ -154,7 +158,7 @@ func getTranslationUnit(headerPath string) dyn:
         -- clang.CXTranslationUnit_DetailedPreprocessingRecord | clang.CXTranslationUnit_SkipFunctionBodies | clang.CXTranslationUnit_SingleFileParse)
         clang.CXTranslationUnit_DetailedPreprocessingRecord | clang.CXTranslationUnit_SkipFunctionBodies | clang.CXTranslationUnit_KeepGoing)
 
-func getMacrosTranslationUnit(hppPath string) dyn:
+fn getMacrosTranslationUnit(hppPath string) dyn:
     var clang_args = args.getAll('clang')
 
     var cargs = os.malloc(8 * clang_args.len())
@@ -183,7 +187,7 @@ type State:
     type StateType
     data dyn
 
-func visitor(cursor, parent clang.CXCursor, client_data *void) dyn:
+fn visitor(cursor, parent clang.CXCursor, client_data *void) dyn:
     var state = client_data.asObject() as State
     switch state.type
     case StateType.root:
@@ -201,7 +205,7 @@ func visitor(cursor, parent clang.CXCursor, client_data *void) dyn:
     else:
         throw error.Unsupported
 
-func rootVisitor(cursor, parent, state dyn) dyn:
+fn rootVisitor(cursor, parent, state dyn) dyn:
     var cxName = clang.getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
 
@@ -272,7 +276,7 @@ func rootVisitor(cursor, parent, state dyn) dyn:
             out += "\n"
         out += "\n"
 
-        out += "func ptrTo${getApiName(effName)}(ptr *void) ${getApiName(effName)}:\n"
+        out += "fn ptrTo${getApiName(effName)}(ptr *void) ${getApiName(effName)}:\n"
         out += "    return lib['ptrTo${getApiName(effName)}'](ptr)\n"
         out += "\n"
         skipChildren = false
@@ -296,13 +300,13 @@ func rootVisitor(cursor, parent, state dyn) dyn:
 
         var cxName = clang.getCursorSpelling(cursor)
         var funcName = fromCXString(cxName)
-        var fn = Function{}
-        fn.name = funcName
+        var func = Function{}
+        func.name = funcName
 
         var cxFunc = clang.getCursorType(cursor)
         var cxRet = clang.getResultType(cxFunc)
 
-        var outFunc = "func ${getApiName(funcName)}("
+        var outFunc = "fn ${getApiName(funcName)}("
 
         -- Parse params.
         var fnParamTypes = List[dyn]{}
@@ -345,9 +349,9 @@ func rootVisitor(cursor, parent, state dyn) dyn:
 
         out += outFunc
 
-        fn.params = fnParamTypes
-        fn.ret = retT
-        funcs.append(fn)
+        func.params = fnParamTypes
+        func.ret = retT
+        funcs.append(func)
 
     case clang.CXCursor_VarDecl:
         print "TODO: var ${name}"
@@ -358,7 +362,7 @@ func rootVisitor(cursor, parent, state dyn) dyn:
 
     return clang.CXChildVisit_Continue
 
-func structVisitor(cursor, parent, state dyn) dyn:
+fn structVisitor(cursor, parent, state dyn) dyn:
     var cxName = clang.getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
 
@@ -378,7 +382,7 @@ func structVisitor(cursor, parent, state dyn) dyn:
         print "unsupported ${cursor.kind} ${name}"
     return clang.CXChildVisit_Continue
 
-func enumVisitor(cursor, parent, state dyn) dyn:
+fn enumVisitor(cursor, parent, state dyn) dyn:
     var cxName = clang.getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
     var val = clang.getEnumConstantDeclValue(cursor)
@@ -386,7 +390,7 @@ func enumVisitor(cursor, parent, state dyn) dyn:
     out += "var .${getApiName(name)} int = ${val}\n"
     return clang.CXChildVisit_Continue
 
-func genMacros(headerPath string):
+fn genMacros(headerPath string):
     var absPath = os.realPath(headerPath)
 
     var hpp = ''
@@ -409,7 +413,7 @@ func genMacros(headerPath string):
     var cstate = clang.ffi.bindObjPtr(state)
     clang.visitChildren(cursor, cvisitorFunc(), cstate)
 
-func initListExpr(cursor, parent dyn, state State) dyn:
+fn initListExpr(cursor, parent dyn, state State) dyn:
     switch cursor.kind
     case clang.CXCursor_IntegerLiteral:
         var eval = clang.Cursor_Evaluate(cursor)
@@ -421,7 +425,7 @@ func initListExpr(cursor, parent dyn, state State) dyn:
 
     return clang.CXChildVisit_Continue
 
-func initVarVisitor(cursor, parent, state dyn) dyn:
+fn initVarVisitor(cursor, parent, state dyn) dyn:
     var cxName = clang.getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
 
@@ -441,7 +445,7 @@ func initVarVisitor(cursor, parent, state dyn) dyn:
 
     return clang.CXChildVisit_Continue
 
-func macrosRootVisitor(cursor, parent, state dyn) dyn:
+fn macrosRootVisitor(cursor, parent, state dyn) dyn:
     var cxName = clang.getCursorDisplayName(cursor)
     var name = fromCXString(cxName)
 
@@ -520,11 +524,11 @@ func macrosRootVisitor(cursor, parent, state dyn) dyn:
         throw error.Unsupported
     return clang.CXChildVisit_Continue
 
-func fromCXString(cxStr clang.CXString) string:
+fn fromCXString(cxStr clang.CXString) string:
     var cname = clang.getCString(cxStr)
     return cname.fromCstr(0)
 
-func toCyType(bind_type, forRet dyn) dyn:
+fn toCyType(bind_type, forRet dyn) dyn:
     if type(bind_type) == symbol:
         switch bind_type
         case symbol.voidPtr   : return '*void'
@@ -552,7 +556,7 @@ func toCyType(bind_type, forRet dyn) dyn:
                 return '*void'
         return getApiName(bind_type)
 
-func ensureBindType(val any) dyn:
+fn ensureBindType(val any) dyn:
     if type(val) == symbol:
         return val
     else type(val) == BindArray:
@@ -566,7 +570,7 @@ func ensureBindType(val any) dyn:
     else:
         throw error.Unsupported
 
-func getStruct(name any) dyn:
+fn getStruct(name any) dyn:
     if structMap.contains(name):
         return structMap[name]
     if aliases.contains(name):
@@ -574,7 +578,7 @@ func getStruct(name any) dyn:
         return structMap[alias]
     return false
 
-func toBindType(cxType dyn) dyn:
+fn toBindType(cxType dyn) dyn:
     switch cxType.kind
     case clang.CXType_Float             : return symbol.float
     case clang.CXType_Double            : return symbol.double
@@ -641,7 +645,7 @@ type BindArray:
     elem dyn
     n    int
 
-func toBindStr(bind_type dyn) string:
+fn toBindStr(bind_type dyn) string:
     if type(bind_type) == string:
         return getApiName(bind_type)
     else type(bind_type) == BindArray:
@@ -649,14 +653,12 @@ func toBindStr(bind_type dyn) string:
     else:
         return "${bind_type}"
 
-func getApiName(name string) string:
+fn getApiName(name string) string:
     if name.startsWith(prefix):
         name = name[prefix.len()..]
     if name.startsWith('_'):
         name = name[1..]
     return name
-
-var .reserved_keywords = Map{'type'=true}
 
 type Function:
     name dyn

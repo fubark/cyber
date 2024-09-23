@@ -3,14 +3,14 @@ use t 'test'
 -- Declare local and read it.
 var a = 1
 t.eq(a, 1)
-var foo = func():
+var foo = fn():
     -- Read captured `a` from main block.
     t.eq(a, 1)
 foo()
 
 -- New local `a` is created in block and is different from the main block.
 a = 1
-foo = func():
+foo = fn():
     -- New `a` in lambda.
     var a = 3
     t.eq(a, 3)
@@ -20,7 +20,7 @@ t.eq(a, 1)
 
 -- Assign to the main `a`
 a = 1
-foo = func():
+foo = fn():
     a = 3
     t.eq(a, 3)
 foo()
@@ -28,7 +28,7 @@ t.eq(a, 3)
 
 -- Subsequent assign to the main `a`
 a = 1
-foo = func():
+foo = fn():
     a = 3
     a = 4
     t.eq(a, 4)

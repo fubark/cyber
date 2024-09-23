@@ -1,47 +1,47 @@
 use t 'test'
 
-func Node.flatGet2(self) int:
+fn Node.flatGet2(self) int:
     return 123
 
 type Node:
     value int
 
-    func get(self) int:
+    fn get(self) int:
         return self.value
 
-    func get2(self, param int) int:
+    fn get2(self, param int) int:
         return self.value + param
 
-    func get3(self, param int, param2 int) int:
+    fn get3(self, param int, param2 int) int:
         return self.value + param - param2
 
-    func get4(self) int:
+    fn get4(self) int:
         var a = self.value
         return a + self.value
 
-    func get5(self) int:
-        var f = func() => self.value
+    fn get5(self) int:
+        var f = fn() => self.value
         return f()
 
-    func set(self):
+    fn set(self):
         self.value = 1
 
-    func set2(self, param int):
+    fn set2(self, param int):
         self.value += param
 
-    func set3(self, param int):
+    fn set3(self, param int):
         self.value = 1 + param
 
-func Node.getFn() int:
+fn Node.getFn() int:
     return 123
 
-func Node.getFn2(param int) int:
+fn Node.getFn2(param int) int:
     return 123 + param
 
-func Node.getFn3(param int, param2 int) int:
+fn Node.getFn3(param int, param2 int) int:
     return 123 + param - param2
 
-func Node.flatGet(self) int:
+fn Node.flatGet(self) int:
     return 123
 
 var n = Node{value=123}

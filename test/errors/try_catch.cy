@@ -1,9 +1,9 @@
 use t 'test'
 
-func fail() int:
+fn fail() int:
     throw error.Fail
 
-func happy(a int) int:
+fn happy(a int) int:
     return a
 
 -- No error.
@@ -15,7 +15,7 @@ catch:
 t.eq(a, 1)
 
 -- No error in function.
-func foo() int:
+fn foo() int:
     try:
         return 1
     catch:
@@ -37,7 +37,7 @@ catch err:
 t.eq(a, error.Fail)
 
 -- Error case in function
-func foo2() int:
+fn foo2() int:
     try:
         return fail()
     catch:
@@ -54,9 +54,9 @@ catch:
 t.eq(a, 0)
 
 -- Throw from nested call.
-func foo4():
+fn foo4():
     fail()   
-func foo3():
+fn foo3():
     foo4()
 try:
     foo3()
@@ -67,7 +67,7 @@ t.eq(a, 0)
 
 -- Catch invokes lambda release inst.
 -- If it's skipped, this test would report an unreleased ref count.
-var f = func():
+var f = fn():
     throw error.Fail
 try:
     f()
@@ -76,7 +76,7 @@ catch:
     pass
 
 -- Catch invokes lambda release inst one frame down.
-func foo5(f dyn):
+fn foo5(f dyn):
     f()
 try:
     foo5(f)

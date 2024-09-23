@@ -1,13 +1,13 @@
 use t 'test'
 
 -- Overload by number of params.
-func foo() int:
+fn foo() int:
     return 2 + 2
 
-func foo(n int) int:
+fn foo(n int) int:
     return 2 + n
 
-func foo(n int, m int) int:
+fn foo(n int, m int) int:
     return n * m
 
 t.eq(foo(), 4)

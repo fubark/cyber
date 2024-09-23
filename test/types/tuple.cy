@@ -20,7 +20,7 @@ test.eq(s.b, 'xyz')
 
 -- Struct tuple with functions.
 type S2 struct(a int, b string):
-    func foo(self):
+    fn foo(self):
         pass
 
 type O(a int, b string)
@@ -43,7 +43,7 @@ test.eq(o.b, 'xyz')
 
 -- Object tuple with functions.
 type O2(a int, b string):
-    func foo(self):
+    fn foo(self):
         pass
 
 --cytest: pass

@@ -1,6 +1,6 @@
 use t 'test'
 
-func fib(n int) int:
+fn fib(n int) int:
     if n < 2:
         return n
     return fib(n - 1) + fib(n - 2)
@@ -10,7 +10,7 @@ t.eq(res, 8)
 -- Recursion with long lived object.
 type S:
     n int
-func foo2(o ^S) int:
+fn foo2(o ^S) int:
     if o.n == 0:
         return 0
     var n = o.n
@@ -19,7 +19,7 @@ func foo2(o ^S) int:
 t.eq(foo2(^S{n=10}), 55) 
 
 -- Recursion with new objects.
-func foo3(o S) int:
+fn foo3(o S) int:
     if o.n == 0:
         return 0
     return o.n + foo3(S{n=o.n - 1})

@@ -1,9 +1,9 @@
 use t 'test'
 
-func foo(a Fiber) bool:
+fn foo(a Fiber) bool:
     return type(a) == Fiber
 
-func start() dyn:
+fn start() dyn:
     pass
 
 -- Literal.

@@ -1,13 +1,13 @@
 var b = 123
-var a = func(a int) int:
+var a = fn(a int) int:
     return a + b
 
-var fn func(int) int = a
+var func fn(int) int = a
 
 --cytest: error
---CompileError: Expected type `func(int) int`, got `Func(int) int`.
+--CompileError: Expected type `fn(int) int`, got `Fn(int) int`.
 --
 --main:5:24:
---var fn func(int) int = a
+--var func fn(int) int = a
 --                       ^
 --

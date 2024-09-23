@@ -1,7 +1,7 @@
 type S:
     a float
 
-func foo() dyn:
+fn foo() dyn:
     return 123
 
 var s = S{a=foo()}

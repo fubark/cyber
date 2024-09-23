@@ -12,7 +12,7 @@ t.eq(res, true)
 t.eq(res or 'cyber' == 'cyber', true)
 
 var .called = false
-func foo() bool:
+fn foo() bool:
     called = true
     return true
 

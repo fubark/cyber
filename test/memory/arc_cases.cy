@@ -20,7 +20,7 @@ while string(1) == '1':
     break
 
 -- Binary metatype operand does not reuse dst for temp since it is retained.
-var f = func() bool:
+var f = fn() bool:
     return float == bool
 f()
 

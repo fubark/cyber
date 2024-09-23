@@ -1,22 +1,22 @@
 use t 'test'
 
 -- Function with no params.
-func foo() int:
+fn foo() int:
     return 2 + 2
 t.eq(foo(), 4)
 
 -- Function with one param.
-func foo1(bar int) int:
+fn foo1(bar int) int:
     return bar + 2
 t.eq(foo1(1), 3)
 
 -- Function with multiple params.
-func foo2(bar int, inc int) int:
+fn foo2(bar int, inc int) int:
     return bar + inc
 t.eq(foo2(20, 10), 30)
 
 -- Static function wrapped in value.
-func foo3() int:
+fn foo3() int:
     return 5
 dyn bar = foo3
 t.eq(bar(), 5)
@@ -27,21 +27,21 @@ t.eq(try bar(2), error.InvalidSignature)
 -- Static function binding wrapped in value.
 var bar2 = toString
 t.eq(bar2(10), '10')
-func toString(val int) string:
+fn toString(val int) string:
     return string(val)
 
 -- Wrong number of arugments when invoking wrapped native func.
 t.eq(try bar('a', 123), error.InvalidSignature)
 
 -- Using as custom less function for sort.
-func less(a int, b int) bool:
+fn less(a int, b int) bool:
     return a < b
 var list = {3, 2, 1}
 list.sort(less)
 t.eqList(list, {1, 2, 3})
 
 -- Single line block.
-func foo5() int: return 2 + 2
+fn foo5() int: return 2 + 2
 t.eq(foo5(), 4)
 
 --cytest: pass

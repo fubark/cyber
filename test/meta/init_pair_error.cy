@@ -1,7 +1,7 @@
 type Foo:
     a Fiber
 
-    func $initPair(key string, value any):
+    fn $initPair(key string, value any):
         pass
 
 var f = Foo{a=123, b=234}

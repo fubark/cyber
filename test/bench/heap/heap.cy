@@ -5,25 +5,25 @@ var start = os.now()
 type Node:
     value  int
 
-func Heap.new() Heap:
+fn Heap.new() Heap:
     return Heap{nodes=.{}}
 
 type Heap:
     nodes List[Node]
 
-    func insert(self, n Node):
+    fn insert(self, n Node):
         var pos = self.nodes.len()
         self.nodes.append(n)
         self.siftUp(pos)
 
-    func siftUp(self, pos int):
+    fn siftUp(self, pos int):
         while pos != 0:
             var parent = (pos - 1) / 2
             if self.nodes[parent].value < self.nodes[pos].value:
                 self.swap(pos, parent)
                 pos = parent
 
-    func siftDown(self, pos int):
+    fn siftDown(self, pos int):
         while:
             var left = pos * 2 + 1
             if left >= self.nodes.len():
@@ -41,12 +41,12 @@ type Heap:
                 continue
             break
 
-    func swap(self, a, b int):
+    fn swap(self, a, b int):
         var temp = self.nodes[a]
         self.nodes[a] = self.nodes[b]
         self.nodes[b] = temp
 
-    func pop(self) Node:
+    fn pop(self) Node:
         var top = self.nodes[0]
         self.nodes[0] = self.nodes[self.nodes.len()-1]
         self.nodes.remove(self.nodes.len()-1)

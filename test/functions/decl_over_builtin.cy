@@ -2,7 +2,7 @@ use t 'test'
 
 var .a = 123
 
-func print(v int):
+fn print(v int):
     a = v
 
 print(1)

@@ -5,7 +5,7 @@ use test
 test.eq(varInt, 123)
 
 -- Namespace func.
-test.eq(fn(), 234)
+test.eq(func(), 234)
 
 -- Type.
 var v = Vec2{x=1, y=2}

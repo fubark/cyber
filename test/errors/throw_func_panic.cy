@@ -1,4 +1,4 @@
-func foo():
+fn foo():
     throw error.boom
 
 foo()

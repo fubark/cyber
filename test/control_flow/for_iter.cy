@@ -49,7 +49,7 @@ t.eq(sum, 6)
 
 -- Return expr inside loop body.
 list = {1, 2, 3}
-var f = func (arr List[int]) int:
+var f = fn (arr List[int]) int:
     for arr -> item:
         if item == 4:
             return 1

@@ -3,7 +3,7 @@ use t 'test'
 
 t.eq(a.varInt, 123)
 t.eq(checkIntArg(a.varTypedInt), 123)
-func checkIntArg(a int) int:
+fn checkIntArg(a int) int:
     return a
 
 -- Access Root.varList.
@@ -21,10 +21,10 @@ t.eq(a.varMap['c'], 3)
 t.eq(a.varFunc(), 345)
 t.eq(a.varFunc1(10), 11)
 t.eq(a.varFunc2(10, 20), 30)
-t.eq(typeOf(a.fn), func() int)
-t.eq(a.fn(), 234)
-t.eq(a.fn1(10), 11)
-t.eq(a.fn2(10, 20), 30)
+t.eq(typeOf(a.func), fn() int)
+t.eq(a.func(), 234)
+t.eq(a.func1(10), 11)
+t.eq(a.func2(10, 20), 30)
 
 -- Static var from another module is only initialized once.
 -- This tests that ResolvedSym.genStaticInitVisited
@@ -35,7 +35,7 @@ t.eq(a.initOnce, 1)
 t.eq(a.varDepRes, 123)
 
 -- Declare a function with the same name in `a.cy`
-func sameFuncName() int:
+fn sameFuncName() int:
     return 123
 t.eq(a.sameFuncName(), sameFuncName())
 

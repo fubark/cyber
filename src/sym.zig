@@ -1207,12 +1207,12 @@ pub fn writeSymName(s: *cy.Sema, w: anytype, sym: *cy.Sym, config: SymFormatConf
                 try s.writeTypeName(w, s.getType(arg.type.type), config.from);
                 return;
             } else if (template == s.func_ptr_tmpl) {
-                try w.writeAll("func");
+                try w.writeAll("fn");
                 const sig: cy.sema.FuncSigId = @intCast(variant.args[0].asBoxInt());
                 try s.writeFuncSigStr(w, sig, config.from);
                 return;
             } else if (template == s.func_union_tmpl) {
-                try w.writeAll("Func");
+                try w.writeAll("Fn");
                 const sig: cy.sema.FuncSigId = @intCast(variant.args[0].asBoxInt());
                 try s.writeFuncSigStr(w, sig, config.from);
                 return;

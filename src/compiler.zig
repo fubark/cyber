@@ -465,7 +465,7 @@ pub const Compiler = struct {
                                 const func = mod.getTraitMethodImpl(self, member) orelse {
                                     const sig_str = try self.sema.allocFuncSigStr(member.func.funcSigId, true, mod.chunk);
                                     defer self.alloc.free(sig_str);
-                                    return mod.chunk.reportErrorFmt("`{}` does not implement `func {}{}` from `{}`.", &.{
+                                    return mod.chunk.reportErrorFmt("`{}` does not implement `fn {}{}` from `{}`.", &.{
                                         v(type_.name()), v(member.func.name()), v(sig_str), 
                                         v(impl.trait.base.name()) }, @ptrCast(decl.impl_withs[i].trait));
                                 };

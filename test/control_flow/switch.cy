@@ -56,7 +56,7 @@ t.eq(res, 2)
 -- t.eq(res, 2)
 
 -- Switch in a nested block. Tests parsing.
-func foo():
+fn foo():
     var a = 123
     dyn res = 0
     switch a
@@ -115,7 +115,7 @@ res = switch list.a:
 t.eq(res, 1)
 
 -- Switch case returns.
-func foo2() int:
+fn foo2() int:
     switch 'one':
         case 'one': return 1
         else      : return -1

@@ -29,7 +29,7 @@ a = 1 + a
 t.eq(a, 1)
 
 -- Right function call.
-func foo() int:
+fn foo() int:
     return 123
 t.eq(1 + foo(), 124)
 

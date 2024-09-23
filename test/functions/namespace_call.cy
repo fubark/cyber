@@ -3,7 +3,7 @@ use test
 type FooS struct:
     a int
 
-func FooS.$call(i int) int:
+fn FooS.$call(i int) int:
     return i
 
 test.eq(FooS(10), 10)
@@ -11,7 +11,7 @@ test.eq(FooS(10), 10)
 type FooCS cstruct:
     a int
 
-func FooCS.$call(i int) int:
+fn FooCS.$call(i int) int:
     return i
 
 test.eq(FooCS(10), 10)
@@ -19,7 +19,7 @@ test.eq(FooCS(10), 10)
 type FooO:
     a int
 
-func FooO.$call(i int) int:
+fn FooO.$call(i int) int:
     return i
 
 test.eq(FooO(10), 10)
@@ -27,15 +27,15 @@ test.eq(FooO(10), 10)
 type FooE enum:
     case a
 
-func FooE.$call(i int) int:
+fn FooE.$call(i int) int:
     return i
 
 test.eq(FooE(10), 10)
 
 type FooT trait:
-    func foo(self) void
+    fn foo(self) void
 
-func FooT.$call(i int) int:
+fn FooT.$call(i int) int:
     return i
 
 test.eq(FooT(10), 10)

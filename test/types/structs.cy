@@ -27,7 +27,7 @@ test.eq(a.val, 123)
 
 -- Pass call argument by value.
 -- Original value remains unchanged.
-func foo(a Foo):
+fn foo(a Foo):
     test.eq(a.val, 123)
     a.val = 234
 a.val = 123

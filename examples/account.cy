@@ -2,19 +2,19 @@ type Account:
     name    string
     balance float
 
-    func deposit(self, amt float):
+    fn deposit(self, amt float):
         self.balance += amt
 
-    func withdraw(self, amt float):
+    fn withdraw(self, amt float):
         if amt > self.balance:
             throw error.InsufficientFunds
         else:
             self.balance -= amt
 
-    func show(self, title string):
+    fn show(self, title string):
         print "$(title), $(self.name), $(self.balance)"
 
-func Account.new(name string) Account:
+fn Account.new(name string) Account:
     return Account{name=name, balance=0.0}
 
 var a = Account.new('Savings')

@@ -6,8 +6,8 @@ use varInt -> a.varInt
 test.eq(varInt, 123)
 
 -- Static func.
-use fn -> a.fn
-test.eq(fn(), 234)
+use func -> a.func
+test.eq(func(), 234)
 
 -- Type.
 use Vec2 -> a.Vec2

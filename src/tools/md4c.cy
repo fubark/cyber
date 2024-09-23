@@ -66,7 +66,7 @@ type ATTRIBUTE_S:
     substr_types *void -- const MD_TEXTTYPE *
     substr_offsets *void -- const MD_OFFSET *
 
-func ptrToATTRIBUTE_S(ptr *void) ATTRIBUTE_S:
+fn ptrToATTRIBUTE_S(ptr *void) ATTRIBUTE_S:
     return lib['ptrToATTRIBUTE_S'](ptr)
 
 type ATTRIBUTE -> ATTRIBUTE_S
@@ -75,7 +75,7 @@ type BLOCK_UL_DETAIL_S:
     is_tight int -- int
     mark CHAR -- MD_CHAR
 
-func ptrToBLOCK_UL_DETAIL_S(ptr *void) BLOCK_UL_DETAIL_S:
+fn ptrToBLOCK_UL_DETAIL_S(ptr *void) BLOCK_UL_DETAIL_S:
     return lib['ptrToBLOCK_UL_DETAIL_S'](ptr)
 
 type BLOCK_UL_DETAIL -> BLOCK_UL_DETAIL_S
@@ -85,7 +85,7 @@ type BLOCK_OL_DETAIL_S:
     is_tight int -- int
     mark_delimiter CHAR -- MD_CHAR
 
-func ptrToBLOCK_OL_DETAIL_S(ptr *void) BLOCK_OL_DETAIL_S:
+fn ptrToBLOCK_OL_DETAIL_S(ptr *void) BLOCK_OL_DETAIL_S:
     return lib['ptrToBLOCK_OL_DETAIL_S'](ptr)
 
 type BLOCK_OL_DETAIL -> BLOCK_OL_DETAIL_S
@@ -95,7 +95,7 @@ type BLOCK_LI_DETAIL_S:
     task_mark CHAR -- MD_CHAR
     task_mark_offset OFFSET -- MD_OFFSET
 
-func ptrToBLOCK_LI_DETAIL_S(ptr *void) BLOCK_LI_DETAIL_S:
+fn ptrToBLOCK_LI_DETAIL_S(ptr *void) BLOCK_LI_DETAIL_S:
     return lib['ptrToBLOCK_LI_DETAIL_S'](ptr)
 
 type BLOCK_LI_DETAIL -> BLOCK_LI_DETAIL_S
@@ -103,7 +103,7 @@ type BLOCK_LI_DETAIL -> BLOCK_LI_DETAIL_S
 type BLOCK_H_DETAIL_S:
     level int -- unsigned int
 
-func ptrToBLOCK_H_DETAIL_S(ptr *void) BLOCK_H_DETAIL_S:
+fn ptrToBLOCK_H_DETAIL_S(ptr *void) BLOCK_H_DETAIL_S:
     return lib['ptrToBLOCK_H_DETAIL_S'](ptr)
 
 type BLOCK_H_DETAIL -> BLOCK_H_DETAIL_S
@@ -113,7 +113,7 @@ type BLOCK_CODE_DETAIL_S:
     lang ATTRIBUTE -- MD_ATTRIBUTE
     fence_char CHAR -- MD_CHAR
 
-func ptrToBLOCK_CODE_DETAIL_S(ptr *void) BLOCK_CODE_DETAIL_S:
+fn ptrToBLOCK_CODE_DETAIL_S(ptr *void) BLOCK_CODE_DETAIL_S:
     return lib['ptrToBLOCK_CODE_DETAIL_S'](ptr)
 
 type BLOCK_CODE_DETAIL -> BLOCK_CODE_DETAIL_S
@@ -123,7 +123,7 @@ type BLOCK_TABLE_DETAIL_S:
     head_row_count int -- unsigned int
     body_row_count int -- unsigned int
 
-func ptrToBLOCK_TABLE_DETAIL_S(ptr *void) BLOCK_TABLE_DETAIL_S:
+fn ptrToBLOCK_TABLE_DETAIL_S(ptr *void) BLOCK_TABLE_DETAIL_S:
     return lib['ptrToBLOCK_TABLE_DETAIL_S'](ptr)
 
 type BLOCK_TABLE_DETAIL -> BLOCK_TABLE_DETAIL_S
@@ -131,7 +131,7 @@ type BLOCK_TABLE_DETAIL -> BLOCK_TABLE_DETAIL_S
 type BLOCK_TD_DETAIL_S:
     align ALIGN -- MD_ALIGN
 
-func ptrToBLOCK_TD_DETAIL_S(ptr *void) BLOCK_TD_DETAIL_S:
+fn ptrToBLOCK_TD_DETAIL_S(ptr *void) BLOCK_TD_DETAIL_S:
     return lib['ptrToBLOCK_TD_DETAIL_S'](ptr)
 
 type BLOCK_TD_DETAIL -> BLOCK_TD_DETAIL_S
@@ -140,7 +140,7 @@ type SPAN_A_DETAIL_S:
     href ATTRIBUTE -- MD_ATTRIBUTE
     title ATTRIBUTE -- MD_ATTRIBUTE
 
-func ptrToSPAN_A_DETAIL_S(ptr *void) SPAN_A_DETAIL_S:
+fn ptrToSPAN_A_DETAIL_S(ptr *void) SPAN_A_DETAIL_S:
     return lib['ptrToSPAN_A_DETAIL_S'](ptr)
 
 type SPAN_A_DETAIL -> SPAN_A_DETAIL_S
@@ -149,7 +149,7 @@ type SPAN_IMG_DETAIL_S:
     src ATTRIBUTE -- MD_ATTRIBUTE
     title ATTRIBUTE -- MD_ATTRIBUTE
 
-func ptrToSPAN_IMG_DETAIL_S(ptr *void) SPAN_IMG_DETAIL_S:
+fn ptrToSPAN_IMG_DETAIL_S(ptr *void) SPAN_IMG_DETAIL_S:
     return lib['ptrToSPAN_IMG_DETAIL_S'](ptr)
 
 type SPAN_IMG_DETAIL -> SPAN_IMG_DETAIL_S
@@ -157,7 +157,7 @@ type SPAN_IMG_DETAIL -> SPAN_IMG_DETAIL_S
 type SPAN_WIKILINK_S:
     target ATTRIBUTE -- MD_ATTRIBUTE
 
-func ptrToSPAN_WIKILINK_S(ptr *void) SPAN_WIKILINK_S:
+fn ptrToSPAN_WIKILINK_S(ptr *void) SPAN_WIKILINK_S:
     return lib['ptrToSPAN_WIKILINK_S'](ptr)
 
 type SPAN_WIKILINK_DETAIL -> SPAN_WIKILINK_S
@@ -173,20 +173,20 @@ type PARSER_S:
     debug_log *void -- void (*)(const char *, void *)
     syntax *void -- void (*)(void)
 
-func ptrToPARSER_S(ptr *void) PARSER_S:
+fn ptrToPARSER_S(ptr *void) PARSER_S:
     return lib['ptrToPARSER_S'](ptr)
 
 type PARSER -> PARSER_S
 
 type RENDERER -> PARSER
 
-func md_parse(text *void, size SIZE, parser *void, userdata *void) int:
+fn md_parse(text *void, size SIZE, parser *void, userdata *void) int:
     return lib['md_parse'](text, size, parser, userdata)
 
 use os
 var .ffi = load(lib)
 var .lib = Map{}
-func load(dep any) os.FFI:
+fn load(dep any) os.FFI:
     var ffi_ = os.newFFI()
     ffi_.cbind(ATTRIBUTE_S, .{symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.voidPtr})
     ffi_.cbind(BLOCK_UL_DETAIL_S, .{symbol.int, symbol.char})

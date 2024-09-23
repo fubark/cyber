@@ -1,7 +1,7 @@
-func toNum(a int):
+fn toNum(a int):
     pass
 
-func foo(a int):
+fn foo(a int):
     pass
 
 foo = toNum

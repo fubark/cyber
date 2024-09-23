@@ -11,9 +11,9 @@ catch:
 ''')
 
 -- errorReport(), one frame before and one frame after.
-func foo2():
+fn foo2():
     throw error.Boom
-func foo():
+fn foo():
     try:
         foo2()
     catch:

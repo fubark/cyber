@@ -90,7 +90,7 @@ hljs.registerLanguage('cy', function() {
     return {
     keywords: {
         keyword: [
-            'func', 'mod', 'for', 'coinit', 'coresume', 'coyield', 'use', 'await', 'context', 'def',
+            'fn', 'mod', 'for', 'coinit', 'coresume', 'coyield', 'use', 'await', 'context', 'def',
             'return', 'if', 'else', 'as', 'while', 'var', 'let', 'dynobject', 'object', 'struct', 'cstruct', 'with', 'caught',
             'break', 'continue', 'switch', 'pass', 'or', 'and', 'not', 'is', 'error', 'throws', 'move',
             'true', 'false', 'none', 'throw', 'try', 'catch', 'recover', 'enum', 'type', 'case', 'trait'
@@ -157,11 +157,11 @@ type Link:
     title string
     text  string
 
-func resetState():
+fn resetState():
     state = State.main
     bufContent = false
 
-func enterBlock(block_t md.BLOCKTYPE, detail_p *void, userdata *void) int:
+fn enterBlock(block_t md.BLOCKTYPE, detail_p *void, userdata *void) int:
     if parsingToc:
         switch block_t
         case md.BLOCK_HTML:
@@ -228,7 +228,7 @@ func enterBlock(block_t md.BLOCKTYPE, detail_p *void, userdata *void) int:
         print "unsupported enter block ${block_t}"
         return 1
 
-func leaveBlock(block_t md.BLOCKTYPE, detail_p *void, userdata *void) int:
+fn leaveBlock(block_t md.BLOCKTYPE, detail_p *void, userdata *void) int:
     if parsingToc:
         if block_t == md.BLOCK_HTML:
             if textContent.startsWith('<!--') and !isNone(textContent.find('TOC-END')):
@@ -309,7 +309,7 @@ func leaveBlock(block_t md.BLOCKTYPE, detail_p *void, userdata *void) int:
         print "unsupported leave block ${block_t}"
         return 1
 
-func enterSpan(span_t md.SPANTYPE, detail_p *void, userdata *void) int:
+fn enterSpan(span_t md.SPANTYPE, detail_p *void, userdata *void) int:
     switch span_t
     case md.SPAN_EM:
         out += '<em>'
@@ -341,7 +341,7 @@ func enterSpan(span_t md.SPANTYPE, detail_p *void, userdata *void) int:
         print "unsupported enter span ${span_t}"
         return 1
 
-func leaveSpan(span_t md.SPANTYPE, detail *void, userdata *void) int:
+fn leaveSpan(span_t md.SPANTYPE, detail *void, userdata *void) int:
     switch span_t
     case md.SPAN_EM:
         out += '</em>'
@@ -367,7 +367,7 @@ func leaveSpan(span_t md.SPANTYPE, detail *void, userdata *void) int:
         print "unsupported leave span ${span_t}"
         return 1
 
-func text(text_t md.SPANTYPE, ptr *void, len int, userdata *void) int:
+fn text(text_t md.SPANTYPE, ptr *void, len int, userdata *void) int:
     var str = ptr.getString(0, len)
     if bufContent:
         textContent += str
@@ -376,7 +376,7 @@ func text(text_t md.SPANTYPE, ptr *void, len int, userdata *void) int:
         out += str
     return 0
 
-func getAttrText(attr dyn) string:
+fn getAttrText(attr dyn) string:
     if attr.size == 0:
         return ''
     return (attr.text as *void).getString(0, attr.size)
@@ -385,7 +385,7 @@ type ModulePair:
     path    string
     section string
 
-func genFuncDecl(decl Map) string:
+fn genFuncDecl(decl Map) string:
     if (decl['hidden']): return ''
     
     var docLine = decl.get('docs') ?else ''
@@ -396,9 +396,9 @@ func genFuncDecl(decl Map) string:
         else:
             params.append("${param['name']}")
     var paramsStr = params.join(', ')
-    return "> `func ${decl['name']}(${paramsStr}) ${decl['ret']}`\n>\n>${docLine}\n\n"
+    return "> `fn ${decl['name']}(${paramsStr}) ${decl['ret']}`\n>\n>${docLine}\n\n"
 
-func genDocsModules():
+fn genDocsModules():
     var modules = {
         ModulePair{path='../src/builtins/builtins_vm.cy', section='core'},
         ModulePair{path='../src/builtins/cy.cy', section='cy'},
@@ -427,7 +427,7 @@ func genDocsModules():
 
     os.writeFile("${curDir}/docs-modules.md", md)
 
-func genDecl(decl Map) string:
+fn genDecl(decl Map) string:
     var gen = ''
     switch decl['type']
     case 'funcDecl':

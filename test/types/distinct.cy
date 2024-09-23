@@ -5,7 +5,7 @@ type Vec2:
     y float
 
 type Vec Vec2:
-    func add(self) float:
+    fn add(self) float:
         return self.x + self.y
 
 var v = Vec{x=1, y=2}

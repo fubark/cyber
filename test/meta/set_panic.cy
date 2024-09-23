@@ -1,7 +1,7 @@
 type Foo:
     a    int
 
-    func $set(self, name string, val any):
+    fn $set(self, name string, val any):
         panic('error')
 
 var f = Foo{a=123}

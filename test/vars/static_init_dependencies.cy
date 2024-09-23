@@ -19,14 +19,14 @@ t.eq(c2, 567)
 -- Dependent read runs after initial declaration.
 var .a3 = load(b3)
 var .b3 = 123
-func load(arg int) dyn:
+fn load(arg int) dyn:
     b3 = 234
 t.eq(b3, 234)
 
 -- Static vars are loaded even if they are not referenced.
 var .b4 = 123
 var .a4 = load()
-func load() dyn:
+fn load() dyn:
     b4 = 234
 t.eq(b4, 234)
 

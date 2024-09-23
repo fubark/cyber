@@ -1,9 +1,9 @@
 use t 'test'
 
-func fail() dyn:
+fn fail() dyn:
     throw error.Fail
 
-func happy(a dyn) dyn:
+fn happy(a dyn) dyn:
     return a
 
 -- Returns result.

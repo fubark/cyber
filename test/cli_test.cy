@@ -84,7 +84,7 @@ use os
 os.stderr.write('foo')
 ", 'foo')
 
-func runExpectErr(src, expErr):
+fn runExpectErr(src, expErr):
     os.writeFile('temp.cy', src)
     var cyber = os.exePath()
     var res = os.execCmd([ cyber, 'temp.cy'])
@@ -94,7 +94,7 @@ func runExpectErr(src, expErr):
     t.eq(res.exited, 0)
     t.eq(res.err, expErr)
 
-func runExpectOut(src, expOut):
+fn runExpectOut(src, expOut):
     os.writeFile('temp.cy', src)
     var cyber = os.exePath()
     var res = os.execCmd([ cyber, 'temp.cy'])
@@ -104,7 +104,7 @@ func runExpectOut(src, expOut):
     t.eq(res.exited, 0)
     t.eq(res.out, expOut)
 
-func runPipeInput(cmd, src):
+fn runPipeInput(cmd, src):
     os.writeFile('temp.cy', src)
     var cyber = os.exePath()
     let res = none
@@ -117,7 +117,7 @@ func runPipeInput(cmd, src):
         print res.err
     t.eq(res.exited, 0)
 
-func runArgs(args, src):
+fn runArgs(args, src):
     os.writeFile('temp.cy', src)
     var cyber = os.exePath()
     var cmd = [ cyber, 'temp.cy' ]

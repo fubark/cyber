@@ -1,7 +1,7 @@
 type S:
     a float
 
-func foo():
+fn foo():
     return 123
 
 var s = S{a=false}

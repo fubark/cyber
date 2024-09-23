@@ -613,7 +613,16 @@ pub const Parser = struct {
         const start = self.next_pos;
         var token = self.peek();
         switch (token.tag()) {
-            .dyn_k, .void_k, .struct_k, .enum_k, .type_k, .error_k, .symbol_k, .none_k, .Func_k, .ident => {
+            .dyn_k,
+            .void_k,
+            .struct_k,
+            .enum_k,
+            .type_k,
+            .error_k,
+            .symbol_k,
+            .none_k,
+            .Fn_k,
+            .ident => {
                 self.advance();
                 return @ptrCast(try self.newSpanNode(.ident, start));
             },
@@ -868,8 +877,8 @@ pub const Parser = struct {
             .void_k,
             .type_k,
             .symbol_k,
-            .func_k,
-            .Func_k,
+            .fn_k,
+            .Fn_k,
             .error_k,
             .ident => {
                 return try self.parseTermExpr(.{});
@@ -2048,7 +2057,7 @@ pub const Parser = struct {
                             .allow_decl = config.allow_decls,
                         });
                     },
-                    .func_k => {
+                    .fn_k => {
                         self.advance();
                         return self.parseFuncDecl(.{
                             .attrs = &.{},
@@ -2074,8 +2083,8 @@ pub const Parser = struct {
                     .allow_decl = config.allow_decls,
                 });
             },
-            .func_k => {
-                return self.parseFuncDecl(.{ .attrs = &.{}, .hidden = false, .allow_decl = config.allow_decls });
+            .fn_k => {
+                return self.parseFuncDecl(.{ .attrs = &.{}, .hidden = false, .allow_decl = config.allow_decls});
             },
             .if_k => {
                 return try self.parseIfStatement();
@@ -2218,7 +2227,7 @@ pub const Parser = struct {
         }
 
         const attrs: []*ast.Attribute = @ptrCast(try self.ast.dupeNodes(&.{attr}));
-        if (self.peek().tag() == .func_k) {
+        if (self.peek().tag() == .fn_k) {
             return self.parseFuncDecl(.{ .hidden = hidden, .attrs = attrs, .allow_decl = allow_decls });
         } else if (self.peek().tag() == .def_k) {
             return self.parseDefDecl(.{ .attrs = attrs, .hidden = hidden, .allow_decl = allow_decls });
@@ -3280,10 +3289,10 @@ pub const Parser = struct {
                     .pos = self.tokenPos(start),
                 });
             },
-            .func_k => {
+            .fn_k => {
                 return @ptrCast(try self.parseFuncLambdaOrType());
             },
-            .Func_k => {
+            .Fn_k => {
                 return @ptrCast(try self.parseFuncUnionType());
             },
             .left_paren => {
@@ -3837,7 +3846,7 @@ fn toBinExprOp(op: cy.tokenizer.TokenType) ?cy.ast.BinaryExprOp {
         .minus_right_angle, .case_k, .catch_k, .coinit_k, .colon, .comma, .context_k, .continue_k, .coresume_k, .coyield_k, .cstruct_k,
         .dec, .def_k, .dot, .dot_bang, .dot_question, .dot_dot, .dot_star,
         .else_k, .enum_k, .err, .error_k, .equal, .equal_right_angle,
-        .false_k, .float, .for_k, .func_k, .Func_k,
+        .false_k, .float, .for_k, .fn_k, .Fn_k,
         .hex, .ident, .if_k, .mod_k, .indent,
         .left_brace, .left_bracket, .left_paren, .dyn_k,
         .minus_double_dot, .new_line, .none_k, .not_k, .oct, .pass_k, .underscore, .pound, .question,

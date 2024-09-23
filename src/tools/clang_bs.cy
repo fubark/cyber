@@ -75,108 +75,108 @@ type CXType:
     kind int
     data [2]*void
 
-func getNumDiagnostics(a *void) int:
+fn getNumDiagnostics(a *void) int:
     return lib['clang_getNumDiagnostics'](a)
 
-func getDiagnostic(a *void, i int) *void:
+fn getDiagnostic(a *void, i int) *void:
     return lib['clang_getDiagnostic'](a, i)
 
-func getDiagnosticSpelling(a *void) *void:
+fn getDiagnosticSpelling(a *void) *void:
     return lib['clang_getDiagnosticSpelling'](a)
 
-func parseTranslationUnit(CIdx *void, source_filename *void, command_line_args *void, num_command_line_args int, unsaved_files *void, num_unsaved_files int, options int) *void:
+fn parseTranslationUnit(CIdx *void, source_filename *void, command_line_args *void, num_command_line_args int, unsaved_files *void, num_unsaved_files int, options int) *void:
     return lib['clang_parseTranslationUnit'](CIdx, source_filename, command_line_args, num_command_line_args, unsaved_files, num_unsaved_files, options)
 
-func getTranslationUnitCursor(a *void) CXCursor:
+fn getTranslationUnitCursor(a *void) CXCursor:
     return lib['clang_getTranslationUnitCursor'](a)
 
-func visitChildren(parent CXCursor, visitor *void, client_data *void) int:
+fn visitChildren(parent CXCursor, visitor *void, client_data *void) int:
     return lib['clang_visitChildren'](parent, visitor, client_data)
 
-func createIndex(excludeDeclarationsFromPCH int, displayDiagnostics int) *void:
+fn createIndex(excludeDeclarationsFromPCH int, displayDiagnostics int) *void:
     return lib['clang_createIndex'](excludeDeclarationsFromPCH, displayDiagnostics)
 
-func getCursorDisplayName(a CXCursor) CXString:
+fn getCursorDisplayName(a CXCursor) CXString:
     return lib['clang_getCursorDisplayName'](a)
 
-func getCursorLocation(a CXCursor) CXSourceLocation:
+fn getCursorLocation(a CXCursor) CXSourceLocation:
     return lib['clang_getCursorLocation'](a)
 
-func getCString(str CXString) *void:
+fn getCString(str CXString) *void:
     return lib['clang_getCString'](str)
 
-func getCursorSpelling(a CXCursor) CXString:
+fn getCursorSpelling(a CXCursor) CXString:
     return lib['clang_getCursorSpelling'](a)
 
-func getCursorType(C CXCursor) CXType:
+fn getCursorType(C CXCursor) CXType:
     return lib['clang_getCursorType'](C)
 
-func Location_isInSystemHeader(location CXSourceLocation) int:
+fn Location_isInSystemHeader(location CXSourceLocation) int:
     return lib['clang_Location_isInSystemHeader'](location)
 
-func Cursor_isMacroBuiltin(C CXCursor) int:
+fn Cursor_isMacroBuiltin(C CXCursor) int:
     return lib['clang_Cursor_isMacroBuiltin'](C)
 
-func Cursor_isMacroFunctionLike(C CXCursor) int:
+fn Cursor_isMacroFunctionLike(C CXCursor) int:
     return lib['clang_Cursor_isMacroFunctionLike'](C)
 
-func Cursor_getVarDeclInitializer(cursor CXCursor) CXCursor:
+fn Cursor_getVarDeclInitializer(cursor CXCursor) CXCursor:
     return lib['clang_Cursor_getVarDeclInitializer'](cursor)
 
-func getTypedefDeclUnderlyingType(C CXCursor) CXType:
+fn getTypedefDeclUnderlyingType(C CXCursor) CXType:
     return lib['clang_getTypedefDeclUnderlyingType'](C)
 
-func getNumElements(T CXType) int:
+fn getNumElements(T CXType) int:
     return lib['clang_getNumElements'](T)
 
-func getElementType(T CXType) CXType:
+fn getElementType(T CXType) CXType:
     return lib['clang_getElementType'](T)
 
-func getTypeDeclaration(T CXType) CXCursor:
+fn getTypeDeclaration(T CXType) CXCursor:
     return lib['clang_getTypeDeclaration'](T)
 
-func getTypedefName(CT CXType) CXString:
+fn getTypedefName(CT CXType) CXString:
     return lib['clang_getTypedefName'](CT)
 
-func getTypeSpelling(CT CXType) CXString:
+fn getTypeSpelling(CT CXType) CXString:
     return lib['clang_getTypeSpelling'](CT)
 
-func getResultType(T CXType) CXType:
+fn getResultType(T CXType) CXType:
     return lib['clang_getResultType'](T)
 
-func getNumArgTypes(T CXType) int:
+fn getNumArgTypes(T CXType) int:
     return lib['clang_getNumArgTypes'](T)
 
-func getArgType(T CXType, i int) CXType:
+fn getArgType(T CXType, i int) CXType:
     return lib['clang_getArgType'](T, i)
 
-func Cursor_getArgument(C CXCursor, i int) CXCursor:
+fn Cursor_getArgument(C CXCursor, i int) CXCursor:
     return lib['clang_Cursor_getArgument'](C, i)
 
-func getEnumConstantDeclValue(C CXCursor) int:
+fn getEnumConstantDeclValue(C CXCursor) int:
     return lib['clang_getEnumConstantDeclValue'](C)
 
-func Cursor_Evaluate(C CXCursor) *void:
+fn Cursor_Evaluate(C CXCursor) *void:
     return lib['clang_Cursor_Evaluate'](C)
 
-func EvalResult_getKind(E *void) int:
+fn EvalResult_getKind(E *void) int:
     return lib['clang_EvalResult_getKind'](E)
 
-func EvalResult_dispose(E *void) void:
+fn EvalResult_dispose(E *void) void:
     lib['clang_EvalResult_dispose'](E)
 
-func EvalResult_getAsLongLong(E *void) int:
+fn EvalResult_getAsLongLong(E *void) int:
     return lib['clang_EvalResult_getAsLongLong'](E)
 
-func EvalResult_getAsDouble(E *void) float:
+fn EvalResult_getAsDouble(E *void) float:
     return lib['clang_EvalResult_getAsDouble'](E)
 
-func EvalResult_getAsStr(E *void) *void:
+fn EvalResult_getAsStr(E *void) *void:
     return lib['clang_EvalResult_getAsStr'](E)
 
 var .ffi = load(lib) -- Make lib dependent on ffi.
 var .lib = Map{} 
-func load(dep any) os.FFI:
+fn load(dep any) os.FFI:
     var ffi_ = os.newFFI()
 
     -- enum CXTypeKind kind, void *data[2]

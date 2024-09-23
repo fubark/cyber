@@ -4,7 +4,7 @@ type Bar:
 type Foo:
     field Bar
 
-func foo(a Foo):
+fn foo(a Foo):
     pass
 
 --cytest: pass

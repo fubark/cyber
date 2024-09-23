@@ -14,7 +14,7 @@
     a int
  
 -- Function declaration.
--func foo():
+-fn foo():
     pass
 
 -- Variable declaration.

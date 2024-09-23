@@ -1,5 +1,5 @@
 var a = 123
-func foo():
+fn foo():
     return a
 
 -- Capture local from static function is not allowed.

@@ -1,4 +1,4 @@
-func foo() int:
+fn foo() int:
     return 1.2
 
 --cytest: error

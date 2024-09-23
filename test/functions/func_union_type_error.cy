@@ -1,12 +1,12 @@
-func foo(a int) int:
+fn foo(a int) int:
     return a
 
-var fn Func(int) float = foo
+var func Fn(int) float = foo
 
 --cytest: error
---CompileError: Expected type `Func(int) float`, got `func(int) int`.
+--CompileError: Expected type `Fn(int) float`, got `fn(int) int`.
 --
 --main:4:26:
---var fn Func(int) float = foo
+--var func Fn(int) float = foo
 --                         ^
 --

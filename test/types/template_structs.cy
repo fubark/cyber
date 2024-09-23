@@ -8,17 +8,17 @@ var o = Foo2[int]{a=123}
 type Foo[T type] struct:
     a T
 
-    func foo(a T) T:
+    fn foo(a T) T:
         var rt_type = T
         var ret T = a
         return ret
 
-    func get(self) T:
+    fn get(self) T:
         var rt_type = T
         var ret T = self.a
         return ret
 
-    func set(self, a T):
+    fn set(self, a T):
         self.a = a
 
 -- Static function.

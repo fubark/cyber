@@ -12,11 +12,11 @@ t.eq(a, 123)
 t.eq(typeOf(a), int)
 
 -- Invoke as function.
-var .a1 = func() int:
+var .a1 = fn() int:
     return 123
-var .a2 = func(a int) int:
+var .a2 = fn(a int) int:
     return a + 1
-var .a3 = func(a int, b int) int:
+var .a3 = fn(a int, b int) int:
     return a + b
 t.eq(a1(), 123)
 t.eq(a2(123), 124)

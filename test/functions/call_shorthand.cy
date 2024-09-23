@@ -1,6 +1,6 @@
 use test
 
-func foo(n int) int:
+fn foo(n int) int:
     return n + 1
 
 -- Expression statement.
@@ -10,7 +10,7 @@ foo 123
 var a = foo 123
 test.eq(a, 124)
 
-func foo2(n int, m int) int:
+fn foo2(n int, m int) int:
     return n + m
 
 -- Multiple arguments

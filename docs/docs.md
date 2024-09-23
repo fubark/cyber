@@ -130,7 +130,7 @@ if true: print 123
 ```
 Since blocks require at least one statement, use `pass` as a placeholder statement:
 ```cy
-func foo():
+fn foo():
     pass
 ```
 
@@ -168,7 +168,7 @@ a = 'hello'          --> CompileError. Expected `float`, got `string`.
 ### Variable scopes.
 Blocks create a new variable scope. Variables declared in the current scope will take precedence over any parent variables with the same name:
 ```cy
-func foo():
+fn foo():
     var a = 234
 
     if true:
@@ -188,7 +188,7 @@ Static variables are declared with `var` like local variables, but a namespace m
 ```cy
 var .a = 123
 
-func foo():
+fn foo():
     print a     --> 123
 ```
 The `.` prefix is used to reference the current module's namespace.
@@ -269,7 +269,7 @@ To reference a context variable in a different source file, redeclare it with th
 
 context MyInt int
 
-func foo():
+fn foo():
     print MyInt    --> 123
 ```
 Since this is a redeclaration, an assignment statement is not allowed.
@@ -311,7 +311,7 @@ There are `29` general keywords. This list categorizes them:
 - [Control Flow](#control-flow): `if` `else` `switch` `case` `while` `for` `break` `continue` `pass`
 - [Operators](#operators): `or` `and` `not`
 - [Variables](#variables): [`var`](#local-variables) [`context`](#context-variables)
-- [Functions](#functions): `func` `return`
+- [Functions](#functions): `fn` `return`
 - [Fibers](#fibers): `coinit` `coyield` `coresume`
 - [Async](#async): `await`
 - [Types](#custom-types): `type`  `as`
@@ -482,7 +482,7 @@ var erased any = 123
 add(1, erased as int)     --> Success.
 print(erased as string)   --> panic: Can not cast `int` to `string`.
 
-func add(a int, b int):
+fn add(a int, b int):
     return a + b
 ```
 
@@ -1071,7 +1071,7 @@ var colors = {}:
     .red   = 0xFF0000
     .green = 0x00FF00
     .blue  = 0x0000FF
-    .dump  = func (c):
+    .dump  = fn (c):
         print c.red
         print c.green
         print c.blue
@@ -1087,7 +1087,7 @@ var colors = {}:
 Unlike `dyn`, `any` is statically typed and performs type checks at compile-time.
 `any` type can hold any value, but copying it to narrowed type destination will result in a compile error:
 ```cy
-func square(i int):
+fn square(i int):
     return i * i
 
 var a any = 123
@@ -1243,10 +1243,10 @@ type Node:
     value int
     next  ?^Node
 
-    func inc(self, n int):
+    fn inc(self, n int):
         self.value += n
 
-    func incAndPrint(self):
+    fn incAndPrint(self):
         self.inc(321)
         print value
 
@@ -1261,7 +1261,7 @@ type Vec2:
     x float
     y float
 
-    func setX(self, x float):
+    fn setX(self, x float):
         self.x = x
 ```
 
@@ -1272,14 +1272,14 @@ type Vec2:
     y float
 
     -- Pass by value.
-    func add(self Vec2, o Vec2):
+    fn add(self Vec2, o Vec2):
         return Vec2{
             x = self.x + o.x,
             y = self.y + o.y,
         }
 
     -- Pass by safe reference.
-    func addMut(self ^Vec2, o Vec2):
+    fn addMut(self ^Vec2, o Vec2):
         self.x += o.x
         self.y += o.y
 ```
@@ -1287,7 +1287,7 @@ When the type specifier is `^T`, it is no different than omitting the type speci
 
 Methods can be declared outside of the type declaration as a flat declaration:
 ```cy
-func Vec2.getX(self):
+fn Vec2.getX(self):
     return self.x
 ```
 
@@ -1298,7 +1298,7 @@ type Node:
     value int
     next  ?^Node
 
-    func new():
+    fn new():
         return Node{value=123, next=none}
 
 var n = Node.new()
@@ -1306,7 +1306,7 @@ var n = Node.new()
 
 Type functions can also be declared outside of the type block using a flat declaration:
 ```cy
-func Node.new():
+fn Node.new():
     return Node{value=123, next=none}
 
 var n = Node.new()
@@ -1327,7 +1327,7 @@ Type embedding facilitates type composition by using the namespace of a child fi
 type Base:
     a int
 
-    func double(self) int:
+    fn double(self) int:
         return a * 2
 
 type Container:
@@ -1372,7 +1372,7 @@ type Vec3(x, y, z float)
 Function declarations can still be declared under the type:
 ```cy
 type Vec2(x float, y float):
-    func scale(self, s float):
+    fn scale(self, s float):
         self.x *= s
         self.y *= s
 ```
@@ -1507,7 +1507,7 @@ Functions can be declared under the new type's namespace:
 use math
 
 type Pos2 Vec2:
-    func blockDist(self, o Pos2):
+    fn blockDist(self, o Pos2):
         var dx = math.abs(o.x - x)
         var dy = math.abs(o.y - y)
         return dx + dy
@@ -1531,7 +1531,7 @@ var b Vec2 = a as Vec2
 A trait type defines a common interface for implementing types. A trait type is declared with the `trait` keyword:
 ```cy
 type Shape trait:
-    func area(self) float
+    fn area(self) float
 ```
 
 Types can implement a trait using the `with` keyword:
@@ -1540,7 +1540,7 @@ type Circle:
     with Shape
     radius float
 
-    func area(self) float:
+    fn area(self) float:
         return 3.14 * self.radius^2
 
 type Rectangle:
@@ -1548,7 +1548,7 @@ type Rectangle:
     width  float
     height float
 
-    func area(self) float:
+    fn area(self) float:
         return self.width * self.height
 ```
 A type that intends to implement a trait but does not satisfy the trait's interface results in a compile error.
@@ -1569,7 +1569,7 @@ type MyContainer[T type]:
     id    int
     value T
 
-    func get(self) T:
+    fn get(self) T:
         return self.value
 ```
 
@@ -1670,7 +1670,7 @@ type Vec2 cstruct:
     x float
     y float
 
-    func add(self, o Vec2):
+    fn add(self, o Vec2):
         return Vec2{
             x = self.x+o.x,
             y = self.y+o.y,
@@ -1687,7 +1687,7 @@ type Vec2 cstruct:
     x float
     y float
 
-    func add(*self, o Vec2):
+    fn add(*self, o Vec2):
         self.x += o.x
         self.y += o.y
 
@@ -1711,7 +1711,7 @@ print v                 --> Vec2{x=4, y=2}
 ```
 The reference is a [pointer](#pointers) type that points to the `C struct`:
 ```
-func scale(a *Vec2, n float):
+fn scale(a *Vec2, n float):
     a.x *= n
     a.y *= n
 
@@ -1722,7 +1722,7 @@ print v                 --> Vec2{x=40, y=20}
 ## Pointers.
 A `pointer` is a reference to a memory location. Its type is denoted as `*T` where `T` is the type that the pointer references in memory:
 ```cy
-func setName(p *Person, name [*]byte):
+fn setName(p *Person, name [*]byte):
     p.name = name
 
 var p = Person{}
@@ -2055,11 +2055,11 @@ The `try catch` statement, `try else` and `try` expressions provide a way to cat
 In Cyber, there are first-class functions (or function values) and static functions.
 
 ## Static functions.
-Functions are declared with the `func` keyword and must have a name.
+Functions are declared with the `fn` keyword and must have a name.
 ```cy
 use math
 
-func dist(x0 float, y0 float, x1 float, y1 float) float:
+fn dist(x0 float, y0 float, x1 float, y1 float) float:
     var dx = x0-x1
     var dy = y0-y1
     return math.sqrt(dx^2 + dy^2)
@@ -2075,7 +2075,7 @@ Functions are initially static, but they can be passed around as a lambda or ass
 -- Assigning to a local variable.
 var bar = dist
 
-func squareDist(dist dyn, size float) float:
+fn squareDist(dist dyn, size float) float:
     return dist(0.0, 0.0, size, size)
     
 -- Passing `dist` as an argument.
@@ -2086,7 +2086,7 @@ Functions can only return one value. However, the value can be destructured: *Pl
 ```cy
 use {cos, sin} 'math'
 
-func compute(rad float) [2]float:
+fn compute(rad float) [2]float:
     return .{cos(rad), sin(rad)}
 
 var {x, y} = compute(pi)
@@ -2095,13 +2095,13 @@ var {x, y} = compute(pi)
 ## Function overloading.
 Functions can be overloaded by their type signature:
 ```cy
-func foo() int:
+fn foo() int:
     return 2 + 2
 
-func foo(n int) int:
+fn foo(n int) int:
     return 10 + n
 
-func foo(n int, m int) int:
+fn foo(n int, m int) int:
     return n * m
 
 print foo()         --> 4
@@ -2124,15 +2124,15 @@ foo((word, prefix) => prefix + toUpper(word))
 canvas.onUpdate = delta_ms => print delta_ms
 ```
 
-Lambdas that need a block of statements can be declared with the `func` keyword without a name.
+Lambdas that need a block of statements can be declared with the `fn` keyword without a name.
 ```cy
 -- Assigning lambda block to a variable.
-var add = func (a int, b int) int:
+var add = fn (a int, b int) int:
     return a + b
 
 -- Passing a lambda block as an argument.
 canvas.onUpdate():
-    ..func (delta_ms):
+    ..fn (delta_ms):
         print delta_ms
 ```
 Passing a lambda block as a call argument is only possible in a call block. *Planned Feature* See [Function calls](#function-calls).
@@ -2141,14 +2141,14 @@ Passing a lambda block as a call argument is only possible in a call block. *Pla
 Lambdas can capture local variables from parent blocks. This example shows the lambda `f` capturing `a` from the main scope: *Incomplete, only variables one parent block away can be captured.*
 ```cy
 var a = 1
-var f = func() int:
+var f = fn () int:
     return a + 2
 print f()         --> 3
 ```
 
 The following lambda expression captures `a` from the function `add`:
 ```cy
-func add():
+fn add():
     var a = 123
     return b => a + b
 var addTo = add()
@@ -2158,7 +2158,7 @@ print addTo(10)   --> 133
 Like static variables, static functions can not reference local variables outside of their scope:
 ```cy
 var a = 1
-func foo():
+fn foo():
     print a       --> CompileError: Undeclared variable `a`.
 ```
 
@@ -2166,34 +2166,34 @@ func foo():
 > _Planned Feature_
 
 ## Function types.
-A function type is denoted as `func(P1, P2, ...) R` where `P`s are parameter types and `R` is the return type in addition to any function modifiers:
+A function type is denoted as `fn(P1, P2, ...) R` where `P`s are parameter types and `R` is the return type in addition to any function modifiers:
 ```cy
-type AddFn -> func(int, int) int
+type AddFn -> fn(int, int) int
 ```
 
 Function types can include optional parameter names:
 ```cy
-type AddFn -> func(a int, b int) int
+type AddFn -> fn(a int, b int) int
 ```
 If one parameter has a name, the other parameters must also have names.
 Parameter names do not alter the function signature and only serve to document the function type.
 
 Only static functions can be assigned to a function type:
 ```cy
-func add(a int, b int) int:
+fn add(a int, b int) int:
     return a + b
 
 var fn AddFn = add
 fn(10, 20)         --> 30
 ```
 
-Similarily, a function union type is denoted as `Func(P1, P2, ...) R` and can store static functions, lambdas, and closures:
+Similarily, a function union type is denoted as `Fn(P1, P2, ...) R` and can store static functions, lambdas, and closures:
 ```cy
 var c = 5
-func addClosure(a int, b int) int:
+fn addClosure(a int, b int) int:
     return a + b + c
 
-var fn Func(int, int) int = add
+var fn Fn(int, int) int = add
 fn(10, 20)         --> 30
 fn = addClosure 
 fn(10, 20)         --> 35
@@ -2202,15 +2202,15 @@ fn(10, 20)         --> 35
 Function types declared in template parameters represent **function symbol** types.
 A function symbol can only be used at compile-time. It can be expanded to a runtime function:
 ```cy
-type IntMap[K type, HASH func(K) int]
+type IntMap[K type, HASH fn(K) int]
     ints [*]int
 
     -- Probing omitted.
-    func get(self, key K) int:
+    fn get(self, key K) int:
         var slot = HASH(key) % self.ints.len
         return self.ints[slot]
 
-func my_str_hash(s string) int:
+fn my_str_hash(s string) int:
     return s.len()
 
 var m = IntMap[string, my_str_hash]{}
@@ -2219,7 +2219,7 @@ var m = IntMap[string, my_str_hash]{}
 ## Parameter groups.
 When multiple parameters share the same type they can be declared together in a sequence:
 ```cy
-func sum(a, b, c int) int
+fn sum(a, b, c int) int
     return a + b + c
 ```
 
@@ -2248,7 +2248,7 @@ Functions can be invoked without parentheses. This only works for calls that tak
 -- Calls the function `dist`.
 var d = dist 100, 100, 200, 200
 
-func foo():       
+fn foo():       
     return 4
 
 var r = foo       -- Returns the function itself as a value.
@@ -2259,7 +2259,7 @@ r = foo()         -- Calls the function `random`.
 ### Call block syntax.
 The call block appends a lambda to a call expression's last argument:
 ```cy
-func Button(name string, size int, on_click func() void) ButtonConfig:
+fn Button(name string, size int, on_click fn() void) ButtonConfig:
     return .{
         name = name,
         size = size,
@@ -2276,7 +2276,7 @@ Button('Count', 10, ():
 ### Compile-time call.
 Any function can be invoked at compile-time using `#` before the arguments:
 ```cy
-func fib(n int) int:
+fn fib(n int) int:
     if n < 2:
         return n
     return fib(n - 1) + fib(n - 2)
@@ -2296,7 +2296,7 @@ There is no need for `#` if the caller is already in a compile-time context: *Co
 ## Function templates.
 Function declarations can include template parameters to create a function template:
 ```cy
-func add[T](T type, a T, b T) T:
+fn add[T](T type, a T, b T) T:
     return a + b
 ```
 Only the template parameter names are declared.
@@ -2320,7 +2320,7 @@ print addInt(1, 2)      --> 3
 ### Infer param type.
 When a template parameter is first encountered in a function parameter's type specifier, it's inferred from the argument's type:
 ```cy
-func add[T](a T, b T) T:
+fn add[T](a T, b T) T:
     return a + b
 
 print add(1, 2)         --> 3
@@ -2330,7 +2330,7 @@ In the above example, `add[int]` and `add[float]` were inferred from the functio
 
 Nested template parameters can also be inferred:
 ```cy
-func set[K, V](m Map[K, V], key K, val V):
+fn set[K, V](m Map[K, V], key K, val V):
     m.set(key, val)
 ```
 
@@ -2455,7 +2455,7 @@ Circular imports are allowed. In the following example, `main.cy` and `foo.cy` i
 -- main.cy
 use foo 'foo.cy'
 
-func printB():
+fn printB():
     foo.printC()
 
 foo.printA()
@@ -2463,10 +2463,10 @@ foo.printA()
 -- foo.cy
 use main 'main.cy'
 
-func printA():
+fn printA():
     main.printB()
 
-func printC():
+fn printC():
     print 'done'
 ```
 Static variable declarations from imports can have circular references. Read more about this in [Static variables](#static-variables).
@@ -2482,7 +2482,7 @@ print cos(pi)
 ## Exporting.
 All symbols are exported when the script's module is loaded. However, symbols can be declared with a [hidden](#symbol-visibility) modifier.
 ```cy
-func foo():         -- Exported static function.
+fn foo():         -- Exported static function.
     print 123
 
 var .bar = 234      -- Exported static variable.
@@ -2508,7 +2508,7 @@ All symbols have public visibility. However, when a symbol is declared with a `-
     a int
     b int
 
--func add(a int, b int) int:
+-fn add(a int, b int) int:
     return a + b
 ```
 Furthermore, the symbol is excluded when its module is included using `use *`.
@@ -2636,7 +2636,6 @@ t.eq(a, 444)
 * [Declare functions.](#declare-functions)
 * [Bind library.](#bind-library)
   * [Search path.](#search-path)
-  * [Configuration.](#configuration)
   * [Finalizer.](#finalizer)
 * [Mappings.](#mappings)
 * [Bind to Cyber type.](#bind-to-cyber-type)
@@ -2673,10 +2672,10 @@ int add(int a, int b) {
 ```
 
 ## Bind library.
-`bindLib` accepts the path to the library and returns a object which can be used to invoke the functions declared from `cfunc`:
+`bindLib` accepts the path to the library and returns a mapping of symbol names to C-functions:
 ```cy
 dyn lib = ffi.bindLib('./mylib.so')
-lib.add(123, 321)
+lib['add'](123, 321)
 ```
 Note that `dyn` is used to allow `lib` to be used dynamically since the type is unknown at compile-time.
 
@@ -2684,7 +2683,6 @@ Note that `dyn` is used to allow `lib` to be used dynamically since the type is 
 If the path argument to `bindLib` is just a filename, the search steps for the library is specific to the operating system. Provide an absolute (eg. '/foo/mylib.so') or relative (eg. './mylib.so') path to load from a direct location instead. When the path argument is `none`, it loads the currently running executable as a library allowing you to bind exported functions from the Cyber CLI or your own application/runtime.
 
 ### Configuration.
-By default `bindLib` returns an anonymous object with the binded C-functions as methods. This is convenient for invoking functions using the method call syntax. If a config is passed into `bindLib` as the second argument, `gen_table=true` makes `bindLib` return a table instead with the binded C-functions as Cyber functions.
 
 ### Finalizer.
 The resulting object of `bindLib` holds a reference to an internal TCCState which owns the loaded JIT code.
@@ -2828,16 +2826,16 @@ var err = MyError.nameTooLong
 Use the `throw` keyword to throw errors. 
 A thrown error continues to bubble up the call stack until it is caught by a `try` block or `try` expression.
 ```cy
-func fail():
+fn fail():
     throw error.Oops      -- Throws an error with the symbol `#Oops`
 
-func fail2():
+fn fail2():
     throw 123             -- panic: Can only throw an `error` value.
 ```
 
 `throw` can also be used as an expression.
 ```cy
-func fail():
+fn fail():
     var a = false or throw error.False
 ```
 
@@ -2909,13 +2907,13 @@ The throws modifier `!` indicates that a function contains a throwing expression
 
 The modifier is attached to the function return type as a prefix:
 ```cy
-func foo() !void:
+fn foo() !void:
     throw error.Failure
 ```
 
 This declaration indicates the function can either return an `int` type or throw an error:
 ```cy
-func result(cond bool) !int:
+fn result(cond bool) !int:
     if cond:
         return 123
     else:
@@ -2925,7 +2923,7 @@ func result(cond bool) !int:
 ### Throws check.
 The compiler requires a throws modifier if the function contains an uncaught throwing expression: *Planned Feature*
 ```cy
-func foo(a int) int:
+fn foo(a int) int:
     if a == 10:
         throw error.Failure   --> CompileError.
     else:
@@ -2956,7 +2954,7 @@ An unexpected error is an error that is not meant to be handled at runtime.
 ### Panics.
 The builtin `panic` is used as a fail-fast mechanism to quickly exit the current fiber with an error payload:
 ```cy
-func kaboom():
+fn kaboom():
     panic(error.danger)
 
 kaboom()     -- Script ends and prints the stack trace.
@@ -3160,7 +3158,7 @@ The `coinit` keyword creates and returns a new fiber using a function as the ent
 ```cy
 var count = 0
 
-var foo = func ():
+var foo = fn ():
     count += 1
     coyield
     count += 1
@@ -3181,7 +3179,7 @@ Arguments after the callee are passed into the entry function:
 ```cy
 var count = 0
 
-var increment = func (inc):
+var increment = fn (inc):
     count += inc
 
 var task = coinit(increment, 5)
@@ -3194,7 +3192,7 @@ When the fiber is created, the arguments are saved inside the fiber's stack. Onc
 To reset a fiber to its initial state, invoke `reset()`. *Planned Feature*
 When reset, the existing stack is unwinded, the program counter returns to the starting point, and the state is set to `.init`:
 ```cy
-func fib(n int) int:
+fn fib(n int) int:
     coyield n
     if n < 2:
         return n
@@ -3251,11 +3249,11 @@ Referencing parent variables from the fiber block automatically captures them ju
 ### Pause and resume.
 `coyield` can be used anywhere in a fiber's call stack to pause execution and return to the previous fiber.
 ```cy
-func foo():
+fn foo():
     print 'foo'
     bar()
 
-func bar():
+fn bar():
     -- Nested coyield in call stack.
     coyield
     print 'bar'
@@ -3265,7 +3263,7 @@ coresume task
 ```
 `coresume` also returns the resulting value.
 ```cy
-func foo():
+fn foo():
     return 123
 
 var task = coinit(foo)
@@ -3277,7 +3275,7 @@ print(coresume task)    -- '123'
 ### Fiber state.
 Use `Fiber.status()` to get the current state of the fiber.
 ```cy
-func foo():
+fn foo():
     coyield
     print 'done'
 
@@ -3334,7 +3332,7 @@ print(a + 1)    --> error: `$infix+` does not exist in `dyn`.
 
 Although dynamic dispatch isn't allowed, a `dyn` callee can be invoked as a function at runtime:
 ```cy
-dyn a = func(a, b, c int):
+dyn a = fn (a, b, c int):
     return a + b + c
 
 print a(1, 2, 3)     --> 6
@@ -3404,13 +3402,13 @@ type Vec2:
     x float
     y float
 
-    func '$infix+'(self, o Vec2) Vec2:
+    fn '$infix+'(self, o Vec2) Vec2:
         return Vec2{
             x = x + o.x,
             y = y + o.y,
         }
 
-    func '$prefix-'(self) Vec2:
+    fn '$prefix-'(self) Vec2:
         return Vec2{x=-x, y=-y}
 
 var a = Vec2{x=1, y=2}
@@ -3423,10 +3421,10 @@ Some special operators have their own name. This example overloads the `index` o
 type MyCollection:
     arr List
 
-    func $index(self, idx):
+    fn $index(self, idx):
         return arr[idx * 2]
 
-    func $setIndex(self, idx, val):
+    fn $setIndex(self, idx, val):
         arr[idx * 2] = val 
 
 var a = MyCollection{arr={1, 2, 3, 4}}
@@ -3472,7 +3470,7 @@ type Vec2:
     x float
     y float
 
-func Vec2.$call(x float, y float) Vec2:
+fn Vec2.$call(x float, y float) Vec2:
     return Vec2{x=x, y=y}
 
 var v = Vec2(1, 2)
@@ -3486,7 +3484,7 @@ The `$initPair` method overrides the record initializer.
 After an instance of the type is created from its default record initializer, this method is invoked for each key-value pair in the record literal:
 ```cy
 type MyMap:
-    func $initPair(self, key any, value any) void:
+    fn $initPair(self, key any, value any) void:
         print "${key} = ${value}"
 
 var m = MyMap{a=123, b=234}
@@ -3499,7 +3497,7 @@ var m = MyMap{a=123, b=234}
 The `$get` method allows overriding field accesses for **undeclared fields**:
 ```cy
 type Foo:
-    func $get(self, name string):
+    fn $get(self, name string):
         return name.len()
 
 var f = Foo{}
@@ -3511,7 +3509,7 @@ print f.hello    --> 5
 The `$set` method allows overriding field assignments for **undeclared fields**:
 ```cy
 type Foo:
-    func $set(self, name string, value any):
+    fn $set(self, name string, value any):
         print "setting ${name} ${value}"
 
 var f = Foo{}
@@ -3524,7 +3522,7 @@ Declare a `$missing` method as a fallback when a method was not found in an inst
 ```cy
 type A:
 
-    func $missing(self, args...):
+    fn $missing(self, args...):
         return args.len
 
 var a = A{}
@@ -3598,7 +3596,7 @@ Builtin types are used internally by the compiler to define it's own primitive t
 >
 
 ### Builtin functions.
-> `func genLabel(name string)`
+> `fn genLabel(name string)`
 >
 >Emits a label during codegen for debugging.
 
@@ -3710,15 +3708,15 @@ Only one module loader can be active and is set using `clSetModuleLoader`:
 bool modLoader(CLVM* vm, CLStr spec, CLModule* res) {
     if (strncmp("my_mod", spec.buf, spec.len) == 0) {
         CLStr src = STR(
-            "@host func add(a float, b float) float\n"
+            "@host fn add(a float, b float) float\n"
             "@host var .MyConstant float\n"
             "@host var .MyList     List[dyn]\n"
             "\n"
             "@host\n"
             "type MyNode _:\n"
-            "    @host func asList(self) any"
+            "    @host fn asList(self) any"
             "\n"
-            "@host func MyNode.new(a any, b any) MyNode\n"
+            "@host fn MyNode.new(a any, b any) MyNode\n"
         );
         *res = clCreateModule(vm, spec, src);
         CLModuleConfig config = (CLModuleConfig){
@@ -3986,7 +3984,7 @@ Cyber comes with a supplemental cycle detector that can optionally run at the en
 
 The cycle detector can also be invoked manually with `collectCycles`: *Incomplete Feature: Only the main fiber stack is cleaned up at the moment.*
 ```cy
-func foo():
+fn foo():
     -- Create a reference cycle.
     var a = List[dyn]{}
     var b = List[dyn]{}
@@ -4147,7 +4145,7 @@ type Foo struct:
     c *Bar
     d [*]float
 
-    func copy(self) Foo:
+    fn copy(self) Foo:
         return .{
             a = self.a,
             b = self.b,
@@ -4184,7 +4182,7 @@ type Foo struct:
     a int
     b string
 
-    func clone(self) Foo:
+    fn clone(self) Foo:
         return .{
             a = self.a + 1,
             b = self.b,
@@ -4243,7 +4241,7 @@ A borrow type is denoted as `&T` where `T` is the type that the borrow points to
 ```cy
 var a = 123
 
-func inc(a &int):
+fn inc(a &int):
     a.* = a.* + 1
 ```
 
@@ -4297,7 +4295,7 @@ type Pair struct:
     a int
     b int
 
-    func sum(self) int:
+    fn sum(self) int:
         return self.a + self.b
 ```
 
@@ -4307,7 +4305,7 @@ type Pair struct:
     a int
     b int
 
-    func sum(!self) int:
+    fn sum(!self) int:
         return self.a + self.b
 ```
 

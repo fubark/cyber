@@ -14,7 +14,7 @@ lib['testAdd'](123, '321')
 
 --cytest: error
 --panic: Incompatible call arguments `(int, string)`
---to the lambda `func (int, int) int`.
+--to the lambda `fn(int, int) int`.
 --
 --main:13:1 main:
 --lib['testAdd'](123, '321')

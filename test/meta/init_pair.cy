@@ -4,7 +4,7 @@ var .keys = List[string]{}
 var .values = List[any]{}
 
 type Foo:
-    func $initPair(self, key string, value any):
+    fn $initPair(self, key string, value any):
         keys.append(key)
         values.append(value)
 

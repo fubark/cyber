@@ -1,14 +1,14 @@
 use test
 
-type Foo struct:
+type Foo:
     a int
 
     -- Test using `Self` in function signature.
-    func foo() Self:
+    fn foo() Self:
         return .{a=123}
 
     -- Test using `Self` inside function body.
-    func foo2() Self:
+    fn foo2() Self:
         var new = Self{a=123}
         return new
 

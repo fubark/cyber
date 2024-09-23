@@ -1,7 +1,7 @@
 use t 'test'
 
 -- GC is able to detect reference cycle.
-func foo():
+fn foo():
     var a = List[dyn]{}
     var b = List[dyn]{}
     a.append(b as any)
@@ -14,7 +14,7 @@ var res = collectCycles()
 t.eq(res['num_obj_freed'], 2)
 
 -- Reference cycle with child non cyclable.
-func foo2():
+fn foo2():
     var a = List[dyn]{}
     var b = List[dyn]{}
     a.append(b as any)
@@ -31,7 +31,7 @@ type T:
     c any
     d any
     e any
-func foo3():
+fn foo3():
     var a = ^T{}
     var b = ^T{}
     a.c = b

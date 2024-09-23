@@ -2368,9 +2368,8 @@ fn panicIncompatibleLambdaSig(vm: *cy.VM, args: []const Value, cstrFuncSigId: se
 
     return vm.panicFmt(
         \\Incompatible call arguments `({})`
-        \\to the lambda `func {}`.
-    ,
-        &.{
+        \\to the lambda `fn{}`.
+        , &.{
             v(argsSigStr), v(cstrFuncSigStr),
         },
     );
@@ -2405,7 +2404,7 @@ fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Va
     var funcStr = vm.compiler.sema.formatFuncSig(first_func_details.funcSigId, &cy.tempBuf, null) catch {
         return error.OutOfMemory;
     };
-    try w.print("    func {s}{s}", .{ name, funcStr });
+    try w.print("    fn {s}{s}", .{name, funcStr});
 
     var cur = first_ofunc.next;
     while (cur != cy.NullId) {
@@ -2413,7 +2412,7 @@ fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Va
         try w.writeByte('\n');
         const func_details = vm.funcSymDetails.buf[ofunc.id];
         funcStr = vm.sema.formatFuncSig(func_details.funcSigId, &cy.tempBuf, null) catch return error.OutOfMemory;
-        try w.print("    func {s}{s}", .{ name, funcStr });
+        try w.print("    fn {s}{s}", .{name, funcStr});
         cur = ofunc.next;
     }
     return vm.panic(msg.items);

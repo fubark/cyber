@@ -1,7 +1,7 @@
 use test
 
 type Foo[T type] int:
-    func get(self, a T) T:
+    fn get(self, a T) T:
         return a
 
 -- Declare explicit type.

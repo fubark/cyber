@@ -1,4 +1,4 @@
-func foo(a):
+fn foo(a):
     #dumpLocals()
 
 --cytest: pass

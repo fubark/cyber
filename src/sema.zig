@@ -4273,7 +4273,7 @@ pub fn reportIncompatCallFunc(c: *cy.Chunk, func: *cy.Func, args: []const *cy.Ty
     try w.print("Functions named `{s}` in `{s}`:\n", .{name, parent_name });
 
     const funcStr = try c.sema.formatFuncSig(func.funcSigId, &cy.tempBuf, c);
-    try w.print("    func {s}{s}", .{name, funcStr});
+    try w.print("    fn {s}{s}", .{name, funcStr});
     try c.compiler.addReportConsume(.compile_err, try msg.toOwnedSlice(c.alloc), c.id, node.pos());
     return error.CompileError;
 }
@@ -4295,13 +4295,13 @@ pub fn reportIncompatCallFuncSym(c: *cy.Chunk, sym: *cy.sym.FuncSym, args: []con
     try w.print("Functions named `{s}` in `{s}`:\n", .{name, parent_name });
 
     var funcStr = try c.sema.formatFuncSig(sym.firstFuncSig, &cy.tempBuf, c);
-    try w.print("    func {s}{s}", .{name, funcStr});
+    try w.print("    fn {s}{s}", .{name, funcStr});
     if (sym.numFuncs > 1) {
         var cur: ?*cy.Func = sym.first.next;
         while (cur) |curFunc| {
             try w.writeByte('\n');
             funcStr = try c.sema.formatFuncSig(curFunc.funcSigId, &cy.tempBuf, c);
-            try w.print("    func {s}{s}", .{name, funcStr});
+            try w.print("    fn {s}{s}", .{name, funcStr});
             cur = curFunc.next;
         }
     }

@@ -4,7 +4,7 @@ use t 'test'
 --| float
 --|
 
-func staticPrim(a float) bool:
+fn staticPrim(a float) bool:
 	return a == 123.0
 
 type PrimType:
@@ -31,7 +31,7 @@ t.eq(staticPrim(o.a), true)
 --|
 --| int
 --|
-func fooInt(a int) bool:
+fn fooInt(a int) bool:
     return a == 123
 
 -- Literal.
@@ -48,7 +48,7 @@ t.eq(fooInt(i), true)
 --|
 --| pointer.
 --|
-func fooPointer(a *void) bool:
+fn fooPointer(a *void) bool:
     return a.addr() == 123
 
 -- From var.
@@ -62,7 +62,7 @@ t.eq(fooPointer(ptr_dyn), true)
 --|
 --| string.
 --|
-func fooString(a string) bool:
+fn fooString(a string) bool:
     return a == 'true'
 
 -- Literal.
@@ -77,7 +77,7 @@ dyn str_dyn = 'true'
 t.eq(fooString(string(str_dyn)), true)
 
 -- bool.
-func fooBool(a bool) bool:
+fn fooBool(a bool) bool:
     return a
 
 -- Literal.
@@ -94,7 +94,7 @@ t.eq(fooBool(bool(b_dyn)), true)
 --|
 --| Map
 --|
-func fooMap(a Map) bool:
+fn fooMap(a Map) bool:
     return a['a'] == 123
 
 -- Literal.
@@ -111,7 +111,7 @@ t.eq(fooMap(map_dyn), true)
 --|
 --| List
 --|
-func fooList(a List[dyn]) bool:
+fn fooList(a List[dyn]) bool:
     return a[0] == 123
 
 -- Literal.
@@ -128,7 +128,7 @@ t.eq(fooList(list_dyn), true)
 --|
 --| symbol
 --|
-func fooSymbol(a symbol) bool:
+fn fooSymbol(a symbol) bool:
     return a == .sometag
 
 -- Literal.

@@ -12,7 +12,7 @@ var v = Vec2{x=1, y=2}
 t.eq(v.x, 1.0)
 t.eq(v.y, 2.0)
 
-func foo(v Vec2):
+fn foo(v Vec2):
     pass
 
 -- Using alias from imported module.

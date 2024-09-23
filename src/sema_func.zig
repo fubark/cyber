@@ -676,11 +676,11 @@ fn reportIncompatCallValue2(c: *cy.Chunk, exp_sig: cy.sema.FuncSigId, args: []co
     var msg: std.ArrayListUnmanaged(u8) = .{};
     const w = msg.writer(c.alloc);
     const funcStr = try c.sema.formatFuncSig(exp_sig, &cy.tempBuf, c);
-    try w.print("Can not call function value.\nExpected: `func {s}`", .{funcStr});
+    try w.print("Can not call function value.\nExpected: `fn{s}`", .{funcStr});
     try w.writeAll("\n");
     const callSigStr = try c.sema.allocTypesStr(args, c);
     defer c.alloc.free(callSigStr);
-    try w.print("Found:    `func ({s})`", .{callSigStr});
+    try w.print("Found:    `fn({s})`", .{callSigStr});
     try c.compiler.addReportConsume(.compile_err, try msg.toOwnedSlice(c.alloc), c.id, node.pos());
     return error.CompileError;
 }

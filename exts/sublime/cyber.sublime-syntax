@@ -40,7 +40,7 @@ contexts:
     - match: '\b(var|def|as|context|dyn)\b'
       scope: keyword.variable.cyber
 
-    - match: '\b(func|return|self)\b'
+    - match: '\b(fn|return|self)\b'
       scope: keyword.function.cyber
 
     - match: '\b(coyield|coresume|coinit)\b'

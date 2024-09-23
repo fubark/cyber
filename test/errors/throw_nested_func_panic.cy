@@ -1,7 +1,7 @@
-func bar():
+fn bar():
     throw error.boom
 
-func foo():
+fn foo():
     bar()
 
 foo()

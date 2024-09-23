@@ -15,7 +15,7 @@ queueTask(():
 test.eq(await r.future(), 234)
 
 -- Await from function call.
-func foo() int:
+fn foo() int:
     var r = FutureResolver.new(int)
     queueTask(():
         r.complete(234)

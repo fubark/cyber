@@ -1,6 +1,6 @@
 dyn a = foo(123)
 a = foo(a)
-func foo(a float) dyn:
+fn foo(a float) dyn:
     return 'foo'
 
 --cytest: error

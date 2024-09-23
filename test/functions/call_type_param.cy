@@ -1,6 +1,6 @@
 use t 'test'
 
-func foo(a type) bool:
+fn foo(a type) bool:
     return a == float
 
 -- Literal.

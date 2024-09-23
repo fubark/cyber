@@ -1,12 +1,12 @@
 use test
 
-func foo(a int) int:
+fn foo(a int) int:
     return a
 
-type Foo[FN func(int) int] struct:
+type Foo[FN fn(int) int] struct:
     a int
 
-    func foo(self) int:
+    fn foo(self) int:
         return FN(self.a) + 1
 
 var f = Foo[foo]{a=123}

@@ -6,10 +6,10 @@ type Number enum:
     case three
 
 -- Infer tag literal from dyn call.
-func foo(a Number) bool:
+fn foo(a Number) bool:
     return a == .one
-dyn fn = foo
-test.eq(fn(.one), true)
-test.eq(fn(.two), false)
+dyn func = foo
+test.eq(func(.one), true)
+test.eq(func(.two), false)
 
 --cytest: pass

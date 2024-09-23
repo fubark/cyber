@@ -1,4 +1,4 @@
-func GetType(a int) type:
+fn GetType(a int) type:
     if a == 0:
         return bool
     else:

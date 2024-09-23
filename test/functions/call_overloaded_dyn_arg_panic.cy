@@ -8,12 +8,9 @@ dyn arg = '123'
 foo(arg)
 
 --cytest: error
---panic: Can not find compatible function for call: `foo(string)`.
---Functions named `foo`:
---    fn foo(int) void
---    fn foo(bool) void
+--panic: Expected type `int`, found `string`.
 --
---main:8:1 main:
+--main:8:5 main:
 --foo(arg)
---^
+--    ^
 --

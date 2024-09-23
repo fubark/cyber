@@ -1165,7 +1165,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         },
         .call_trait,
         .callSym,
-        .call_sym_dyn,
         .callNativeFuncIC,
         .callFuncIC => {
             return CallSymInstLen;
@@ -1223,7 +1222,6 @@ pub const OpCode = enum(u8) {
     releaseN = vmc.CodeReleaseN,
 
     callSym = vmc.CodeCallSym,
-    call_sym_dyn = vmc.CodeCallSymDyn,
     callFuncIC = vmc.CodeCallFuncIC,
     callNativeFuncIC = vmc.CodeCallNativeFuncIC,
     call_trait = vmc.CodeCallTrait,
@@ -1358,7 +1356,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 123);
+    try t.eq(std.enums.values(OpCode).len, 122);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

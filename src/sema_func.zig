@@ -9,7 +9,6 @@ const fmt = cy.fmt;
 const v = fmt.v;
 
 pub const FuncSymResult = struct {
-    dyn_call: bool,
     func: *cy.Func,
     data: FuncResultUnion,
 };
@@ -331,7 +330,6 @@ pub fn matchFuncSym(c: *cy.Chunk, func_sym: *cy.sym.FuncSym, arg_start: usize, n
     if (func_sym.numFuncs == 1) {
         const res = try matchFunc(c, func_sym.first, arg_start, nargs, cstr, node);
         return .{
-            .dyn_call = false,
             .func = func_sym.first,
             .data = res.data,
         };
@@ -363,7 +361,6 @@ fn matchOverloadedFunc(c: *cy.Chunk, func: *cy.Func, arg_start: usize, nargs: us
         .ct_call = cstr.ct_call,
     };
 
-    var has_dyn_arg = false;
     var rt_arg_idx: u32 = 0;
     for (0..nargs) |i| {
         const arg = c.arg_stack.items[arg_start + i];
@@ -376,7 +373,6 @@ fn matchOverloadedFunc(c: *cy.Chunk, func: *cy.Func, arg_start: usize, nargs: us
 
         if (final_arg.resolve_t == .rt) {
             // Runtime arg.
-            has_dyn_arg = has_dyn_arg or final_arg.res.rt.type.id() == bt.Dyn;
             c.ir.setArrayItem(args_loc, u32, rt_arg_idx, final_arg.res.rt.irIdx);
             rt_arg_idx += 1;
         } else if (final_arg.resolve_t == .incompat) {
@@ -394,7 +390,6 @@ fn matchOverloadedFunc(c: *cy.Chunk, func: *cy.Func, arg_start: usize, nargs: us
     } else {
         return .{
             // Becomes a dynamic call if this is an overloaded function with a dynamic arg.
-            .dyn_call = has_dyn_arg,
             .func = func,
             .data = .{ .rt = .{
                 .args_loc = args_loc,
@@ -599,7 +594,7 @@ fn matchArg(c: *cy.Chunk, arg: Argument, param_t: *cy.Type, config: MatchConfig)
         return new_arg;
     }
 
-    if (rt_compat and config.single_func) {
+    if (rt_compat) {
         // Insert rt arg type check. 
         const loc = try c.unboxOrCheck(target_t, res, arg.node);
         res.irIdx = loc;

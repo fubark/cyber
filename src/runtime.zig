@@ -14,29 +14,12 @@ pub const TypeKey = cy.hash.KeyU64;
 pub const FieldTableKey = cy.hash.KeyU64;
 pub const FieldId = u32;
 
-pub const MethodKey = vmc.NameId;
-pub const TypeMethodKey = cy.hash.KeyU64;
-
-pub const Method = struct {
-    name: u32,
-};
-
 pub const FuncId = u32;
-pub const MethodId = u32;
-pub const TypeFuncId = u32;
-pub const FuncGroupId = u32;
 
 pub const FuncSymbolType = enum(u8) {
     func,
     host_func,
     null,
-};
-
-pub const FuncGroup = packed struct {
-    /// Either points to a func or the first `overloaded_func` entry.
-    id: u30,
-    empty: bool,
-    overloaded: bool,
 };
 
 pub const FuncSymDetail = struct {
@@ -163,10 +146,6 @@ pub fn ensureNameSymExt(vm: *cy.VM, name: []const u8, dupe: bool) !vmc.NameId {
 }
 
 test "runtime internals." {
-    try t.eq(@sizeOf(FuncGroup), 4);
-    try t.eq(@sizeOf(Method), 4);
-    try t.eq(@alignOf(Method), 4);
-
     try t.eq(@sizeOf(FuncSymbol), 16);
     try t.eq(@offsetOf(FuncSymbol, "type"), @offsetOf(vmc.FuncSymbol, "type"));
     try t.eq(@offsetOf(FuncSymbol, "sig"), @offsetOf(vmc.FuncSymbol, "sig"));

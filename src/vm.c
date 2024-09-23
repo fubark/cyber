@@ -619,7 +619,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(CallFuncIC),
         JENTRY(CallNativeFuncIC),
         JENTRY(CallTrait),
-        JENTRY(CallSymDyn),
         JENTRY(Ret1),
         JENTRY(Ret0),
         JENTRY(RetDyn),
@@ -1111,21 +1110,6 @@ beginSwitch:
         u8 nargs = pc[2];
         u16 vtable_idx = READ_U16(4);
         PcFpResult res = zCallTrait(vm, pc, stack, vtable_idx, ret);
-        if (res.code != RES_CODE_SUCCESS) {
-            RETURN(res.code);
-        }
-        pc = res.pc;
-        stack = res.fp;
-        NEXT();
-    }
-    CASE(CallSymDyn): {
-        #if TRACE
-            vm->c.trace_indent += 1;
-        #endif
-        u8 ret = pc[1];
-        u8 nargs = pc[2];
-        u16 entry = READ_U16(4);
-        PcFpResult res = zCallSymDyn(vm, pc, stack, entry, ret, nargs);
         if (res.code != RES_CODE_SUCCESS) {
             RETURN(res.code);
         }

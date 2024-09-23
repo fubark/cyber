@@ -98,11 +98,6 @@ const VMC = extern struct {
     }
 };
 
-const OverloadedFuncEntry = struct {
-    id: u32,
-    next: u32,
-};
-
 pub const VM = struct {
     alloc: std.mem.Allocator,
 
@@ -127,11 +122,6 @@ pub const VM = struct {
     /// The callee can then be generated later or by a separate chunk worker.
     funcSyms: cy.List(rt.FuncSymbol),
     funcSymDetails: cy.List(rt.FuncSymDetail),
-
-    /// Contiguous func ids. The first element in a segment contains the num of overloaded funcs for the func sym.
-    overloaded_funcs: cy.List(OverloadedFuncEntry),
-
-    func_groups: cy.List(rt.FuncGroup),
 
     /// Struct fields symbol table.
     type_field_map: std.HashMapUnmanaged(rt.FieldTableKey, vmc.TypeField, cy.hash.KeyU64Context, 80),
@@ -269,8 +259,6 @@ pub const VM = struct {
             },
             .funcSyms = .{},
             .funcSymDetails = .{},
-            .overloaded_funcs = .{},
-            .func_groups = .{},
             .type_field_map = .{},
             .field_map = .{},
             .syms = .{},
@@ -452,13 +440,9 @@ pub const VM = struct {
         if (reset) {
             self.funcSyms.clearRetainingCapacity();
             self.funcSymDetails.clearRetainingCapacity();
-            self.overloaded_funcs.clearRetainingCapacity();
-            self.func_groups.clearRetainingCapacity();
         } else {
             self.funcSyms.deinit(self.alloc);
             self.funcSymDetails.deinit(self.alloc);
-            self.overloaded_funcs.deinit(self.alloc);
-            self.func_groups.deinit(self.alloc);
         }
 
         if (reset) {
@@ -1062,16 +1046,6 @@ pub const VM = struct {
         }
     }
 
-    pub fn addFuncGroup(self: *VM) !u32 {
-        const id = self.func_groups.len;
-        try self.func_groups.append(self.alloc, .{
-            .id = undefined,
-            .empty = true,
-            .overloaded = false,
-        });
-        return @intCast(id);
-    }
-
     pub fn addTypeField(self: *VM, type_: *cy.Type, field_id: u32, offset: u16, field_t: *cy.Type) !void {
         const key = rt.FieldTableKey.initFieldTableKey(type_.id(), field_id);
         try self.type_field_map.putNoClobber(self.alloc, key, .{
@@ -1079,18 +1053,6 @@ pub const VM = struct {
             .offset = offset,
             .type_id = field_t.id(),
         });
-    }
-
-    /// Walking the linked list is ok since overloaded functions are less common
-    /// and eventually insertion will need to match the same order as the sema order.
-    fn getLastOverloadedFunc(self: *VM, head: u32) u32 {
-        var cur_id = head;
-        var cur = self.overloaded_funcs.buf[head];
-        while (cur.next != cy.NullId) {
-            cur_id = cur.next;
-            cur = self.overloaded_funcs.buf[cur_id];
-        }
-        return cur_id;
     }
 
     pub fn addFunc(self: *VM, name: []const u8, sig: cy.sema.FuncSigId, func: rt.FuncSymbol) !u32 {
@@ -1103,40 +1065,6 @@ pub const VM = struct {
             .funcSigId = sig,
         });
         return @intCast(id);
-    }
-
-    pub fn addGroupFunc(self: *VM, group_id: rt.FuncGroupId, name: []const u8, sig: cy.sema.FuncSigId, rtFunc: rt.FuncSymbol) !u32 {
-        const id = try self.addFunc(name, sig, rtFunc);
-
-        const group = &self.func_groups.buf[group_id];
-        if (group.empty) {
-            group.id = @intCast(id);
-            group.empty = false;
-            return id;
-        }
-
-        if (!group.overloaded) {
-            const func_head = self.overloaded_funcs.len;
-            try self.overloaded_funcs.append(self.alloc, .{
-                .id = group.id,
-                .next = @intCast(func_head + 1),
-            });
-            try self.overloaded_funcs.append(self.alloc, .{
-                .id = @intCast(id),
-                .next = cy.NullId,
-            });
-            group.id = @intCast(func_head);
-            group.overloaded = true;
-        } else {
-            const last = self.getLastOverloadedFunc(group.id);
-            const next = self.overloaded_funcs.len;
-            try self.overloaded_funcs.append(self.alloc, .{
-                .id = @intCast(id),
-                .next = cy.NullId,
-            });
-            self.overloaded_funcs.buf[last].next = @intCast(next);
-        }
-        return id;
     }
 
     pub fn interruptThrowSymbol(self: *VM, sym: bindings.Symbol) error{Panic} {
@@ -2838,35 +2766,6 @@ fn zCallSym(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, ret: u8) ca
     };
 }
 
-fn zCallSymDyn(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, ret: u8, numArgs: u8) callconv(.C) vmc.PcFpResult {
-    const res = @call(.always_inline, VM.callSymDyn, .{ vm, pc, framePtr, @as(u32, @intCast(symId)), ret, numArgs }) catch |err| {
-        if (err == error.Panic) {
-            return .{
-                .pc = undefined,
-                .fp = undefined,
-                .code = vmc.RES_CODE_PANIC,
-            };
-        } else if (err == error.StackOverflow) {
-            return .{
-                .pc = undefined,
-                .fp = undefined,
-                .code = vmc.RES_CODE_STACK_OVERFLOW,
-            };
-        } else {
-            return .{
-                .pc = undefined,
-                .fp = undefined,
-                .code = vmc.RES_CODE_UNKNOWN,
-            };
-        }
-    };
-    return .{
-        .pc = @ptrCast(res.pc),
-        .fp = @ptrCast(res.fp),
-        .code = vmc.RES_CODE_SUCCESS,
-    };
-}
-
 fn zDumpEvalOp(vm: *VM, pc: [*]const cy.Inst, fp: [*]const cy.Value) callconv(.C) void {
     dumpEvalOp(vm, pc, fp) catch cy.fatal();
 }
@@ -3265,7 +3164,6 @@ comptime {
         @export(zCallValue, .{ .name = "zCallValue", .linkage = .strong });
         @export(zCallSym, .{ .name = "zCallSym", .linkage = .strong });
         @export(zCallTrait, .{ .name = "zCallTrait", .linkage = .strong });
-        @export(zCallSymDyn, .{ .name = "zCallSymDyn", .linkage = .strong });
         @export(zOpMatch, .{ .name = "zOpMatch", .linkage = .strong });
         @export(zOpCodeName, .{ .name = "zOpCodeName", .linkage = .strong });
         @export(zLog, .{ .name = "zLog", .linkage = .strong });

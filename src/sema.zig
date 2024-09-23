@@ -4985,28 +4985,14 @@ pub const ChunkExt = struct {
         try referenceSym(c, @ptrCast(func_sym), node);
 
         if (ct_call) {
-            if (func_res.dyn_call) {
-                return error.TODO;
-            }
             return ExprResult.initCtValue(func_res.data.ct);
         }
-        if (func_res.dyn_call) {
-            // Dynamic call.
-            const ret_t = if (func_sym.numFuncs == 1) func_res.func.retType else c.sema.dyn_t;
-            const loc = try c.ir.pushExpr(.call_sym_dyn, c.alloc, ret_t, node, .{
-                .sym = func_sym,
-                .nargs = @as(u8, @intCast(func_res.data.rt.nargs)),
-                .args = func_res.data.rt.args_loc,
-            });
-            return ExprResult.init(loc, ret_t);
-        } else {
-            const loc = try c.ir.pushExpr(.call_sym, c.alloc, func_res.func.retType, node, .{ 
-                .func = func_res.func,
-                .numArgs = @as(u8, @intCast(func_res.data.rt.nargs)),
-                .args = func_res.data.rt.args_loc,
-            });
-            return ExprResult.init(loc, func_res.func.retType);
-        }
+        const loc = try c.ir.pushExpr(.call_sym, c.alloc, func_res.func.retType, node, .{ 
+            .func = func_res.func,
+            .numArgs = @as(u8, @intCast(func_res.data.rt.nargs)),
+            .args = func_res.data.rt.args_loc,
+        });
+        return ExprResult.init(loc, func_res.func.retType);
     }
 
     pub fn semaCallFuncSym1(c: *cy.Chunk, sym: *cy.sym.FuncSym, arg1_n: *ast.Node, arg1: ExprResult,

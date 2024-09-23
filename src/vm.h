@@ -242,7 +242,6 @@ typedef enum {
     CodeCallFuncIC,
     CodeCallNativeFuncIC,
     CodeCallTrait,
-    CodeCallSymDyn,
     CodeRet1,
     CodeRet0,
     CodeRetDyn,
@@ -943,7 +942,6 @@ BufferResult zAlloc(ZAllocator alloc, size_t n);
 char* zOpCodeName(OpCode code);
 PcFpResult zCallSym(VM* vm, Inst* pc, Value* stack, u16 symId, u8 ret);
 PcFpResult zCallTrait(VM* vm, Inst* pc, Value* stack, u16 vtable_idx, u8 ret);
-PcFpResult zCallSymDyn(VM* vm, Inst* pc, Value* stack, u16 symId, u8 ret, u8 nargs);
 void zDumpEvalOp(VM* vm, Inst* pc, Value* fp);
 void zDumpValue(VM* vm, Value val);
 void zFreeObject(VM* vm, HeapObject* obj);

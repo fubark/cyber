@@ -78,14 +78,14 @@ pub fn genAll(c: *cy.Compiler) !void {
         }
         for (chunk.funcs.items) |func| {
             if (func.type == .userLambda) {
-                try prepareFunc(c, null, func);
+                try prepareFunc(c, func);
             }
         }
         for (chunk.deferred_funcs.items) |func| {
             // prepareSym will handle deferred funcs that have a parent func sym.
             if (func.variant == null) continue;
 
-            try prepareFunc(c, null, func);
+            try prepareFunc(c, func);
         }
     }
 
@@ -178,13 +178,11 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
             if (func_sym.first.type == .trait) {
                 return;
             }
-            const group = try c.vm.addFuncGroup();
             var cur: ?*cy.Func = func_sym.first;
             while (cur) |func| {
-                try prepareFunc(c, group, func);
+                try prepareFunc(c, func);
                 cur = func.next;
             }
-            try c.genSymMap.putNoClobber(c.alloc, sym, .{ .func_sym = .{ .group = @intCast(group) }});
         },
         .context_var,
         .template,
@@ -206,7 +204,7 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
     }
 }
 
-pub fn prepareFunc(c: *cy.Compiler, opt_group: ?rt.FuncGroupId, func: *cy.Func) !void {
+pub fn prepareFunc(c: *cy.Compiler, func: *cy.Func) !void {
     switch (func.type) {
         .trait => return,
         .userLambda => {
@@ -214,9 +212,6 @@ pub fn prepareFunc(c: *cy.Compiler, opt_group: ?rt.FuncGroupId, func: *cy.Func) 
                 const symPath = try cy.sym.allocSymName(&c.sema, c.alloc, func.parent, .{});
                 defer c.alloc.free(symPath);
                 log.tracev("prep lambda in: {s}", .{symPath});
-            }
-            if (opt_group != null) {
-                return error.Unexpected;
             }
             _ = try reserveFunc(c, func);
         },
@@ -228,13 +223,9 @@ pub fn prepareFunc(c: *cy.Compiler, opt_group: ?rt.FuncGroupId, func: *cy.Func) 
             }
             const funcSig = c.sema.getFuncSig(func.funcSigId);
             const rtFunc = rt.FuncSymbol.initHostFunc(@ptrCast(func.data.hostFunc.ptr), funcSig.info.reqCallTypeCheck, func.isMethod(), funcSig.numParams(), func.funcSigId);
-            if (opt_group) |group| {
-                _ = try addGroupFunc(c, group, func, rtFunc);
-            } else {
-                const id = try reserveFunc(c, func);
-                if (c.vm.funcSyms.buf[id].type == .null) {
-                    completeFunc(c, id, func, rtFunc);
-                }
+            const id = try reserveFunc(c, func);
+            if (c.vm.funcSyms.buf[id].type == .null) {
+                completeFunc(c, id, func, rtFunc);
             }
         },
         .userFunc => {
@@ -243,20 +234,10 @@ pub fn prepareFunc(c: *cy.Compiler, opt_group: ?rt.FuncGroupId, func: *cy.Func) 
                 defer c.alloc.free(symPath);
                 log.tracev("prep func: {s}", .{symPath});
             }
-            if (opt_group) |group| {
-                _ = try addGroupFunc(c, group, func, rt.FuncSymbol.initNull());
-            } else {
-                _ = try reserveFunc(c, func);
-            }
+            _ = try reserveFunc(c, func);
             // Func is patched later once funcPc and stackSize is obtained.
         },
     }
-}
-
-fn addGroupFunc(c: *cy.Compiler, group: rt.FuncGroupId, func: *cy.Func, rtFunc: rt.FuncSymbol) !u32 {
-    const id = try c.vm.addGroupFunc(group, func.name(), func.funcSigId, rtFunc);
-    try c.genSymMap.put(c.alloc, func, .{ .func = .{ .id = @intCast(id), .pc = 0 }});
-    return @intCast(id);
 }
 
 fn reserveFunc(c: *cy.Compiler, func: *cy.Func) !u32 {
@@ -454,7 +435,6 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .call_value         => genCallValue(c, idx, cstr, node),
         .call_dyn           => genCallDyn(c, idx, cstr, node),
         .call_sym           => genCallFuncSym(c, idx, cstr, node),
-        .call_sym_dyn       => genCallSymDyn(c, idx, cstr, node),
         .call_trait         => genCallTrait(c, idx, cstr, node),
         .preUnOp            => genUnOp(c, idx, cstr, node),
         .string             => genString(c, idx, cstr, node),
@@ -1413,32 +1393,6 @@ fn genUnOp(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     }
 
     return finishDstInst(c, inst, false);
-}
-
-fn genCallSymDyn(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
-    const data = c.ir.getExprData(idx, .call_sym_dyn);
-
-    const inst = try beginCall(c, cstr, c.sema.dyn_t, false, node);
-
-    const argStart = numSlots(c);
-    const args = c.ir.getArray(data.args, u32, data.nargs);
-    for (args, 0..) |argIdx, i| {
-        const temp = try bc.reserveTemp(c, c.sema.dyn_t);
-        if (cy.Trace and temp != argStart + i) return error.Unexpected;
-        const argv = try genExpr(c, argIdx, Cstr.toTemp(temp));
-        try initSlot(c, temp, argv.retained, node);
-    }
-
-    const sym = c.compiler.genSymMap.get(data.sym).?;
-    const group = c.vm.func_groups.buf[sym.func_sym.group];
-    try pushCallSymDyn(c, inst.ret, data.nargs, 1, group.id, node);
-
-    try popTemps(c, args.len, node);
-    if (inst.own_ret) {
-        try initSlot(c, inst.ret, true, node);
-    }
-
-    return endCall(c, inst, true);
 }
 
 fn genCallTrait(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
@@ -3880,12 +3834,6 @@ fn pushTypeCheck(c: *cy.Chunk, local: SlotId, type_: *cy.Type, dst: SlotId, node
 fn pushCallSym(c: *cy.Chunk, ret: u8, numArgs: u32, numRet: u8, symId: u32, node: *ast.Node) !void {
     const start = c.buf.ops.items.len;
     try c.pushFCode(.callSym, &.{ ret, @as(u8, @intCast(numArgs)), numRet, 0, 0, 0, 0, 0, 0, 0, 0 }, node);
-    c.buf.setOpArgU16(start + 4, @intCast(symId));
-}
-
-fn pushCallSymDyn(c: *cy.Chunk, ret: u8, numArgs: u32, numRet: u8, symId: u32, node: *ast.Node) !void {
-    const start = c.buf.ops.items.len;
-    try c.pushFCode(.call_sym_dyn, &.{ ret, @as(u8, @intCast(numArgs)), numRet, 0, 0, 0, 0, 0, 0, 0, 0 }, node);
     c.buf.setOpArgU16(start + 4, @intCast(symId));
 }
 

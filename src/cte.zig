@@ -245,7 +245,7 @@ fn compileExprDeep(c: *cy.Chunk, expr: *ast.Node, target_t: ?*cy.Type, queued: *
     // Perform bc gen.
     c.buf = &c.compiler.buf;
     // TODO: defer restore bc state.
-    try bcgen.prepareFunc(c.compiler, null, func);
+    try bcgen.prepareFunc(c.compiler, func);
     try bcgen.funcBlock(c, loc, expr);
 
     // Analyze IR for func deps.
@@ -295,7 +295,7 @@ fn compileFuncDeep(c: *cy.Chunk, func: *cy.Func, queued: *std.AutoHashMapUnmanag
     const loc_n = src_chunk.ir.getNode(loc);
     src_chunk.buf = &c.compiler.buf;
     // TODO: defer restore bc state.
-    try bcgen.prepareFunc(src_chunk.compiler, null, func);
+    try bcgen.prepareFunc(src_chunk.compiler, func);
     switch (func.type) {
         .hostFunc => {
             // Nop. Already setup from `prepareFunc`.

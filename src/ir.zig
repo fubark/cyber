@@ -120,7 +120,6 @@ pub const ExprCode = enum(u8) {
     call_value,
     call_dyn,
     call_sym,
-    call_sym_dyn,
     call_trait,
 
     andOp,
@@ -529,12 +528,6 @@ pub const CallFuncSym = struct {
     args: Loc,
 };
 
-pub const CallSymDyn = struct {
-    sym: *cy.sym.FuncSym,
-    nargs: u8,
-    args: Loc,
-};
-
 pub const CallTrait = struct {
     trait: Loc,
     args: Loc,
@@ -670,7 +663,6 @@ pub fn ExprData(comptime code: ExprCode) type {
         .call_dyn => CallDyn,
         .call_sym => CallFuncSym,
         .call_trait => CallTrait,
-        .call_sym_dyn => CallSymDyn,
         .coinitCall => CoinitCall,
         .preBinOp,
         .preUnOp,

@@ -153,24 +153,6 @@ pub fn genAll(c: *cy.Compiler) !void {
     //         sym.inner.func.pc = .{ .ptr = c.buf.ops.items.ptr + sym.inner.func.pc.offset};
     //     }
     // }
-    // for (c.vm.methodGroups.items()) |*sym| {
-    //     if (sym.mapT == .one) {
-    //         if (sym.inner.one.sym.entryT == .func) {
-    //             sym.inner.one.sym.inner.func.pc = .{ .ptr = c.buf.ops.items.ptr + sym.inner.one.sym.inner.func.pc.offset };
-    //         }
-    //     } else if (sym.mapT == .many) {
-    //         if (sym.inner.many.mruSym.entryT == .func) {
-    //             sym.inner.many.mruSym.inner.func.pc = .{ .ptr = c.buf.ops.items.ptr + sym.inner.many.mruSym.inner.func.pc.offset };
-    //         }
-    //     }
-    // }
-    // var iter = c.vm.methodTable.iterator();
-    // while (iter.next()) |entry| {
-    //     const sym = entry.value_ptr;
-    //     if (sym.entryT == .func) {
-    //         sym.inner.func.pc = .{ .ptr = c.buf.ops.items.ptr + sym.inner.func.pc.offset };
-    //     }
-    // }
 }
 
 fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
@@ -196,23 +178,13 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
             if (func_sym.first.type == .trait) {
                 return;
             }
-            const name = func_sym.head.name();
-
             const group = try c.vm.addFuncGroup();
             var cur: ?*cy.Func = func_sym.first;
-            var has_method = false;
             while (cur) |func| {
-                if (func.isMethod()) {
-                    has_method = true;
-                }
                 try prepareFunc(c, group, func);
                 cur = func.next;
             }
             try c.genSymMap.putNoClobber(c.alloc, sym, .{ .func_sym = .{ .group = @intCast(group) }});
-            if (has_method) {
-                const parentT = func_sym.head.parent.?.getStaticType().?;
-                try c.vm.setMethodGroup(parentT, name, @intCast(group));
-            }
         },
         .context_var,
         .template,
@@ -484,7 +456,6 @@ fn genExpr(c: *Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         .call_sym           => genCallFuncSym(c, idx, cstr, node),
         .call_sym_dyn       => genCallSymDyn(c, idx, cstr, node),
         .call_trait         => genCallTrait(c, idx, cstr, node),
-        .call_obj_sym       => genCallObjSym(c, idx, cstr, node),
         .preUnOp            => genUnOp(c, idx, cstr, node),
         .string             => genString(c, idx, cstr, node),
         .switchExpr         => genSwitch(c, idx, cstr, node),
@@ -723,8 +694,9 @@ fn genCast(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
 
     if (types.toRtConcreteType(data.type)) |type_| {
         const pc = c.buf.ops.items.len;
-        try c.pushFCode(.cast, &.{ childv.reg, 0, 0, inst.dst }, node);
-        c.buf.setOpArgU16(pc + 2, @intCast(type_.id()));
+        try c.pushFCode(.cast, &.{ childv.reg, 0, 0, @intFromBool(data.type.isRef()), inst.dst }, node);
+        const shape_t = type_.selfOrPointee();
+        c.buf.setOpArgU16(pc + 2, @intCast(shape_t.id()));
     } else {
         // Cast to abstract type.
         const pc = c.buf.ops.items.len;
@@ -878,14 +850,14 @@ fn genDeref(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     if (ret_is_struct) {
         const size = ret_t.cast(.struct_t).size;
         const start = c.buf.ops.items.len;
-        if (rec_t.isRefType()) {
+        if (rec_t.isRef()) {
             try c.pushFCode(.deref_obj, &.{ srcv.reg, 0, 0, 0, @intCast(size), @intFromBool(has_retain_layout), inst.dst}, node);
         } else {
             try c.pushFCode(.deref_struct_ptr, &.{ srcv.reg, 0, 0, 0, @intCast(size), @intFromBool(has_retain_layout), inst.dst }, node);
         }
         c.buf.setOpArgU16(start + 2, @intCast(ret_t.id()));
     } else {
-        if (rec_t.isRefType()) {
+        if (rec_t.isRef()) {
             try c.pushCode(.deref, &.{ srcv.reg, 0, @intFromBool(retain), inst.dst }, node);
         } else {
             try c.pushCode(.deref_value_ptr, &.{ srcv.reg, 0, @intFromBool(retain), inst.dst }, node);
@@ -1462,37 +1434,6 @@ fn genCallSymDyn(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     try pushCallSymDyn(c, inst.ret, data.nargs, 1, group.id, node);
 
     try popTemps(c, args.len, node);
-    if (inst.own_ret) {
-        try initSlot(c, inst.ret, true, node);
-    }
-
-    return endCall(c, inst, true);
-}
-
-fn genCallObjSym(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
-    const data = c.ir.getExprData(idx, .call_obj_sym);
-
-    const inst = try beginCall(c, cstr, c.sema.dyn_t, false, node);
-
-    // Receiver.
-    const argStart = numSlots(c);
-    var temp = try bc.reserveTemp(c, c.sema.dyn_t);
-    const recv = try genExpr(c, data.rec, Cstr.toTemp(temp));
-    try initSlot(c, temp, recv.retained, node);
-
-    const args = c.ir.getArray(data.args, u32, data.numArgs);
-    for (args, 0..) |argIdx, i| {
-        temp = try bc.reserveTemp(c, c.sema.dyn_t);
-        if (cy.Trace and temp != argStart + 1 + i) return error.Unexpected;
-        const argv = try genExpr(c, argIdx, Cstr.toTemp(temp));
-        try initSlot(c, temp, argv.retained, node);
-    }
-
-    const method = try c.compiler.vm.ensureMethod(data.name);
-    try pushCallObjSym(c, inst.ret, data.numArgs + 1,
-        @intCast(method), node);
-
-    try popTemps(c, args.len + 1, node);
     if (inst.own_ret) {
         try initSlot(c, inst.ret, true, node);
     }
@@ -2886,20 +2827,6 @@ pub fn endCall(c: *Chunk, inst: CallInst, retained: bool) !GenValue {
     return finishCallInst(c, inst, retained);
 }
 
-fn genIterNext(c: *Chunk, iterTemp: u8, hasCounter: bool, iterNodeId: *ast.Node) !void {
-    var desc = try c.fmtExtraDesc("push iterator arg", .{});
-    try c.buf.pushOp2Ext(.copy, iterTemp, iterTemp + cy.vm.CallArgStart + 1, desc);
-
-    desc = try c.fmtExtraDesc("next()", .{});
-    try pushCallObjSymExt(c, iterTemp + 1, 1,
-        @intCast(c.compiler.nextMID),
-        iterNodeId, desc);
-
-    if (hasCounter) {
-        try pushInlineBinExpr(c, .addInt, iterTemp-1, iterTemp-2, iterTemp-1, iterNodeId);
-    }
-}
-
 fn loopStmt(c: *cy.Chunk, loc: usize, node: *ast.Node) !void {
     const data = c.ir.getStmtData(loc, .loopStmt);
 
@@ -4054,21 +3981,6 @@ pub fn reserveTemp(c: *Chunk, type_: *cy.Type) !u8 {
         .val_t = type_,
     });
     return slot;
-}
-
-fn pushCallObjSym(c: *cy.Chunk, ret: u8, numArgs: u8, method: u16, node: *ast.Node) !void {
-    try pushCallObjSymExt(c, ret, numArgs, method, node, cy.NullId);
-}
-
-fn pushCallObjSymExt(c: *cy.Chunk, ret: u8, numArgs: u8, method: u16, node: *ast.Node, desc: u32) !void {
-    try c.pushFailableDebugSym(node);
-    const start = c.buf.ops.items.len;
-    try c.buf.pushOpSliceExt(.callObjSym, &.{
-        ret, numArgs, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-    }, desc);
-    c.buf.setOpArgU16(start + 4, method);
-
-    try c.pushCode(.ret_dyn, &.{ numArgs }, node);
 }
 
 fn pushInlineUnExpr(c: *cy.Chunk, code: cy.OpCode, child: u8, dst: u8, node: *ast.Node) !void {

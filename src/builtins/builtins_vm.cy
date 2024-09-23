@@ -425,7 +425,7 @@ type Map _:
     @host func contains(self, key any) bool
 
     --| Returns value mapped to `key` or returns `none`.
-    @host func get(self, key any) ?any
+    @host func get(self, key any) ?dyn
 
     --| Removes the element with the given key `key`.
     @host func remove(self, key any) bool
@@ -438,7 +438,11 @@ type Map _:
 
 @host
 type MapIterator _:
-    @host func next(self) ?dyn
+    @host func next(self) ?MapEntry[dyn, dyn]
+
+type MapEntry[K type, V type]:
+    key   K
+    value V
 
 @host
 type string _:

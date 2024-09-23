@@ -174,7 +174,7 @@ const funcs = [_]C.HostFuncEntry{
     func("Map.iterator",       bindings.mapIterator),
 
     // MapIterator
-    func("MapIterator.next",   bindings.mapIteratorNext),
+    func("MapIterator.next",   zErrFunc(bindings.mapIteratorNext)),
 
     // string
     func("string.$infix+",     zErrFunc(string.concat)),

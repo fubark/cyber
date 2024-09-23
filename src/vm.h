@@ -145,6 +145,7 @@ typedef struct IndexSlice {
 #define VALUE_IS_STRING(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_STRING))
 #define OBJ_TYPEID(o) (o->head.typeId & TYPE_MASK)
 #define OBJ_RTTYPEID(o) (o->head.typeId & TYPE_RT_MASK)
+#define OBJ_ISREF(o) ((o->head.typeId & REF_TYPE_BIT) != 0)
 
 typedef enum {
     FMT_TYPE_CHAR,
@@ -239,13 +240,6 @@ typedef enum {
     CodeRelease,
     CodeReleaseN,
 
-    // [ret] [numArgs] [hasRet] [symId] [callSig u16] [metadata]
-    // Lower bits of metadata contains info relevant for operator inlining.
-    // Most significant bit indicates whether it has attempted to do func ptr inlining.
-    CodeCallObjSym,
-    // [ret] [numArgs] [hasRet] [symId] [callSig u16] [metadata] [ptr u48] [recvT u16]
-    CodeCallObjNativeFuncIC,
-    CodeCallObjFuncIC,
     CodeCallSym,
     CodeCallFuncIC,
     CodeCallNativeFuncIC,
@@ -930,12 +924,6 @@ typedef struct ValueResult {
     ResultCode code;
 } ValueResult;
 
-typedef struct CallObjSymResult {
-    Inst* pc;
-    Value* stack;
-    ResultCode code;
-} CallObjSymResult;
-
 typedef struct PcFp {
     Inst* pc;
     Value* fp;
@@ -974,7 +962,6 @@ void zEnd(VM* vm, Inst* pc);
 ValueResult zAllocList(VM* vm, TypeId type_id, Value* elemStart, uint8_t nelems);
 ValueResult zAllocArray(VM* vm, TypeId type_id, Value* elemStart, uint8_t nelems);
 double zOtherToF64(Value val);
-CallObjSymResult zCallObjSym(VM* vm, Inst* pc, Value* stack, Value recv, TypeId typeId, u16 method, u8 startLocal, u8 numArgs);
 ValueResult zAllocFiber(VM* vm, uint32_t pc, Value* args, uint8_t nargs, uint8_t argDst, uint8_t initialStackSize);
 PcFp zPushFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Fiber* fiber, uint8_t parentDstLocal);
 PcFpOff zPopFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Value retValue);

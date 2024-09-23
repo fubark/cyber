@@ -91,8 +91,8 @@
 --| Opens a file at the given `path` with the `.read`, `.write`, or `.readWrite` mode.
 @host func openFile(path string, mode symbol) File
 
---| Given expected `ArgOption`s, returns a `Table` of the options and a `rest` entry which contains the non-option arguments.
-@host func parseArgs(options List[dyn]) ^Table
+--| Returns a result that can be used to query args. 
+@host func parseArgs() ArgsResult
 
 --| Reads stdin to the EOF as a UTF-8 string.
 --| To return the bytes instead, use `stdin.readAll()`.
@@ -126,6 +126,29 @@
 
 --| Writes `contents` as a string or bytes to a file.
 @host func writeFile(path string, contents string) void
+
+type ArgOption:
+    name  string
+    value string
+
+type ArgsResult:
+    opts List[ArgOption]
+
+    -- A list that contains the non-option arguments.
+    rest List[string]
+
+    func get(self, name string) ?string:
+        for self.opts -> opt:
+            if opt.name == name:
+                return opt.value
+        return none
+
+    func getAll(self, name string) List[string]:
+        var res = List[string]{}
+        for self.opts -> opt:
+            if opt.name == name:
+                res.append(opt.value)
+        return res
 
 @host
 type File _:
@@ -185,7 +208,17 @@ type Dir _:
 
 @host
 type DirIterator _:
-    @host func next(self) ?Map
+    @host func next(self) ?DirEntry
+
+type DirEntry:
+    --| The path of the file or directory relative to the walker's root directory.
+    path string
+
+    --| The name of the file or directory.
+    name string
+
+    --| The type of the entry: .file | .dir | .unknown
+    type symbol
 
 @host
 type FFI _:

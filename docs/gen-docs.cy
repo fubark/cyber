@@ -11,10 +11,9 @@ use cy
 use os
 use md '../src/tools/md4c.cy'
 
-var args = os.parseArgs(.{
-    { name='version', type=string, default='DEV' },
-    { name='import-style', type=bool, default=false },
-})
+var args = os.parseArgs()
+var version = args.get('version') ?else 'DEV'
+var import_style = !isNone(args.get('import-style'))
 
 genDocsModules()
 
@@ -54,7 +53,7 @@ var hljsCSS = os.readFile("${curDir}/github-dark.min.css")
 var hljsJS = os.readFile("${curDir}/highlight.min.js")
 
 var stylePart = '<link rel="stylesheet" href="./style.css">'
-if !args['import-style']:
+if !import_style:
     var styleCSS = os.readFile("${curDir}/style.css")
     stylePart = "<style>${styleCSS}</style>"
 
@@ -71,7 +70,7 @@ var html = """<html lang="en">
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">${args.version}</div>
+    <div class="sub-title">${version}</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -272,7 +271,7 @@ func leaveBlock(block_t md.BLOCKTYPE, detail_p *void, userdata *void) int:
         id = id.lower()
         if idCounts.get(id) -> count:
             var newId = "${id}-${count}"
-            idCounts[id] += 1
+            idCounts[id] = 1 + idCounts[id]
             id = newId
         else:
             idCounts[id] = 1

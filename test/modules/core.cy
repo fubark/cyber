@@ -47,7 +47,7 @@ var s = S{}
 -- t.eq(newList[1].foo, s.foo)
 -- t.eq(newList[1].bar, s.bar)
 var oldMap = Map{a=123, b=s}
-dyn newMap = copy(oldMap)
+var newMap = copy(oldMap)
 t.eq(newMap == oldMap, false)
 t.eq(newMap.size(), 2)
 t.eq(newMap['a'], 123)

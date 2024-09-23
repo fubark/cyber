@@ -16,6 +16,7 @@ const vm_ = @import("../vm.zig");
 const TrackGlobalRC = vm_.TrackGlobalRC;
 const fmt = @import("../fmt.zig");
 const cc = @import("../capi.zig");
+const CS = @import("../capi_shim.zig");
 
 const debug = builtin.mode == .Debug;
 const log = cy.log.scoped(.bindings);
@@ -409,15 +410,25 @@ pub fn mapIterator(vm: *cy.VM) Value {
     return vm.allocMapIterator(vm.getValue(0)) catch fatal();
 }
 
-pub fn mapIteratorNext(vm: *cy.VM) Value {
+pub fn mapIteratorNext(vm: *cy.VM) !Value {
     const obj = vm.getValue(0).asHeapObject();
     const map: *cy.ValueMap = @ptrCast(&obj.mapIter.map.castHeapObject(*cy.heap.Map).inner);
+
+    const option_t = (try vm.findType("?MapEntry[dyn, dyn]")).?;
+    const entry_t = option_t.cast(.option).child_t;
+
     if (map.next(&obj.mapIter.nextIdx)) |entry| {
         vm.retain(entry.key);
         vm.retain(entry.value);
-        const res = cy.heap.allocTuple(vm, &.{entry.key, entry.value}) catch cy.fatal();
-        return TupleSome(vm, res) catch cy.fatal();
-    } else return TupleNone(vm) catch cy.fatal();
+
+        const val = try vm.newInstance(entry_t, &.{
+            CS.toFieldInit("key", entry.key),
+            CS.toFieldInit("value", entry.value),
+        });
+        return vm.newSome(option_t, val);
+    } else {
+        return vm.newNone(option_t);
+    }
 }
 
 pub fn mapSize(vm: *cy.VM) Value {

@@ -253,7 +253,7 @@ pub const Type = extern struct {
         }
     }
 
-    pub fn isRefType(self: *Type) bool {
+    pub fn isRef(self: *Type) bool {
         return self.kind() == .pointer and self.cast(.pointer).ref;
     }
 

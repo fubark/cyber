@@ -1,4 +1,4 @@
--- ./src/tools/cbindgen.cy -o src/tools/md4c.cy ~/repos/md4c/src/md4c.h -I/opt/homebrew/Cellar/llvm/18.1.8/include -libpath libmd4c.dylib -stripPrefix MD
+-- ./src/tools/cbindgen.cy -o src/tools/md4c.cy ~/repos/md4c/src/md4c.h -clang -I/opt/homebrew/Cellar/llvm/18.1.8/include -libpath libmd4c.dylib -stripPrefix MD
 
 var .libPath = switch os.system:
     case 'linux' => 'libmd4c.so'
@@ -184,9 +184,9 @@ func md_parse(text *void, size SIZE, parser *void, userdata *void) int:
     return lib['md_parse'](text, size, parser, userdata)
 
 use os
-dyn .ffi = false
-var .lib = load()
-func load() Map:
+var .ffi = load(lib)
+var .lib = Map{}
+func load(dep any) os.FFI:
     var ffi_ = os.newFFI()
     ffi_.cbind(ATTRIBUTE_S, .{symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.voidPtr})
     ffi_.cbind(BLOCK_UL_DETAIL_S, .{symbol.int, symbol.char})
@@ -201,9 +201,8 @@ func load() Map:
     ffi_.cbind(SPAN_WIKILINK_S, .{ATTRIBUTE})
     ffi_.cbind(PARSER_S, .{symbol.uint, symbol.uint, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr, symbol.voidPtr})
     ffi_.cfunc('md_parse', .{symbol.voidPtr, symbol.uint, symbol.voidPtr, symbol.voidPtr}, symbol.int)
-    ffi = ffi_
-    var lib = ffi.bindLib(Option[string].some(libPath))
-    return lib
+    lib = ffi_.bindLib(Option[string].some(libPath))
+    return ffi_
 
 -- Macros
 var ._llvm__ int = 1

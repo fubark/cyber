@@ -159,6 +159,23 @@ static inline TypeId getTypeId(Value val) {
     }
 }
 
+static inline u32 extractRtType(Value val, bool* is_ref) {
+    if ((val & TAGGED_VALUE_MASK) == TAGGED_VALUE_MASK) {
+        // Tagged.
+        if (val >= MIN_PTR_MASK) {
+            HeapObject* o = VALUE_AS_HEAPOBJECT(val);
+            *is_ref = OBJ_ISREF(o);
+            return OBJ_TYPEID(o);
+        } else {
+            *is_ref = false;
+            return VALUE_GET_TAG(val);
+        }
+    } else {
+        *is_ref = false;
+        return TYPE_FLOAT;
+    }
+}
+
 static inline u32 getRtTypeId(Value val) {
     if ((val & TAGGED_VALUE_MASK) == TAGGED_VALUE_MASK) {
         // Tagged.
@@ -599,9 +616,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Jump),
         JENTRY(Release),
         JENTRY(ReleaseN),
-        JENTRY(CallObjSym),
-        JENTRY(CallObjNativeFuncIC),
-        JENTRY(CallObjFuncIC),
         JENTRY(CallSym),
         JENTRY(CallFuncIC),
         JENTRY(CallNativeFuncIC),
@@ -1055,92 +1069,6 @@ beginSwitch:
             release(vm, stack[pc[i]]);
         }
         pc += 2 + numLocals;
-        NEXT();
-    }
-    CASE(CallObjSym): {
-        #if TRACE
-            vm->c.trace_indent += 1;
-        #endif
-        u8 ret = pc[1];
-        u8 numArgs = pc[2];
-        u16 method = READ_U16(4);
-
-        Value recv = stack[ret + CALL_ARG_START];
-        TypeId typeId = getTypeId(recv);
-
-        CallObjSymResult res = zCallObjSym(vm, pc, stack, recv, typeId, method, ret, numArgs);
-        if (res.code != RES_CODE_SUCCESS) {
-            RETURN(res.code);
-        }
-        pc = res.pc;
-        stack = res.stack;
-        NEXT();
-    }
-    CASE(CallObjNativeFuncIC): {
-        u8 ret = pc[1];
-        u8 numArgs = pc[2];
-        Value recv = stack[ret + CALL_ARG_START];
-        TypeId typeId = getTypeId(recv);
-
-        TypeId cachedTypeId = READ_U16(14);
-        if (typeId == cachedTypeId) {
-            #if TRACE
-                vm->c.trace_indent += 1;
-            #endif
-            vm->c.curPc = pc;
-            vm->c.curStack = stack + ret;
-            HostFuncFn fn = (HostFuncFn)READ_U48(8);
-            Value res = fn(vm);
-            if (res == VALUE_INTERRUPT) {
-                RETURN(RES_CODE_PANIC);
-            }
-            stack[ret] = res;
-            pc += CALL_OBJ_SYM_INST_LEN;
-            
-            #if TRACE
-                vm->c.trace_indent -= 1;
-            #endif
-            NEXT();
-        }
-
-        // Deoptimize.
-        pc[0] = CodeCallObjSym;
-        NEXT();
-    }
-    CASE(CallObjFuncIC): {
-        u8 ret = pc[1];
-        Value recv = stack[ret + CALL_ARG_START];
-        TypeId typeId = getTypeId(recv);
-
-        TypeId cachedTypeId = READ_U16(14);
-        if (typeId == cachedTypeId) {
-            // Deoptimize.
-            pc[0] = CodeCallObjSym;
-            NEXT();
-        }
-
-        #if TRACE
-            vm->c.trace_indent += 1;
-        #endif
-
-        // TODO: Split into CallObjTypedFuncIC where cached func sig id is used instead.
-        // const callFuncSig = vm.sema.getFuncSig(callSigId);
-        // for (1..callFuncSig.paramLen) |i| {
-        //     if (!types.isTypeSymCompat(vm.compiler, callFuncSig.paramPtr[i], targetSig.paramPtr[i])) {
-        //         return false;
-        //     }
-        // }
-
-        u8 numLocals = pc[7];
-        if (stack + ret + numLocals >= vm->c.stackEndPtr) {
-            RETURN(RES_CODE_STACK_OVERFLOW);
-        }
-        Value retFramePtr = (uintptr_t)stack;
-        stack += ret;
-        stack[1] = VALUE_CALLINFO(false, CALL_OBJ_SYM_INST_LEN, numLocals);
-        stack[2] = (uintptr_t)(pc + CALL_OBJ_SYM_INST_LEN);
-        stack[3] = retFramePtr;
-        pc = vm->c.instPtr + READ_U32(8);
         NEXT();
     }
     CASE(CallSym): {
@@ -1981,9 +1909,12 @@ beginSwitch:
     CASE(Cast): {
         Value val = stack[pc[1]];
         u16 expTypeId = READ_U16(2);
-        if (getTypeId(val) == expTypeId) {
-            stack[pc[4]] = val;
-            pc += 5;
+        bool exp_ref = pc[4];
+        bool is_ref;
+        u32 shape_t = extractRtType(val, &is_ref);
+        if (shape_t == expTypeId && is_ref == exp_ref) {
+            stack[pc[5]] = val;
+            pc += 6;
             NEXT();
         } else {
             panicCastFail(vm, getTypeId(val), expTypeId);

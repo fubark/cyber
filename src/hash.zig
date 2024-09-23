@@ -12,10 +12,6 @@ pub const KeyU64 = extern union {
         modSymId: cy.chunk.SymId,
         funcSigId: sema.FuncSigId,
     },
-    rtTypeMethodKey: extern struct {
-        typeId: cy.TypeId,
-        mgId: rt.MethodId,
-    },
     rtFieldTableKey: extern struct {
         typeId: cy.TypeId,
         fieldId: rt.FieldId,
@@ -44,24 +40,6 @@ pub const KeyU64 = extern union {
             .resolvedSymKey = .{
                 .parentSymId = parentSymId,
                 .nameId = nameId,
-            },
-        };
-    }
-
-    pub fn initTypeMethodKey(typeId: cy.TypeId, mgId: rt.MethodId) KeyU64 {
-        return .{
-            .rtTypeMethodKey = .{
-                .typeId = typeId,
-                .mgId = mgId,
-            },
-        };
-    }
-
-    pub fn initMethodKey(nameId: sema.NameSymId, numParams: u32) KeyU64 {
-        return .{
-            .rtMethodKey = .{
-                .nameId = nameId,
-                .numParams = numParams,
             },
         };
     }

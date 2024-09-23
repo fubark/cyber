@@ -453,28 +453,6 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             };
             len += try fmt.printCount(w, "%{} = %{} {} %{}", &.{v(dst), v(lhs), v(op), v(rhs)});
         },
-        .callObjNativeFuncIC => {
-            const ret = pc[1].val;
-            const numArgs = pc[2].val;
-            len += try printInstArgs(w, &.{"ret", "nargs"}, &.{v(ret), v(numArgs)});
-        },
-        .callObjFuncIC => {
-            const ret = pc[1].val;
-            const funcPc = @as(*const align(1) u32, @ptrCast(pc + 8)).*;
-            const typeId = @as(*const align(1) u16, @ptrCast(pc + 14)).*;
-            const numLocals = pc[7].val;
-            len += try printInstArgs(w, &.{"ret", "pc", "type", "nlocals"},
-                &.{v(ret), v(funcPc), v(typeId), v(numLocals)});
-        },
-        .callObjSym => {
-            const ret = pc[1].val;
-            const numArgs = pc[2].val;
-            const numRet = pc[3].val;
-            const method = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
-            len += try fmt.printCount(w, "%{} = %{}.(methods[{}])(%{}..%{}) nret={}", &.{
-                v(ret), v(ret+5), v(method), v(ret + 6), v(ret + 6 + numArgs-1), v(numRet),
-            });
-        },
         .callSym => {
             const ret = pc[1].val;
             const numArgs = pc[2].val;
@@ -834,11 +812,16 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const dst = pc[3].val;
             len += try fmt.printCount(w, "%{} = %{}[Range(%{})]", &.{v(dst), v(recv), v(range)});
         },
-        .castAbstract,
-        .cast => {
+        .castAbstract => {
             const child = pc[1].val;
             const expTypeId = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
             const dst = pc[3].val;
+            len += try fmt.printCount(w, "%{} = cast(type={}, %{})", &.{v(dst), v(expTypeId), v(child)});
+        },
+        .cast => {
+            const child = pc[1].val;
+            const expTypeId = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
+            const dst = pc[4].val;
             len += try fmt.printCount(w, "%{} = cast(type={}, %{})", &.{v(dst), v(expTypeId), v(child)});
         },
         .func_ptr => {
@@ -1096,7 +1079,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .captured,
         .box,
         .unbox,
-        .cast,
         .catch_op,
         .castAbstract => {
             return 5;
@@ -1105,6 +1087,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numConds = pc[2].val;
             return 5 + numConds * 3;
         },
+        .cast,
         .unwrap_union,
         .lambda,
         .func_ptr,
@@ -1187,11 +1170,8 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .bitwiseXor,
         .bitwiseLeftShift,
         .bitwiseRightShift,
-        .callObjSym,
-        .callObjNativeFuncIC,
         .setIndexList,
-        .setIndexMap,
-        .callObjFuncIC => {
+        .setIndexMap => {
             return CallObjSymInstLen;
         },
     }
@@ -1247,9 +1227,6 @@ pub const OpCode = enum(u8) {
     /// Exclusively used for block end to distinguish from temp releases.
     releaseN = vmc.CodeReleaseN,
 
-    callObjSym = vmc.CodeCallObjSym,
-    callObjNativeFuncIC = vmc.CodeCallObjNativeFuncIC,
-    callObjFuncIC = vmc.CodeCallObjFuncIC,
     callSym = vmc.CodeCallSym,
     call_sym_dyn = vmc.CodeCallSymDyn,
     callFuncIC = vmc.CodeCallFuncIC,
@@ -1386,7 +1363,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 126);
+    try t.eq(std.enums.values(OpCode).len, 124);
     try t.eq(@sizeOf(Inst), 1);
     if (cy.is32Bit) {
         try t.eq(@sizeOf(DebugMarker), 16);

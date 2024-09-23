@@ -55,7 +55,7 @@ t.eq(a['b'], 32)
 
 -- Nested indexing.
 a = Map{a = Map{b=5}}
-t.eq(a['a']['b'], 5)
+t.eq((a['a'] as Map)['b'], 5)
 
 -- String entry.
 a = Map{
@@ -72,7 +72,7 @@ t.eq(a[123], 234)
 a = Map{
     b = {1, 2}
 }
-t.eq(a['b'][1], 2)
+t.eq((a['b'] as List[int])[1], 2)
 
 -- Nested list with items separated by commas.
 a = Map{
@@ -81,7 +81,7 @@ a = Map{
         2,
     }
 }
-t.eq(a['b'][1], 2)
+t.eq((a['b'] as List[int])[1], 2)
 
 -- Iterate maps.
 
@@ -89,15 +89,15 @@ t.eq(a['b'][1], 2)
 var m = Map{a=2, b=3, c=4}
 var sum = 0
 for m -> entry:
-    sum += entry[1]
+    sum += entry.value
 t.eq(sum, 9)
 
 -- Destructure map entry.
 sum = 0
 var codeSum = 0
-for m -> {k, v}:
-    sum += v
-    codeSum += k[0]
+for m -> entry:
+    sum += entry.value
+    codeSum += (entry.key as string)[0]
 t.eq(sum, 9)
 t.eq(codeSum, 294)
 
@@ -107,21 +107,21 @@ var res = 0
 for m -> e1:
     var innerSum = 0
     for m -> e2:
-        innerSum += e2[1] 
-    res += e1[1] * innerSum
+        innerSum += e2.value
+    res += innerSum * e1.value
 t.eq(res, 36)
 
 -- Nested iteration with destructuring.
 m = Map{a=1, b=2, c=3}
 res = 0
 codeSum = 0
-for m -> {k, n}:
+for m -> e1:
     var innerSum = 0
-    for m -> {kk, nn}:
-        innerSum += nn
-        codeSum += kk[0]
-    res += n * innerSum
-    codeSum += k[0]
+    for m -> e2:
+        innerSum += e2.value
+        codeSum += (e2.key as string)[0]
+    res += innerSum * e1.value
+    codeSum += (e1.key as string)[0]
 t.eq(res, 36)
 t.eq(codeSum, 294 * 4)
 
@@ -129,9 +129,9 @@ t.eq(codeSum, 294 * 4)
 m = Map{a={2}, b={3}, c={4}}
 sum = 0
 codeSum = 0
-for m -> {k, v}:
-    sum += v[0]
-    codeSum += k[0]
+for m -> e:
+    sum += (e.value as List[int])[0]
+    codeSum += (e.key as string)[0]
 t.eq(sum, 9)
 t.eq(codeSum, 294)
 

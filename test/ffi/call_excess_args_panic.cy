@@ -9,7 +9,7 @@ else os.system == 'windows':
 
 var ffi = os.newFFI()
 ffi.cfunc('testAdd', .{symbol.int, symbol.int}, symbol.int)
-dyn lib = ffi.bindLib(libPath)
+var lib = ffi.bindLib(libPath)
 lib['testAdd'](123, 234, 345)
 
 --cytest: error

@@ -16,7 +16,7 @@ os.access('test/assets/file.txt', .read)
 
 -- args()
 -- Not available from static linking.
-dyn res = os.args()
+var res = os.args()
 t.eq(res.len() > 0, true)
 
 -- createDir()
@@ -56,13 +56,13 @@ t.eq(os.dirName('/root/bar.txt').?, '/root')
 
 -- openDir()
 dir = os.openDir('test')
-dyn info = dir.stat()
-t.eq(info['type'], symbol.dir)
+var stat_res = dir.stat()
+t.eq(stat_res['type'], symbol.dir)
 
 -- openFile()
 file = os.openFile('test/assets/file.txt', .read)
-info = file.stat()
-t.eq(info['type'], symbol.file)
+stat_res = file.stat()
+t.eq(stat_res['type'], symbol.file)
 
 -- free() / malloc()
 var ptr = os.malloc(16)
@@ -86,8 +86,8 @@ t.eq(file.readAll(), '')
 -- File.close()
 file = os.openFile('test/assets/file.txt', .read)
 file.close()
-res = try file.stat()
-t.eq(res, error.Closed)
+var stat_res2 = try file.stat()
+t.eq(stat_res2, error.Closed)
 
 -- File.seek()
 file = os.openFile('test/assets/file.txt', .read)
@@ -150,17 +150,17 @@ t.eq(os.readFile('test/assets/write.txt'), 'foobarabcxyz')
 -- Dir.iterator()
 dir = os.openDir('test/assets/dir', true)
 var iter = dir.iterator()
-var entries = List[dyn]{}
+var entries = List[os.DirEntry]{}
 while iter.next() -> n:
     entries.append(n)
 t.eq(entries.len(), 3)
-entries.sort((a, b) => a['name'].less(b['name']))
-t.eq(entries[0]['name'], 'dir2')
-t.eq(entries[0]['type'], symbol.dir)
-t.eq(entries[1]['name'], 'file.txt')
-t.eq(entries[1]['type'], symbol.file)
-t.eq(entries[2]['name'], 'file2.txt')
-t.eq(entries[2]['type'], symbol.file)
+entries.sort((a, b) => a.name.less(b.name))
+t.eq(entries[0].name, 'dir2')
+t.eq(entries[0].type, symbol.dir)
+t.eq(entries[1].name, 'file.txt')
+t.eq(entries[1].type, symbol.file)
+t.eq(entries[2].name, 'file2.txt')
+t.eq(entries[2].type, symbol.file)
 
 -- Dir.walk()
 dir = os.openDir('test/assets/dir', true)
@@ -169,14 +169,14 @@ entries = .{}
 while iter.next() -> n:
     entries.append(n)
 t.eq(entries.len(), 4)
-entries.sort((a, b) => a['path'].less(b['path']))
-t.eq(entries[0]['path'], 'dir2')
+entries.sort((a, b) => a.path.less(b.path))
+t.eq(entries[0].path, 'dir2')
 if os.system == 'windows':
-    t.eq(entries[1]['path'], 'dir2\file.txt')
+    t.eq(entries[1].path, 'dir2\file.txt')
 else:
-    t.eq(entries[1]['path'], 'dir2/file.txt')
-t.eq(entries[2]['path'], 'file.txt')
-t.eq(entries[3]['path'], 'file2.txt')
+    t.eq(entries[1].path, 'dir2/file.txt')
+t.eq(entries[2].path, 'file.txt')
+t.eq(entries[3].path, 'file2.txt')
 
 -- writeFile()
 if os.cpu != 'wasm32':

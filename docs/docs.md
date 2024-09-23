@@ -27,7 +27,7 @@ Cyber is a fast, efficient, and concurrent scripting language. The landing page 
 These docs provide a reference manual for the language. You can read it in order or jump around using the navigation. You may come across features that are marked `Incomplete` or `Planned`. This is because the docs are written as if all features have been completed already.
 
 ## Type System.
-Cyber is a statically typed language. However, dynamic typing is also supported. If you're coming from a language such as Python, JavaScript, or Lua, it can be easier to get started with [Dynamic Typing](#dynamic-typing).
+Cyber is a statically typed language. [Dynamic types](#dynamic-typing) are supported as well but they have limited capabilities.
 
 ## Hello World.
 ```cy
@@ -1057,8 +1057,8 @@ print map.size()
 map.remove(123)
 
 -- Iterating a map.
-for map -> {val, key}:
-    print "${key} -> ${val}"
+for map -> entry:
+    print "${entry.key} -> ${entry.value}"
 ```
 
 ### Map block.
@@ -2361,6 +2361,7 @@ func set[K, V](m Map[K, V], key K, val V):
   * [`type Table`](#type-table)
   * [`type Map`](#type-map)
   * [`type MapIterator`](#type-mapiterator)
+  * [`type MapEntry`](#type-mapentry)
   * [`type string`](#type-string)
   * [`type Array`](#type-array)
   * [`type ArrayIterator`](#type-arrayiterator)
@@ -2375,15 +2376,15 @@ func set[K, V](m Map[K, V], key K, val V):
 * [Std modules.](#std-modules)
 * [`mod cli`](#mod-cli)
 * [`mod os`](#mod-os)
+  * [`type ArgOption`](#type-argoption)
+  * [`type ArgsResult`](#type-argsresult)
   * [`type File`](#type-file)
   * [`type Dir`](#type-dir)
   * [`type DirIterator`](#type-diriterator)
+  * [`type DirEntry`](#type-direntry)
   * [`type FFI`](#type-ffi)
   * [`type CArray`](#type-carray)
   * [`type CDimArray`](#type-cdimarray)
-  * [`Map DirEntry`](#map-direntry)
-  * [`Map DirWalkEntry`](#map-dirwalkentry)
-  * [`Table ArgOption`](#table-argoption)
 * [`mod test`](#mod-test)
 </td>
 </tr></table>
@@ -2606,19 +2607,6 @@ for map -> {k, v}:
 
 <!-- os.start -->
 <!-- os.end -->
-### `Map DirEntry`
-| key | summary |
-| -- | -- |
-| `'name' -> Array` | The name of the file or directory. |
-| `'type' -> #file | #dir | #unknown` | The type of the entry. |
-
-### `Map DirWalkEntry`
-| key | summary |
-| -- | -- |
-| `'name' -> Array` | The name of the file or directory. |
-| `'path' -> Array` | The path of the file or directory relative to the walker's root directory. |
-| `'type' -> #file | #dir | #unknown` | The type of the entry. |
-
 ### `Table ArgOption`
 | key | summary |
 | -- | -- |
@@ -3329,15 +3317,37 @@ Type checking for dynamic types are deferred to runtime:
 ```cy
 dyn a = 123
 
-print a(1, 2, 3)
---> panic: Expected a function.
+var text string = a
+--> panic: Expected `string`, found `int`.
+```
+
+Unlike pure dynamically typed languages, Cyber does not allow dynamic method dispatch or dynamic field access on `dyn`. Allowing such behavior would add unnecessary runtime overhead, limit tree shaking, and add complexity to a language driven by static typing and different memory semantics.
+Look to [tables](#dynamic-tables) or [traits](#traits) for dynamic dispatch features.
+
+Note that it's still possible to invoke methods with dynamic arguments so long as the receiver is not dynamic:
+```cy
+dyn a = 123
+
+print(1 + a)    --> 124
+print(a + 1)    --> error: `$infix+` does not exist in `dyn`.
+```
+
+Although dynamic dispatch isn't allowed, a `dyn` callee can be invoked as a function at runtime:
+```cy
+dyn a = func(a, b, c int):
+    return a + b + c
+
+print a(1, 2, 3)     --> 6
+
+a = 'not a func'
+print a(1, 2, 3)     --> panic: Expected a function.
 ```
 
 ## Dynamic tables.
 The builtin `Table` type is used to create dynamic objects.
 Tables are initialized with the record literal:
 ```cy
-dyn a = {}
+var a = {}
 a.name = 'Nova'
 print a.name     --> Nova
 ```

@@ -80,14 +80,6 @@ pub const Compiler = struct {
     /// Whether core should be imported.
     importCore: bool = true,
 
-    iteratorMID: vmc.MethodId = cy.NullId,
-    nextMID: vmc.MethodId = cy.NullId,
-    indexMID: vmc.MethodId = cy.NullId,
-    setIndexMID: vmc.MethodId = cy.NullId,
-    sliceMID: vmc.MethodId = cy.NullId,
-    getMID: vmc.MethodId = cy.NullId,
-    setMID: vmc.MethodId = cy.NullId,
-
     main_chunk: *cy.Chunk,
 
     /// A chunk is reserved for the libcyber API.
@@ -310,7 +302,6 @@ pub const Compiler = struct {
                 core_sym = core_chunk.sym;
                 importCore.deinit(self.alloc);
                 _ = self.import_tasks.orderedRemove(0);
-                try createDynMethodIds(self);
             } else {
                 core_sym = self.chunk_map.get("core").?.sym;
             }
@@ -1053,16 +1044,6 @@ fn reserveCoreTypes(self: *Compiler) !void {
     }
 
     std.debug.assert(self.sema.types.items.len == cy.types.BuiltinEnd);
-}
-
-fn createDynMethodIds(self: *Compiler) !void {
-    self.indexMID = try self.vm.ensureMethod("$index");
-    self.setIndexMID = try self.vm.ensureMethod("$setIndex");
-    self.sliceMID = try self.vm.ensureMethod("$slice");
-    self.iteratorMID = try self.vm.ensureMethod("iterator");
-    self.nextMID = try self.vm.ensureMethod("next");
-    self.getMID = try self.vm.ensureMethod("$get");
-    self.setMID = try self.vm.ensureMethod("$set");
 }
 
 // fn computeTypeSizesRec(self: *VMcompiler) !void {

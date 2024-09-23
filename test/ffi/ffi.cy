@@ -3,8 +3,8 @@ use os
 
 -- Not found.
 var ffi = os.newFFI()
-dyn lib = try ffi.bindLib('xyz123.so')
-t.eq(lib, error.FileNotFound)
+var lib2 = try ffi.bindLib('xyz123.so')
+t.eq(lib2, error.FileNotFound)
 
 var libPath ?string = none
 if os.system == 'macos':
@@ -40,7 +40,7 @@ ffi.cfunc('testBool', .{symbol.bool}, symbol.bool)
 ffi.cfunc('testObject', .{MyObject}, MyObject)
 ffi.cfunc('testRetObjectPtr', .{MyObject}, symbol.voidPtr)
 ffi.cfunc('testArray', .{os.CArray{n=2, elem=symbol.double}}, symbol.double)
-lib = ffi.bindLib(libPath)
+var lib = ffi.bindLib(libPath)
 
 t.eq(lib['testAdd'](123, 321), 444)
 t.eq(lib['testI8'](-128), -128)
@@ -58,7 +58,7 @@ t.eq(lib['testArray']([2]float{123.0, 321.0}), 444.0)
 
 -- object arg and return type.
 var cstr = os.cstr('foo')
-dyn res = lib['testObject'](MyObject{a=123.0, b=10, c=cstr, d=true})
+var res = lib['testObject'](MyObject{a=123.0, b=10, c=cstr, d=true}) as MyObject
 t.eq(res.a, 123.0)
 t.eq(res.b, 10)
 t.eq(res.c.fromCstr(0), 'foo')
@@ -78,7 +78,7 @@ os.free(cstr)
 
 -- testCharPtr
 cstr = os.cstr('foo')
-t.eq(lib['testCharPtr'](cstr).fromCstr(0), 'foo')
+t.eq((lib['testCharPtr'](cstr) as *void).fromCstr(0), 'foo')
 os.free(cstr)
 
 -- testVoidPtr

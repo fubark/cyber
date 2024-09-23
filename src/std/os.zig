@@ -298,70 +298,15 @@ fn openFile(vm: *cy.VM) anyerror!Value {
 fn parseArgs(vm: *cy.VM) anyerror!Value {
     if (cy.isWasm) return vm.prepPanic("Unsupported.");
 
-    const list = vm.getObject(*cy.heap.List, 0).items();
-
-    // Build options map.
-    const OptionType = enum {
-        string,
-        float,
-        bool,
-    };
-    const Option = struct {
-        name: Value,
-        type: OptionType,
-        default: Value,
-
-        found: bool,
-    };
-    var optionMap: std.StringHashMapUnmanaged(Option) = .{};
-    defer optionMap.deinit(vm.alloc);
-    for (list) |opt| {
-        if (opt.isObjectType(bt.Table)) {
-            const entry = opt.asHeapObject().table.map();
-            const name = entry.getByString("name") orelse return error.InvalidArgument;
-            if (!name.isString()) {
-                return error.InvalidArgument;
-            }
-            const entryType = entry.getByString("type") orelse return error.InvalidArgument;
-            if (!entryType.isObjectType(bt.Type)) {
-                return error.InvalidArgument;
-            }
-            var optType: OptionType = undefined;
-            switch (entryType.asHeapObject().type.type) {
-                bt.String => {
-                    optType = .string;
-                },
-                bt.Float => {
-                    optType = .float;
-                },
-                bt.Boolean => {
-                    optType = .bool;
-                },
-                else => {
-                    return error.InvalidArgument;
-                },
-            }
-            const default = entry.getByString("default") orelse b: {
-                vm.retain(vm.emptyString);
-                break :b vm.emptyString;
-            };
-            try optionMap.put(vm.alloc, name.asString(), .{
-                .name = name,
-                .type = optType,
-                .default = default,
-                .found = false,
-            });
-        } else {
-            return error.InvalidArgument;
-        }
-    }
-
-    const res = try vm.allocTable();
-    const map = res.asHeapObject().table.map();
-
     var iter = try std.process.argsWithAllocator(vm.alloc);
     defer iter.deinit();
 
+    const option_t = (try vm.findType("os.ArgOption")).?;
+    const options_t = (try vm.findType("List[os.ArgOption]")).?;
+    const options = try vm.allocEmptyList(options_t.id());
+    const options_list = options.asHeapObject().list.getList();
+
+    const res_t = (try vm.findType("os.ArgsResult")).?;
     const list_t = (try vm.findType("List[string]")).?;
     const rest = try vm.allocEmptyList(list_t.id());
 
@@ -369,58 +314,32 @@ fn parseArgs(vm: *cy.VM) anyerror!Value {
     while (iter.next()) |arg| {
         if (arg[0] == '-') {
             const optName = arg[1..];
-            if (optionMap.getPtr(optName)) |opt| {
-                if (opt.found) {
-                    continue;
-                }
-                switch (opt.type) {
-                    .string => {
-                        if (iter.next()) |nextArg| {
-                            const val = try vm.allocString(nextArg);
-                            vm.retain(opt.name);
-                            try map.put(vm.alloc, opt.name, val);
-                            opt.found = true;
-                        } else {
-                            return error.InvalidArgument;
-                        }
-                    },
-                    .float => {
-                        if (iter.next()) |nextArg| {
-                            const num = std.fmt.parseFloat(f64, nextArg) catch {
-                                return error.InvalidArgument;
-                            };
-                            vm.retain(opt.name);
-                            try map.put(vm.alloc, opt.name, Value.initF64(num));
-                            opt.found = true;
-                        } else {
-                            return error.InvalidArgument;
-                        }
-                    },
-                    .bool => {
-                        vm.retain(opt.name);
-                        try map.put(vm.alloc, opt.name, Value.BoxTrue);
-                        opt.found = true;
-                    },
-                }
-                continue;
+            const namev = try vm.allocString(optName);
+            if (iter.next()) |nextArg| {
+                const val = try vm.allocString(nextArg);
+                const opt = try vm.newInstance(option_t, &.{
+                    CS.toFieldInit("name", namev),
+                    CS.toFieldInit("value", val),
+                });
+                try options_list.append(vm.alloc, opt);
+            } else {
+                vm.retain(vm.emptyString);
+                const opt = try vm.newInstance(option_t, &.{
+                    CS.toFieldInit("name", namev),
+                    CS.toFieldInit("value", vm.emptyString),
+                });
+                try options_list.append(vm.alloc, opt);
             }
-        }
-        const str = try vm.allocString(arg);
-        try restList.append(vm.alloc, str);
-    }
-
-    // Fill missing with defaults.
-    var optIter = optionMap.valueIterator();
-    while (optIter.next()) |opt| {
-        if (!opt.*.found) {
-            vm.retain(opt.*.name);
-            vm.retain(opt.*.default);
-            try map.put(vm.alloc, opt.*.name, opt.*.default);
+        } else {
+            const str = try vm.allocString(arg);
+            try restList.append(vm.alloc, str);
         }
     }
 
-    try map.put(vm.alloc, try vm.retainOrAllocAstring("rest"), rest);
-    return res;
+    return vm.newInstance(res_t, &.{
+        CS.toFieldInit("opts", options),
+        CS.toFieldInit("rest", rest),
+    });
 }
 
 fn osArgs(vm: *cy.VM) anyerror!Value {

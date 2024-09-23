@@ -7,6 +7,7 @@ const cy = @import("../cyber.zig");
 const rt = cy.rt;
 const Value = cy.Value;
 const C = @import("../capi.zig");
+const CS = @import("../capi_shim.zig");
 const cli = @import("../cli.zig");
 
 pub const File = extern struct {
@@ -489,64 +490,46 @@ const StringSome = cy.builtins.StringSome;
 
 pub fn dirIteratorNext(vm: *cy.VM) anyerror!Value {
     if (!cy.hasStdFiles) return vm.prepPanic("Unsupported.");
+    
+    const option_t = (try vm.findType("?os.DirEntry")).?;
+    const entry_t = option_t.cast(.option).child_t;
 
     const iter = vm.getHostObject(*DirIterator, 0);
     if (iter.recursive) {
         const walker = cy.ptrAlignCast(*std.fs.Dir.Walker, &iter.inner.walker);
         const entryOpt = try walker.next();
         if (entryOpt) |entry| {
-            const mapv = try vm.allocEmptyMap();
-            const map = mapv.castHeapObject(*cy.heap.Map);
-            const pathKey = try vm.retainOrAllocAstring("path");
-            const nameKey = try vm.retainOrAllocAstring("name");
-            const typeKey = try vm.retainOrAllocAstring("type");
-            defer {
-                vm.release(pathKey);
-                vm.release(nameKey);
-                vm.release(typeKey);
-            }
-            const entryPath = try vm.allocString(entry.path);
-            const entryName = try vm.allocString(entry.basename);
-            defer {
-                vm.release(entryPath);
-                vm.release(entryName);
-            }
-            try map.set(vm, pathKey, entryPath);
-            try map.set(vm, nameKey, entryName);
             const typeTag: cy.bindings.Symbol = switch (entry.kind) {
                 .file => .file,
                 .directory => .dir,
                 else => .unknown,
             };
-            try map.set(vm, typeKey, Value.initSymbol(@intFromEnum(typeTag)));
-            return MapSome(vm, mapv);
+            const val = try vm.newInstance(entry_t, &.{
+                CS.toFieldInit("path", try vm.allocString(entry.path)),
+                CS.toFieldInit("name", try vm.allocString(entry.basename)),
+                CS.toFieldInit("type", Value.initSymbol(@intFromEnum(typeTag))),
+            });
+            return vm.newSome(option_t, val);
         } else {
-            return MapNone(vm);
+            return vm.newNone(option_t);
         }
     } else {
         const stdIter = cy.ptrAlignCast(*std.fs.Dir.Iterator, &iter.inner.iter);
         const entryOpt = try stdIter.next();
         if (entryOpt) |entry| {
-            const mapv = try vm.allocEmptyMap();
-            const map = mapv.castHeapObject(*cy.heap.Map);
-            const nameKey = try vm.retainOrAllocAstring("name");
-            const typeKey = try vm.retainOrAllocAstring("type");
-            const entryName = try vm.allocString(entry.name);
-            defer {
-                vm.release(nameKey);
-                vm.release(typeKey);
-                vm.release(entryName);
-            }
-            try map.set(vm, nameKey, entryName);
             const typeTag: cy.bindings.Symbol = switch (entry.kind) {
                 .file => .file,
                 .directory => .dir,
                 else => .unknown,
             };
-            try map.set(vm, typeKey, Value.initSymbol(@intFromEnum(typeTag)));
-            return MapSome(vm, mapv);
+            const val = try vm.newInstance(entry_t, &.{
+                CS.toFieldInit("path", try vm.allocString("")),
+                CS.toFieldInit("name", try vm.allocString(entry.name)),
+                CS.toFieldInit("type", Value.initSymbol(@intFromEnum(typeTag))),
+            });
+            return vm.newSome(option_t, val);
         } else {
-            return MapNone(vm);
+            return vm.newNone(option_t);
         }
     }
 }

@@ -119,7 +119,6 @@ pub const ExprCode = enum(u8) {
     preUnOp,
     call_value,
     call_dyn,
-    call_obj_sym,
     call_sym,
     call_sym_dyn,
     call_trait,
@@ -524,15 +523,6 @@ pub const CoinitCall = struct {
     call: Loc,
 };
 
-pub const CallObjSym = struct {
-    name: []const u8,
-    rec: Loc,
-    args: Loc,
-
-    // Does not include rec.
-    numArgs: u8,
-};
-
 pub const CallFuncSym = struct {
     func: *cy.Func,
     numArgs: u8,
@@ -681,7 +671,6 @@ pub fn ExprData(comptime code: ExprCode) type {
         .call_sym => CallFuncSym,
         .call_trait => CallTrait,
         .call_sym_dyn => CallSymDyn,
-        .call_obj_sym => CallObjSym,
         .coinitCall => CoinitCall,
         .preBinOp,
         .preUnOp,

@@ -100,12 +100,8 @@ if (!aot) {
 }
     run.case("functions/call_float_param_error.cy");
     run.case("functions/call_method_missing_error.cy");
-if (!aot) {
-    run.case("functions/call_method_missing_panic.cy");
-}
     run.case("functions/call_method_sig_error.cy");
 if (!aot) {
-    run.case("functions/call_method_sig_panic.cy");
     run.case("functions/call_host.cy");
     run.case("functions/call_host_param_error.cy");
 }
@@ -285,7 +281,6 @@ if (!aot) {
     run.case("core/byte.cy");
     run.case("core/compare_eq.cy");
     run.case("core/compare_neq.cy");
-    run.case("core/dynamic_ops.cy");
     run.case("core/escape_sequences.cy");
     run.case("core/floats.cy");
     run.case("core/ints.cy");

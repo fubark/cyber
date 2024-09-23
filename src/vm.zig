@@ -122,10 +122,6 @@ pub const VM = struct {
     /// Always contains one dummy node to avoid null checking.
     cyclableHead: if (cy.hasGC) *cy.heap.DListNode else void,
 
-    /// `type_method_map` is queried at runtime by dynamic method calls using the receiver's type and method id.
-    method_map: std.AutoHashMapUnmanaged(rt.MethodKey, vmc.MethodId),
-    type_method_map: std.HashMapUnmanaged(rt.TypeMethodKey, rt.FuncGroupId, cy.hash.KeyU64Context, 80),
-
     /// Regular function symbol table.
     /// During codegen function calls only depend on a reserved runtime func id.
     /// The callee can then be generated later or by a separate chunk worker.
@@ -167,7 +163,6 @@ pub const VM = struct {
     vtables: cy.List([]const u32),
 
     /// This is needed for reporting since a method entry can be empty.
-    methods: cy.List(rt.Method),
     debugTable: []const cy.DebugSym,
     unwind_table: []const cy.fiber.UnwindKey,
     unwind_slots: []const u8,
@@ -272,9 +267,6 @@ pub const VM = struct {
                 .debugPc = cy.NullId,
                 .trace_indent = 0,
             },
-            .method_map = .{},
-            .methods = .{},
-            .type_method_map = .{},
             .funcSyms = .{},
             .funcSymDetails = .{},
             .overloaded_funcs = .{},
@@ -345,8 +337,6 @@ pub const VM = struct {
         self.c.mainFiber.stackLen = @intCast(self.c.stack_len);
 
         try self.funcSyms.ensureTotalCapacityPrecise(self.alloc, 255);
-        try self.method_map.ensureTotalCapacity(self.alloc, 200);
-        std.debug.assert(cy.utils.getHashMapMemSize(rt.MethodKey, vmc.MethodId, self.method_map.capacity()) < 4096);
 
         try self.c.getFields().ensureTotalCapacityPrecise(alloc, 170);
 
@@ -457,16 +447,6 @@ pub const VM = struct {
             self.ready_tasks = std.fifo.LinearFifo(cy.heap.AsyncTask, .Dynamic).init(self.alloc);
         } else {
             self.ready_tasks.deinit();
-        }
-
-        if (reset) {
-            self.method_map.clearRetainingCapacity();
-            self.methods.clearRetainingCapacity();
-            self.type_method_map.clearRetainingCapacity();
-        } else {
-            self.method_map.deinit(self.alloc);
-            self.methods.deinit(self.alloc);
-            self.type_method_map.deinit(self.alloc);
         }
 
         if (reset) {
@@ -1092,19 +1072,6 @@ pub const VM = struct {
         return @intCast(id);
     }
 
-    pub fn ensureMethod(self: *VM, name: []const u8) !rt.MethodId {
-        const nameId = try rt.ensureNameSym(self, name);
-        const res = try @call(.never_inline, @TypeOf(self.method_map).getOrPut, .{ &self.method_map, self.alloc, nameId });
-        if (!res.found_existing) {
-            const id: u32 = @intCast(self.methods.len);
-            try self.methods.append(self.alloc, .{ .name = nameId });
-            res.value_ptr.* = id;
-            return id;
-        } else {
-            return res.value_ptr.*;
-        }
-    }
-
     pub fn addTypeField(self: *VM, type_: *cy.Type, field_id: u32, offset: u16, field_t: *cy.Type) !void {
         const key = rt.FieldTableKey.initFieldTableKey(type_.id(), field_id);
         try self.type_field_map.putNoClobber(self.alloc, key, .{
@@ -1124,12 +1091,6 @@ pub const VM = struct {
             cur = self.overloaded_funcs.buf[cur_id];
         }
         return cur_id;
-    }
-
-    pub fn setMethodGroup(self: *VM, type_: *cy.Type, name: []const u8, group: rt.FuncGroupId) !void {   
-        const method = try self.ensureMethod(name);
-        const key = rt.TypeMethodKey.initTypeMethodKey(type_.id(), method);
-        try self.type_method_map.put(self.alloc, key, group);
     }
 
     pub fn addFunc(self: *VM, name: []const u8, sig: cy.sema.FuncSigId, func: rt.FuncSymbol) !u32 {
@@ -1398,28 +1359,6 @@ pub const VM = struct {
         }
     }
 
-    /// Like `isFuncCompat` but does not check rec.
-    fn isMethodFuncCompat(self: *VM, func: rt.FuncSymbol, args: []Value) bool {
-        // Perform type check on args.
-        const target = self.compiler.sema.getFuncSig(func.sig);
-        const target_params = target.params()[1..];
-
-        if (target_params.len != args.len) {
-            return false;
-        }
-
-        for (args, 0..) |arg, i| {
-            const target_t = target_params[i];
-            const arg_t = self.sema.getType(arg.getTypeId());
-            if (!types.isTypeCompat(self.compiler, arg_t, target_t)) {
-                if (!@call(.never_inline, canInferArg, .{self, arg, target_t})) {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
     fn isFuncCompat(self: *VM, func: rt.FuncSymbol, args: []const Value) bool {
         // Perform type check on args.
         const target = self.compiler.sema.getFuncSig(func.sig);
@@ -1432,52 +1371,12 @@ pub const VM = struct {
         for (args, target_params) |val, target_t| {
             const val_t = self.sema.getType(val.getTypeId());
             if (!types.isTypeCompat(self.compiler, val_t, target_t)) {
-                return false;
+                if (!@call(.never_inline, canInferArg, .{self, val, target_t})) {
+                    return false;
+                }
             }
         }
         return true;
-    }
-
-    fn getTypeMethod(self: *VM, rec_t: cy.TypeId, method: rt.MethodId) ?rt.FuncGroupId {
-        const key = rt.TypeMethodKey.initTypeMethodKey(rec_t, method);
-        return self.type_method_map.get(key);
-    }
-
-    /// Assumes args does not include rec.
-    fn getCompatMethodFunc(self: *VM, rec_t: cy.TypeId, method_id: rt.MethodId, args: []cy.Value) ?rt.FuncSymbol {
-        const group_id = @call(.never_inline, getTypeMethod, .{ self, rec_t, method_id }) orelse {
-            return null;
-        };
-
-        // TODO: Skip type check for untyped params.
-        const group = self.func_groups.buf[group_id];
-        if (!group.overloaded) {
-            // Check one function.
-            const func = self.funcSyms.buf[group.id];
-            if (self.isMethodFuncCompat(func, args)) {
-                return func;
-            } else {
-                return null;
-            }
-        } else {
-            // Overloaded functions.
-            var cur: u32 = group.id;
-            while (cur != cy.NullId) {
-                const entry = self.overloaded_funcs.buf[cur];
-                const func = self.funcSyms.buf[entry.id];
-
-                if (!func.is_method) {
-                    cur = entry.next;
-                    continue;
-                }
-
-                if (self.isMethodFuncCompat(func, args)) {
-                    return func;
-                }
-                cur = entry.next;
-            }
-            return null;
-        }
     }
 
     pub fn getStackTrace(self: *const VM) *const cy.StackTrace {
@@ -1993,12 +1892,6 @@ fn dumpEvalOp(vm: *VM, pc: [*]const cy.Inst, fp: [*]const cy.Value) !void {
     const offset = getInstOffset(vm, pc);
     var extra: []const u8 = "";
     switch (pc[0].opcode()) {
-        .callObjSym => {
-            const symId = pc[4].val;
-            const name_id = vm.methods.buf[symId].name;
-            const name = rt.getName(vm, name_id);
-            extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}", .{name});
-        },
         .constOp => {
             const idx = @as(*align(1) const u16, @ptrCast(pc + 1)).*;
             _ = idx;
@@ -2009,12 +1902,6 @@ fn dumpEvalOp(vm: *VM, pc: [*]const cy.Inst, fp: [*]const cy.Value) !void {
             // extra = try std.fmt.bufPrint(&S.buf, "rt: constVal={s}", .{
             //     try vm.getOrBufPrintValueStr(&cy.tempBuf, val)
             // });
-        },
-        .callObjNativeFuncIC => {
-            const symId = pc[4].val;
-            const name_id = vm.methods.buf[symId].name;
-            const name = rt.getName(vm, name_id);
-            extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}", .{name});
         },
         .callSym => {
             const ret = pc[1].val;
@@ -2455,25 +2342,7 @@ fn allocValueTypeIds(vm: *cy.VM, vals: []const Value) ![]const cy.TypeId {
     return typeIds;
 }
 
-fn allocMethodCallTypes(vm: *cy.VM, rec_t: *cy.Type, vals: []const Value) ![]const *cy.Type {
-    const types_ = try vm.alloc.alloc(*cy.Type, vals.len + 1);
-    types_[0] = rec_t;
-    for (vals, 1..) |val, i| {
-        types_[i] = vm.sema.getType(val.getTypeId());
-    }
-    return types_;
-}
-
-fn allocMethodCallTypeIds(vm: *cy.VM, rec_t: cy.TypeId, vals: []const Value) ![]const cy.TypeId {
-    const typeIds = try vm.alloc.alloc(cy.TypeId, vals.len + 1);
-    typeIds[0] = rec_t;
-    for (vals, 1..) |val, i| {
-        typeIds[i] = val.getTypeId();
-    }
-    return typeIds;
-}
-
-fn panicIncompatibleFieldType(vm: *cy.VM, fieldSemaTypeId: types.TypeId, rightv: Value) error{ Panic, OutOfMemory } {
+fn panicIncompatibleFieldType(vm: *cy.VM, fieldSemaTypeId: types.TypeId, rightv: Value) error{Panic, OutOfMemory} {
     defer release(vm, rightv);
 
     const fieldTypeName = sema.getSymName(&vm.compiler, fieldSemaTypeId);
@@ -2548,120 +2417,6 @@ fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Va
         cur = ofunc.next;
     }
     return vm.panic(msg.items);
-}
-
-fn panicIncompatibleMethodSig(vm: *cy.VM, method_id: rt.MethodId, recv: Value, args: []const Value) error{ Panic, OutOfMemory } {
-    const typeId = recv.getTypeId();
-
-    const typeIds = try allocMethodCallTypes(vm, vm.sema.getType(typeId), args);
-    defer vm.alloc.free(typeIds);
-
-    // Lookup `func_entry`.
-    const method = vm.methods.buf[method_id];
-    const name = rt.getName(vm, method.name);
-    const typeName = vm.c.types[typeId].name();
-    const group_id = vm.getTypeMethod(typeId, method_id) orelse {
-        return vm.panicFmt("The method `{}` can not be found in `{}`.", &.{
-            v(name), v(typeName),
-        });
-    };
-
-    var msg: std.ArrayListUnmanaged(u8) = .{};
-    defer msg.deinit(vm.alloc);
-    const w = msg.writer(vm.alloc);
-    const call_args_str = vm.compiler.sema.allocTypesStr(typeIds[1..], null) catch return error.OutOfMemory;
-    defer vm.alloc.free(call_args_str);
-
-    try w.print("Can not find compatible method for call: `({s}) {s}({s})`.", .{ typeName, name, call_args_str });
-    try w.writeAll("\n");
-    try w.print("Methods named `{s}`:\n", .{name});
-
-    const group = vm.func_groups.buf[group_id];
-    if (!group.overloaded) {
-        const func = vm.funcSyms.buf[group.id];
-        if (func.is_method) {
-            const funcStr = vm.sema.formatFuncSig(func.sig, &cy.tempBuf, null) catch {
-                return error.OutOfMemory;
-            };
-            try w.print("    func {s}{s}", .{ name, funcStr });
-        }
-    } else {
-        var cur: u32 = group.id;
-        while (cur != cy.NullId) {
-            const ofunc = vm.overloaded_funcs.buf[cur];
-            const func = vm.funcSyms.buf[ofunc.id];
-            if (!func.is_method) {
-                cur = ofunc.next;
-                continue;
-            }
-
-            const funcStr = vm.sema.formatFuncSig(func.sig, &cy.tempBuf, null) catch {
-                return error.OutOfMemory;
-            };
-            try w.print("    func {s}{s}", .{ name, funcStr });
-            if (ofunc.next != cy.NullId) {
-                try w.writeByte('\n');
-            }
-            cur = ofunc.next;
-        }
-    }
-    return vm.panic(msg.items);
-}
-
-fn getObjectFunctionFallback(
-    vm: *VM,
-    pc: [*]cy.Inst,
-    recv: Value,
-    typeId: u32,
-    method: rt.MethodId,
-    vals: []const Value,
-) !Value {
-    @branchHint(.cold);
-    _ = typeId;
-    _ = pc;
-    // Map fallback is no longer supported since cleanup of recv is not auto generated by the compiler.
-    // In the future, this may invoke the exact method signature or call a custom overloaded function.
-    // if (typeId == MapS) {
-    //     const name = vm.methodGroupExtras.buf[symId];
-    //     const heapMap = cy.ptrAlignCast(*const MapInner, &obj.map.inner);
-    //     if (heapMap.getByString(vm, name)) |val| {
-    //         return val;
-    //     }
-    // }
-
-    // Once methods are added to resolved func syms,
-    // this error reporting can be more descriptive depending on these scenarios:
-    // - a method with the name is missing.
-    // - a method exists with the name but the call signature doesn't match up
-    // - multiple methods exist with the name but the call signature doesn't match up
-    // const relPc = getInstOffset(vm, pc);
-    // if (debug.getDebugSym(vm, relPc)) |sym| {
-    // const chunk = vm.compiler.chunks.items[sym.file];
-    // const node = chunk.nodes[sym.loc];
-    // if (node.node_t == .callExpr) {
-    return panicIncompatibleMethodSig(vm, method, recv, vals);
-    // } else {
-    //     release(vm, recv);
-    //     // Debug node is from:
-    //     // `for [iterable]:`
-    //     const name = vm.methodGroupExts.buf[rtSymId].getName();
-    //     return vm.panicFmt("`{}` is either missing in `{}` or the call signature: {}(self, 0 args) is unsupported.", &.{
-    //          v(name), v(vm.types.buf[typeId].name), v(name),
-    //     });
-    // }
-    // } else {
-    //     return vm.panicFmt("Missing debug sym at {}", &.{v(getInstOffset(vm, pc))});
-    // }
-}
-
-/// Use new pc local to avoid deoptimization.
-fn callObjSymFallback(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, recv: Value, typeId: u32, method: rt.MethodId, ret: u8, numArgs: u8) !cy.fiber.PcFp {
-    @branchHint(.cold);
-    // const func = try @call(.never_inline, getObjectFunctionFallback, .{obj, symId});
-    const vals = framePtr[ret + CallArgStart + 1 .. ret + CallArgStart + 1 + numArgs - 1];
-    const func = try getObjectFunctionFallback(vm, pc, recv, typeId, method, vals);
-    _ = func;
-    return vm.panic("Missing method.");
 }
 
 pub inline fn buildDynFrameInfo(cont: bool, comptime call_inst_off: u8, stack_size: u8) Value {
@@ -3206,63 +2961,6 @@ fn zOtherToF64(val: Value) callconv(.C) f64 {
     return val.otherToF64() catch fatal();
 }
 
-fn zCallObjSym(
-    vm: *cy.VM,
-    pc: [*]cy.Inst,
-    stack: [*]Value,
-    recv: Value,
-    typeId: cy.TypeId,
-    method: u16,
-    ret: u8,
-    numArgs: u8,
-) callconv(.C) vmc.CallObjSymResult {
-    const args = stack[ret + CallArgStart + 1 .. ret + CallArgStart + 1 + numArgs - 1];
-    if (vm.getCompatMethodFunc(typeId, method, args)) |func| {
-        const mb_res = callMethod(vm, pc, stack, func, typeId, numArgs, ret) catch |err| {
-            if (err == error.Panic) {
-                return .{
-                    .pc = undefined,
-                    .stack = undefined,
-                    .code = vmc.RES_CODE_PANIC,
-                };
-            } else {
-                return .{
-                    .pc = undefined,
-                    .stack = undefined,
-                    .code = vmc.RES_CODE_UNKNOWN,
-                };
-            }
-        };
-        if (mb_res) |res| {
-            return .{
-                .pc = @ptrCast(res.pc),
-                .stack = @ptrCast(res.fp),
-                .code = vmc.RES_CODE_SUCCESS,
-            };
-        }
-    }
-    const res = @call(.never_inline, callObjSymFallback, .{ vm, pc, stack, recv, typeId, method, ret, numArgs }) catch |err| {
-        if (err == error.Panic) {
-            return .{
-                .pc = undefined,
-                .stack = undefined,
-                .code = vmc.RES_CODE_PANIC,
-            };
-        } else {
-            return .{
-                .pc = undefined,
-                .stack = undefined,
-                .code = vmc.RES_CODE_UNKNOWN,
-            };
-        }
-    };
-    return .{
-        .pc = @ptrCast(res.pc),
-        .stack = @ptrCast(res.fp),
-        .code = vmc.RES_CODE_SUCCESS,
-    };
-}
-
 fn zAllocFiber(vm: *cy.VM, pc: u32, args: [*]const Value, nargs: u8, argDst: u8, initialStackSize: u8) callconv(.C) vmc.ValueResult {
     const fiber = cy.fiber.allocFiber(vm, pc, args[0..nargs], argDst, initialStackSize) catch {
         return .{
@@ -3569,7 +3267,6 @@ comptime {
         @export(zCallSym, .{ .name = "zCallSym", .linkage = .strong });
         @export(zCallTrait, .{ .name = "zCallTrait", .linkage = .strong });
         @export(zCallSymDyn, .{ .name = "zCallSymDyn", .linkage = .strong });
-        @export(zCallObjSym, .{ .name = "zCallObjSym", .linkage = .strong });
         @export(zOpMatch, .{ .name = "zOpMatch", .linkage = .strong });
         @export(zOpCodeName, .{ .name = "zOpCodeName", .linkage = .strong });
         @export(zLog, .{ .name = "zLog", .linkage = .strong });

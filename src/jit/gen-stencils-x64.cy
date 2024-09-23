@@ -8,7 +8,7 @@ use os
 var out = ''
 var curDir = os.dirName(#modUri)
 
-dyn outLLBuf = llvm.ffi.new(.voidPtr)
+var outLLBuf = llvm.ffi.new(.voidPtr)
 var outMsg = llvm.ffi.new(.charPtr)
 if llvm.CreateMemoryBufferWithContentsOfFile(os.cstr("${curDir}/stencils.o"), outLLBuf, outMsg) != 0:
     throw error.Unexpected
@@ -25,7 +25,7 @@ if binType != llvm.BinaryTypeELF64L:
     throw error.UnexpectedObjectFormat
 
 -- Find text section.
-dyn codeBuf = false
+var codeBuf = ''
 var llSectIter = llvm.ObjectFileCopySectionIterator(llBin)
 while llvm.ObjectFileIsSectionIteratorAtEnd(llBin, llSectIter) == 0:
     var cname = llvm.GetSectionName(llSectIter)
@@ -42,7 +42,7 @@ while llvm.ObjectFileIsSectionIteratorAtEnd(llBin, llSectIter) == 0:
         break
     llvm.MoveToNextSection(llSectIter)
 
-if codeBuf == false:
+if codeBuf.len() == 0:
     throw error.MissingTextSection
 
 var llSymIter = llvm.ObjectFileCopySymbolIterator(llBin)

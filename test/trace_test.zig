@@ -224,9 +224,9 @@ test "ARC on temp locals in expressions." {
         \\use test
         \\var ret = traceRetains()
         \\var rel = traceReleases()
-        \\var res = Map{a={123}}['a'][0]
-        \\test.eq(traceRetains() - ret, 10)
-        \\test.eq(traceReleases() - rel, 10)
+        \\var res = (Map{a={123}}['a'] as List[int])[0]
+        \\test.eq(traceRetains() - ret, 8)
+        \\test.eq(traceReleases() - rel, 8)
         \\test.eq(res, 123)
     );
 
@@ -446,7 +446,7 @@ test "Multiple evals persisting state." {
         .check_object_count = false,
     },
         \\use m 'mod'
-        \\m.g['a'] = 1
+        \\(m.g as Map)['a'] = 1
     );
 
     _ = try run.evalPass(.{ 
@@ -456,7 +456,7 @@ test "Multiple evals persisting state." {
     },
         \\use m 'mod'
         \\use t 'test'
-        \\t.eq(m.g['a'], 1)
+        \\t.eq((m.g as Map)['a'], 1)
     );
 }
 

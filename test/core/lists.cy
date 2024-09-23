@@ -148,10 +148,10 @@ a = .{3, 1, 2}
 a.sort((a, b) => a < b)
 t.eqList(a, .{1, 2, 3})
 a2 = .{ {3}, {1}, {2} }
-a2.sort((a, b) => a[0] < b[0])
-t.eq(a2[0][0], 1)
-t.eq(a2[1][0], 2)
-t.eq(a2[2][0], 3)
+a2.sort((a, b) => (a as List[int])[0] < (b as List[int])[0])
+t.eq((a2[0] as List[int])[0], 1)
+t.eq((a2[1] as List[int])[0], 2)
+t.eq((a2[2] as List[int])[0], 3)
 
 -- Iteration.
 a = .{1, 2, 3, 4, 5}

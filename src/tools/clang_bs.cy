@@ -174,10 +174,9 @@ func EvalResult_getAsDouble(E *void) float:
 func EvalResult_getAsStr(E *void) *void:
     return lib['clang_EvalResult_getAsStr'](E)
 
-var .lib = load(ffi) -- Make lib dependent on ffi.
-dyn .ffi = false
-
-func load(dummy any) Map:
+var .ffi = load(lib) -- Make lib dependent on ffi.
+var .lib = Map{} 
+func load(dep any) os.FFI:
     var ffi_ = os.newFFI()
 
     -- enum CXTypeKind kind, void *data[2]
@@ -298,7 +297,6 @@ func load(dummy any) Map:
     -- CXType clang_Type_getNamedType(CXType T);
     ffi_.cfunc('clang_Type_getNamedType', .{CXType}, CXType)
 
-    ffi = ffi_
-
-    return ffi.bindLib(Option[string].some('libclang.dylib'))
+    lib = ffi_.bindLib(Option[string].some('libclang.dylib'))
     -- return ffi.bindLib('/Library/Developer/CommandLineTools/usr/lib/libclang.dylib')
+    return ffi_

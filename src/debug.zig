@@ -568,10 +568,10 @@ fn dumpMarkerAdvance(vm: *cy.VM, curMarkerIdx: *u32, nextMarkerPc: *u32) void {
             rt.printFmt(vm, "{}:\n", &.{v(marker.getLabelName())});
         },
         .funcStart => {
-            rt.printFmt(vm, "---- func begin: {}\n", &.{v(marker.data.funcStart.func.name())});
+            rt.printFmt(vm, "---- func begin: {}\n", &.{v(marker.data.funcStart.name())});
         },
         .funcEnd => {
-            rt.printFmt(vm, "---- func end: {}\n", &.{v(marker.data.funcEnd.func.name())});
+            rt.printFmt(vm, "---- func end: {}\n", &.{v(marker.data.funcEnd.name())});
         },
     }
     curMarkerIdx.* += 1;

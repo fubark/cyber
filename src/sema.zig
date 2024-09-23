@@ -3287,12 +3287,16 @@ pub fn symbol(c: *cy.Chunk, sym: *Sym, expr: Expr, prefer_ct_sym: bool) !ExprRes
             const src_chunk = user_var.head.parent.?.getMod().?.chunk;
             try ensureUserVarResolved(src_chunk, user_var);
             const loc = try c.ir.pushExpr(.varSym, c.alloc, user_var.type, node, .{ .sym = sym });
-            return ExprResult.initCustom(loc, .varSym, user_var.type, .{ .varSym = sym });
+            var res = ExprResult.initCustom(loc, .varSym, user_var.type, .{ .varSym = sym });
+            res.addressable = true;
+            return res;
         },
         .hostVar => {
             const host_var = sym.cast(.hostVar);
             const loc = try c.ir.pushExpr(.varSym, c.alloc, host_var.type, node, .{ .sym = sym });
-            return ExprResult.initCustom(loc, .varSym, host_var.type, .{ .varSym = sym });
+            var res = ExprResult.initCustom(loc, .varSym, host_var.type, .{ .varSym = sym });
+            res.addressable = true;
+            return res;
         },
         .func => {
             // `symbol` being invoked suggests the func sym is not ambiguous.
@@ -4654,6 +4658,8 @@ pub const ChunkExt = struct {
                         c.ir.setArrayItem(irArgsIdx, u32, i, arg.irIdx);
                     }
                     return ExprResult.init(irIdx, type_);
+                } else if (type_.kind() == .option) {
+                    return c.semaNone(type_, node);
                 }
 
                 // No point in supporting all zero inits since they will be removed in favor of default values.
@@ -6429,9 +6435,11 @@ pub const ChunkExt = struct {
             const loc = try c.ir.pushExpr(.type, c.alloc, c.sema.type_t, expr.node, .{ .type = ptr_t });
             return ExprResult.init(loc, c.sema.type_t);
         }
-        if (child.resType != .local) {
-            const tempv = try declareHiddenLocal(c, "$temp", child.type, child, expr.node);
-            child = try semaLocal(c, tempv.id, expr.node);
+
+        if (!child.addressable) {
+            // Assign expression to a temp to extend the lifetime.
+            const tempv = try declareHiddenLocal(c, "$temp", child.type, child, node.elem);
+            child = try semaLocal(c, tempv.id, node.elem);
         }
 
         if (child.resType == .local) {

@@ -91,11 +91,9 @@ t.eq(Node.getFn2(321), 444)
 -- Static func, many params.
 t.eq(Node.getFn3(321, 1), 443)
 
-type S
-func S.foo(a float) float:
-    return a
-
--- Object function, infer arg type.
-t.eq(S.foo(2), 2.0)
+-- Static variable method call.
+var .sn = Node{value=123}
+sn.set()
+t.eq(sn.get(), 1)
 
 --cytest: pass

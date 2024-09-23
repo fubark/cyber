@@ -137,12 +137,14 @@ pub const ByteCodeBuffer = struct {
     }
 
     pub fn pushDebugFuncStart(self: *ByteCodeBuffer, func: *cy.Func, chunkId: u32) !void {
+        const name = func.name();
         try self.debugMarkers.append(self.alloc, .{
             .type = @intFromEnum(DebugMarkerType.funcStart),
             .pc = @intCast(self.ops.items.len),
             .data = .{
                 .funcStart = .{
-                    .func = func,
+                    .name_ptr = name.ptr,
+                    .name_len = @intCast(name.len),
                     .chunkId = chunkId,
                 },
             },
@@ -150,12 +152,14 @@ pub const ByteCodeBuffer = struct {
     }
 
     pub fn pushDebugFuncEnd(self: *ByteCodeBuffer, func: *cy.Func, chunkId: u32) !void {
+        const name = func.name();
         try self.debugMarkers.append(self.alloc, .{
             .type = @intFromEnum(DebugMarkerType.funcEnd),
             .pc = @intCast(self.ops.items.len),
             .data = .{
                 .funcEnd = .{
-                    .func = func,
+                    .name_ptr = name.ptr,
+                    .name_len = @intCast(name.len),
                     .chunkId = chunkId,
                 },
             },
@@ -735,10 +739,16 @@ pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts
             const dst = pc[6].val;
             len += try fmt.printCount(w, "%{} = type(id={})", &.{v(dst), v(type_id)});
         },
+        .addr_static => {
+            const var_id = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const is_obj = pc[3].val == 1;
+            const dst = pc[4].val;
+            len += try fmt.printCount(w, "%{} = *vars[{}], obj={}", &.{v(dst), v(var_id), v(is_obj)});
+        },
         .addr_local => {
             const local = pc[1].val;
             const dst = pc[2].val;
-            len += try fmt.printCount(w, "%{} = &%{}.values", &.{v(dst), v(local)});
+            len += try fmt.printCount(w, "%{} = *%{}.values", &.{v(dst), v(local)});
         },
         .addr_const_index => {
             const local = pc[1].val;
@@ -974,12 +984,22 @@ const DebugMarker = extern struct {
             nameLen: u16,
         },
         funcStart: extern struct {
+            name_ptr: [*]const u8,
+            name_len: u32,
             chunkId: u32,
-            func: *cy.Func,
+
+            pub fn name(self: @This()) []const u8 {
+                return self.name_ptr[0..self.name_len];
+            }
         },
         funcEnd: extern struct {
+            name_ptr: [*]const u8,
+            name_len: u32,
             chunkId: u32,
-            func: *cy.Func,
+
+            pub fn name(self: @This()) []const u8 {
+                return self.name_ptr[0..self.name_len];
+            }
         },
     },
 
@@ -1066,6 +1086,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .jumpNotCond => {
             return 4;
         },
+        .addr_static,
         .set_deref_struct_ptr,
         .set,
         .deref_value_ptr,
@@ -1276,6 +1297,7 @@ pub const OpCode = enum(u8) {
 
     box = vmc.CodeBox,
     unbox = vmc.CodeUnbox,
+    addr_static = vmc.CodeAddrStatic,
     addr_local = vmc.CodeAddrLocal,
     addr_const_index = vmc.CodeAddrConstIndex,
     addr_index = vmc.CodeAddrIndex,

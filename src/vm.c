@@ -639,6 +639,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Trait),
         JENTRY(Box),
         JENTRY(Unbox),
+        JENTRY(AddrStatic),
         JENTRY(AddrLocal),
         JENTRY(AddrConstIndex),
         JENTRY(AddrIndex),
@@ -1537,6 +1538,19 @@ beginSwitch:
             RETURN(RES_CODE_PANIC);
         }
         stack[pc[4]] = zUnbox(vm, stack[pc[1]], type_id);
+        pc += 5;
+        NEXT();
+    }
+    CASE(AddrStatic): {
+        u16 symId = READ_U16(1);
+        bool is_obj = pc[3];
+        if (is_obj) {
+            Value sym = ((StaticVar*)vm->c.varSyms.buf)[symId].value;
+            HeapObject* obj = VALUE_AS_HEAPOBJECT(sym);
+            stack[pc[4]] = (u64)(&obj->object.firstValue);
+        } else {
+            stack[pc[4]] = (u64)&((StaticVar*)vm->c.varSyms.buf)[symId].value;
+        }
         pc += 5;
         NEXT();
     }

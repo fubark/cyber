@@ -288,6 +288,7 @@ typedef enum {
 
     CodeBox,
     CodeUnbox,
+    CodeAddrStatic,
     CodeAddrLocal,
     CodeAddrConstIndex,
     CodeAddrIndex,

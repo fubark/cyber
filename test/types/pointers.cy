@@ -46,6 +46,11 @@ test.eq(g.a, 345)
 g.a = 456
 test.eq(g.a, 456)
 
+-- Read dereferenced `int` from static variable.
+var .sa = 123
+var b2 = *sa
+test.eq(b2.*, 123)
+
 -- pointer.fromAddr
 var ptr = pointer.fromAddr(void, 0xDEADBEEF)
 test.eq(ptr.addr(), 3735928559)

@@ -782,6 +782,20 @@ fn genAddressOf(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
 fn genAddressOf2(c: *Chunk, expr: usize, cstr: Cstr, node: *ast.Node) !GenValue {
     const code = c.ir.getExprCode(expr);
     switch (code) {
+        .varSym => {
+            const data = c.ir.getExprData(expr, .varSym);
+            const varId = c.compiler.genSymMap.get(data.sym).?.varSym.id;
+
+            const inst = try bc.selectForDstInst(c, cstr, c.sema.int_t, false, node);
+            const pc = c.buf.len();
+            const is_obj = c.ir.getExprType(expr).isVmObject();
+            try c.pushCode(.addr_static, &.{0, 0, @intFromBool(is_obj), inst.dst}, node);
+            c.buf.setOpArgU16(pc + 1, @intCast(varId));
+            if (inst.own_dst) {
+                try initSlot(c, inst.dst, false, node);
+            }
+            return finishDstInst(c, inst, false);
+        },
         .local => {
             const data = c.ir.getExprData(expr, .local);
             const local_slot = toLocalReg(c, data.id);
@@ -2012,9 +2026,8 @@ fn genVarSym(c: *Chunk, idx: usize, cstr: Cstr, node: *ast.Node) !GenValue {
         try pushRelease(c, inst.dst, node);
     }
 
-    try c.pushOptionalDebugSym(node);       
     const pc = c.buf.len();
-    try c.buf.pushOp3(.staticVar, 0, 0, inst.dst);
+    try c.pushCode(.staticVar, &.{0, 0, inst.dst}, node);
     c.buf.setOpArgU16(pc + 1, @intCast(varId));
     if (inst.own_dst) {
         try initSlot(c, inst.dst, true, node);

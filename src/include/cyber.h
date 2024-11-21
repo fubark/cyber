@@ -6,6 +6,14 @@
 
 #ifndef CYBER_H
 #define CYBER_H
+<<<<<<< HEAD
+=======
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+typedef struct CsVM CsVM;
+>>>>>>> 3c6089c3fe2cf40df7351048bd698ac8d1fc0157
 
 #ifdef __cplusplus
 extern "C" {
@@ -613,6 +621,7 @@ void clListAppend(CLVM* vm, CLValue list, CLValue val);
 void clListInsert(CLVM* vm, CLValue list, size_t idx, CLValue val);
 
 // Maps.
+<<<<<<< HEAD
 // size_t clMapSize(CLValue map);
 // bool clMapContains(CLValue map, CLValue key);
 // bool clMapContainsStringKey(CLValue map, CLStr key);
@@ -620,6 +629,15 @@ void clListInsert(CLVM* vm, CLValue list, size_t idx, CLValue val);
 // CLValue clMapGetStringKey(CLVM* vm, CLValue map, CLStr key);
 // void clMapSet(CLVM* vm, CLValue map, CLValue key, CLValue val);
 // void clMapSetStringKey(CLVM* vm, CLValue map, CLStr key, CLValue val);
+=======
+// size_t csMapSize(CsValue map);
+// bool csMapContains(CsValue map, CsValue key);
+// bool csMapContainsStringKey(CsValue map, CsStr key);
+// CsValue csMapGet(CsVM* vm, CsValue map, CsValue key);
+// CsValue csMapGetStringKey(CsVM* vm, CsValue map, CsStr key);
+// void csMapSet(CsVM* vm, CsValue map, CsValue key, CsValue val);
+// void csMapSetStringKey(CsVM* vm, CsValue map, CsStr key, CsValue val);
+>>>>>>> 3c6089c3fe2cf40df7351048bd698ac8d1fc0157
 
 #ifdef __cplusplus
 } // extern "C"

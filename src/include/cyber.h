@@ -101,7 +101,7 @@ typedef struct CLModule {
 } CLModule;
 
 // @host func is binded to this function pointer signature.
-typedef CLValue (*CLFuncFn)(CLVM* vm);
+typedef CLValue (*CLFuncFn)(CLVM*, const CLValue*, uint8_t);
 
 typedef struct CLResolverParams {
     /// Chunk that invoked the resolver.
@@ -263,8 +263,8 @@ typedef struct CLHostType {
 // #define CL_CORE_TYPE(t) ((CLHostType){ .data = { .core_custom = { .type_id = t, .get_children = NULL, .finalizer = NULL }}, .type = CL_BIND_TYPE_CORE_CUSTOM })
 // #define CL_CORE_TYPE_EXT(t, gc, f) ((CLHostType){ .data = { .core_custom = { .type_id = t, .get_children = gc, .finalizer = f }}, .type = CL_BIND_TYPE_CORE_CUSTOM })
 // #define CL_CORE_TYPE_DECL(t) ((CLHostType){ .data = { .core_decl = { .type_id = t }}, .type = CL_BIND_TYPE_CORE_DECL })
-#define CL_CUSTOM_TYPE(name, ot, gc, f) ((CLHostTypeEntry){ CL_STR(name), (CLHostType){ .data = { .custom = { .out_type_id = ot, .get_children = gc, .finalizer = f, .pre = false }}, .type = CL_BIND_TYPE_CUSTOM }})
-#define CL_CUSTOM_PRE_TYPE(name, ot, gc, f) ((CLHostTypeEntry){ CL_STR(name), (CLHostType){ .data = { .custom = { .out_type_id = ot, .get_children = gc, .finalizer = f, .pre = true }}, .type = CL_BIND_TYPE_CUSTOM }})
+#define CL_CUSTOM_TYPE(name, ot, gc, f) ((CLHostTypeEntry){ CL_STR(name), (CLHostType){ .data = { .hostobj = { .out_type_id = ot, .pre = false, .get_children = gc, .finalizer = f }}, .type = CL_BIND_TYPE_HOSTOBJ }})
+#define CL_CUSTOM_PRE_TYPE(name, ot, gc, f) ((CLHostTypeEntry){ CL_STR(name), (CLHostType){ .data = { .hostobj = { .out_type_id = ot, .pre = true, .get_children = gc, .finalizer = f }}, .type = CL_BIND_TYPE_HOSTOBJ }})
 
 // A mapping from a matching symbol string to a CLHostType.
 typedef struct CLHostTypeEntry {

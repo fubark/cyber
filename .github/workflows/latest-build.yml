@@ -296,17 +296,17 @@ jobs:
 
       - name: Save artifact.
         if: env.BUILD_CMD == 'cli' || env.BUILD_CMD == 'web-lib'
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
-          name: bin
+          name: bin-${{ env.BUILD_HOST }}-${{ env.BUILD_TARGET }}-${{ env.BUILD_MODE }}-${{ env.BUILD_CMD }}
           path: |
             ${{ env.BIN_ZIP }}
 
       - name: Save artifact.
         if: env.BUILD_CMD == 'lib'
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
-          name: bin
+          name: bin-${{ env.BUILD_HOST }}-${{ env.BUILD_TARGET }}-${{ env.BUILD_MODE }}-${{ env.BUILD_CMD }}
           path: |
             libcyber-windows-gnu-x64.lib
             libcyber-windows-msvc-x64.lib
@@ -401,9 +401,9 @@ jobs:
           mv docs/docs.html docs.html
 
       - name: Save artifact.
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
-          name: bin
+          name: bin-docs
           path: |
             docs.html
             docs.md
@@ -413,9 +413,10 @@ jobs:
     name: Release
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v4
         with:
-          name: bin
+          pattern: bin-*
+          merge-multiple: true
 
       # Manual dispatch.
       - name: Github Latest Release.

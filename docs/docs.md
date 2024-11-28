@@ -752,7 +752,7 @@ String templates can not contain nested string templates.
 Values that can be formatted into a string will have a `fmt` method:
 ```cy
 var file = os.openFile('data.bin', .read)
-var bytes = file.readToEnd()
+var bytes = file.readAll()
 
 -- Dump contents in hex.
 print "$(bytes.fmt(.x))"

@@ -22,7 +22,7 @@ jobs:
 
       - name: Install zig.
         run: |
-          wget -c https://ziglang.org/builds/zig-linux-x86_64-${{ env.ZIG_VERSION }}.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
+          wget -c https://ziglang.org/download/${{ env.ZIG_VERSION }}/zig-linux-x86_64-${{ env.ZIG_VERSION }}.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
 
       - name: Build md4c.
         run: |

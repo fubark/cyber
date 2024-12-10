@@ -990,7 +990,7 @@ table tbody tr:nth-child(even) {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 414-5b8dd64</div>
+    <div class="sub-title">v0.4-dev 419-2a2298d</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="https://cyberscript.dev/play.html" target="_blank" rel="noopener">Playground</a></li>
@@ -1614,7 +1614,7 @@ var str = "Scoreboard: $(name) $(points)"
 <h3 id="string-formatting">String formatting. <a href="#string-formatting">#</a></h3>
 <p>Values that can be formatted into a string will have a <code>fmt</code> method:</p>
 <pre><code class="language-cy">var file = os.openFile('data.bin', .read)
-var bytes = file.readToEnd()
+var bytes = file.readAll()
 
 -- Dump contents in hex.
 print "$(bytes.fmt(.x))"

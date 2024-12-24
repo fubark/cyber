@@ -11,7 +11,7 @@ const v = cy.fmt.v;
 const log = cy.log.scoped(.cli);
 const rt = cy.rt;
 
-const builtins = std.ComptimeStringMap(void, .{
+const builtins = std.StaticStringMap(void).initComptime(.{
     .{"core"},
     .{"math"},
     .{"cy"},
@@ -21,7 +21,7 @@ const Src = @embedFile("std/cli.cy");
 
 const func = cy.hostFuncEntry;
 const funcs = [_]C.HostFuncEntry{
-    func("replReadLine",     zErrFunc(replReadLine)),
+    func("replReadLine", zErrFunc(replReadLine)),
 };
 
 pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
@@ -33,10 +33,10 @@ pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
     return mod;
 }
 
-const stdMods = std.ComptimeStringMap(*const fn(*cy.VM, r_uri: []const u8) C.Module, .{
-    .{"cli", create},
-    .{"os", os_mod.create},
-    .{"test", test_mod.create},
+const stdMods = std.StaticStringMap(*const fn (*cy.VM, r_uri: []const u8) C.Module).initComptime(.{
+    .{ "cli", create },
+    .{ "os", os_mod.create },
+    .{ "test", test_mod.create },
 });
 
 pub const CliData = struct {
@@ -136,7 +136,7 @@ pub fn loader(vm_: ?*C.VM, spec_: C.Str, res: ?*C.Module) callconv(.C) bool {
             if (e == error.HandledError) {
                 return false;
             } else {
-                const msg = cy.fmt.allocFormat(alloc, "Can not load `{}`. {}", &.{v(spec), v(e)}) catch return false;
+                const msg = cy.fmt.allocFormat(alloc, "Can not load `{}`. {}", &.{ v(spec), v(e) }) catch return false;
                 defer alloc.free(msg);
                 C.reportApiError(@ptrCast(vm), C.toStr(msg));
                 return false;
@@ -144,7 +144,7 @@ pub fn loader(vm_: ?*C.VM, spec_: C.Str, res: ?*C.Module) callconv(.C) bool {
         };
     } else {
         src = std.fs.cwd().readFileAlloc(alloc, spec, 1e10) catch |e| {
-            const msg = cy.fmt.allocFormat(alloc, "Can not load `{}`. {}", &.{v(spec), v(e)}) catch return false;
+            const msg = cy.fmt.allocFormat(alloc, "Can not load `{}`. {}", &.{ v(spec), v(e) }) catch return false;
             defer alloc.free(msg);
             C.reportApiError(@ptrCast(vm), C.toStr(msg));
             return false;
@@ -185,7 +185,7 @@ fn resolve(vm_: ?*C.VM, params: C.ResolverParams) callconv(.C) bool {
         if (e == error.HandledError) {
             return false;
         } else {
-            const msg = cy.fmt.allocFormat(alloc, "Resolve module `{}`, error: `{}`", &.{v(uri), v(e)}) catch return false;
+            const msg = cy.fmt.allocFormat(alloc, "Resolve module `{}`, error: `{}`", &.{ v(uri), v(e) }) catch return false;
             defer alloc.free(msg);
             C.reportApiError(@ptrCast(vm), C.toStr(msg));
             return false;
@@ -202,7 +202,7 @@ fn zResolve(vm: *cy.VM, alloc: std.mem.Allocator, chunkId: cy.ChunkId, buf: []u8
     if (std.mem.startsWith(u8, spec, "http://") or std.mem.startsWith(u8, spec, "https://")) {
         const uri = try std.Uri.parse(spec);
         if (std.mem.endsWith(u8, uri.host.?.percent_encoded, "github.com")) {
-            if (std.mem.count(u8, uri.path.percent_encoded, "/") == 2 and uri.path.percent_encoded[uri.path.percent_encoded.len-1] != '/') {
+            if (std.mem.count(u8, uri.path.percent_encoded, "/") == 2 and uri.path.percent_encoded[uri.path.percent_encoded.len - 1] != '/') {
                 var fbuf = std.io.fixedBufferStream(buf);
                 const w = fbuf.writer();
 
@@ -227,7 +227,7 @@ fn zResolve(vm: *cy.VM, alloc: std.mem.Allocator, chunkId: cy.ChunkId, buf: []u8
             _ = try fbuf.write(spec);
             break :b;
         };
-        try fbuf.writer().print("{s}/{s}", .{dir, spec});
+        try fbuf.writer().print("{s}/{s}", .{ dir, spec });
     } else {
         _ = try fbuf.write(spec);
     }
@@ -274,7 +274,7 @@ fn loadUrl(vm: *cy.VM, alloc: std.mem.Allocator, url: []const u8) ![]const u8 {
                 if (C.verbose()) {
                     const cachePath = try cache.allocSpecFilePath(alloc, entry);
                     defer alloc.free(cachePath);
-                    rt.logZFmt("Using cached `{s}` at `{s}`", .{url, cachePath});
+                    rt.logZFmt("Using cached `{s}` at `{s}`", .{ url, cachePath });
                 }
                 return src;
             }
@@ -302,7 +302,7 @@ fn loadUrl(vm: *cy.VM, alloc: std.mem.Allocator, url: []const u8) ![]const u8 {
 
     if (res.status != .ok) {
         // Stop immediately.
-        const e = try cy.fmt.allocFormat(alloc, "Can not load `{}`. Response code: {}", &.{v(url), v(res.status)});
+        const e = try cy.fmt.allocFormat(alloc, "Can not load `{}`. Response code: {}", &.{ v(url), v(res.status) });
         defer alloc.free(e);
         C.reportApiError(@ptrCast(vm), C.toStr(e));
         return error.HandledError;

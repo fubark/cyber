@@ -4,7 +4,7 @@ const tt = stdx.testing;
 const cy = @import("cyber.zig");
 const v = cy.fmt.v;
 
-const keywords = std.ComptimeStringMap(TokenType, .{
+const keywords = std.StaticStringMap(TokenType).initComptime(.{
     .{ "and", .and_k },
     .{ "as", .as_k },
     .{ "await", .await_k },
@@ -215,7 +215,7 @@ pub const Tokenizer = struct {
     ignoreErrors: bool,
 
     has_error: bool,
-    reportFn: *const fn(*anyopaque, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror!void,
+    reportFn: *const fn (*anyopaque, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror!void,
     ctx: *anyopaque,
 
     pub fn init(alloc: std.mem.Allocator, src: []const u8) Tokenizer {
@@ -429,7 +429,7 @@ pub const Tokenizer = struct {
                         },
                         else => {
                             try t.pushToken(.equal, start);
-                        }
+                        },
                     }
                 } else {
                     try t.pushToken(.equal, start);
@@ -459,16 +459,12 @@ pub const Tokenizer = struct {
                     try t.pushToken(.right_angle, start);
                 }
             },
-            ' ',
-            '\r',
-            '\t' => {
+            ' ', '\r', '\t' => {
                 // Consume whitespace.
                 while (!isAtEnd(t)) {
                     const ch2 = peek(t);
                     switch (ch2) {
-                        ' ',
-                        '\r',
-                        '\t' => advance(t),
+                        ' ', '\r', '\t' => advance(t),
                         else => return tokenizeOne(t, state),
                     }
                 }
@@ -501,7 +497,7 @@ pub const Tokenizer = struct {
                         }
                     }
                 }
-                try t.pushSpanToken(.rune, start+1, t.nextPos-1);
+                try t.pushSpanToken(.rune, start + 1, t.nextPos - 1);
             },
             '"' => {
                 if (state.stateT == .templateExprToken) {
@@ -562,13 +558,11 @@ pub const Tokenizer = struct {
                             try t.pushToken(.err, start);
                             return .{ .stateT = .token };
                         } else {
-                            try t.reportErrorAt("unknown character: {} ({}) at {}", &.{
-                                cy.fmt.char(ch), v(ch), v(start)
-                            }, start);
+                            try t.reportErrorAt("unknown character: {} ({}) at {}", &.{ cy.fmt.char(ch), v(ch), v(start) }, start);
                         }
                     },
                 }
-            }
+            },
         }
         return .{ .stateT = .token };
     }
@@ -635,7 +629,7 @@ pub const Tokenizer = struct {
         }
 
         if (t.src.len >= t.nextPos + 2) {
-            if (t.src[t.nextPos] == '#' and t.src[t.nextPos+1] == '!') {
+            if (t.src[t.nextPos] == '#' and t.src[t.nextPos + 1] == '!') {
                 // Ignore shebang line.
                 while (!isAtEnd(t)) {
                     if (peek(t) == '\n') {
@@ -898,7 +892,7 @@ pub const Tokenizer = struct {
                 if (next < '0' or next > '9') {
                     try t.pushSpanToken(.dec, start, t.nextPos);
                     return;
-                } 
+                }
                 advance(t);
                 advance(t);
                 consumeDigits(t);
@@ -939,7 +933,7 @@ pub const Tokenizer = struct {
             return;
         }
 
-        if (t.src[t.nextPos-1] == '0') {
+        if (t.src[t.nextPos - 1] == '0') {
             // Less common integer notation.
             if (ch == 'x') {
                 // Hex integer.
@@ -988,7 +982,7 @@ pub const Tokenizer = struct {
                 return;
             } else {
                 if (std.ascii.isAlphabetic(ch)) {
-                    const char: []const u8 = &[_]u8{ ch };
+                    const char: []const u8 = &[_]u8{ch};
                     return t.reportError("Unsupported integer notation: {}", &.{v(char)});
                 }
             }

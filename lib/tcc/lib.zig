@@ -2,15 +2,15 @@ const std = @import("std");
 
 pub fn createModule(b: *std.Build) *std.Build.Module {
     const mod = b.createModule(.{
-        .root_source_file = .{ .path = thisDir() ++ "/tcc.zig" },
+        .root_source_file = b.path("lib/tcc/tcc.zig"),
     });
-    mod.addIncludePath(.{ .path = thisDir() ++ "/vendor" });
+    mod.addIncludePath(b.path("lib/tcc/vendor"));
     return mod;
 }
 
-pub fn addImport(root: *std.Build.Module, name: []const u8, mod: *std.Build.Module) void {
+pub fn addImport(root: *std.Build.Module, b: *std.Build, name: []const u8, mod: *std.Build.Module) void {
     root.addImport(name, mod);
-    root.addIncludePath(.{ .path = thisDir() ++ "/vendor" });
+    root.addIncludePath(b.path("lib/tcc/vendor"));
 }
 
 const BuildOptions = struct {
@@ -25,7 +25,7 @@ pub fn buildAndLink(b: *std.Build, mod: *std.Build.Module, opts: BuildOptions) v
         .target = opts.target,
         .optimize = opts.optimize,
     });
-    lib.addIncludePath(.{ .path = thisDir() ++ "/vendor" });
+    lib.addIncludePath(b.path("lib/tcc/vendor"));
     lib.linkLibC();
     lib.root_module.sanitize_c = false;
 
@@ -34,8 +34,7 @@ pub fn buildAndLink(b: *std.Build, mod: *std.Build.Module, opts: BuildOptions) v
         c_flags.append("-DHAVE_SELINUX=1") catch @panic("error");
     }
     // c_flags.append("-D_GNU_SOURCE=1") catch @panic("error");
-    if (opts.target.result.os.tag == .windows) {
-    }
+    if (opts.target.result.os.tag == .windows) {}
     if (opts.optimize == .Debug) {
         // For debugging:
         // c_flags.append("-O0") catch @panic("error");
@@ -43,12 +42,12 @@ pub fn buildAndLink(b: *std.Build, mod: *std.Build.Module, opts: BuildOptions) v
 
     var sources = std.ArrayList([]const u8).init(b.allocator);
     sources.appendSlice(&.{
-        "/vendor/libtcc.c",
+        "lib/tcc/vendor/libtcc.c",
         // "/vendor/lib/libtcc1.c",
     }) catch @panic("error");
     for (sources.items) |src| {
         lib.addCSourceFile(.{
-            .file = .{ .path = b.fmt("{s}{s}", .{thisDir(), src}) },
+            .file = b.path(src),
             .flags = c_flags.items,
         });
     }

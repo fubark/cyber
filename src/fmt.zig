@@ -79,17 +79,17 @@ fn toFmtValueType(comptime T: type) FmtValueType {
         [*:0]u8 => return .stringz,
         [:0]const u8 => return .string,
         else => {
-            if (@typeInfo(T) == .Enum) {
+            if (@typeInfo(T) == .@"enum") {
                 return .enumt;
-            } else if (@typeInfo(T) == .ErrorSet) {
+            } else if (@typeInfo(T) == .error_set) {
                 return .err;
-            } else if (@typeInfo(T) == .Optional) {
-                if (@typeInfo(@typeInfo(T).Optional.child) == .Pointer) {
+            } else if (@typeInfo(T) == .optional) {
+                if (@typeInfo(@typeInfo(T).optional.child) == .pointer) {
                     return .ptr;
                 } else {
                     @compileError(std.fmt.comptimePrint("Unexpected type: {}", .{T}));
                 }
-            } else if (@typeInfo(T) == .Pointer) {
+            } else if (@typeInfo(T) == .pointer) {
                 return .ptr;
             } else {
                 @compileError(std.fmt.comptimePrint("Unexpected type: {}", .{T}));
@@ -411,7 +411,7 @@ pub fn format(writer: anytype, fmt: []const u8, vals: []const FmtValue) !void {
 }
 
 pub fn allocFormat(alloc: std.mem.Allocator, fmt: []const u8, vals: []const FmtValue) ![]u8 {
-    @setCold(true);
+    @branchHint(.cold);
     var buf: std.ArrayListUnmanaged(u8) = .{};
     defer buf.deinit(alloc);
     const w = buf.writer(alloc);
@@ -429,7 +429,7 @@ pub fn printStdout(fmt: []const u8, vals: []const FmtValue) void {
 }
 
 pub fn printStdoutOrErr(fmt: []const u8, vals: []const FmtValue) !void {
-    @setCold(true);
+    @branchHint(.cold);
     printMutex.lock();
     defer printMutex.unlock();
     const w = std.io.getStdOut().writer();
@@ -487,7 +487,7 @@ pub fn unlockPrint() void {
 }
 
 pub fn printStderrOrErr(fmt: []const u8, vals: []const FmtValue) !void {
-    @setCold(true);
+    @branchHint(.cold);
     const w = lockStderrWriter();
     defer unlockPrint();
     try format(w, fmt, vals);
@@ -587,7 +587,7 @@ fn countingWriter(numBytesWritten: *u64, child: anytype) CountingWriter(@TypeOf(
 }
 
 pub fn panic(fmt: []const u8, vals: []const FmtValue) noreturn {
-    @setCold(true);
+    @branchHint(.cold);
     cy.log.fmt(fmt, vals);
     @panic("");
 }

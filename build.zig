@@ -90,7 +90,7 @@ pub fn build(b: *std.Build) !void {
         const stdx = b.createModule(.{
             .root_source_file = b.path("src/stdx/stdx.zig"),
         });
-        try buildAndLinkDeps(&exe.root_module, build_options, stdx, opts);
+        try buildAndLinkDeps(exe.root_module, build_options, stdx, opts);
         step.dependOn(&b.addInstallArtifact(exe, .{}).step);
     }
 
@@ -187,7 +187,7 @@ pub fn build(b: *std.Build) !void {
             .root_source_file = b.path("src/stdx/stdx.zig"),
         });
 
-        try buildAndLinkDeps(&lib.root_module, build_options, stdx, opts);
+        try buildAndLinkDeps(lib.root_module, build_options, stdx, opts);
         main_step.dependOn(&b.addInstallArtifact(lib, .{}).step);
     }
 
@@ -467,7 +467,7 @@ fn addUnitTest(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
     const stdx = b.createModule(.{
         .root_source_file = b.path("src/stdx/stdx.zig"),
     });
-    try buildAndLinkDeps(&step.root_module, build_options, stdx, opts);
+    try buildAndLinkDeps(step.root_module, build_options, stdx, opts);
     return step;
 }
 
@@ -539,7 +539,7 @@ fn is32Bit(target_: std.Target) bool {
 }
 
 inline fn thisDir() []const u8 {
-    return comptime std.fs.path.dirname(@src().file) orelse unreachable;
+    return comptime std.fs.path.dirname(@src().file) orelse ".";
 }
 
 pub const PrintStep = struct {
@@ -560,7 +560,7 @@ pub const PrintStep = struct {
         };
     }
 
-    fn make(step: *std.Build.Step, _: std.Progress.Node) anyerror!void {
+    fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
         const self: *PrintStep = @fieldParentPtr("step", step);
         std.io.getStdOut().writer().writeAll(self.str) catch unreachable;
     }
@@ -675,7 +675,7 @@ fn buildLib(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
     const stdx = b.createModule(.{
         .root_source_file = b.path("src/stdx/stdx.zig"),
     });
-    try buildAndLinkDeps(&lib.root_module, build_options, stdx, opts);
+    try buildAndLinkDeps(lib.root_module, build_options, stdx, opts);
     return lib;
 }
 

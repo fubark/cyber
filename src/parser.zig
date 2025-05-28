@@ -314,7 +314,7 @@ pub const Parser = struct {
     }
 
     fn popBlock(self: *Parser) Block {
-        var block = self.blockStack.pop();
+        var block = self.blockStack.pop().?;
         block.deinit(self.alloc);
         return block;
     }

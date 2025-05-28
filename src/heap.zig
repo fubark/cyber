@@ -59,7 +59,7 @@ pub fn getAllocator() std.mem.Allocator {
         .zig => {
             if (builtin.is_test) {
                 if (cy.Trace) {
-                    trace_allocator.alloc = t.alloc;
+                    trace_allocator.backingAllocator = t.alloc;
                     return trace_allocator.allocator();
                 } else {
                     return t.alloc;
@@ -96,11 +96,12 @@ pub fn deinitAllocator() void {
 
 // Uses a backing allocator and zeros the freed memory to surface UB more consistently.
 pub const TraceAllocator = struct {
-    alloc: std.mem.Allocator,
+    backingAllocator: std.mem.Allocator,
 
     const vtable = std.mem.Allocator.VTable{
         .alloc = alloc,
         .resize = resize,
+        .remap = remap,
         .free = free,
     };
 
@@ -111,20 +112,25 @@ pub const TraceAllocator = struct {
         };
     }
 
-    fn alloc(ptr: *anyopaque, len: usize, log2_align: u8, ret_addr: usize) ?[*]u8 {
+    fn alloc(ptr: *anyopaque, len: usize, alignment: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
         const self: *TraceAllocator = @ptrCast(@alignCast(ptr));
-        return self.alloc.rawAlloc(len, log2_align, ret_addr);
+        return self.backingAllocator.rawAlloc(len, alignment, ret_addr);
     }
 
-    fn resize(ptr: *anyopaque, buf: []u8, log2_align: u8, new_len: usize, ret_addr: usize) bool {
+    fn resize(ptr: *anyopaque, buf: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) bool {
         const self: *TraceAllocator = @ptrCast(@alignCast(ptr));
-        return self.alloc.rawResize(buf, log2_align, new_len, ret_addr);
+        return self.backingAllocator.rawResize(buf, alignment, new_len, ret_addr);
     }
 
-    fn free(ptr: *anyopaque, buf: []u8, log2_align: u8, ret_addr: usize) void {
+    fn remap(ptr: *anyopaque, buf: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {
+        const self: *TraceAllocator = @ptrCast(@alignCast(ptr));
+        return self.backingAllocator.rawRemap(buf, alignment, new_len, ret_addr);
+    }
+
+    fn free(ptr: *anyopaque, buf: []u8, alignment: std.mem.Alignment, ret_addr: usize) void {
         const self: *TraceAllocator = @ptrCast(@alignCast(ptr));
         @memset(buf, 0);
-        return self.alloc.rawFree(buf, log2_align, ret_addr);
+        return self.backingAllocator.rawFree(buf, alignment, ret_addr);
     }
 };
 

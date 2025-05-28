@@ -811,7 +811,7 @@ pub const Buffer = struct {
     }
 
     pub fn popStmtBlock(self: *Buffer) StmtBlock {
-        return self.stmtBlockStack.pop();
+        return self.stmtBlockStack.pop().?;
     }
 
     pub fn pushEmptyExpr(self: *Buffer, comptime code: ExprCode, alloc: std.mem.Allocator, expr_t: ExprType, node_id: *ast.Node) !u32 {

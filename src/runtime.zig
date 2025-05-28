@@ -432,7 +432,7 @@ pub fn logFmt(format: []const u8, args: []const cy.fmt.FmtValue) void {
 }
 
 pub fn writeStderr(s: []const u8) void {
-    @setCold(true);
+    @branchHint(.cold);
     const w = cy.fmt.lockStderrWriter();
     defer cy.fmt.unlockPrint();
     _ = w.writeAll(s) catch |e| {

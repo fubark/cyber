@@ -105,7 +105,7 @@ pub fn prepareThrowSymbol(vm: *cy.UserVM, sym: Symbol) Value {
 }  
 
 pub fn bindCore(self: *cy.VM) !void {
-    @setCold(true);
+    @branchHint(.cold);
     for (std.enums.values(Symbol)) |sym| {
         try ensureSymbol(self, @tagName(sym), sym);
     }

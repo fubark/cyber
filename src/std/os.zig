@@ -524,8 +524,8 @@ pub fn now(vm: *cy.VM) anyerror!Value {
         return Value.initF64(@as(f64, @floatFromInt(i.timestamp)) / @as(f64, std.time.ns_per_s));
     }
 
-    const seconds = @as(u64, @intCast(i.timestamp.tv_sec));
-    const ns = (seconds * std.time.ns_per_s) + @as(u32, @intCast(i.timestamp.tv_nsec));
+    const seconds = @as(u64, @intCast(i.timestamp.sec));
+    const ns = (seconds * std.time.ns_per_s) + @as(u32, @intCast(i.timestamp.nsec));
     return Value.initF64(@as(f64, @floatFromInt(ns)) / @as(f64, std.time.ns_per_s));
 }
 
@@ -605,7 +605,7 @@ fn newFFI(vm: *cy.VM) Value {
 pub fn bindLib(vm: *cy.VM) anyerror!Value {
     if (!cy.hasFFI) return vm.prepPanic("Unsupported.");
 
-    return @call(.never_inline, ffi.ffiBindLib, .{ vm, .{} });
+    return @call(.never_inline, ffi.ffiBindLib, .{ vm, ffi.BindLibConfig{} });
 }
 
 pub fn bindLibExt(vm: *cy.VM) anyerror!Value {

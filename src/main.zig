@@ -345,8 +345,9 @@ fn version() void {
     std.debug.print("{s}\n", .{build_options.full_version});
 }
 
-pub fn panic(msg: []const u8, errRetTrace: ?*std.builtin.StackTrace, _: ?usize) noreturn {
-    const ret = @returnAddress();
+pub const panic = std.debug.FullPanic(myPanic);
+
+fn myPanic(msg: []const u8, first_trace_addr: ?usize) noreturn {
     // TODO: Print something useful if caused by script execution.
-    std.debug.panicImpl(errRetTrace, ret, msg);
+    std.debug.defaultPanic(msg, first_trace_addr);
 }

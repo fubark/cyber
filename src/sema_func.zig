@@ -551,7 +551,7 @@ fn reportIncompatCallFuncSym(c: *cy.Chunk, sym: *cy.sym.FuncSym, arg_start: usiz
         }
     }
     const types = c.typeStack.items[type_start..];
-    return sema.reportIncompatCallFuncSym(c, sym, types, ret_cstr, node);
+    return sema.reportIncompatCallFuncSym2(c, sym, types, ret_cstr, node);
 }
 
 fn reportIncompatCallFunc(c: *cy.Chunk, func: *cy.Func, arg_start: usize, ret_cstr: cy.types.ReturnCstr, node: *ast.Node) anyerror {
@@ -571,7 +571,7 @@ fn reportIncompatCallFunc(c: *cy.Chunk, func: *cy.Func, arg_start: usize, ret_cs
         }
     }
     const types = c.typeStack.items[type_start..];
-    return sema.reportIncompatCallFunc(c, func, types, ret_cstr, node);
+    return sema.reportIncompatCallFunc2(c, func, types, ret_cstr, node);
 }
 
 fn expectTypeFromTemplate(c: *cy.Chunk, type_id: cy.TypeId, exp: *cy.sym.Template, node: *ast.Node) !*cy.sym.Variant {

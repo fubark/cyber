@@ -15,7 +15,7 @@ const EntriesDir = "entries";
 
 fn getCyberPath(alloc: std.mem.Allocator) ![]const u8 {
     const S = struct {
-        var buf: [std.fs.MAX_PATH_BYTES]u8 = undefined;
+        var buf: [std.fs.max_path_bytes]u8 = undefined;
     };
     if (CyberPath.len == 0) {
         const homePath = (try platform.getPath(alloc, .home)) orelse return error.MissingHomeDir;
@@ -132,12 +132,12 @@ fn readEntryFile(alloc: std.mem.Allocator, path: []const u8) ![]SpecEntry {
     var entries: std.ArrayListUnmanaged(SpecEntry) = .{};
     defer entries.deinit(alloc);
 
-    var iter = std.mem.tokenize(u8, content, "\r\n");
+    var iter = std.mem.tokenizeAny(u8, content, "\r\n");
     while (iter.next()) |line| {
         if (line.len > 0 and line[0] == '@') {
             const spec = try alloc.dupe(u8, line[1..]);
             const bodyLine = iter.next() orelse return error.InvalidEntryFile;
-            var bodyIter = std.mem.split(u8, bodyLine, ",");
+            var bodyIter = std.mem.splitScalar(u8, bodyLine, ',');
             var entry = SpecEntry{
                 .spec = spec,
                 .cacheDate = 0,

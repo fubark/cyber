@@ -50,8 +50,8 @@ pub const CliData = struct {
 
 comptime {
     if (!builtin.is_test or !build_options.link_test) {
-        @export(clInitCLI, .{ .name = "clInitCLI", .linkage = .strong });
-        @export(clDeinitCLI, .{ .name = "clDeinitCLI", .linkage = .strong });
+        @export(&clInitCLI, .{ .name = "clInitCLI", .linkage = .strong });
+        @export(&clDeinitCLI, .{ .name = "clDeinitCLI", .linkage = .strong });
     }
 }
 

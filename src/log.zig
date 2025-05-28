@@ -21,7 +21,7 @@ fn printStderr(comptime format: []const u8, args: anytype) void {
     stderr.print(format, args) catch @panic("print error");
 }
 
-pub fn scoped(comptime Scope: @Type(.EnumLiteral)) type {
+pub fn scoped(comptime Scope: @Type(.enum_literal)) type {
     return struct {
         pub fn trace(comptime format: []const u8, args: anytype) void {
             if (!cy.Trace) {

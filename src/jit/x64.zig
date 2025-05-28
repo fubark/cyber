@@ -54,7 +54,7 @@ pub const Register = enum(u8) {
 
 pub const Encoder = struct {
     alloc: std.mem.Allocator,
-    buf: *std.ArrayListAlignedUnmanaged(u8, std.mem.page_size),
+    buf: *std.ArrayListAlignedUnmanaged(u8, std.heap.page_size_min),
 
     fn ensureUnusedCap(self: Encoder, size: usize) !void {
         _ = try gen.ensureUnusedCap(self.buf, self.alloc, size);
@@ -539,10 +539,6 @@ pub const Memory = union(enum) {
         return .{ .sib = Sib{ .base = base_, .disp = disp, .scaleIndex = ScaleIndex.none } };
     }
 
-    pub fn rip(disp: i32) Memory {
-        return .{ .rip = disp };
-    }
-
     fn base(self: Memory) Base {
         return switch (self) {
             .moffs => |moffs| .{ .reg = moffs.seg },
@@ -563,10 +559,6 @@ pub const Base = union(enum) {
     none,
     reg: Register,
     frame: FrameIndex,
-
-    pub fn reg(r: Register) Base {
-        return .{ .reg = r };
-    }
 };
 
 const FrameIndex = enum(u32) {
@@ -646,7 +638,7 @@ const Feature = enum(u8) {
 };
 
 test "x64 encoding" {
-    var buf: std.ArrayListAlignedUnmanaged(u8, std.mem.page_size) = .{};
+    var buf: std.ArrayListAlignedUnmanaged(u8, std.heap.page_size_min) = .{};
     defer buf.deinit(t.alloc);
     const encoder = Encoder{ .alloc = t.alloc, .buf = &buf };
 
@@ -675,19 +667,19 @@ test "x64 encoding" {
     try t.eqSlice(u8, buf.items, &.{ 0x0f, 0x8d, 0x64, 0x00, 0x00, 0x00 });
 
     buf.clearRetainingCapacity();
-    try encoder.lea(.rcx, Memory.sibBase(Base.reg(.rdx), 100));
+    try encoder.lea(.rcx, Memory.sibBase(Base{ .reg = .rdx }, 100));
     try t.eqSlice(u8, buf.items, &.{ 0x48, 0x8d, 0x4a, 0x64 });
 
     buf.clearRetainingCapacity();
-    try encoder.lea(.rax, Memory.rip(16));
+    try encoder.lea(.rax, Memory{ .rip = 16 });
     try t.eqSlice(u8, buf.items, &.{ 0x48, 0x8d, 0x05, 0x10, 0x00, 0x00, 0x00 });
 
     buf.clearRetainingCapacity();
-    try encoder.movMem(.rcx, Memory.sibBase(Base.reg(.rbp), 8));
+    try encoder.movMem(.rcx, Memory.sibBase(Base{ .reg = .rbp }, 8));
     try t.eqSlice(u8, buf.items, &.{ 0x48, 0x8b, 0x4d, 0x08 });
 
     buf.clearRetainingCapacity();
-    try encoder.movToMem(Memory.sibBase(Base.reg(.rbp), 8), .rcx);
+    try encoder.movToMem(Memory.sibBase(Base{ .reg = .rbp }, 8), .rcx);
     try t.eqSlice(u8, buf.items, &.{ 0x48, 0x89, 0x4d, 0x08 });
 
     buf.clearRetainingCapacity();

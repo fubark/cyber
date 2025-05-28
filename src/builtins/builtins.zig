@@ -1489,7 +1489,7 @@ fn sliceSplit(vm: *cy.VM) anyerror!Value {
     const list = res.asHeapObject();
 
     const parent = obj.getParent();
-    var iter = std.mem.split(u8, slice, delim);
+    var iter = std.mem.splitSequence(u8, slice, delim);
     while (iter.next()) |part| {
         vm.retainObject(parent);
         const new = try vm.allocArraySlice(part, parent);

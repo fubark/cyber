@@ -1111,7 +1111,7 @@ pub export fn zig_log_u32(buf: [*c]const u8, val: u32) void {
 
 comptime {
     if (build_options.rt != .pm) {
-        @export(cy.compiler.defaultModuleResolver, .{ .name = "clDefaultResolver", .linkage = .strong });
-        @export(cy.compiler.defaultModuleLoader, .{ .name = "clDefaultModuleLoader", .linkage = .strong });
+        @export(&cy.compiler.defaultModuleResolver, .{ .name = "clDefaultResolver", .linkage = .strong });
+        @export(&cy.compiler.defaultModuleLoader, .{ .name = "clDefaultModuleLoader", .linkage = .strong });
     }
 }

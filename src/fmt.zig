@@ -70,12 +70,10 @@ fn toFmtValueType(comptime T: type) FmtValueType {
         u32 => return .u32,
         i32 => return .i32,
         i48 => return .i48,
-        usize,
-        u64 => return .u64,
+        usize, u64 => return .u64,
         i64 => return .i64,
         f64 => return .f64,
-        []u8,
-        []const u8 => return .string,
+        []u8, []const u8 => return .string,
         [*:0]u8 => return .stringz,
         [:0]const u8 => return .string,
         else => {
@@ -110,76 +108,49 @@ pub inline fn v(val: anytype) FmtValue {
             };
         },
         .char => {
-            return .{
-                .type = .char,
-                .data = .{
-                    .u8 = val,
-                }
-            };
+            return .{ .type = .char, .data = .{
+                .u8 = val,
+            } };
         },
         .i8 => {
-            return .{
-                .type = .i8,
-                .data = .{
-                    .u8 = @bitCast(val),
-                }
-            };
+            return .{ .type = .i8, .data = .{
+                .u8 = @bitCast(val),
+            } };
         },
         .u8 => {
-            return .{
-                .type = .u8,
-                .data = .{
-                    .u8 = val,
-                }
-            };
+            return .{ .type = .u8, .data = .{
+                .u8 = val,
+            } };
         },
         .i16 => {
-            return .{
-                .type = .i16,
-                .data = .{
-                    .u16 = @bitCast(val),
-                }
-            };
+            return .{ .type = .i16, .data = .{
+                .u16 = @bitCast(val),
+            } };
         },
         .u16 => {
-            return .{
-                .type = .u16,
-                .data = .{
-                    .u16 = val,
-                }
-            };
+            return .{ .type = .u16, .data = .{
+                .u16 = val,
+            } };
         },
         .i32 => {
-            return .{
-                .type = .i32,
-                .data = .{
-                    .u32 = @bitCast(val),
-                }
-            };
+            return .{ .type = .i32, .data = .{
+                .u32 = @bitCast(val),
+            } };
         },
         .u32 => {
-            return .{
-                .type = .u32,
-                .data = .{
-                    .u32 = val,
-                }
-            };
+            return .{ .type = .u32, .data = .{
+                .u32 = val,
+            } };
         },
         .i48 => {
-            return .{
-                .type = .i48,
-                .data = .{
-                    .u64 = @as(u48, @bitCast(val)),
-                }
-            };
+            return .{ .type = .i48, .data = .{
+                .u64 = @as(u48, @bitCast(val)),
+            } };
         },
         .i64 => {
-            return .{
-                .type = .i64,
-                .data = .{
-                    .u64 = @bitCast(val),
-                }
-            };
+            return .{ .type = .i64, .data = .{
+                .u64 = @bitCast(val),
+            } };
         },
         .u64 => return u64v(val),
         .f64 => return .{
@@ -197,14 +168,10 @@ pub inline fn v(val: anytype) FmtValue {
         },
         .enumt => return enumv(val),
         .err => return str(@errorName(val)),
-        .ptr =>  return .{
-            .type = .ptr,
-            .data = .{
-                .ptr = @ptrFromInt(@intFromPtr(val)),
-            }
-        },
-        .sliceU8,
-        .repeat => {
+        .ptr => return .{ .type = .ptr, .data = .{
+            .ptr = @ptrFromInt(@intFromPtr(val)),
+        } },
+        .sliceU8, .repeat => {
             cy.unexpected();
         },
     }
@@ -244,12 +211,9 @@ pub fn repeat(ch: u8, n: u32) FmtValue {
 }
 
 pub fn u64v(n: u64) FmtValue {
-    return .{
-        .type = .u64,
-        .data = .{
-            .u64 = n,
-        }
-    };
+    return .{ .type = .u64, .data = .{
+        .u64 = n,
+    } };
 }
 
 pub fn enumv(e: anytype) FmtValue {
@@ -319,9 +283,7 @@ fn formatValue(writer: anytype, val: FmtValue) !void {
         .f64 => {
             try formatFloatValue(val.data.f64, "d", .{}, writer);
         },
-        .err,
-        .enumt,
-        .string => {
+        .err, .enumt, .string => {
             try writer.writeAll(val.data.string[0..val.data2.string]);
         },
         .stringz => {
@@ -390,7 +352,7 @@ pub fn format(writer: anytype, fmt: []const u8, vals: []const FmtValue) !void {
             if (i + 1 < fmt.len) {
                 if (fmt[i + 1] == '}') {
                     if (valIdx == vals.len) {
-                        log.tracev("Format expected {}th value, got {} values", .{valIdx + 1, vals.len});
+                        log.tracev("Format expected {}th value, got {} values", .{ valIdx + 1, vals.len });
                         return error.FormatError;
                     }
                     try formatValue(writer, vals[valIdx]);
@@ -405,7 +367,7 @@ pub fn format(writer: anytype, fmt: []const u8, vals: []const FmtValue) !void {
         continue;
     }
     if (valIdx < vals.len) {
-        log.tracev("Format had {} placeholders, got {} values", .{valIdx, vals.len});
+        log.tracev("Format had {} placeholders, got {} values", .{ valIdx, vals.len });
         return error.FormatError;
     }
 }
@@ -443,7 +405,7 @@ pub fn printStdoutOrErr(fmt: []const u8, vals: []const FmtValue) !void {
 }
 
 pub fn printDeprecated(name: []const u8, sinceVersion: []const u8, fmt: []const u8, vals: []const FmtValue) void {
-    printStderr("{} is deprecated since {}: ", &.{v(name), v(sinceVersion)});
+    printStderr("{} is deprecated since {}: ", &.{ v(name), v(sinceVersion) });
     printStderr(fmt, vals);
     printStderr("\n", &.{});
 }

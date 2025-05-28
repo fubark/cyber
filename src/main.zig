@@ -200,12 +200,12 @@ fn repl(alloc: std.mem.Allocator) !void {
     config.backend = c.BackendVM;
     config.spawn_exe = false;
 
-    const src = 
+    const src =
         \\use cli
         \\
         \\cli.repl()
         \\
-        ;
+    ;
     _ = ivm.eval("main", src, config) catch |err| {
         switch (err) {
             error.Panic => {

@@ -4,7 +4,6 @@ const gen = @import("gen.zig");
 const t = stdx.testing;
 
 /// Based on: https://github.com/kubkon/zig-dis-x86_64
-
 pub const jg: u8 = 0x8f;
 pub const jge: u8 = 0x8d;
 pub const jl: u8 = 0x8c;
@@ -12,8 +11,22 @@ pub const jle: u8 = 0x8e;
 
 pub const Register = enum(u8) {
     // 64-bit general-purpose registers.
-    rax, rcx, rdx, rbx, rsp, rbp, rsi, rdi,
-    r8, r9, r10, r11, r12, r13, r14, r15,
+    rax,
+    rcx,
+    rdx,
+    rbx,
+    rsp,
+    rbp,
+    rsi,
+    rdi,
+    r8,
+    r9,
+    r10,
+    r11,
+    r12,
+    r13,
+    r14,
+    r15,
 
     pub fn enc(self: Register) u4 {
         return switch (@intFromEnum(self)) {
@@ -65,9 +78,9 @@ pub const Encoder = struct {
         try self.ensureUnusedCap(6);
         const i = self.buf.items.len;
         self.buf.items.ptr[i] = 0x0f;
-        self.buf.items.ptr[i+1] = code;
+        self.buf.items.ptr[i + 1] = code;
 
-        @memcpy(self.buf.items.ptr[i+2..i+2+4], std.mem.asBytes(&offset));
+        @memcpy(self.buf.items.ptr[i + 2 .. i + 2 + 4], std.mem.asBytes(&offset));
         self.buf.items.len += 6;
     }
 
@@ -77,14 +90,14 @@ pub const Encoder = struct {
         const i = self.buf.items.len;
         self.buf.items.ptr[i] = 0xe9;
 
-        @memcpy(self.buf.items.ptr[i+1..i+1+4], std.mem.asBytes(&offset));
+        @memcpy(self.buf.items.ptr[i + 1 .. i + 1 + 4], std.mem.asBytes(&offset));
         self.buf.items.len += 5;
     }
 
     pub fn jumpReg(self: Encoder, reg: Register) !void {
         const enc = Encoding.init(.m, 4, .none, .none);
         const out = try self.prepInstBuf();
-        var len = self.encodeHeader(out, enc, &.{0xff}, &.{ Op.reg(reg) });
+        var len = self.encodeHeader(out, enc, &.{0xff}, &.{Op.reg(reg)});
         self.encodeMOp(out, &len, enc, Op.reg(reg));
         self.buf.items.len += len;
     }
@@ -92,27 +105,27 @@ pub const Encoder = struct {
     pub fn cmp(self: Encoder, left: Register, right: Register) !void {
         const enc = Encoding.init(.mr, 0, .long, .none);
         const out = try self.prepInstBuf();
-        var len = self.encodeHeader(out, enc, &.{ 0x3b}, &.{ Op.reg(left), Op.reg(right) });
+        var len = self.encodeHeader(out, enc, &.{0x3b}, &.{ Op.reg(left), Op.reg(right) });
         self.encodeRMOps(out, &len, enc, Op.reg(left), Op.reg(right));
         self.buf.items.len += len;
     }
 
     pub fn lea(self: Encoder, dst: Register, src: Memory) !void {
         const enc = Encoding.init(.rm, 0, .long, .none);
-        try self.encode(enc, &.{ 0x8d }, &.{ Op.reg(dst), Op.mem(src)});
+        try self.encode(enc, &.{0x8d}, &.{ Op.reg(dst), Op.mem(src) });
     }
 
     pub fn pushReg(self: Encoder, r: Register) !void {
         const enc = Encoding.init(.o, 0, .none, .none);
         const out = try self.prepInstBuf();
-        const len = self.encodeHeader(out, enc, &.{ 0x50 }, &.{ Op.reg(r) });
+        const len = self.encodeHeader(out, enc, &.{0x50}, &.{Op.reg(r)});
         self.buf.items.len += len;
     }
 
     pub fn movImm(self: Encoder, dst: Register, imm: u64) !void {
         const enc = Encoding.init(.oi, 0, .long, .none);
         const out = try self.prepInstBuf();
-        var len = self.encodeHeader(out, enc, &.{ 0xb8 }, &.{ Op.reg(dst), Op.imm(imm) });
+        var len = self.encodeHeader(out, enc, &.{0xb8}, &.{ Op.reg(dst), Op.imm(imm) });
         encodeImm64(out, &len, imm);
         self.buf.items.len += len;
     }
@@ -120,7 +133,7 @@ pub const Encoder = struct {
     pub fn movReg(self: Encoder, dst: Register, src: Register) !void {
         const enc = Encoding.init(.rm, 0, .long, .none);
         const out = try self.prepInstBuf();
-        var len = self.encodeHeader(out, enc, &.{ 0x8b }, &.{ Op.reg(dst), Op.reg(src) });
+        var len = self.encodeHeader(out, enc, &.{0x8b}, &.{ Op.reg(dst), Op.reg(src) });
         self.encodeRMOps(out, &len, enc, Op.reg(dst), Op.reg(src));
         self.buf.items.len += len;
     }
@@ -128,7 +141,7 @@ pub const Encoder = struct {
     pub fn movMem(self: Encoder, dst: Register, mem: Memory) !void {
         const enc = Encoding.init(.rm, 0, .long, .none);
         const out = try self.prepInstBuf();
-        var len = self.encodeHeader(out, enc, &.{ 0x8b }, &.{ Op.reg(dst), Op.mem(mem)});
+        var len = self.encodeHeader(out, enc, &.{0x8b}, &.{ Op.reg(dst), Op.mem(mem) });
         self.encodeRMOps(out, &len, enc, Op.reg(dst), Op.mem(mem));
         self.buf.items.len += len;
     }
@@ -136,7 +149,7 @@ pub const Encoder = struct {
     pub fn movToMem(self: Encoder, mem: Memory, dst: Register) !void {
         const enc = Encoding.init(.mr, 0, .long, .none);
         const out = try self.prepInstBuf();
-        var len = self.encodeHeader(out, enc, &.{ 0x89 }, &.{ Op.mem(mem), Op.reg(dst) });
+        var len = self.encodeHeader(out, enc, &.{0x89}, &.{ Op.mem(mem), Op.reg(dst) });
         self.encodeRMOps(out, &len, enc, Op.reg(dst), Op.mem(mem));
         self.buf.items.len += len;
     }
@@ -146,14 +159,14 @@ pub const Encoder = struct {
         const i = self.buf.items.len;
         self.buf.items.ptr[i] = 0xe8;
 
-        @memcpy(self.buf.items.ptr[i+1..i+1+4], std.mem.asBytes(&offset));
+        @memcpy(self.buf.items.ptr[i + 1 .. i + 1 + 4], std.mem.asBytes(&offset));
         self.buf.items.len += 5;
     }
 
     pub fn callReg(self: Encoder, reg: Register) !void {
         const enc = Encoding.init(.m, 2, .none, .none);
         const out = try self.prepInstBuf();
-        var len = self.encodeHeader(out, enc, &.{ 0xff }, &.{ Op.reg(reg) });
+        var len = self.encodeHeader(out, enc, &.{0xff}, &.{Op.reg(reg)});
         self.encodeMOp(out, &len, enc, Op.reg(reg));
         self.buf.items.len += len;
     }
@@ -172,7 +185,7 @@ pub const Encoder = struct {
 
     fn prepInstBuf(self: Encoder) ![]u8 {
         try self.ensureUnusedCap(32);
-        return self.buf.items.ptr[self.buf.items.len..self.buf.items.len + 32];
+        return self.buf.items.ptr[self.buf.items.len .. self.buf.items.len + 32];
     }
 
     fn encodeHeader(_: Encoder, out: []u8, enc: Encoding, opc: []const u8, ops: []const Op) usize {
@@ -190,10 +203,10 @@ pub const Encoder = struct {
 
         // Encode opcode.
         const first = @intFromBool(hasMandatoryPrefix);
-        const final = opc.len-1;
+        const final = opc.len - 1;
         const finalOpc = opc[first..final];
         if (finalOpc.len > 0) {
-            @memcpy(out[len..len+finalOpc.len], finalOpc);
+            @memcpy(out[len .. len + finalOpc.len], finalOpc);
             len += finalOpc.len;
         }
         if (enc.opEn == .oi or enc.opEn == .o) {
@@ -259,7 +272,7 @@ pub const Encoder = struct {
                     else => return error.Unexpected,
                 }
 
-                switch(enc.opEn) {
+                switch (enc.opEn) {
                     // .rmi => encodeImm(out, &len, ops[2].imm, ops[2].immBitSize()),
                     else => {},
                 }
@@ -337,7 +350,7 @@ const Rex = struct {
 };
 
 fn encodeImm64(buf: []u8, len: *usize, imm: u64) void {
-    @memcpy(buf[len.*..len.*+8], std.mem.asBytes(&imm));
+    @memcpy(buf[len.* .. len.* + 8], std.mem.asBytes(&imm));
     len.* += 8;
 }
 
@@ -362,7 +375,7 @@ fn encodeMemory(buf: []u8, len: *usize, enc: Encoding, mem: Memory, op: Op) void
                         len.* += 1;
                     }
 
-                    @memcpy(buf[len.*..len.*+4], std.mem.asBytes(&sib.disp));
+                    @memcpy(buf[len.* .. len.* + 4], std.mem.asBytes(&sib.disp));
                     len.* += 4;
                 },
                 .reg => |base| {
@@ -410,7 +423,7 @@ fn encodeMemory(buf: []u8, len: *usize, enc: Encoding, mem: Memory, op: Op) void
                                 buf[len.*] = ModRM.indirectDisp32(opEnc, baseEnc);
                                 len.* += 1;
 
-                                @memcpy(buf[len.*..len.*+4], std.mem.asBytes(&sib.disp));
+                                @memcpy(buf[len.* .. len.* + 4], std.mem.asBytes(&sib.disp));
                                 len.* += 4;
                             }
                         }
@@ -423,7 +436,7 @@ fn encodeMemory(buf: []u8, len: *usize, enc: Encoding, mem: Memory, op: Op) void
             buf[len.*] = ModRM.ripDisp32(opEnc);
             len.* += 1;
 
-            @memcpy(buf[len.*..len.*+4], std.mem.asBytes(&rip));
+            @memcpy(buf[len.* .. len.* + 4], std.mem.asBytes(&rip));
             len.* += 4;
         },
         else => unreachable,
@@ -453,7 +466,7 @@ fn encodeRexPrefix(buf: []u8, len: *usize, enc: Encoding, ops: []const Op) void 
             };
             rex.b = bxop.isBaseExtended();
             rex.x = bxop.isIndexExtended();
-        }
+        },
     }
 
     if (!rex.present and !rex.isSet()) return;
@@ -487,19 +500,19 @@ pub const Op = struct {
     },
 
     pub fn sibBase(base: Base, disp: i32) Op {
-        return .{ .type = .mem, .data = .{ .mem = Memory.sibBase(base, disp) }};
+        return .{ .type = .mem, .data = .{ .mem = Memory.sibBase(base, disp) } };
     }
 
     pub fn reg(r: Register) Op {
-        return .{ .type = .reg, .data = .{ .reg = r }};
+        return .{ .type = .reg, .data = .{ .reg = r } };
     }
 
     pub fn mem(m: Memory) Op {
-        return .{ .type = .mem, .data = .{ .mem = m }};
+        return .{ .type = .mem, .data = .{ .mem = m } };
     }
 
     pub fn imm(u: u64) Op {
-        return .{ .type = .imm, .data = .{ .imm = Immediate.u(u) }};
+        return .{ .type = .imm, .data = .{ .imm = Immediate.u(u) } };
     }
 
     fn isBaseExtended(self: Op) bool {
@@ -644,7 +657,7 @@ test "x64 encoding" {
 
     buf.clearRetainingCapacity();
     try encoder.pushReg(.rbp);
-    try t.eqSlice(u8, buf.items, &.{ 0x55 });
+    try t.eqSlice(u8, buf.items, &.{0x55});
 
     buf.clearRetainingCapacity();
     try encoder.movReg(.rbp, .rsp);
@@ -660,7 +673,7 @@ test "x64 encoding" {
 
     buf.clearRetainingCapacity();
     try encoder.jumpReg(.rax);
-    try t.eqSlice(u8, buf.items, &.{0xff, 0xe0});
+    try t.eqSlice(u8, buf.items, &.{ 0xff, 0xe0 });
 
     buf.clearRetainingCapacity();
     try encoder.jumpCond(jge, 100);
@@ -684,7 +697,7 @@ test "x64 encoding" {
 
     buf.clearRetainingCapacity();
     try encoder.movImm(.rdx, 0x7ffc000100000001);
-    try t.eqSlice(u8, buf.items, &.{0x48, 0xba, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0xfc, 0x7f});
+    try t.eqSlice(u8, buf.items, &.{ 0x48, 0xba, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0xfc, 0x7f });
 
     buf.clearRetainingCapacity();
     try encoder.callRel(100);
@@ -692,7 +705,7 @@ test "x64 encoding" {
 
     buf.clearRetainingCapacity();
     try encoder.callReg(.rax);
-    try t.eqSlice(u8, buf.items, &.{0xff, 0xd0});
+    try t.eqSlice(u8, buf.items, &.{ 0xff, 0xd0 });
 
     buf.clearRetainingCapacity();
     try encoder.ret();

@@ -10,7 +10,7 @@ This is an example NDK project that shows how to build a main.c that links with 
 7. Create AVD: `avdmanager create avd -n my_avd -k "system-images;android-34;default;arm64-v8a"`
 
 ## Build libcyber and the project.
-1. Zig 0.12.0 release, with this patch (https://github.com/ziglang/zig/pull/20118)
+1. Zig 0.14.1 release
 2. Build libcyber (from the cyber repo directory): `zig build lib -Doptimize=ReleaseFast -Dtarget=aarch64-linux-android -Disystem="/path/to/android_sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include" -Disystem="/path/to/android_sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/include/aarch64-linux-android"`
 The `-Disystem` flags tells Zig where the libc headers are for the android target.
 3. Copy to this project: `cp zig-out/lib/libcyber.a examples/android/ndk_app/`

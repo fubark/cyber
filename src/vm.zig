@@ -57,7 +57,7 @@ const VMC = extern struct {
     fields_cap: usize,
     fields_len: usize,
 
-    /// Static vars. 
+    /// Static vars.
     varSyms: [*]rt.VarSym,
     varSyms_cap: usize,
     varSyms_len: usize,
@@ -215,7 +215,7 @@ pub const VM = struct {
 
     /// Whether this VM is already deinited. Used to skip the next deinit to avoid using undefined memory.
     deinited: bool,
-    deinitedRtObjects: bool, 
+    deinitedRtObjects: bool,
 
     tempBuf: [128]u8 align(4),
 
@@ -359,7 +359,7 @@ pub const VM = struct {
 
         const data = try self.alloc.create(cy.builtins.BuiltinsData);
         try self.data.put(self.alloc, "builtins", data);
-        
+
         try @call(.never_inline, cy.bindings.bindCore, .{self});
     }
 
@@ -669,20 +669,20 @@ pub const VM = struct {
             const PROT_WRITE = 2;
             const PROT_EXEC = 4;
             try std.posix.mprotect(jitRes.buf.items.ptr[0..jitRes.buf.capacity], PROT_READ | PROT_EXEC);
-            
+
             // Memory must be reset to original setting in order to be freed.
             defer std.posix.mprotect(jitRes.buf.items.ptr[0..jitRes.buf.capacity], PROT_WRITE) catch cy.fatal();
 
-            if (jitRes.buf.items.len > 500*4) {
-                logger.tracev("jit code (size: {}) {}...", .{jitRes.buf.items.len, std.fmt.fmtSliceHexLower(jitRes.buf.items[0..100*4])});
+            if (jitRes.buf.items.len > 500 * 4) {
+                logger.tracev("jit code (size: {}) {}...", .{ jitRes.buf.items.len, std.fmt.fmtSliceHexLower(jitRes.buf.items[0 .. 100 * 4]) });
             } else {
-                logger.tracev("jit code (size: {}) {}", .{jitRes.buf.items.len, std.fmt.fmtSliceHexLower(jitRes.buf.items)});
+                logger.tracev("jit code (size: {}) {}", .{ jitRes.buf.items.len, std.fmt.fmtSliceHexLower(jitRes.buf.items) });
             }
 
-            const bytes = jitRes.buf.items[jitRes.mainPc..jitRes.mainPc+12*4];
-            logger.tracev("main start {}: {}", .{jitRes.mainPc, std.fmt.fmtSliceHexLower(bytes)});
+            const bytes = jitRes.buf.items[jitRes.mainPc .. jitRes.mainPc + 12 * 4];
+            logger.tracev("main start {}: {}", .{ jitRes.mainPc, std.fmt.fmtSliceHexLower(bytes) });
 
-            const main: *const fn(*VM, [*]Value) callconv(.C) void = @ptrCast(@alignCast(jitRes.buf.items.ptr + jitRes.mainPc));
+            const main: *const fn (*VM, [*]Value) callconv(.C) void = @ptrCast(@alignCast(jitRes.buf.items.ptr + jitRes.mainPc));
             // @breakpoint();
             main(self, self.c.framePtr);
             return Value.initInt(0);
@@ -728,7 +728,7 @@ pub const VM = struct {
                     return error.Panic;
                 }
             } else {
-                const exeRes = try std.ChildProcess.run(.{
+                const exeRes = try std.process.Child.run(.{
                     .allocator = self.alloc,
                     .argv = &.{res.aot.exePath},
                 });
@@ -756,7 +756,7 @@ pub const VM = struct {
         while (i < vmc.NumCodes) : (i += 1) {
             if (self.c.trace.opCounts[i].count > 0) {
                 const op = std.meta.intToEnum(cy.OpCode, self.c.trace.opCounts[i].code) catch continue;
-                std.debug.print("\t{s} {}\n", .{@tagName(op), self.c.trace.opCounts[i].count});
+                std.debug.print("\t{s} {}\n", .{ @tagName(op), self.c.trace.opCounts[i].count });
             }
         }
     }
@@ -776,7 +776,7 @@ pub const VM = struct {
                 const details = self.funcSymDetails.buf[i];
                 const name = details.namePtr[0..details.nameLen];
                 const sigStr = try self.sema.formatFuncSig(details.funcSigId, &cy.tempBuf, null);
-                fmt.printStderr("\t{}{}: {}\n", &.{v(name), v(sigStr), v(i)});
+                fmt.printStderr("\t{}{}: {}\n", &.{ v(name), v(sigStr), v(i) });
             }
         }
 
@@ -786,7 +786,7 @@ pub const VM = struct {
             var iter = self.field_map.iterator();
             while (iter.next()) |it| {
                 const name = rt.getName(self, it.key_ptr.*);
-                fmt.printStderr("\t{}: {}\n", &.{v(name), v(it.value_ptr.*)});
+                fmt.printStderr("\t{}: {}\n", &.{ v(name), v(it.value_ptr.*) });
             }
         }
     }
@@ -829,7 +829,7 @@ pub const VM = struct {
         _ = self;
         _ = pc;
 
-        // If there are fewer return values than required from the function call, 
+        // If there are fewer return values than required from the function call,
         // fill the missing slots with the none value.
         switch (numRetVals) {
             0 => @compileError("Not supported."),
@@ -855,7 +855,7 @@ pub const VM = struct {
         self.unwind_slots = buf.unwind_slots.items;
         self.unwind_slot_prevs = buf.unwind_slot_prevs.items;
         self.unwind_trys = buf.unwind_trys.items;
-    
+
         self.c.pc = @ptrCast(&buf.ops.items[buf.main_pc]);
 
         try cy.fiber.stackEnsureTotalCapacity(self, buf.mainStackSize);
@@ -881,7 +881,7 @@ pub const VM = struct {
             self.num_evals += 1;
             self.last_bc_len = @intCast(self.c.ops_len);
         }
-        try @call(.never_inline, evalLoopGrowStack, .{self, true});
+        try @call(.never_inline, evalLoopGrowStack, .{ self, true });
         logger.tracev("main stack size: {}", .{buf.mainStackSize});
 
         if (self.endLocal == 255) {
@@ -926,7 +926,7 @@ pub const VM = struct {
 
         // Copy callee + args to a new blank frame.
         vm.c.framePtr[ret + CalleeStart] = func;
-        @memcpy(vm.c.framePtr[ret+CallArgStart..ret+CallArgStart+args.len], args);
+        @memcpy(vm.c.framePtr[ret + CallArgStart .. ret + CallArgStart + args.len], args);
 
         if (cy.Trace) {
             vm.c.trace_indent += 1;
@@ -940,7 +940,7 @@ pub const VM = struct {
         // Only user funcs start eval loop.
         if (!cy.value.isHostFunc(vm, func)) {
             if (config.from_external) {
-                @call(.never_inline, evalLoopGrowStack, .{vm, true}) catch |err| {
+                @call(.never_inline, evalLoopGrowStack, .{ vm, true }) catch |err| {
                     if (err == error.Panic) {
                         // Dump for now.
                         const frames = try cy.debug.allocStackTrace(vm, vm.c.getStack(), vm.compactTrace.items());
@@ -958,7 +958,7 @@ pub const VM = struct {
                     // return builtins.prepThrowZError(@ptrCast(vm), err, @errorReturnTrace());
                 };
             } else {
-                @call(.never_inline, evalLoopGrowStack, .{vm, false}) catch |err| {
+                @call(.never_inline, evalLoopGrowStack, .{ vm, false }) catch |err| {
                     if (err == error.Panic) {
                         return err;
                     } else {
@@ -996,7 +996,7 @@ pub const VM = struct {
         const mod = parent.getMod().?;
         const c = mod.chunk;
 
-        const name = try std.fmt.allocPrint(self.alloc, "{s}{}", .{baseName, uniqId});
+        const name = try std.fmt.allocPrint(self.alloc, "{s}{}", .{ baseName, uniqId });
         errdefer self.alloc.free(name);
 
         if (mod.getSym(name)) |_| {
@@ -1089,7 +1089,7 @@ pub const VM = struct {
 
     pub fn ensureMethod(self: *VM, name: []const u8) !rt.MethodId {
         const nameId = try rt.ensureNameSym(self, name);
-        const res = try @call(.never_inline, @TypeOf(self.method_map).getOrPut, .{&self.method_map, self.alloc, nameId});
+        const res = try @call(.never_inline, @TypeOf(self.method_map).getOrPut, .{ &self.method_map, self.alloc, nameId });
         if (!res.found_existing) {
             const id: u32 = @intCast(self.methods.len);
             try self.methods.append(self.alloc, .{ .name = nameId });
@@ -1121,7 +1121,7 @@ pub const VM = struct {
         return cur_id;
     }
 
-    pub fn setMethodGroup(self: *VM, type_id: cy.TypeId, name: []const u8, group: rt.FuncGroupId) !void {   
+    pub fn setMethodGroup(self: *VM, type_id: cy.TypeId, name: []const u8, group: rt.FuncGroupId) !void {
         const method = try self.ensureMethod(name);
         const key = rt.TypeMethodKey.initTypeMethodKey(type_id, method);
         try self.type_method_map.put(self.alloc, key, group);
@@ -1132,7 +1132,9 @@ pub const VM = struct {
         try self.funcSyms.append(self.alloc, func);
 
         try self.funcSymDetails.append(self.alloc, .{
-            .namePtr = name.ptr, .nameLen = @intCast(name.len), .funcSigId = sig,
+            .namePtr = name.ptr,
+            .nameLen = @intCast(name.len),
+            .funcSigId = sig,
         });
         return @intCast(id);
     }
@@ -1178,14 +1180,14 @@ pub const VM = struct {
     }
 
     pub fn panicWithUncaughtError(self: *VM, err: Value) error{Panic} {
-        @setCold(true);
+        @branchHint(.cold);
         self.c.curFiber.panicPayload = err.val;
         self.c.curFiber.panicType = vmc.PANIC_UNCAUGHT_ERROR;
         return error.Panic;
     }
 
-    fn panic(self: *VM, msg: []const u8) error{Panic, OutOfMemory} {
-        @setCold(true);
+    fn panic(self: *VM, msg: []const u8) error{ Panic, OutOfMemory } {
+        @branchHint(.cold);
         const dupe = try self.alloc.dupe(u8, msg);
         self.c.curFiber.panicPayload = @as(u64, @intFromPtr(dupe.ptr)) | (@as(u64, dupe.len) << 48);
         self.c.curFiber.panicType = vmc.PANIC_MSG;
@@ -1194,7 +1196,7 @@ pub const VM = struct {
     }
 
     fn panicFmt(self: *VM, format: []const u8, args: []const fmt.FmtValue) error{Panic} {
-        @setCold(true);
+        @branchHint(.cold);
         const msg = fmt.allocFormat(self.alloc, format, args) catch |err| {
             if (err == error.OutOfMemory) {
                 self.c.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
@@ -1209,13 +1211,13 @@ pub const VM = struct {
         return error.Panic;
     }
 
-    fn getFieldMissingSymbolError(self: *VM) error{Panic, OutOfMemory} {
-        @setCold(true);
+    fn getFieldMissingSymbolError(self: *VM) error{ Panic, OutOfMemory } {
+        @branchHint(.cold);
         return self.panic("Field not found in value.");
     }
 
     fn setFieldNotObjectError(self: *VM) !void {
-        @setCold(true);
+        @branchHint(.cold);
         return self.panic("Can't assign to value's field since the value is not an object.");
     }
 
@@ -1227,7 +1229,7 @@ pub const VM = struct {
     }
 
     pub fn setFieldRelease(self: *VM, recv: Value, symId: SymbolId, val: Value) !void {
-        @setCold(true);
+        @branchHint(.cold);
         if (recv.isPointer()) {
             const obj = recv.asHeapObject();
             const offset = self.getFieldOffset(obj, symId);
@@ -1284,7 +1286,7 @@ pub const VM = struct {
         const name_arg = try self.allocString(name);
         defer self.release(name_arg);
 
-        var args: [3]Value = .{rec_arg, name_arg, val};
+        var args: [3]Value = .{ rec_arg, name_arg, val };
         const func = self.getCompatMethodFunc(rec_t, self.compiler.setMID, args[1..]) orelse {
             return error.Unexpected;
         };
@@ -1325,7 +1327,7 @@ pub const VM = struct {
         const name_arg = try self.allocString(name);
         defer self.release(name_arg);
 
-        var args: [2]Value = .{rec_arg, name_arg};
+        var args: [2]Value = .{ rec_arg, name_arg };
         const func = self.getCompatMethodFunc(rec_t, self.compiler.getMID, args[1..]) orelse {
             return error.Unexpected;
         };
@@ -1339,9 +1341,14 @@ pub const VM = struct {
 
     /// Assumes overloaded function. Finds first matching function at runtime.
     fn callSymDyn(
-        self: *VM, pc: [*]cy.Inst, fp: [*]Value, entry: u32, ret: u8, nargs: u8,
+        self: *VM,
+        pc: [*]cy.Inst,
+        fp: [*]Value,
+        entry: u32,
+        ret: u8,
+        nargs: u8,
     ) !cy.fiber.PcFp {
-        const vals = fp[ret+CallArgStart..ret+CallArgStart+nargs];
+        const vals = fp[ret + CallArgStart .. ret + CallArgStart + nargs];
 
         var cur = entry;
         while (cur != cy.NullId) {
@@ -1396,7 +1403,11 @@ pub const VM = struct {
     }
 
     fn callSym(
-        self: *VM, pc: [*]cy.Inst, framePtr: [*]Value, func: rt.FuncSymbol, ret: u8,
+        self: *VM,
+        pc: [*]cy.Inst,
+        framePtr: [*]Value,
+        func: rt.FuncSymbol,
+        ret: u8,
     ) !cy.fiber.PcFp {
         switch (func.type) {
             .host_func => {
@@ -1461,7 +1472,7 @@ pub const VM = struct {
             const target_t = target_params[i];
             const arg_t = arg.getTypeId();
             if (!types.isTypeSymCompat(self.compiler, arg_t, target_t.type)) {
-                if (!@call(.never_inline, canInferArg, .{self, arg, target_t.type})) {
+                if (!@call(.never_inline, canInferArg, .{ self, arg, target_t.type })) {
                     return false;
                 }
             }
@@ -1494,7 +1505,7 @@ pub const VM = struct {
 
     /// Assumes args does not include rec.
     fn getCompatMethodFunc(self: *VM, rec_t: cy.TypeId, method_id: rt.MethodId, args: []cy.Value) ?rt.FuncSymbol {
-        const group_id = @call(.never_inline, getTypeMethod, .{self, rec_t, method_id}) orelse {
+        const group_id = @call(.never_inline, getTypeMethod, .{ self, rec_t, method_id }) orelse {
             return null;
         };
 
@@ -1545,9 +1556,9 @@ pub const VM = struct {
         if (val.isString()) {
             const str = val.asString();
             if (str.len > 20) {
-                try w.print("String({}) {s}...", .{str.len, str[0..20]});
+                try w.print("String({}) {s}...", .{ str.len, str[0..20] });
             } else {
-                try w.print("String({}) {s}", .{str.len, str});
+                try w.print("String({}) {s}", .{ str.len, str });
             }
         } else {
             _ = try self.writeValue(w, val);
@@ -1585,7 +1596,7 @@ pub const VM = struct {
 
     pub fn writeValue(self: *const VM, w: anytype, val: Value) !void {
         const typeId = val.getTypeId();
-        
+
         switch (typeId) {
             bt.Float => {
                 const f = val.asF64();
@@ -1630,7 +1641,7 @@ pub const VM = struct {
                 const sym = self.c.types[typeId].sym;
                 const enumv = val.getEnumValue();
                 const name = sym.cast(.enum_t).getValueSym(enumv).head.name();
-                try std.fmt.format(w, "{s}.{s}", .{sym.name(), name});
+                try std.fmt.format(w, "{s}.{s}", .{ sym.name(), name });
             } else {
                 try w.writeAll("Unknown");
             }
@@ -1660,7 +1671,7 @@ pub const VM = struct {
                 }
                 const name = self.compiler.sema.getTypeBaseName(typeId);
                 try w.writeAll(name);
-            }
+            },
         }
     }
 
@@ -1671,7 +1682,7 @@ pub const VM = struct {
     }
 
     pub fn prepPanic(vm: *VM, msg: []const u8) Value {
-        @setCold(true);
+        @branchHint(.cold);
         const dupe = vm.alloc.dupe(u8, msg) catch cy.fatal();
         vm.c.curFiber.panicPayload = @as(u64, @intCast(@intFromPtr(dupe.ptr))) | (@as(u64, dupe.len) << 48);
         vm.c.curFiber.panicType = vmc.PANIC_MSG;
@@ -1780,27 +1791,27 @@ fn toF64OrPanic(vm: *cy.VM, val: Value) !f64 {
     } else if (val.isInteger()) {
         return @floatFromInt(val.asInteger());
     } else {
-        return @call(.never_inline, panicConvertFloatError, .{vm, val});
+        return @call(.never_inline, panicConvertFloatError, .{ vm, val });
     }
 }
 
-pub fn panicDivisionByZero(vm: *cy.VM) error{Panic, OutOfMemory} {
-    @setCold(true);
+pub fn panicDivisionByZero(vm: *cy.VM) error{ Panic, OutOfMemory } {
+    @branchHint(.cold);
     return vm.panic("Division by zero.");
 }
 
-pub fn panicExpectedInteger(vm: *cy.VM) error{Panic, OutOfMemory} {
-    @setCold(true);
+pub fn panicExpectedInteger(vm: *cy.VM) error{ Panic, OutOfMemory } {
+    @branchHint(.cold);
     return vm.panic("Expected integer operand.");
 }
 
-pub fn panicExpectedFloat(vm: *cy.VM) error{Panic, OutOfMemory} {
-    @setCold(true);
+pub fn panicExpectedFloat(vm: *cy.VM) error{ Panic, OutOfMemory } {
+    @branchHint(.cold);
     return vm.panic("Expected float operand.");
 }
 
-fn panicConvertFloatError(vm: *cy.VM, val: Value) error{Panic, OutOfMemory} {
-    @setCold(true);
+fn panicConvertFloatError(vm: *cy.VM, val: Value) error{ Panic, OutOfMemory } {
+    @branchHint(.cold);
     const typeId = val.getTypeId();
     return vm.panicFmt("Cannot convert `{}` to float.", &.{v(vm.c.types[typeId].name)});
 }
@@ -1858,12 +1869,11 @@ const Root = @This();
 /// If successful, execution should continue.
 pub fn handleInterrupt(vm: *VM, rootFp: u32) !void {
     if (vm.c.curFiber.panicType == vmc.PANIC_NATIVE_THROW) {
-        const res = try @call(.never_inline, cy.fiber.throw, .{
-            vm, rootFp, vm.getFiberContext(), Value.initRaw(vm.c.curFiber.panicPayload) });
+        const res = try @call(.never_inline, cy.fiber.throw, .{ vm, rootFp, vm.getFiberContext(), Value.initRaw(vm.c.curFiber.panicPayload) });
         vm.c.pc = vm.c.ops + res.pc;
         vm.c.framePtr = vm.c.stack + res.fp;
     } else {
-        const res = try @call(.never_inline, panicCurFiber, .{ vm });
+        const res = try @call(.never_inline, panicCurFiber, .{vm});
         vm.c.pc = vm.c.ops + res.pc;
         vm.c.framePtr = vm.c.stack + res.fp;
     }
@@ -1871,7 +1881,7 @@ pub fn handleInterrupt(vm: *VM, rootFp: u32) !void {
 
 /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
 /// This is also the entry way for native code to call into the VM, assuming pc, framePtr, and virtual registers are already set.
-pub fn evalLoopGrowStack(vm: *VM, handle_panic: bool) error{StackOverflow, OutOfMemory, Panic, NoDebugSym, Unexpected, Await, End}!void {
+pub fn evalLoopGrowStack(vm: *VM, handle_panic: bool) error{ StackOverflow, OutOfMemory, Panic, NoDebugSym, Unexpected, Await, End }!void {
     logger.tracev("begin eval loop", .{});
 
     // Record the start fp offset, so that stack unwinding knows when to stop.
@@ -1894,12 +1904,12 @@ pub fn evalLoopGrowStack(vm: *VM, handle_panic: bool) error{StackOverflow, OutOf
             }
 
             if (handle_panic) {
-                try @call(.never_inline, handleExecResult, .{vm, res, startFp});
+                try @call(.never_inline, handleExecResult, .{ vm, res, startFp });
             } else {
                 if (res == vmc.RES_CODE_PANIC or res == vmc.RES_CODE_UNKNOWN) {
                     return error.Panic;
                 } else {
-                    try @call(.never_inline, handleExecResult, .{vm, res, startFp});
+                    try @call(.never_inline, handleExecResult, .{ vm, res, startFp });
                 }
             }
         }
@@ -1916,7 +1926,7 @@ fn handleExecResult(vm: *VM, res: vmc.ResultCode, fpStart: u32) !void {
         try @call(.never_inline, cy.fiber.growStackAuto, .{vm});
     } else if (res == vmc.RES_CODE_UNKNOWN) {
         logger.tracev("Unknown error code.", .{});
-        const cont = try @call(.never_inline, panicCurFiber, .{ vm });
+        const cont = try @call(.never_inline, panicCurFiber, .{vm});
         vm.c.pc = vm.c.ops + cont.pc;
         vm.c.framePtr = vm.c.stack + cont.fp;
     }
@@ -2012,7 +2022,7 @@ fn dumpEvalOp(vm: *VM, pc: [*]const cy.Inst, fp: [*]const cy.Value) !void {
             extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}", .{name});
         },
         .constOp => {
-            const idx = @as(*const align (1) u16, @ptrCast(pc + 1)).*;
+            const idx = @as(*align(1) const u16, @ptrCast(pc + 1)).*;
             _ = idx;
             const dst = pc[3].val;
             _ = dst;
@@ -2030,10 +2040,10 @@ fn dumpEvalOp(vm: *VM, pc: [*]const cy.Inst, fp: [*]const cy.Value) !void {
         },
         .callSym => {
             const ret = pc[1].val;
-            const symId = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
+            const symId = @as(*align(1) const u16, @ptrCast(pc + 4)).*;
             const details = vm.funcSymDetails.buf[symId];
             const name = details.namePtr[0..details.nameLen];
-            extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}, fp={}", .{name, cy.fiber.getStackOffset(vm.c.stack, fp) + ret});
+            extra = try std.fmt.bufPrint(&S.buf, "rt: sym={s}, fp={}", .{ name, cy.fiber.getStackOffset(vm.c.stack, fp) + ret });
         },
         .call => {
             const ret = pc[1].val;
@@ -2083,7 +2093,7 @@ fn canInferArg(vm: *VM, arg: Value, target_t: cy.TypeId) bool {
             const name = vm.syms.buf[arg.asSymbolId()].name;
             if (type_e.sym.cast(.enum_t).getMemberTag(name)) |value| {
                 _ = value;
-            
+
                 return true;
             }
         } else if (target_t == bt.Symbol) {
@@ -2125,18 +2135,18 @@ fn preCallDyn(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, final_r
     // Setup the final call frame with args copied.
     // This allows arg unboxing so that post call release still operates on boxed args.
     fp[final_ret + 1] = buildCallInfo2(cont, cy.bytecode.CallInstLen, @intCast(func_stack_size));
-    fp[final_ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen};
+    fp[final_ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen };
     fp[final_ret + 3] = Value{ .retFramePtr = fp + ret };
 
-    const args = fp[ret+CallArgStart..ret+CallArgStart+nargs];
-    const final_args = fp[final_ret+CallArgStart..final_ret+CallArgStart+nargs];
+    const args = fp[ret + CallArgStart .. ret + CallArgStart + nargs];
+    const final_args = fp[final_ret + CallArgStart .. final_ret + CallArgStart + nargs];
     if (req_type_check) {
         // Perform type check on args.
         for (args, 0..) |arg, i| {
             const cstrType = sig.params_ptr[i];
             const argType = arg.getTypeId();
             if (!types.isTypeSymCompat(vm.compiler, argType, cstrType.type)) {
-                const final_arg = @call(.never_inline, inferArg, .{vm, arg, cstrType.type}) orelse {
+                const final_arg = @call(.never_inline, inferArg, .{ vm, arg, cstrType.type }) orelse {
                     return panicIncompatibleLambdaSig(vm, args, sig_id);
                 };
                 args[i] = final_arg;
@@ -2144,7 +2154,7 @@ fn preCallDyn(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, final_r
                 continue;
             }
             if (vm.sema.isUnboxedType(cstrType.type)) {
-                const final_arg = @call(.never_inline, unbox, .{vm, arg, argType});
+                const final_arg = @call(.never_inline, unbox, .{ vm, arg, argType });
                 final_args[i] = final_arg;
                 continue;
             }
@@ -2174,7 +2184,7 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
         switch (obj.func_ptr.kind) {
             .bc => {
                 if (numArgs != obj.func_ptr.numParams) {
-                    logger.tracev("lambda params/args mismatch {} {}", .{numArgs, obj.func_ptr.numParams});
+                    logger.tracev("lambda params/args mismatch {} {}", .{ numArgs, obj.func_ptr.numParams });
                     return vm.interruptThrowSymbol(.InvalidSignature);
                 }
 
@@ -2192,7 +2202,7 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, ret: u8,
             },
             .host => {
                 if (numArgs != obj.func_ptr.numParams) {
-                    logger.tracev("hostfunc params/args mismatch {} {}", .{numArgs, obj.func_ptr.numParams});
+                    logger.tracev("hostfunc params/args mismatch {} {}", .{ numArgs, obj.func_ptr.numParams });
                     return vm.interruptThrowSymbol(.InvalidSignature);
                 }
 
@@ -2230,7 +2240,7 @@ fn callFuncUnion(vm: *VM, pc: [*]cy.Inst, framePtr: [*]cy.Value, callee: cy.Valu
     switch (func.kind) {
         .closure => {
             if (numArgs != func.numParams) {
-                logger.tracev("closure params/args mismatch {} {}", .{numArgs, func.numParams});
+                logger.tracev("closure params/args mismatch {} {}", .{ numArgs, func.numParams });
                 return vm.interruptThrowSymbol(.InvalidSignature);
             }
 
@@ -2252,7 +2262,7 @@ fn callFuncUnion(vm: *VM, pc: [*]cy.Inst, framePtr: [*]cy.Value, callee: cy.Valu
         },
         .bc => {
             if (numArgs != func.numParams) {
-                logger.tracev("lambda params/args mismatch {} {}", .{numArgs, func.numParams});
+                logger.tracev("lambda params/args mismatch {} {}", .{ numArgs, func.numParams });
                 return vm.interruptThrowSymbol(.InvalidSignature);
             }
 
@@ -2270,7 +2280,7 @@ fn callFuncUnion(vm: *VM, pc: [*]cy.Inst, framePtr: [*]cy.Value, callee: cy.Valu
         },
         .host => {
             if (numArgs != func.numParams) {
-                logger.tracev("hostfunc params/args mismatch {} {}", .{numArgs, func.numParams});
+                logger.tracev("hostfunc params/args mismatch {} {}", .{ numArgs, func.numParams });
                 return vm.interruptThrowSymbol(.InvalidSignature);
             }
 
@@ -2303,13 +2313,13 @@ fn panicCastAbstractError(vm: *cy.VM, val: Value, expTypeSymId: cy.sema.SymbolId
     const sym = vm.compiler.sema.getSymbol(expTypeSymId);
     const name = cy.sema.getName(&vm.compiler, sym.key.resolvedSymKey.nameId);
     return vm.panicFmt("Can not cast `{}` to `{}`.", &.{
-         v(vm.c.types.buf[val.getTypeId()].name), v(name), 
+        v(vm.c.types.buf[val.getTypeId()].name), v(name),
     });
 }
 
 fn panicCastError(vm: *cy.VM, val: Value, expTypeId: cy.TypeId) !void {
     return vm.panicFmt("Can not cast `{}` to `{}`.", &.{
-         v(vm.c.types.buf[val.getTypeId()].name), v(vm.c.types.buf[expTypeId].name), 
+        v(vm.c.types.buf[val.getTypeId()].name), v(vm.c.types.buf[expTypeId].name),
     });
 }
 
@@ -2330,7 +2340,7 @@ fn allocMethodCallTypeIds(vm: *cy.VM, rec_t: cy.TypeId, vals: []const Value) ![]
     return typeIds;
 }
 
-fn panicIncompatibleFieldType(vm: *cy.VM, fieldSemaTypeId: types.TypeId, rightv: Value) error{Panic, OutOfMemory} {
+fn panicIncompatibleFieldType(vm: *cy.VM, fieldSemaTypeId: types.TypeId, rightv: Value) error{ Panic, OutOfMemory } {
     defer release(vm, rightv);
 
     const fieldTypeName = sema.getSymName(&vm.compiler, fieldSemaTypeId);
@@ -2339,13 +2349,14 @@ fn panicIncompatibleFieldType(vm: *cy.VM, fieldSemaTypeId: types.TypeId, rightv:
     const rightTypeName = sema.getSymName(&vm.compiler, rightSemaTypeId);
     return vm.panicFmt(
         \\Assigning to `{}` field with incompatible type `{}`.
-        , &.{
+    ,
+        &.{
             v(fieldTypeName), v(rightTypeName),
         },
     );
 }
 
-fn panicIncompatibleLambdaSig(vm: *cy.VM, args: []const Value, cstrFuncSigId: sema.FuncSigId) error{Panic, OutOfMemory} {
+fn panicIncompatibleLambdaSig(vm: *cy.VM, args: []const Value, cstrFuncSigId: sema.FuncSigId) error{ Panic, OutOfMemory } {
     const cstrFuncSigStr = vm.compiler.sema.allocFuncSigStr(cstrFuncSigId, true, null) catch return error.OutOfMemory;
     defer vm.alloc.free(cstrFuncSigStr);
     const argTypes = try allocValueTypeIds(vm, args);
@@ -2356,21 +2367,22 @@ fn panicIncompatibleLambdaSig(vm: *cy.VM, args: []const Value, cstrFuncSigId: se
     return vm.panicFmt(
         \\Incompatible call arguments `({})`
         \\to the lambda `func {}`.
-        , &.{
+    ,
+        &.{
             v(argsSigStr), v(cstrFuncSigStr),
         },
     );
 }
 
 /// Runtime version of `sema.reportIncompatibleCallSig`.
-fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Value) error{Panic, OutOfMemory} {
+fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Value) error{ Panic, OutOfMemory } {
     // Use first func to determine name.
     const first_ofunc = vm.overloaded_funcs.buf[overload_entry];
     const first_func_details = vm.funcSymDetails.buf[first_ofunc.id];
     const name = first_func_details.namePtr[0..first_func_details.nameLen];
 
-        // vm.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
-        // return error.Panic;
+    // vm.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
+    // return error.Panic;
 
     const arg_types = try allocValueTypeIds(vm, args);
     defer vm.alloc.free(arg_types);
@@ -2378,10 +2390,10 @@ fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Va
     const call_args_str = vm.compiler.sema.allocTypesStr(arg_types, null) catch return error.OutOfMemory;
     defer vm.alloc.free(call_args_str);
 
-    var msg: std.ArrayListUnmanaged(u8) = .{}; 
+    var msg: std.ArrayListUnmanaged(u8) = .{};
     defer msg.deinit(vm.alloc);
     const w = msg.writer(vm.alloc);
-    try w.print("Can not find compatible function for call: `{s}({s})`.", .{name, call_args_str});
+    try w.print("Can not find compatible function for call: `{s}({s})`.", .{ name, call_args_str });
     // if (num_ret == 1) {
     //     try w.writeAll(" Expects non-void return.");
     // }
@@ -2391,7 +2403,7 @@ fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Va
     var funcStr = vm.compiler.sema.formatFuncSig(first_func_details.funcSigId, &cy.tempBuf, null) catch {
         return error.OutOfMemory;
     };
-    try w.print("    func {s}{s}", .{name, funcStr});
+    try w.print("    func {s}{s}", .{ name, funcStr });
 
     var cur = first_ofunc.next;
     while (cur != cy.NullId) {
@@ -2399,15 +2411,13 @@ fn panicIncompatibleCallSymSig(vm: *cy.VM, overload_entry: u32, args: []const Va
         try w.writeByte('\n');
         const func_details = vm.funcSymDetails.buf[ofunc.id];
         funcStr = vm.sema.formatFuncSig(func_details.funcSigId, &cy.tempBuf, null) catch return error.OutOfMemory;
-        try w.print("    func {s}{s}", .{name, funcStr});
+        try w.print("    func {s}{s}", .{ name, funcStr });
         cur = ofunc.next;
     }
     return vm.panic(msg.items);
 }
 
-fn panicIncompatibleMethodSig(
-    vm: *cy.VM, method_id: rt.MethodId, recv: Value, args: []const Value
-) error{Panic, OutOfMemory} {
+fn panicIncompatibleMethodSig(vm: *cy.VM, method_id: rt.MethodId, recv: Value, args: []const Value) error{ Panic, OutOfMemory } {
     const typeId = recv.getTypeId();
 
     const typeIds = try allocMethodCallTypeIds(vm, typeId, args);
@@ -2423,13 +2433,13 @@ fn panicIncompatibleMethodSig(
         });
     };
 
-    var msg: std.ArrayListUnmanaged(u8) = .{}; 
+    var msg: std.ArrayListUnmanaged(u8) = .{};
     defer msg.deinit(vm.alloc);
     const w = msg.writer(vm.alloc);
     const call_args_str = vm.compiler.sema.allocTypesStr(typeIds[1..], null) catch return error.OutOfMemory;
     defer vm.alloc.free(call_args_str);
 
-    try w.print("Can not find compatible method for call: `({s}) {s}({s})`.", .{typeName, name, call_args_str});
+    try w.print("Can not find compatible method for call: `({s}) {s}({s})`.", .{ typeName, name, call_args_str });
     try w.writeAll("\n");
     try w.print("Methods named `{s}`:\n", .{name});
 
@@ -2440,7 +2450,7 @@ fn panicIncompatibleMethodSig(
             const funcStr = vm.sema.formatFuncSig(func.sig, &cy.tempBuf, null) catch {
                 return error.OutOfMemory;
             };
-            try w.print("    func {s}{s}", .{name, funcStr});
+            try w.print("    func {s}{s}", .{ name, funcStr });
         }
     } else {
         var cur: u32 = group.id;
@@ -2455,7 +2465,7 @@ fn panicIncompatibleMethodSig(
             const funcStr = vm.sema.formatFuncSig(func.sig, &cy.tempBuf, null) catch {
                 return error.OutOfMemory;
             };
-            try w.print("    func {s}{s}", .{name, funcStr});
+            try w.print("    func {s}{s}", .{ name, funcStr });
             if (ofunc.next != cy.NullId) {
                 try w.writeByte('\n');
             }
@@ -2466,9 +2476,14 @@ fn panicIncompatibleMethodSig(
 }
 
 fn getObjectFunctionFallback(
-    vm: *VM, pc: [*]cy.Inst, recv: Value, typeId: u32, method: rt.MethodId, vals: []const Value,
+    vm: *VM,
+    pc: [*]cy.Inst,
+    recv: Value,
+    typeId: u32,
+    method: rt.MethodId,
+    vals: []const Value,
 ) !Value {
-    @setCold(true);
+    @branchHint(.cold);
     _ = typeId;
     _ = pc;
     // Map fallback is no longer supported since cleanup of recv is not auto generated by the compiler.
@@ -2488,32 +2503,29 @@ fn getObjectFunctionFallback(
     // - multiple methods exist with the name but the call signature doesn't match up
     // const relPc = getInstOffset(vm, pc);
     // if (debug.getDebugSym(vm, relPc)) |sym| {
-        // const chunk = vm.compiler.chunks.items[sym.file];
-        // const node = chunk.nodes[sym.loc];
-        // if (node.node_t == .callExpr) {
-            return panicIncompatibleMethodSig(vm, method, recv, vals);
-        // } else {
-        //     release(vm, recv);
-        //     // Debug node is from:
-        //     // `for [iterable]:`
-        //     const name = vm.methodGroupExts.buf[rtSymId].getName();
-        //     return vm.panicFmt("`{}` is either missing in `{}` or the call signature: {}(self, 0 args) is unsupported.", &.{
-        //          v(name), v(vm.types.buf[typeId].name), v(name),
-        //     });
-        // }
+    // const chunk = vm.compiler.chunks.items[sym.file];
+    // const node = chunk.nodes[sym.loc];
+    // if (node.node_t == .callExpr) {
+    return panicIncompatibleMethodSig(vm, method, recv, vals);
+    // } else {
+    //     release(vm, recv);
+    //     // Debug node is from:
+    //     // `for [iterable]:`
+    //     const name = vm.methodGroupExts.buf[rtSymId].getName();
+    //     return vm.panicFmt("`{}` is either missing in `{}` or the call signature: {}(self, 0 args) is unsupported.", &.{
+    //          v(name), v(vm.types.buf[typeId].name), v(name),
+    //     });
+    // }
     // } else {
     //     return vm.panicFmt("Missing debug sym at {}", &.{v(getInstOffset(vm, pc))});
     // }
 }
 
 /// Use new pc local to avoid deoptimization.
-fn callObjSymFallback(
-    vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, recv: Value, typeId: u32, method: rt.MethodId, 
-    ret: u8, numArgs: u8
-) !cy.fiber.PcFp {
-    @setCold(true);
+fn callObjSymFallback(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, recv: Value, typeId: u32, method: rt.MethodId, ret: u8, numArgs: u8) !cy.fiber.PcFp {
+    @branchHint(.cold);
     // const func = try @call(.never_inline, getObjectFunctionFallback, .{obj, symId});
-    const vals = framePtr[ret+CallArgStart+1..ret+CallArgStart+1+numArgs-1];
+    const vals = framePtr[ret + CallArgStart + 1 .. ret + CallArgStart + 1 + numArgs - 1];
     const func = try getObjectFunctionFallback(vm, pc, recv, typeId, method, vals);
     _ = func;
     return vm.panic("Missing method.");
@@ -2525,7 +2537,7 @@ pub inline fn buildDynFrameInfo(cont: bool, comptime call_inst_off: u8, stack_si
         .call_inst_off = call_inst_off,
         .stack_size = stack_size,
         .type = .dyn,
-    }};
+    } };
 }
 
 pub inline fn buildCallInfo2(cont: bool, comptime callInstOffset: u8, stack_size: u8) Value {
@@ -2534,7 +2546,7 @@ pub inline fn buildCallInfo2(cont: bool, comptime callInstOffset: u8, stack_size
         .call_inst_off = callInstOffset,
         .stack_size = stack_size,
         .type = .vm,
-    }};
+    } };
 }
 
 pub inline fn buildCallInfo(comptime cont: bool, comptime callInstOffset: u8, stack_size: u8) Value {
@@ -2543,7 +2555,7 @@ pub inline fn buildCallInfo(comptime cont: bool, comptime callInstOffset: u8, st
         .call_inst_off = callInstOffset,
         .stack_size = stack_size,
         .type = .vm,
-    }};
+    } };
 }
 
 pub inline fn buildRootCallInfo(comptime cont: bool) Value {
@@ -2552,7 +2564,7 @@ pub inline fn buildRootCallInfo(comptime cont: bool) Value {
         .call_inst_off = 0,
         .stack_size = 4,
         .type = .host,
-    }};
+    } };
 }
 
 pub inline fn getInstOffset(vm: *const VM, to: [*]const cy.Inst) u32 {
@@ -2566,19 +2578,19 @@ pub inline fn getStackOffset(vm: *const VM, to: [*]const Value) u32 {
 /// Like Value.dump but shows heap values.
 pub fn dumpValue(vm: *const VM, val: Value) void {
     if (val.isFloat()) {
-        fmt.printStdout("Float {}\n", &.{ v(val.asF64()) });
+        fmt.printStdout("Float {}\n", &.{v(val.asF64())});
     } else {
         if (val.isPointer()) {
             const obj = val.asHeapObject();
             switch (obj.getTypeId()) {
-                bt.ListDyn => fmt.printStdout("List {} len={}\n", &.{v(obj), v(obj.list.list.len)}),
-                bt.Map => fmt.printStdout("Map {} size={}\n", &.{v(obj), v(obj.map.inner.size)}),
+                bt.ListDyn => fmt.printStdout("List {} len={}\n", &.{ v(obj), v(obj.list.list.len) }),
+                bt.Map => fmt.printStdout("Map {} size={}\n", &.{ v(obj), v(obj.map.inner.size) }),
                 bt.String => {
                     const str = obj.string.getSlice();
                     if (str.len > 20) {
-                        fmt.printStdout("String {} len={} str=\"{}\"...\n", &.{v(obj), v(str.len), v(str[0..20])});
+                        fmt.printStdout("String {} len={} str=\"{}\"...\n", &.{ v(obj), v(str.len), v(str[0..20]) });
                     } else {
-                        fmt.printStdout("String {} len={} str=\"{}\"\n", &.{v(obj), v(str.len), v(str)});
+                        fmt.printStdout("String {} len={} str=\"{}\"\n", &.{ v(obj), v(str.len), v(str) });
                     }
                 },
                 bt.Lambda => fmt.printStdout("Lambda {}\n", &.{v(obj)}),
@@ -2587,7 +2599,7 @@ pub fn dumpValue(vm: *const VM, val: Value) void {
                 bt.HostFunc => fmt.printStdout("NativeFunc {}\n", &.{v(obj)}),
                 else => {
                     const name = vm.compiler.sema.types.items[obj.getTypeId()].sym.name();
-                    fmt.printStdout("HeapObject {} {} {}\n", &.{v(obj), v(obj.getTypeId()), v(name)});
+                    fmt.printStdout("HeapObject {} {} {}\n", &.{ v(obj), v(obj.getTypeId()), v(name) });
                 },
             }
         } else {
@@ -2603,15 +2615,14 @@ fn opMatch(pc: [*]const cy.Inst, framePtr: [*]const Value) u16 {
     while (i < numCases) : (i += 1) {
         const right = framePtr[pc[3 + i * 3].val];
         // Can immediately match numbers, objects, primitives.
-        const cond = if (expr.val == right.val) true else 
-            @call(.never_inline, evalCompareBool, .{expr, right});
+        const cond = if (expr.val == right.val) true else @call(.never_inline, evalCompareBool, .{ expr, right });
         if (cond) {
             // Jump.
-            return @as(*const align (1) u16, @ptrCast(pc + 4 + i * 3)).*;
+            return @as(*align(1) const u16, @ptrCast(pc + 4 + i * 3)).*;
         }
     }
     // else case
-    return @as(*const align (1) u16, @ptrCast(pc + 4 + i * 3 - 1)).*;
+    return @as(*align(1) const u16, @ptrCast(pc + 4 + i * 3 - 1)).*;
 }
 
 fn releaseFuncSymDep(vm: *VM, symId: SymbolId) void {
@@ -2630,16 +2641,14 @@ fn releaseFuncSymDep(vm: *VM, symId: SymbolId) void {
     }
 }
 
-fn reportAssignFuncSigMismatch(vm: *VM, srcFuncSigId: u32, dstFuncSigId: u32) error{OutOfMemory, Panic} {
+fn reportAssignFuncSigMismatch(vm: *VM, srcFuncSigId: u32, dstFuncSigId: u32) error{ OutOfMemory, Panic } {
     const dstSig = vm.compiler.sema.allocFuncSigStr(dstFuncSigId, true) catch fatal();
     const srcSig = vm.compiler.sema.allocFuncSigStr(srcFuncSigId, true) catch fatal();
     defer {
         vm.alloc.free(dstSig);
         vm.alloc.free(srcSig);
     }
-    return vm.panicFmt("Assigning to static function `func {}` with a different function signature `func {}`.",
-        &.{v(dstSig), v(srcSig)}
-    );
+    return vm.panicFmt("Assigning to static function `func {}` with a different function signature `func {}`.", &.{ v(dstSig), v(srcSig) });
 }
 
 fn isAssignFuncSigCompat(vm: *VM, srcFuncSigId: sema.FuncSigId, dstFuncSigId: sema.FuncSigId) bool {
@@ -2707,11 +2716,11 @@ fn preCallObjSym(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, fina
     // Setup the final call frame with args copied.
     // This allows arg unboxing so that post call release still operates on boxed args.
     fp[final_ret + 1] = buildCallInfo2(true, cy.bytecode.CallObjSymInstLen, func_stack_size);
-    fp[final_ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallObjSymInstLen};
+    fp[final_ret + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallObjSymInstLen };
     fp[final_ret + 3] = Value{ .retFramePtr = fp + ret };
 
-    const args = fp[ret+CallArgStart..ret+CallArgStart+nargs];
-    const final_args = fp[final_ret+CallArgStart..final_ret+CallArgStart+nargs];
+    const args = fp[ret + CallArgStart .. ret + CallArgStart + nargs];
+    const final_args = fp[final_ret + CallArgStart .. final_ret + CallArgStart + nargs];
     if (req_type_check) {
         // Perform type check on args.
         for (args, 0..) |arg, i| {
@@ -2720,7 +2729,7 @@ fn preCallObjSym(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, fina
 
             // Arguments are already type checked when matching methods.
             if (arg.getTypeId() == bt.TagLit) {
-                const final_arg = @call(.never_inline, inferArg, .{vm, arg, cstrType.type}) orelse {
+                const final_arg = @call(.never_inline, inferArg, .{ vm, arg, cstrType.type }) orelse {
                     return panicIncompatibleLambdaSig(vm, args, sig_id);
                 };
                 args[i] = final_arg;
@@ -2728,7 +2737,7 @@ fn preCallObjSym(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, fina
                 continue;
             }
             if (vm.sema.isUnboxedType(cstrType.type)) {
-                const final_arg = @call(.never_inline, unbox, .{vm, arg, argType});
+                const final_arg = @call(.never_inline, unbox, .{ vm, arg, argType });
                 final_args[i] = final_arg;
                 continue;
             }
@@ -2744,8 +2753,13 @@ fn preCallObjSym(vm: *VM, pc: [*]cy.Inst, fp: [*]Value, nargs: u8, ret: u8, fina
 /// Assumes args are compatible.
 /// Like `callSym` except inlines different op codes.
 fn callMethod(
-    vm: *VM, pc: [*]cy.Inst, fp: [*]cy.Value, func: rt.FuncSymbol,
-    typeId: cy.TypeId, nargs: u8, ret: u8,
+    vm: *VM,
+    pc: [*]cy.Inst,
+    fp: [*]cy.Value,
+    func: rt.FuncSymbol,
+    typeId: cy.TypeId,
+    nargs: u8,
+    ret: u8,
 ) !?cy.fiber.PcFp {
     switch (func.type) {
         .func => {
@@ -2876,15 +2890,15 @@ fn zUnbox(vm: *VM, val: cy.Value, type_id: cy.TypeId) callconv(.C) cy.Value {
 
 fn zCallTrait(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, vtable_idx: u16, ret: u8) callconv(.C) vmc.PcFpResult {
     // Get func from vtable.
-    const trait = framePtr[ret+4].asHeapObject();
+    const trait = framePtr[ret + 4].asHeapObject();
     const vtable = vm.vtables.buf[trait.trait.vtable];
     const func_id = vtable[vtable_idx];
     const func = vm.funcSyms.buf[func_id];
 
     // Unwrap impl to first arg slot.
-    framePtr[ret+5] = trait.trait.impl;
+    framePtr[ret + 5] = trait.trait.impl;
 
-    const res = @call(.always_inline, VM.callSym, .{vm, pc, framePtr, func, ret}) catch |err| {
+    const res = @call(.always_inline, VM.callSym, .{ vm, pc, framePtr, func, ret }) catch |err| {
         if (err == error.Panic) {
             return .{
                 .pc = undefined,
@@ -2914,7 +2928,7 @@ fn zCallTrait(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, vtable_idx: u16, ret:
 
 fn zCallSym(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, ret: u8) callconv(.C) vmc.PcFpResult {
     const func = vm.funcSyms.buf[symId];
-    const res = @call(.always_inline, VM.callSym, .{vm, pc, framePtr, func, ret}) catch |err| {
+    const res = @call(.always_inline, VM.callSym, .{ vm, pc, framePtr, func, ret }) catch |err| {
         if (err == error.Panic) {
             return .{
                 .pc = undefined,
@@ -2943,7 +2957,7 @@ fn zCallSym(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, ret: u8) ca
 }
 
 fn zCallSymDyn(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, ret: u8, numArgs: u8) callconv(.C) vmc.PcFpResult {
-    const res = @call(.always_inline, VM.callSymDyn, .{vm, pc, framePtr, @as(u32, @intCast(symId)), ret, numArgs}) catch |err| {
+    const res = @call(.always_inline, VM.callSymDyn, .{ vm, pc, framePtr, @as(u32, @intCast(symId)), ret, numArgs }) catch |err| {
         if (err == error.Panic) {
             return .{
                 .pc = undefined,
@@ -2977,7 +2991,7 @@ fn zDumpEvalOp(vm: *VM, pc: [*]const cy.Inst, fp: [*]const cy.Value) callconv(.C
 
 pub fn zFreeObject(vm: *cy.VM, obj: *HeapObject) callconv(.C) void {
     cy.heap.freeObject(vm, obj, false);
-} 
+}
 
 fn zEnd(vm: *cy.VM, pc: [*]const cy.Inst) callconv(.C) void {
     vm.endLocal = pc[1].val;
@@ -2986,12 +3000,7 @@ fn zEnd(vm: *cy.VM, pc: [*]const cy.Inst) callconv(.C) void {
 
 fn zAllocLambda(vm: *cy.VM, rt_id: u32, ptr_t: cy.TypeId) callconv(.C) vmc.ValueResult {
     const func = vm.funcSyms.buf[rt_id];
-    const func_ptr = cy.heap.allocBcFuncPtr(vm, ptr_t, func.data.func.pc,
-        @intCast(func.nparams),
-        @intCast(func.data.func.stackSize),
-        @intCast(func.sig),
-        func.req_type_check
-    ) catch {
+    const func_ptr = cy.heap.allocBcFuncPtr(vm, ptr_t, func.data.func.pc, @intCast(func.nparams), @intCast(func.data.func.stackSize), @intCast(func.sig), func.req_type_check) catch {
         return .{
             .val = undefined,
             .code = vmc.RES_CODE_UNKNOWN,
@@ -3073,10 +3082,16 @@ fn zOtherToF64(val: Value) callconv(.C) f64 {
 }
 
 fn zCallObjSym(
-    vm: *cy.VM, pc: [*]cy.Inst, stack: [*]Value, recv: Value,
-    typeId: cy.TypeId, method: u16, ret: u8, numArgs: u8,
+    vm: *cy.VM,
+    pc: [*]cy.Inst,
+    stack: [*]Value,
+    recv: Value,
+    typeId: cy.TypeId,
+    method: u16,
+    ret: u8,
+    numArgs: u8,
 ) callconv(.C) vmc.CallObjSymResult {
-    const args = stack[ret+CallArgStart+1..ret+CallArgStart+1+numArgs-1];
+    const args = stack[ret + CallArgStart + 1 .. ret + CallArgStart + 1 + numArgs - 1];
     if (vm.getCompatMethodFunc(typeId, method, args)) |func| {
         const mb_res = callMethod(vm, pc, stack, func, typeId, numArgs, ret) catch |err| {
             if (err == error.Panic) {
@@ -3101,7 +3116,7 @@ fn zCallObjSym(
             };
         }
     }
-    const res = @call(.never_inline, callObjSymFallback, .{vm, pc, stack, recv, typeId, method, ret, numArgs}) catch |err| {
+    const res = @call(.never_inline, callObjSymFallback, .{ vm, pc, stack, recv, typeId, method, ret, numArgs }) catch |err| {
         if (err == error.Panic) {
             return .{
                 .pc = undefined,
@@ -3432,53 +3447,53 @@ comptime {
     }
 
     if (build_options.export_vmz) {
-        @export(zAwait, .{ .name = "zAwait", .linkage = .strong });
-        @export(zFutureValue, .{ .name = "zFutureValue", .linkage = .strong });
-        @export(zPopFiber, .{ .name = "zPopFiber", .linkage = .strong });
-        @export(zPushFiber, .{ .name = "zPushFiber", .linkage = .strong });
-        @export(zGetFieldFallback, .{ .name = "zGetFieldFallback", .linkage = .strong });
-        @export(zSetFieldFallback, .{ .name = "zSetFieldFallback", .linkage = .strong });
-        @export(zMapSet, .{ .name = "zMapSet", .linkage = .strong });
-        @export(zValueMapGet, .{ .name = "zValueMapGet", .linkage = .strong });
-        @export(zPanicFmt, .{ .name = "zPanicFmt", .linkage = .strong });
-        @export(zOtherToF64, .{ .name = "zOtherToF64", .linkage = .strong });
-        @export(zAllocExternalObject, .{ .name = "zAllocExternalObject", .linkage = .strong });
-        @export(zAllocExternalCycObject, .{ .name = "zAllocExternalCycObject", .linkage = .strong });
-        @export(zAllocStringTemplate, .{ .name = "zAllocStringTemplate", .linkage = .strong });
-        @export(zAllocStringTemplate2, .{ .name = "zAllocStringTemplate2", .linkage = .strong });
-        @export(zAllocPoolObject, .{ .name = "zAllocPoolObject", .linkage = .strong });
-        @export(zAllocObjectSmall, .{ .name = "zAllocObjectSmall", .linkage = .strong });
-        @export(zAllocFiber, .{ .name = "zAllocFiber", .linkage = .strong });
-        @export(zAllocFuncPtr, .{ .name = "zAllocFuncPtr", .linkage = .strong });
-        @export(zAllocLambda, .{ .name = "zAllocLambda", .linkage = .strong });
-        @export(zAllocClosure, .{ .name = "zAllocClosure", .linkage = .strong });
-        @export(zAlloc, .{ .name = "zAlloc", .linkage = .strong });
-        @export(zAllocArray, .{ .name = "zAllocArray", .linkage = .strong });
-        @export(zAllocList, .{ .name = "zAllocList", .linkage = .strong });
-        @export(zAllocListDyn, .{ .name = "zAllocListDyn", .linkage = .strong });
-        @export(zCopyStruct, .{ .name = "zCopyStruct", .linkage = .strong });
-        @export(zBox, .{ .name = "zBox", .linkage = .strong });
-        @export(zUnbox, .{ .name = "zUnbox", .linkage = .strong });
-        @export(zCall, .{ .name = "zCall", .linkage = .strong });
-        @export(zCallSym, .{ .name = "zCallSym", .linkage = .strong });
-        @export(zCallTrait, .{ .name = "zCallTrait", .linkage = .strong });
-        @export(zCallSymDyn, .{ .name = "zCallSymDyn", .linkage = .strong });
-        @export(zCallObjSym, .{ .name = "zCallObjSym", .linkage = .strong });
-        @export(zOpMatch, .{ .name = "zOpMatch", .linkage = .strong });
-        @export(zOpCodeName, .{ .name = "zOpCodeName", .linkage = .strong });
-        @export(zLog, .{ .name = "zLog", .linkage = .strong });
-        @export(zGetTypeName, .{ .name = "zGetTypeName", .linkage = .strong });
-        @export(zFreeObject, .{ .name = "zFreeObject", .linkage = .strong });
-        @export(zDumpValue, .{ .name = "zDumpValue", .linkage = .strong });
-        @export(zDumpEvalOp, .{ .name = "zDumpEvalOp", .linkage = .strong });
-        @export(zCheckDoubleFree, .{ .name = "zCheckDoubleFree", .linkage = .strong });
-        @export(zCheckRetainDanglingPointer, .{ .name = "zCheckRetainDanglingPointer", .linkage = .strong });
-        @export(zFatal, .{ .name = "zFatal", .linkage = .strong });
-        @export(zEvalCompareNot, .{ .name = "zEvalCompareNot", .linkage = .strong });
-        @export(zEvalCompare, .{ .name = "zEvalCompare", .linkage = .strong });
-        @export(zEnsureListCap, .{ .name = "zEnsureListCap", .linkage = .strong });
-        @export(zEnd, .{ .name = "zEnd", .linkage = .strong });
-        @export(zGetTypeField, .{ .name = "zGetTypeField", .linkage = .strong });
+        @export(&zAwait, .{ .name = "zAwait", .linkage = .strong });
+        @export(&zFutureValue, .{ .name = "zFutureValue", .linkage = .strong });
+        @export(&zPopFiber, .{ .name = "zPopFiber", .linkage = .strong });
+        @export(&zPushFiber, .{ .name = "zPushFiber", .linkage = .strong });
+        @export(&zGetFieldFallback, .{ .name = "zGetFieldFallback", .linkage = .strong });
+        @export(&zSetFieldFallback, .{ .name = "zSetFieldFallback", .linkage = .strong });
+        @export(&zMapSet, .{ .name = "zMapSet", .linkage = .strong });
+        @export(&zValueMapGet, .{ .name = "zValueMapGet", .linkage = .strong });
+        @export(&zPanicFmt, .{ .name = "zPanicFmt", .linkage = .strong });
+        @export(&zOtherToF64, .{ .name = "zOtherToF64", .linkage = .strong });
+        @export(&zAllocExternalObject, .{ .name = "zAllocExternalObject", .linkage = .strong });
+        @export(&zAllocExternalCycObject, .{ .name = "zAllocExternalCycObject", .linkage = .strong });
+        @export(&zAllocStringTemplate, .{ .name = "zAllocStringTemplate", .linkage = .strong });
+        @export(&zAllocStringTemplate2, .{ .name = "zAllocStringTemplate2", .linkage = .strong });
+        @export(&zAllocPoolObject, .{ .name = "zAllocPoolObject", .linkage = .strong });
+        @export(&zAllocObjectSmall, .{ .name = "zAllocObjectSmall", .linkage = .strong });
+        @export(&zAllocFiber, .{ .name = "zAllocFiber", .linkage = .strong });
+        @export(&zAllocFuncPtr, .{ .name = "zAllocFuncPtr", .linkage = .strong });
+        @export(&zAllocLambda, .{ .name = "zAllocLambda", .linkage = .strong });
+        @export(&zAllocClosure, .{ .name = "zAllocClosure", .linkage = .strong });
+        @export(&zAlloc, .{ .name = "zAlloc", .linkage = .strong });
+        @export(&zAllocArray, .{ .name = "zAllocArray", .linkage = .strong });
+        @export(&zAllocList, .{ .name = "zAllocList", .linkage = .strong });
+        @export(&zAllocListDyn, .{ .name = "zAllocListDyn", .linkage = .strong });
+        @export(&zCopyStruct, .{ .name = "zCopyStruct", .linkage = .strong });
+        @export(&zBox, .{ .name = "zBox", .linkage = .strong });
+        @export(&zUnbox, .{ .name = "zUnbox", .linkage = .strong });
+        @export(&zCall, .{ .name = "zCall", .linkage = .strong });
+        @export(&zCallSym, .{ .name = "zCallSym", .linkage = .strong });
+        @export(&zCallTrait, .{ .name = "zCallTrait", .linkage = .strong });
+        @export(&zCallSymDyn, .{ .name = "zCallSymDyn", .linkage = .strong });
+        @export(&zCallObjSym, .{ .name = "zCallObjSym", .linkage = .strong });
+        @export(&zOpMatch, .{ .name = "zOpMatch", .linkage = .strong });
+        @export(&zOpCodeName, .{ .name = "zOpCodeName", .linkage = .strong });
+        @export(&zLog, .{ .name = "zLog", .linkage = .strong });
+        @export(&zGetTypeName, .{ .name = "zGetTypeName", .linkage = .strong });
+        @export(&zFreeObject, .{ .name = "zFreeObject", .linkage = .strong });
+        @export(&zDumpValue, .{ .name = "zDumpValue", .linkage = .strong });
+        @export(&zDumpEvalOp, .{ .name = "zDumpEvalOp", .linkage = .strong });
+        @export(&zCheckDoubleFree, .{ .name = "zCheckDoubleFree", .linkage = .strong });
+        @export(&zCheckRetainDanglingPointer, .{ .name = "zCheckRetainDanglingPointer", .linkage = .strong });
+        @export(&zFatal, .{ .name = "zFatal", .linkage = .strong });
+        @export(&zEvalCompareNot, .{ .name = "zEvalCompareNot", .linkage = .strong });
+        @export(&zEvalCompare, .{ .name = "zEvalCompare", .linkage = .strong });
+        @export(&zEnsureListCap, .{ .name = "zEnsureListCap", .linkage = .strong });
+        @export(&zEnd, .{ .name = "zEnd", .linkage = .strong });
+        @export(&zGetTypeField, .{ .name = "zGetTypeField", .linkage = .strong });
     }
 }
 
@@ -3510,7 +3525,7 @@ fn zGetTypeName(vm: *VM, id: cy.TypeId) callconv(.C) vmc.Str {
             return vmc.Str{ .ptr = "DanglingObject", .len = "DanglingObject".len };
         }
         if (vm.c.types[id].kind == .null) {
-            cy.panicFmt("Type `{}` is uninited.", .{ id });
+            cy.panicFmt("Type `{}` is uninited.", .{id});
         }
     }
     const name = vm.c.types[id].sym.name();
@@ -3538,8 +3553,8 @@ fn spawn(args: struct {
     env_map: ?*const std.process.EnvMap = null,
     max_output_bytes: usize = 50 * 1024,
     expand_arg0: std.posix.Arg0Expand = .no_expand,
-}) !std.ChildProcess.Term {
-    var child = std.ChildProcess.init(args.argv, args.allocator);
+}) !std.process.Child.Term {
+    var child = std.process.Child.init(args.argv, args.allocator);
     child.stdin_behavior = .Ignore;
     child.stdout_behavior = .Inherit;
     child.stderr_behavior = .Inherit;
@@ -3553,7 +3568,6 @@ fn spawn(args: struct {
 }
 
 pub const VMGetArgExt = struct {
-
     pub fn getByte(vm: *VM, idx: u32) u8 {
         return vm.c.framePtr[CallArgStart + idx].asByte();
     }
@@ -3564,7 +3578,7 @@ pub const VMGetArgExt = struct {
 
     pub fn setInt(vm: *VM, idx: u32, i: i64) void {
         vm.c.framePtr[CallArgStart + idx] = Value.initInt(i);
-    }    
+    }
 
     pub fn getPointer(vm: *VM, idx: u32) ?*anyopaque {
         return vm.c.framePtr[CallArgStart + idx].asPointer();
@@ -3584,7 +3598,7 @@ pub const VMGetArgExt = struct {
 
     pub fn setBool(vm: *VM, idx: u32, b: bool) void {
         vm.c.framePtr[CallArgStart + idx] = Value.initBool(b);
-    }    
+    }
 
     pub fn getEnumValue(vm: *VM, idx: u32) u32 {
         return vm.c.framePtr[CallArgStart + idx].getEnumValue();
@@ -3596,7 +3610,7 @@ pub const VMGetArgExt = struct {
 
     pub fn setSymbol(vm: *VM, idx: u32, id: u32) void {
         vm.c.framePtr[CallArgStart + idx] = Value.initSymbol(id);
-    }    
+    }
 
     pub fn getObject(vm: *VM, comptime Ptr: type, idx: u32) Ptr {
         return vm.c.framePtr[CallArgStart + idx].castHeapObject(Ptr);

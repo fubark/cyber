@@ -237,7 +237,7 @@ pub fn pow(vm: *cy.VM) Value {
 }
 
 /// Returns a pseudo-random number between 0 and 1.
-pub var rand = std.rand.DefaultPrng.init(0);
+pub var rand = std.Random.DefaultPrng.init(0);
 pub fn random(_: *cy.VM) Value {
     return Value.initF64(rand.random().float(f64));
 }

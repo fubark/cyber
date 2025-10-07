@@ -17,6 +17,7 @@ pub const Allocator = struct {
     const vtable = std.mem.Allocator.VTable{
         .alloc = alloc,
         .resize = resize,
+        .remap = remap,
         .free = free,
     };
 
@@ -43,24 +44,23 @@ pub const Allocator = struct {
     fn alloc(
         ptr: *anyopaque,
         len: usize,
-        log2_align: u8,
+        alignment: std.mem.Alignment,
         ret_addr: usize,
     ) ?[*]u8 {
         _ = ptr;
         _ = ret_addr;
-        const alignment = @as(usize, 1) << @intCast(log2_align);
-        return @ptrCast(c.mi_malloc_aligned(len, alignment));
+        return @ptrCast(c.mi_malloc_aligned(len, alignment.toByteUnits()));
     }
 
     fn resize(
         ptr: *anyopaque,
         buf: []u8,
-        log2_align: u8,
+        alignment: std.mem.Alignment,
         new_len: usize,
         ret_addr: usize,
     ) bool {
         _ = ptr;
-        _ = log2_align;
+        _ = alignment;
         _ = ret_addr;
         if (new_len > buf.len) {
             if (c.mi_expand(buf.ptr, new_len)) |_| {
@@ -72,15 +72,27 @@ pub const Allocator = struct {
         }
     }
 
+    fn remap(
+        ptr: *anyopaque,
+        buf: []u8,
+        alignment: std.mem.Alignment,
+        new_len: usize,
+        ret_addr: usize
+    ) ?[*]u8 {
+        _ = ptr;
+        _ = ret_addr;
+        return @ptrCast(c.mi_realloc_aligned(buf.ptr, new_len, alignment.toByteUnits()));
+    }
+
     fn free(
         ptr: *anyopaque,
         buf: []u8,
-        log2_align: u8,
+        alignment: std.mem.Alignment,
         ret_addr: usize,
     ) void {
         _ = ptr;
         _ = ret_addr;
-        _ = log2_align;
+        _ = alignment;
         c.mi_free(buf.ptr);
     }
 };

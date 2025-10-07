@@ -2766,7 +2766,7 @@ pub fn resolveUserVar(c: *cy.Chunk, sym: *cy.sym.UserVar) !void {
     sym.ir = res.irIdx;
     sym.resolving_init = false;
 
-    var svar_init = c.compiler.svar_init_stack.pop();
+    var svar_init = c.compiler.svar_init_stack.pop().?;
     sym.deps = try svar_init.deps.toOwnedSlice(c.alloc);
 }
 
@@ -4305,7 +4305,7 @@ pub fn reportIncompatType(c: *cy.Chunk, exp_t: cy.TypeId, act_t: cy.TypeId, node
     return c.reportErrorFmt("Expected type `{}`. Found `{}`.", &.{v(exp_name), v(act_name)}, node);
 }
 
-pub fn reportIncompatCallFunc(c: *cy.Chunk, func: *cy.Func, args: []const cy.TypeId, ret_cstr: ReturnCstr, node: *ast.Node) anyerror { 
+pub fn reportIncompatCallFunc2(c: *cy.Chunk, func: *cy.Func, args: []const cy.TypeId, ret_cstr: ReturnCstr, node: *ast.Node) anyerror {
     const name = func.name();
     var msg: std.ArrayListUnmanaged(u8) = .{};
     const w = msg.writer(c.alloc);
@@ -4327,7 +4327,7 @@ pub fn reportIncompatCallFunc(c: *cy.Chunk, func: *cy.Func, args: []const cy.Typ
     return error.CompileError;
 }
 
-pub fn reportIncompatCallFuncSym(c: *cy.Chunk, sym: *cy.sym.FuncSym, args: []const cy.TypeId, ret_cstr: ReturnCstr, node: *ast.Node) anyerror {
+pub fn reportIncompatCallFuncSym2(c: *cy.Chunk, sym: *cy.sym.FuncSym, args: []const cy.TypeId, ret_cstr: ReturnCstr, node: *ast.Node) anyerror {
     const name = sym.head.name();
     var msg: std.ArrayListUnmanaged(u8) = .{};
     const w = msg.writer(c.alloc);

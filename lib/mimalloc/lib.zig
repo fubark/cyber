@@ -2,9 +2,9 @@ const std = @import("std");
 
 pub fn createModule(b: *std.Build) *std.Build.Module {
     const mod = b.createModule(.{
-        .root_source_file = .{ .path = thisDir() ++ "/mimalloc.zig" },
+        .root_source_file = b.path(thisDir() ++ "/mimalloc.zig"),
     });
-    mod.addIncludePath(.{ .path = thisDir() ++ "/vendor/include" });
+    mod.addIncludePath(b.path(thisDir() ++ "/vendor/include"));
     return mod;
 }
 
@@ -19,22 +19,21 @@ pub fn buildAndLink(b: *std.Build, mod: *std.Build.Module, opts: BuildOptions) v
         .target = opts.target,
         .optimize = opts.optimize,
     });
-    lib.addIncludePath(.{ .path = thisDir() ++ "/vendor/include" });
+    lib.addIncludePath(b.path(thisDir() ++ "/vendor/include"));
     lib.linkLibC();
     // lib.disable_sanitize_c = true;
 
     var c_flags = std.ArrayList([]const u8).init(b.allocator);
     // c_flags.append("-D_GNU_SOURCE=1") catch @panic("error");
-    if (opts.target.result.os.tag == .windows) {
-    } else if (opts.target.result.os.tag == .macos) {
+    if (opts.target.result.os.tag == .windows) {} else if (opts.target.result.os.tag == .macos) {
         if (opts.target.result.cpu.arch == .aarch64) {
-            lib.addSystemIncludePath(.{ .path = "/Applications/Xcode_15.0.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include" });
+            lib.addSystemIncludePath(.{ .cwd_relative = "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include" });
         } else {
             // Github macos-12 runner (https://github.com/actions/runner-images/blob/main/images/macos/macos-12-Readme.md).
-            lib.addSystemIncludePath(.{ .path = "/Applications/Xcode_14.0.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include" });
+            lib.addSystemIncludePath(.{ .cwd_relative = "/Applications/Xcode_14.0.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include" });
         }
-        lib.addSystemIncludePath(.{ .path = "/Library/Developer/CommandLineTools/SDKs/MacOSX12.1.sdk/usr/include" });
-        lib.addSystemIncludePath(.{ .path = "/Library/Developer/CommandLineTools/SDKs/MacOSX12.3.sdk/usr/include" });
+        lib.addSystemIncludePath(.{ .cwd_relative = "/Library/Developer/CommandLineTools/SDKs/MacOSX12.3.sdk/usr/include" });
+        lib.addSystemIncludePath(.{ .cwd_relative = "/Library/Developer/CommandLineTools/SDKs/MacOSX13.3.sdk/usr/include" });
     }
     if (opts.optimize == .Debug) {
         // For debugging:
@@ -77,13 +76,13 @@ pub fn buildAndLink(b: *std.Build, mod: *std.Build.Module, opts: BuildOptions) v
     }) catch @panic("error");
     for (sources.items) |src| {
         lib.addCSourceFile(.{
-            .file = .{ .path = b.fmt("{s}{s}", .{thisDir(), src}) },
+            .file = b.path(b.fmt("{s}{s}", .{ thisDir(), src })),
             .flags = c_flags.items,
         });
     }
     if (opts.target.result.os.tag != .windows) {
         lib.addCSourceFile(.{
-            .file = .{ .path = b.fmt("{s}/vendor/src/alloc-posix.c", .{thisDir()}) },
+            .file = b.path(b.fmt("{s}/vendor/src/alloc-posix.c", .{thisDir()})),
             .flags = c_flags.items,
         });
     }

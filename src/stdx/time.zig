@@ -2,7 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const time_wasm = @import("time_wasm.zig");
-const IsWasm = builtin.target.isWasm() and builtin.os.tag != .wasi;
+const IsWasm = builtin.target.cpu.arch.isWasm() and builtin.os.tag != .wasi;
 
 pub usingnamespace if (IsWasm) struct {
     pub const Timer = time_wasm.Timer;

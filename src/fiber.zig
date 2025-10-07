@@ -228,7 +228,7 @@ pub fn unwindStack(vm: *cy.VM, stack: []const Value, ctx: PcFpOff) !PcFpOff {
 
 /// Walks the stack and records each frame.
 pub fn recordCurFrames(vm: *cy.VM) !void {
-    @setCold(true);
+    @branchHint(.cold);
     log.tracev("recordCompactFrames", .{});
 
     var fp = cy.fiber.getStackOffset(vm.c.stack, vm.c.framePtr);
@@ -471,8 +471,8 @@ pub inline fn toVmPc(self: *const cy.VM, offset: usize) [*]cy.Inst {
 
 // Performs stackGrowTotalCapacityPrecise in addition to patching the frame pointers.
 pub fn growStackAuto(vm: *cy.VM) !void {
+    @branchHint(.cold);
     log.tracev("grow stack", .{});
-    @setCold(true);
     // Grow by 50% with minimum of 16.
     var growSize = vm.c.stack_len / 2;
     if (growSize < 16) {

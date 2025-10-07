@@ -58,7 +58,7 @@ pub const Reloc = struct {
 };
 
 pub const CodeBuffer = struct {
-    buf: std.ArrayListAlignedUnmanaged(u8, std.mem.page_size),
+    buf: std.ArrayListAlignedUnmanaged(u8, std.heap.page_size_min),
 
     /// Where main begins. Currently only jit code uses this.
     mainPc: u32,
@@ -111,11 +111,11 @@ pub fn getPos(c: *cy.Chunk) usize {
     return c.jitBuf.buf.items.len;
 }
 
-pub fn ensureUnusedCap(buf: *std.ArrayListAlignedUnmanaged(u8, std.mem.page_size), alloc: std.mem.Allocator, size: usize) !usize {
+pub fn ensureUnusedCap(buf: *std.ArrayListAlignedUnmanaged(u8, std.heap.page_size_min), alloc: std.mem.Allocator, size: usize) !usize {
     if (buf.items.len + size > buf.capacity) {
         var inc = buf.capacity / 2;
-        if (inc <= std.mem.page_size) {
-            inc = std.mem.page_size;
+        if (inc <= std.heap.page_size_min) {
+            inc = std.heap.page_size_min;
         }
         try buf.ensureTotalCapacityPrecise(alloc, buf.capacity + inc);
     }

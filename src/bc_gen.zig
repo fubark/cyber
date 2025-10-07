@@ -3434,7 +3434,7 @@ pub fn popProc(c: *Chunk) !void {
     try popBlock(c);
     c.slot_stack.items.len -= c.curBlock.num_pre_slots;
 
-    var last = c.proc_stack.pop();
+    var last = c.proc_stack.pop().?;
 
     last.deinit(c.alloc);
     if (c.proc_stack.items.len > 0) {
@@ -3465,7 +3465,7 @@ pub fn pushBlock(c: *Chunk, isLoop: bool, node: *ast.Node) !void {
 pub fn popBlock(c: *Chunk) !void {
     log.tracev("pop block {}", .{c.curBlock.block_depth});
 
-    const b = c.blocks.pop();
+    const b = c.blocks.pop().?;
 
     try genReleaseSlots(c, c.curBlock.slot_start, b.slot_off, b.node);
     try popLocals(c, b.num_locals, b.node);
@@ -3478,7 +3478,7 @@ pub fn popBlock(c: *Chunk) !void {
 }
 
 pub fn popLoopBlock(c: *Chunk) !void {
-    const b = c.blocks.pop();
+    const b = c.blocks.pop().?;
 
     try popLocals(c, b.num_locals, b.node);
 
@@ -4506,7 +4506,7 @@ pub inline fn isTempSlot(c: *const cy.Chunk, slot: SlotId) bool {
 
 pub fn popUnwindBoundary(c: *Chunk, node: *ast.Node) !void {
     log.tracev("-pop unwind boundary: stack={}", .{c.unwind_stack.items.len});
-    const entry = c.unwind_stack.pop();
+    const entry = c.unwind_stack.pop().?;
     if (entry.type != .boundary) {
         return c.reportErrorFmt("Expected unwind boundary, found {}.", &.{v(entry.type)}, node);
     }
@@ -4514,7 +4514,7 @@ pub fn popUnwindBoundary(c: *Chunk, node: *ast.Node) !void {
 
 pub fn popUnwindSlot(c: *Chunk, slot: SlotId, node: *ast.Node) !void {
     log.tracev("-pop unwind slot: stack={} slot={}", .{c.unwind_stack.items.len, slot});
-    const entry = c.unwind_stack.pop();
+    const entry = c.unwind_stack.pop().?;
     if (entry.payload != slot) {
         return c.reportErrorFmt("Pop unwind at {}, found {}.", &.{v(slot), v(entry.payload)}, node);
     }
@@ -4531,7 +4531,7 @@ pub fn pushUnwindSlot(c: *Chunk, slot: u8) !void {
 
 pub fn popUnwindTry(c: *Chunk, catch_pc: usize, node: *ast.Node) !void {
     log.tracev("-pop unwind try: stack={} catch={}", .{c.unwind_stack.items.len, catch_pc});
-    const entry = c.unwind_stack.pop();
+    const entry = c.unwind_stack.pop().?;
     if (entry.type != .try_e) {
         return c.reportErrorFmt("Pop try unwind, found {}.", &.{v(entry.type)}, node);
     }

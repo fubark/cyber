@@ -620,7 +620,7 @@ test "windows new lines" {
 // }
 
 inline fn thisDir() []const u8 {
-    return comptime std.fs.path.dirname(@src().file) orelse @panic("error");
+    return comptime std.fs.path.dirname(@src().file) orelse "test";
 }
 
 fn case(path: []const u8) !void {

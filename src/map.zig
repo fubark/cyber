@@ -409,8 +409,8 @@ const Metadata = packed struct {
     }
 
     pub inline fn takeFingerprint(hash: u64) FingerPrint {
-        const hashBits = comptime @typeInfo(u64).Int.bits;
-        const fpBits = comptime @typeInfo(FingerPrint).Int.bits;
+        const hashBits = comptime @typeInfo(u64).int.bits;
+        const fpBits = comptime @typeInfo(FingerPrint).int.bits;
         return @truncate(hash >> (hashBits - fpBits));
     }
 

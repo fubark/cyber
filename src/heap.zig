@@ -1,7 +1,6 @@
 // Copyright (c) 2023 Cyber (See LICENSE)
 
 /// Heap objects, object allocation and deinitializers.
-
 const cy = @import("cyber.zig");
 const cc = @import("capi.zig");
 const vmc = cy.vmc;
@@ -32,11 +31,10 @@ var initedAllocator = false;
 fn initAllocator() void {
     defer initedAllocator = true;
     switch (cy.Malloc) {
-        .zig,
-        .malloc => return,
+        .zig, .malloc => return,
         .mimalloc => {
             miAlloc.init();
-        }
+        },
     }
     // var traceAlloc: stdx.heap.TraceAllocator = undefined;
     // traceAlloc.init(miAlloc.allocator());
@@ -59,7 +57,7 @@ pub fn getAllocator() std.mem.Allocator {
         .zig => {
             if (builtin.is_test) {
                 if (cy.Trace) {
-                    trace_allocator.alloc = t.alloc;
+                    trace_allocator.backingAllocator = t.alloc;
                     return trace_allocator.allocator();
                 } else {
                     return t.alloc;
@@ -96,11 +94,12 @@ pub fn deinitAllocator() void {
 
 // Uses a backing allocator and zeros the freed memory to surface UB more consistently.
 pub const TraceAllocator = struct {
-    alloc: std.mem.Allocator,
+    backingAllocator: std.mem.Allocator,
 
     const vtable = std.mem.Allocator.VTable{
         .alloc = alloc,
         .resize = resize,
+        .remap = remap,
         .free = free,
     };
 
@@ -111,20 +110,25 @@ pub const TraceAllocator = struct {
         };
     }
 
-    fn alloc(ptr: *anyopaque, len: usize, log2_align: u8, ret_addr: usize) ?[*]u8 {
+    fn alloc(ptr: *anyopaque, len: usize, alignment: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
         const self: *TraceAllocator = @ptrCast(@alignCast(ptr));
-        return self.alloc.rawAlloc(len, log2_align, ret_addr);
+        return self.backingAllocator.rawAlloc(len, alignment, ret_addr);
     }
 
-    fn resize(ptr: *anyopaque, buf: []u8, log2_align: u8, new_len: usize, ret_addr: usize) bool {
+    fn resize(ptr: *anyopaque, buf: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) bool {
         const self: *TraceAllocator = @ptrCast(@alignCast(ptr));
-        return self.alloc.rawResize(buf, log2_align, new_len, ret_addr);
+        return self.backingAllocator.rawResize(buf, alignment, new_len, ret_addr);
     }
 
-    fn free(ptr: *anyopaque, buf: []u8, log2_align: u8, ret_addr: usize) void {
+    fn remap(ptr: *anyopaque, buf: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {
+        const self: *TraceAllocator = @ptrCast(@alignCast(ptr));
+        return self.backingAllocator.rawRemap(buf, alignment, new_len, ret_addr);
+    }
+
+    fn free(ptr: *anyopaque, buf: []u8, alignment: std.mem.Alignment, ret_addr: usize) void {
         const self: *TraceAllocator = @ptrCast(@alignCast(ptr));
         @memset(buf, 0);
-        return self.alloc.rawFree(buf, log2_align, ret_addr);
+        return self.backingAllocator.rawFree(buf, alignment, ret_addr);
     }
 };
 
@@ -222,10 +226,10 @@ pub const HeapObject = extern union {
 };
 
 pub const Type = extern struct {
-    typeId: cy.TypeId align (8),
+    typeId: cy.TypeId align(8),
     rc: u32,
     type: cy.TypeId,
-};    
+};
 
 pub const Tuple = extern struct {
     typeId: cy.TypeId,
@@ -295,14 +299,10 @@ pub const ListIterInner = extern struct {
     nextIdx: u32,
 };
 
-pub const ListIterator = extern struct {
-    typeId: cy.TypeId,
-    rc: u32,
-    inner: ListIterInner
-};
+pub const ListIterator = extern struct { typeId: cy.TypeId, rc: u32, inner: ListIterInner };
 
 pub const Table = extern struct {
-    typeId: cy.TypeId align (8),
+    typeId: cy.TypeId align(8),
     rc: u32,
 
     /// Map occupies the first slot so that custom tables can be created using the same host method bindings.
@@ -669,7 +669,7 @@ const FuncUnionKind = enum(u8) {
 };
 
 pub const FuncUnion = extern struct {
-    typeId: cy.TypeId align (8),
+    typeId: cy.TypeId align(8),
     rc: u32,
 
     numParams: u16,
@@ -705,7 +705,7 @@ pub const FuncUnion = extern struct {
 };
 
 pub const FuncSym = extern struct {
-    typeId: cy.TypeId align (8),
+    typeId: cy.TypeId align(8),
     rc: u32,
 
     func: *cy.Func,
@@ -753,12 +753,10 @@ fn initHeapPage(page: *HeapPage) *HeapObject {
         .next = null,
     };
     // The rest initialize as free spans so checkMemory doesn't think they are retained objects.
-    @memset(page.objects[2..], .{
-        .headType = .{
-            .typeId = NullId,
-        }
-    });
-    page.objects[page.objects.len-1].freeSpan.start = first;
+    @memset(page.objects[2..], .{ .headType = .{
+        .typeId = NullId,
+    } });
+    page.objects[page.objects.len - 1].freeSpan.start = first;
     return first;
 }
 
@@ -882,7 +880,7 @@ pub fn allocPoolObject(self: *cy.VM) !*HeapObject {
             .start = next,
             .next = ptr.freeSpan.next,
         };
-        const last = &@as([*]HeapObject, @ptrCast(ptr))[ptr.freeSpan.len-1];
+        const last = &@as([*]HeapObject, @ptrCast(ptr))[ptr.freeSpan.len - 1];
         last.freeSpan.start = next;
         self.heapFreeHead = next;
         return ptr;
@@ -911,12 +909,12 @@ fn freeExternalObject(vm: *cy.VM, obj: *HeapObject, len: usize, comptime cyclabl
             trace.free_pc = vm.c.debugPc;
             trace.free_type = obj.getTypeId();
         } else {
-            log.trace("Missing object trace {*} {}", .{obj, obj.getTypeId()});
+            log.trace("Missing object trace {*} {}", .{ obj, obj.getTypeId() });
         }
     }
     const ZigLenSize = if (cy.Malloc == .zig) @sizeOf(u64) else 0;
     const PayloadSize = (if (cy.hasGC and cyclable) @sizeOf(DListNode) else 0) + ZigLenSize;
-    const slice = (@as([*]align(@alignOf(HeapObject)) u8, @ptrCast(obj)) - PayloadSize)[0..len + PayloadSize];
+    const slice = (@as([*]align(@alignOf(HeapObject)) u8, @ptrCast(obj)) - PayloadSize)[0 .. len + PayloadSize];
     vm.alloc.free(slice);
 }
 
@@ -928,7 +926,7 @@ pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) void {
             trace.free_pc = vm.c.debugPc;
             trace.free_type = obj.getTypeId();
         } else {
-            log.trace("Missing object trace {*} {}", .{obj, obj.getTypeId()});
+            log.trace("Missing object trace {*} {}", .{ obj, obj.getTypeId() });
         }
     }
     const prev = &(@as([*]HeapObject, @ptrCast(obj)) - 1)[0];
@@ -1135,7 +1133,7 @@ pub fn allocArray(vm: *cy.VM, type_id: cy.TypeId, elems: []const Value) !Value {
         const elem_size = child_t.data.struct_t.nfields;
         for (elems, 0..) |elem, i| {
             const fields = elem.castHeapObject(*cy.heap.Object).getValuesPtr()[0..elem_size];
-            @memcpy(dst[i*elem_size..i*elem_size + elem_size], fields);
+            @memcpy(dst[i * elem_size .. i * elem_size + elem_size], fields);
             vm.release(elem);
         }
     } else {
@@ -1247,7 +1245,7 @@ pub fn allocEmptyMap(self: *cy.VM) !Value {
     return Value.initCycPtr(obj);
 }
 
-pub fn allocMap(self: *cy.VM, keyIdxs: []const align(1) u16, vals: []const Value) !Value {
+pub fn allocMap(self: *cy.VM, keyIdxs: []align(1) const u16, vals: []const Value) !Value {
     const obj = try allocPoolObject(self);
     obj.map = .{
         .typeId = bt.Map | vmc.CYC_TYPE_MASK,
@@ -1293,7 +1291,12 @@ pub fn allocMapIterator(self: *cy.VM, map: Value) !Value {
 
 /// Captured values are retained during alloc.
 pub fn allocClosure(
-    self: *cy.VM, fp: [*]Value, func_id: u32, union_t: cy.TypeId, captured: []const cy.Inst, closure_local: u8,
+    self: *cy.VM,
+    fp: [*]Value,
+    func_id: u32,
+    union_t: cy.TypeId,
+    captured: []const cy.Inst,
+    closure_local: u8,
 ) !Value {
     const func = self.funcSyms.buf[func_id];
     var obj: *HeapObject = undefined;
@@ -1315,7 +1318,7 @@ pub fn allocClosure(
             .numCaptured = @intCast(captured.len),
             .local = closure_local,
             .firstCapturedVal = undefined,
-        }},
+        } },
     };
     const dst = obj.func_union.getCapturedValuesPtr();
     for (captured, 0..) |local, i| {
@@ -1342,7 +1345,7 @@ pub fn allocBcFuncPtr(self: *cy.VM, ptr_t: cy.TypeId, funcPc: usize, numParams: 
         .data = .{ .bc = .{
             .pc = @intCast(funcPc),
             .stack_size = stackSize,
-        }},
+        } },
     };
     return Value.initNoCycPtr(obj);
 }
@@ -1359,7 +1362,7 @@ pub fn allocBcFuncUnion(self: *cy.VM, union_t: cy.TypeId, funcPc: usize, numPara
         .data = .{ .bc = .{
             .pc = @intCast(funcPc),
             .stack_size = stackSize,
-        }},
+        } },
     };
     return Value.initNoCycPtr(obj);
 }
@@ -1378,7 +1381,7 @@ pub fn allocStringTemplate(self: *cy.VM, strs: []const cy.Inst, vals: []const Va
         is_ascii = is_ascii and out_ascii;
         _ = try writer.write(valstr);
 
-        const str = Value.initRaw(self.c.consts[strs[i+1].val].val).asHeapObject();
+        const str = Value.initRaw(self.c.consts[strs[i + 1].val].val).asHeapObject();
         is_ascii = is_ascii and str.string.getType().isAstring();
         try self.u8Buf.appendSlice(self.alloc, str.string.getSlice());
     }
@@ -1404,7 +1407,7 @@ pub fn allocStringTemplate2(self: *cy.VM, strs: []const Value, vals: []const Val
         is_ascii = is_ascii and out_ascii;
         _ = try writer.write(valstr);
 
-        const str = strs[i+1].asHeapObject();
+        const str = strs[i + 1].asHeapObject();
         is_ascii = is_ascii and str.string.getType().isAstring();
 
         try self.u8Buf.appendSlice(self.alloc, str.string.getSlice());
@@ -1429,8 +1432,8 @@ fn allocUstringConcat3Object(self: *cy.VM, str1: []const u8, str2: []const u8, s
     const obj = try allocUnsetUstringObject(self, str1.len + str2.len + str3.len);
     const dst = obj.ustring.getMutSlice();
     @memcpy(dst[0..str1.len], str1);
-    @memcpy(dst[str1.len..str1.len+str2.len], str2);
-    @memcpy(dst[str1.len+str2.len..], str3);
+    @memcpy(dst[str1.len .. str1.len + str2.len], str2);
+    @memcpy(dst[str1.len + str2.len ..], str3);
     return obj;
 }
 
@@ -1441,7 +1444,7 @@ fn allocUstringConcatObject(self: *cy.VM, str1: []const u8, str2: []const u8) !*
     @memcpy(dst[str1.len..], str2);
     return obj;
 }
-    
+
 fn allocAstringObject(self: *cy.VM, str: []const u8) !*HeapObject {
     const obj = try allocUnsetAstringObject(self, str.len);
     const dst = obj.astring.getMutSlice();
@@ -1453,8 +1456,8 @@ fn allocAstringConcat3Object(self: *cy.VM, str1: []const u8, str2: []const u8, s
     const obj = try allocUnsetAstringObject(self, str1.len + str2.len + str3.len);
     const dst = obj.astring.getMutSlice();
     @memcpy(dst[0..str1.len], str1);
-    @memcpy(dst[str1.len..str1.len+str2.len], str2);
-    @memcpy(dst[str1.len+str2.len..], str3);
+    @memcpy(dst[str1.len .. str1.len + str2.len], str2);
+    @memcpy(dst[str1.len + str2.len ..], str3);
     return obj;
 }
 
@@ -1468,7 +1471,7 @@ fn allocAstringConcatObject(self: *cy.VM, str1: []const u8, str2: []const u8) !*
 
 pub fn getOrAllocAstringConcat(self: *cy.VM, str: []const u8, str2: []const u8) !Value {
     if (str.len + str2.len <= DefaultStringInternMaxByteLen) {
-        const concat = self.tempBuf[0..str.len+str2.len];
+        const concat = self.tempBuf[0 .. str.len + str2.len];
         @memcpy(concat[0..str.len], str);
         @memcpy(concat[str.len..], str2);
 
@@ -1490,10 +1493,10 @@ pub fn getOrAllocAstringConcat(self: *cy.VM, str: []const u8, str2: []const u8) 
 
 pub fn getOrAllocAstringConcat3(self: *cy.VM, str1: []const u8, str2: []const u8, str3: []const u8) !Value {
     if (str1.len + str2.len + str3.len <= DefaultStringInternMaxByteLen) {
-        const concat = self.tempBuf[0..str1.len+str2.len+str3.len];
+        const concat = self.tempBuf[0 .. str1.len + str2.len + str3.len];
         @memcpy(concat[0..str1.len], str1);
-        @memcpy(concat[str1.len..str1.len+str2.len], str2);
-        @memcpy(concat[str1.len+str2.len..], str3);
+        @memcpy(concat[str1.len .. str1.len + str2.len], str2);
+        @memcpy(concat[str1.len + str2.len ..], str3);
 
         const res = try self.strInterns.getOrPut(self.alloc, concat);
         if (res.found_existing) {
@@ -1513,10 +1516,10 @@ pub fn getOrAllocAstringConcat3(self: *cy.VM, str1: []const u8, str2: []const u8
 
 pub fn getOrAllocUstringConcat3(self: *cy.VM, str1: []const u8, str2: []const u8, str3: []const u8) !Value {
     if (str1.len + str2.len + str3.len <= DefaultStringInternMaxByteLen) {
-        const concat = self.tempBuf[0..str1.len+str2.len+str3.len];
+        const concat = self.tempBuf[0 .. str1.len + str2.len + str3.len];
         @memcpy(concat[0..str1.len], str1);
-        @memcpy(concat[str1.len..str1.len+str2.len], str2);
-        @memcpy(concat[str1.len+str2.len..], str3);
+        @memcpy(concat[str1.len .. str1.len + str2.len], str2);
+        @memcpy(concat[str1.len + str2.len ..], str3);
 
         const res = try self.strInterns.getOrPut(self.alloc, concat);
         if (res.found_existing) {
@@ -1536,7 +1539,7 @@ pub fn getOrAllocUstringConcat3(self: *cy.VM, str1: []const u8, str2: []const u8
 
 pub fn getOrAllocUstringConcat(self: *cy.VM, str: []const u8, str2: []const u8) !Value {
     if (str.len + str2.len <= DefaultStringInternMaxByteLen) {
-        const concat = self.tempBuf[0..str.len+str2.len];
+        const concat = self.tempBuf[0 .. str.len + str2.len];
         @memcpy(concat[0..str.len], str);
         @memcpy(concat[str.len..], str2);
 
@@ -1805,7 +1808,7 @@ pub fn allocHostFuncPtr(self: *cy.VM, ptr_t: cy.TypeId, func: cy.ZHostFuncFn, nu
             .ptr = @ptrCast(func),
             .tcc_state = undefined,
             .has_tcc_state = false,
-        }},
+        } },
     };
     if (tccState) |state| {
         obj.func_ptr.data.host.tcc_state = state;
@@ -1827,7 +1830,7 @@ pub fn allocHostFuncUnion(self: *cy.VM, union_t: cy.TypeId, func: cy.ZHostFuncFn
             .ptr = @ptrCast(func),
             .tcc_state = undefined,
             .has_tcc_state = false,
-        }},
+        } },
     };
     if (tccState) |state| {
         obj.func_union.data.host.tcc_state = state;
@@ -1982,12 +1985,7 @@ pub fn allocFuncPtr(self: *cy.VM, ptr_t: cy.TypeId, func: rt.FuncSymbol) !Value 
             return allocHostFuncPtr(self, ptr_t, @ptrCast(func.data.host_func), func.nparams, func.sig, null, func.req_type_check);
         },
         .func => {
-            return allocBcFuncPtr(self, ptr_t, func.data.func.pc,
-                @intCast(func.nparams),
-                @intCast(func.data.func.stackSize),
-                @intCast(func.sig),
-                func.req_type_check
-            );
+            return allocBcFuncPtr(self, ptr_t, func.data.func.pc, @intCast(func.nparams), @intCast(func.data.func.stackSize), @intCast(func.sig), func.req_type_check);
         },
         .null => return error.Unexpected,
     }
@@ -1999,12 +1997,7 @@ pub fn allocFuncUnion(self: *cy.VM, union_t: cy.TypeId, func: rt.FuncSymbol) !Va
             return allocHostFuncUnion(self, union_t, @ptrCast(func.data.host_func), func.nparams, func.sig, null, func.req_type_check);
         },
         .func => {
-            return allocBcFuncUnion(self, union_t, func.data.func.pc,
-                @intCast(func.nparams),
-                @intCast(func.data.func.stackSize),
-                @intCast(func.sig),
-                func.req_type_check
-            );
+            return allocBcFuncUnion(self, union_t, func.data.func.pc, @intCast(func.nparams), @intCast(func.data.func.stackSize), @intCast(func.sig), func.req_type_check);
         },
         .null => return error.Unexpected,
     }
@@ -2186,7 +2179,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
             cy.arc.releaseObject(vm, obj.externFunc.tccState.asHeapObject());
             cy.arc.releaseObject(vm, obj.externFunc.func.asHeapObject());
             freePoolObject(vm, obj);
-        }, 
+        },
         bt.TccState => {
             if (cy.hasFFI) {
                 tcc.tcc_delete(obj.tccState.state);
@@ -2204,7 +2197,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject, comptime skip_cyc_children: bool
         },
         else => {
             if (cy.Trace) {
-                log.tracevIf(log_mem, "free {s} {}", .{vm.getTypeName(typeId), typeId});
+                log.tracevIf(log_mem, "free {s} {}", .{ vm.getTypeName(typeId), typeId });
 
                 // Check range.
                 if (typeId >= vm.c.types_len) {
@@ -2455,7 +2448,7 @@ test "heap internals." {
         }
     }
 
-    if (builtin.os.tag != .windows) { 
+    if (builtin.os.tag != .windows) {
         try t.eq(@sizeOf(FuncUnion), 40);
         try t.eq(@sizeOf(FuncPtr), 40);
         try t.eq(@sizeOf(Astring), 16);
@@ -2506,8 +2499,8 @@ test "heap internals." {
     try t.eq(Ustring.BufOffset, 12);
     try t.eq(@intFromPtr(&ustr.bufStart), @intFromPtr(&ustr) + Ustring.BufOffset);
 
-    try t.eq(@offsetOf(List, "typeId"), 0);    
-    try t.eq(@offsetOf(List, "rc"), 4);    
+    try t.eq(@offsetOf(List, "typeId"), 0);
+    try t.eq(@offsetOf(List, "rc"), 4);
 
     var func_u: FuncUnion = undefined;
     const c_func_u: *vmc.FuncUnion = @ptrCast(&func_u);

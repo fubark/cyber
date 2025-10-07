@@ -517,7 +517,7 @@ pub fn split(vm: *cy.VM) anyerror!Value {
     }
     const list = res.asHeapObject();
 
-    var iter = std.mem.split(u8, str, delim);
+    var iter = std.mem.splitSequence(u8, str, delim);
     while (iter.next()) |part| {
         if (stype.isAstring()) {
             vm.retainObject(parent);

@@ -715,6 +715,7 @@ pub const Field = struct {
     typeSpec: ?*Node,
     init: ?*Node,
     hidden: bool,
+    embedded: bool,
 };
 
 pub const TraitDecl = extern struct {
@@ -748,6 +749,7 @@ pub const StructDecl = extern struct {
     attrs: Slice(*Attribute),
     impls: Slice(*ImplDecl),
     fields: Slice(*Field),
+    num_embedded_fields: u32,
     is_tuple: bool,
     pos: u32,
 };

@@ -1997,6 +1997,16 @@ fn semaAccessFieldName(c: *cy.Chunk, rec_n: *ast.Node, rec: ExprResult, name: []
     const mod = type_.sym().getMod();
 
     const sym = mod.getSym(name) orelse {
+        if (type_.has_embeddings()) {
+            if (try get_embedded_sym(c, type_.cast(.struct_t), name, @ptrCast(field))) |embedded_res| {
+                if (embedded_res.sym.type == .field) {
+                    const embedded_field = embedded_res.sym.cast(.field);
+                    const final_rec = try semaField(c, rec, @ptrCast(field), embedded_res.field_idx, embedded_res.embedded_t, @ptrCast(field));
+                    return semaField(c, final_rec, @ptrCast(field), embedded_field.idx, embedded_field.type, @ptrCast(field));
+                }
+            }
+        }
+
         // TODO: This depends on @get being known, make sure @get is a nested declaration.
 
         if (mod.getSym("@get")) |get_sym| {
@@ -4952,16 +4962,21 @@ pub fn lookupIdent(self: *cy.Chunk, name: []const u8, node: *ast.Node) !LookupId
         return LookupIdentResult{
             .capture = id,
         };
-    } else {
-        const res = (try lookupStaticIdent(self, name, node)) orelse {
-            const resolve_ctx_idx = self.resolve_stack.items.len-1;
-            const ctx = self.resolve_stack.items[resolve_ctx_idx];
-            const search_c = ctx.chunk;
-            _ = search_c;
-            return self.reportErrorFmt("Undeclared variable `{}`.", &.{v(name)}, node);
-        };
+    }
+
+    if (try lookupStaticIdent(self, name, node)) |res| {
         return res;
     }
+
+    if (self.cur_sema_proc.isMethodBlock) {
+        const base_t = self.cur_sema_proc.func.?.sig.params()[0].get_type().getBaseType();
+        if (base_t.sym().getMod().getSym(name)) |sym| {
+            if (sym.type == .field) {
+                return self.reportErrorFmt("Expected explicit `${}` or `self.{}`.", &.{v(name), v(name)}, node);
+            }
+        }
+    }
+    return self.reportErrorFmt("Undeclared variable `{}`.", &.{v(name)}, node);
 }
 
 pub fn lookupStaticIdent(c: *cy.Chunk, name: []const u8, node: *ast.Node) !?LookupIdentResult {
@@ -7365,6 +7380,27 @@ pub fn semaExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: Cstr) anyerror!ExprR
     }
 }
 
+const EmbeddedResult = struct {
+    field_idx: usize,
+    embedded_t: *cy.Type,
+    sym: *cy.Sym,
+};
+
+fn get_embedded_sym(c: *cy.Chunk, rec_t: *cy.types.Struct, name: []const u8, node: *ast.Node) !?EmbeddedResult {
+    const fields = rec_t.getEmbeddedFields();
+    for (fields) |field| {
+        if (try c.getResolvedSym(&field.embedded_type.sym().head, name, node)) |embedded_sym| {
+            // TODO: Cache result into the receiver type's module as a `EmbeddedField`.
+            return .{
+                .field_idx = field.field_idx,
+                .embedded_t = field.embedded_type,
+                .sym = embedded_sym,
+            };
+        }
+    }
+    return null;
+}
+
 pub fn semaCallExpr(c: *cy.Chunk, node: *ast.Node, opt_target: ?*cy.Type) !ExprResult {
     const call = node.cast(.callExpr);
     if (call.hasNamedArg) {
@@ -7373,7 +7409,7 @@ pub fn semaCallExpr(c: *cy.Chunk, node: *ast.Node, opt_target: ?*cy.Type) !ExprR
 
     if (call.callee.type() == .accessExpr) {
         const callee = call.callee.cast(.accessExpr);
-        const leftRes = try c.semaExprSkipSym(callee.left, .{});
+        var leftRes = try c.semaExprSkipSym(callee.left, .{});
 
         const right_name = callee.right.name();
         if (leftRes.resType == .sym) {
@@ -7385,7 +7421,18 @@ pub fn semaCallExpr(c: *cy.Chunk, node: *ast.Node, opt_target: ?*cy.Type) !ExprR
 
             if (leftSym.isValue()) {
                 // Look for sym under left type's module.
-                const rightSym = try c.accessResolvedSymOrFail(leftRes.type, right_name, callee.right);
+                const rightSym = (try c.accessResolvedSym(leftRes.type, right_name, callee.right)) orelse b: {
+                    if (leftRes.type.has_embeddings()) {
+                        if (try get_embedded_sym(c, leftRes.type.cast(.struct_t), right_name, callee.right)) |embedded_res| {
+                            leftRes = try semaField(c, leftRes, callee.right, embedded_res.field_idx, embedded_res.embedded_t, callee.right);
+                            break :b embedded_res.sym;
+                        }
+                    }
+                    const type_name = try c.sema.allocTypeName(leftRes.type);
+                    defer c.alloc.free(type_name);
+                    return c.reportErrorFmt("Can not find the symbol `{}` in `{}`.", &.{v(right_name), v(type_name)}, callee.right);
+                };
+
                 if (rightSym.type == .func) {
                     // Call method.
                     const func_sym = rightSym.cast(.func);
@@ -7408,7 +7455,17 @@ pub fn semaCallExpr(c: *cy.Chunk, node: *ast.Node, opt_target: ?*cy.Type) !ExprR
             }
         } else {
             // Look for sym under left type's module.
-            const rightSym = try c.accessResolvedSymOrFail(leftRes.type, right_name, callee.right);
+            const rightSym = (try c.accessResolvedSym(leftRes.type, right_name, callee.right)) orelse b: {
+                if (leftRes.type.has_embeddings()) {
+                    if (try get_embedded_sym(c, leftRes.type.cast(.struct_t), right_name, callee.right)) |embedded_res| {
+                        leftRes = try semaField(c, leftRes, callee.right, embedded_res.field_idx, embedded_res.embedded_t, callee.right);
+                        break :b embedded_res.sym;
+                    }
+                }
+                const type_name = try c.sema.allocTypeName(leftRes.type);
+                defer c.alloc.free(type_name);
+                return c.reportErrorFmt("Can not find the symbol `{}` in `{}`.", &.{v(right_name), v(type_name)}, callee.right);
+            };
 
             if (rightSym.type == .func) {
                 return c.semaCallFuncSymRec(rightSym.cast(.func), callee.left, leftRes, call.args.slice(), false, node);

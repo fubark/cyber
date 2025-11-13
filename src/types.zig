@@ -116,6 +116,10 @@ pub const Type = extern struct {
         }
     }
 
+    pub fn has_embeddings(self: *Type) bool {
+        return self.kind() == .struct_t and self.cast(.struct_t).hasEmbeddings();
+    }
+
     pub fn isCZeroEligible(self: *Type) bool {
         switch (self.id()) {
             else => {
@@ -943,6 +947,15 @@ pub const Choice = extern struct {
     }
 };
 
+/// Tracks embedded fields for automatic member surfacing
+pub const EmbeddedFieldInfo = struct {
+    /// Index into the fields array
+    field_idx: u32,
+    
+    /// TypeId of the embedded type
+    embedded_type: *cy.Type,
+};
+
 /// TODO: Hash fields for static casting.
 pub const Struct = extern struct {
     base: Type = undefined,
@@ -951,6 +964,10 @@ pub const Struct = extern struct {
     fields_ptr: [*]Field = undefined,
     fields_len: u32 = cy.NullId,
     fields_owned: bool = true,
+
+    // Embedded field tracking
+    embedded_fields_ptr: [*]const EmbeddedFieldInfo = undefined,
+    embedded_fields_len: u32 = 0,
 
     /// Recursive. Field states only includes struct members.
     field_state_len: usize = 0,
@@ -984,6 +1001,11 @@ pub const Struct = extern struct {
                 impl.deinit(alloc);
             }
             alloc.free(self.impls());
+
+            if (self.embedded_fields_len > 0) {
+                const embedded = self.embedded_fields_ptr[0..self.embedded_fields_len];
+                alloc.free(embedded);
+            }
         }
     }
 
@@ -1002,6 +1024,14 @@ pub const Struct = extern struct {
             }
         }
         return false;
+    }
+
+    pub fn getEmbeddedFields(self: *Struct) []const EmbeddedFieldInfo {
+        return self.embedded_fields_ptr[0..self.embedded_fields_len];
+    }
+    
+    pub fn hasEmbeddings(self: *Struct) bool {
+        return self.embedded_fields_len > 0;
     }
 };
 

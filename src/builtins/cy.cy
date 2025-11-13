@@ -848,6 +848,7 @@ type StructDecl:
     attrs    []^Node
     impls    []^Node
     fields   []^Node
+    num_embedded_fields i32
     is_tuple bool
     pos      i32
 

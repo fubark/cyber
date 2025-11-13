@@ -948,7 +948,7 @@ pub const Parser = struct {
         });
     }
 
-    fn parseStructField(self: *Parser) !?*ast.Node {
+    fn parseStructField(self: *Parser) !?*ast.Field {
         var hidden = false;
         if (self.peek().tag() == .minus) {
             hidden = true;
@@ -959,7 +959,18 @@ pub const Parser = struct {
             return null;
         };
 
+        // Check for 'use' after field name (type embedding)
+        const is_embedded = if (self.peek().tag() == .use_k) blk: {
+            self.advance();
+            break :blk true;
+        } else false;
+
         const typeSpec = try self.parseOptTypeSpec();
+
+        // Validate embedded fields must have a type specifier
+        if (is_embedded and typeSpec == null) {
+            return self.reportError("Embedded field must have a type specifier.", &.{});
+        }
 
         var init_expr: ?*ast.Node = null;
         if (self.peek().tag() == .equal) {
@@ -968,11 +979,13 @@ pub const Parser = struct {
                 return self.reportError("Expected default initializer.", &.{});
             };
         }
-        return self.ast.newNodeErase(.struct_field, .{
+
+        return self.ast.newNode(.struct_field, .{
             .name = name,
             .typeSpec = typeSpec,
             .init = init_expr,
             .hidden = hidden,
+            .embedded = is_embedded,
         });
     }
 
@@ -1268,7 +1281,7 @@ pub const Parser = struct {
     }
 
     fn newStructDecl(self: *Parser, start: TokenId, node_t: ast.NodeType, name: *ast.Node,
-        config: TypeDeclConfig, impls: []*ast.ImplDecl, fields: []*ast.Field,
+        config: TypeDeclConfig, impls: []*ast.ImplDecl, fields: []*ast.Field, num_embedded_fields: usize,
         is_tuple: bool) !*ast.StructDecl {
 
         const n = try self.ast.newNodeErase(.struct_decl, .{
@@ -1277,6 +1290,7 @@ pub const Parser = struct {
             .impls = .{ .ptr = impls.ptr, .len = impls.len },
             .fields = .{ .ptr = fields.ptr, .len = fields.len },
             .attrs = .{ .ptr = config.attrs.ptr, .len = config.attrs.len },
+            .num_embedded_fields = @intCast(num_embedded_fields),
             .is_tuple = is_tuple,
         });
         n.setType(node_t);
@@ -1341,10 +1355,15 @@ pub const Parser = struct {
         return @ptrCast(try self.ast.dupeNodes(self.node_stack.items[field_start..]));
     }
 
-    fn parseTypeFields(self: *Parser, req_indent: u32) ![]*ast.Field {
+    fn parseTypeFields(self: *Parser, req_indent: u32, out_num_embedded_fields: *usize) ![]*ast.Field {
+        var num_embedded_fields: usize = 0;
         var field = (try self.parseStructField()) orelse {
+            out_num_embedded_fields.* = 0;
             return &.{};
         };
+        if (field.embedded) {
+            num_embedded_fields += 1;
+        }
 
         const field_start = self.node_stack.items.len;
         defer self.node_stack.items.len = field_start;
@@ -1359,8 +1378,12 @@ pub const Parser = struct {
             field = (try self.parseStructField()) orelse {
                 break;
             };
+            if (field.embedded) {
+                num_embedded_fields += 1;
+            }
             try self.pushNode(@ptrCast(field));
         }
+        out_num_embedded_fields.* = num_embedded_fields;
         return @ptrCast(try self.ast.dupeNodes(self.node_stack.items[field_start..]));
     }
 
@@ -1476,7 +1499,7 @@ pub const Parser = struct {
             self.advance();
             const fields = try self.parseTupleFields();
             if (self.peek().tag() != .colon) {
-                return self.newStructDecl(start, ntype, name, config, &.{}, fields, true);
+                return self.newStructDecl(start, ntype, name, config, &.{}, fields, 0, true);
             }
 
             self.advance();
@@ -1484,10 +1507,10 @@ pub const Parser = struct {
             const prev_indent = self.pushIndent(req_indent);
             defer self.cur_indent = prev_indent;
 
-            return self.newStructDecl(start, ntype, name, config, &.{}, fields, true);
+            return self.newStructDecl(start, ntype, name, config, &.{}, fields, 0, true);
         } else {
             // Only declaration. No members.
-            return self.newStructDecl(start, ntype, name, config, &.{}, &.{}, false);
+            return self.newStructDecl(start, ntype, name, config, &.{}, &.{}, 0, false);
         }
 
         const req_indent = try self.parseFirstChildIndent(self.cur_indent);
@@ -1495,8 +1518,9 @@ pub const Parser = struct {
         defer self.cur_indent = prev_indent;
 
         const impls = try self.parseImplDecls(req_indent);
-        const fields = try self.parseTypeFields(req_indent);
-        return self.newStructDecl(start, ntype, name, config, impls, fields, false);
+        var num_embedded_fields: usize = 0;
+        const fields = try self.parseTypeFields(req_indent, &num_embedded_fields);
+        return self.newStructDecl(start, ntype, name, config, impls, fields, num_embedded_fields, false);
     }
 
     pub fn parse_with_decl(self: *Parser, start: u32, attrs: []*ast.Attribute) !*ast.Node {

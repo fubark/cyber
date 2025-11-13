@@ -823,6 +823,11 @@ pub fn resolveStructFields(c: *cy.Chunk, struct_t: *cy.types.Struct, decl: *ast.
     const fields = try c.alloc.alloc(cy.types.Field, decl.fields.len);
     errdefer c.alloc.free(fields);
 
+    // Track embedded fields separately
+    var embedded_i: usize = 0;
+    var embedded_fields = try c.alloc.alloc(cy.types.EmbeddedFieldInfo, decl.num_embedded_fields);
+    errdefer c.alloc.free(embedded_fields);
+
     var field_group_t: ?*cy.Type = null;
     var field_group_end: usize = undefined;
     for (decl.fields.slice(), 0..) |field, i| {
@@ -866,6 +871,23 @@ pub fn resolveStructFields(c: *cy.Chunk, struct_t: *cy.types.Struct, decl: *ast.
             alignment = member_alignment;
         }
 
+        // Validate embedded type is an object type
+        if (field.embedded) {
+            if (field_t.kind() != .struct_t) {
+                return c.reportErrorFmt(
+                    "Embedded field must be a struct type, got {s}",
+                    &.{v(@tagName(field_t.kind()))},
+                    @ptrCast(field)
+                );
+            }
+            
+            embedded_fields[embedded_i] = .{
+                .field_idx = @intCast(i),
+                .embedded_type = field_t,
+            };
+            embedded_i += 1;
+        }
+
         const sym = try c.declareField(@ptrCast(struct_t.base.sym()), fieldName, i, field_t, @ptrCast(field));
         fields[i] = .{
             .sym = @ptrCast(sym),
@@ -907,6 +929,8 @@ pub fn resolveStructFields(c: *cy.Chunk, struct_t: *cy.types.Struct, decl: *ast.
     struct_t.fields_ptr = fields.ptr;
     struct_t.fields_len = @intCast(fields.len);
     struct_t.field_state_len = field_state_len;
+    struct_t.embedded_fields_ptr = embedded_fields.ptr;
+    struct_t.embedded_fields_len = @intCast(embedded_fields.len);
     struct_t.resolving_struct = false;
 
     struct_t.base.info.borrow_only = has_borrow_child;

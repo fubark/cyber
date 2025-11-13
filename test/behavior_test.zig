@@ -188,6 +188,8 @@ if (!cy.isWasm) {
     run.case("types/enums.cy");
     run.case("types/func_return_type_error.cy");
     run.case("types/func_param_type_undeclared_error.cy");
+    run.case("types/method_implicit_self_assign_error.cy");
+    run.case("types/method_shadow_member.cy");
     run.case("types/objects.cy");
     run.case("types/object_downcast_panic.cy");
     run.case("types/object_init_object_field.cy");
@@ -218,6 +220,7 @@ if (!cy.isWasm) {
     run.case("types/tuple.cy");
     run.case("types/type_alias.cy");
     run.case("types/type_alias_path_decl_error.cy");
+    run.case("types/type_embedding.cy");
     run.case("types/type_spec.cy");
     run.case("types/void.cy");
 

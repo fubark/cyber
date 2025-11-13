@@ -691,12 +691,32 @@ pub const Parser = struct {
             return null;
         };
 
+        // Check for 'use' after field name (type embedding)
+        const is_embedded = if (self.peek().tag() == .use_k) blk: {
+            self.advance();
+            break :blk true;
+        } else false;
+
         const typeSpec = try self.parseOptTypeSpec(true);
-        return self.ast.newNode(.objectField, .{
-            .name = name,
-            .typeSpec = typeSpec,
-            .hidden = hidden,
-        });
+        
+        // Validate embedded fields must have a type specifier
+        if (is_embedded and typeSpec == null) {
+            return self.reportError("Embedded field must have a type specifier.", &.{});
+        }
+        
+        if (is_embedded) {
+            return self.ast.newNode(.objectField_embedded, .{
+                .name = name,
+                .typeSpec = typeSpec,
+                .hidden = hidden,
+            });
+        } else {
+            return self.ast.newNode(.objectField, .{
+                .name = name,
+                .typeSpec = typeSpec,
+                .hidden = hidden,
+            });
+        }
     }
 
     const TypeDeclConfig = struct {

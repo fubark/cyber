@@ -250,6 +250,8 @@ pub const Proc = struct {
 
     node: *ast.Node,
 
+    implicit_field_cache: std.StringHashMapUnmanaged(LocalVarId) = .{},
+
     pub fn init(node: *ast.Node, func: ?*cy.Func, firstBlockId: BlockId, isStaticFuncBlock: bool, varStart: u32) Proc {
         return .{
             .nameToVar = .{},
@@ -270,6 +272,7 @@ pub const Proc = struct {
     pub fn deinit(self: *Proc, alloc: std.mem.Allocator) void {
         self.nameToVar.deinit(alloc);
         self.captures.deinit(alloc);
+        self.implicit_field_cache.deinit(alloc);
     }
 
     fn getReturnType(self: *const Proc) !TypeId {
@@ -926,6 +929,24 @@ fn assignStmt(c: *cy.Chunk, node: *ast.Node, left_n: *ast.Node, right: *ast.Node
             });
         },
         .ident => {
+            // Check for ambiguous field assignment in method context
+            const name = c.ast.nodeString(left_n);
+            const proc = c.proc();
+            if (proc.func != null and proc.func.?.isMethod()) {
+                // Check if this identifier would resolve to a field via implicit self access
+                if (!proc.nameToVar.contains(name)) {
+                    // Not a local variable, check if it's a field
+                    if (try tryImplicitSelfFieldAccess(c, name, left_n)) |_| {
+                        return c.reportErrorFmt(
+                            "Cannot assign to field `{}` without explicit 'self.' qualifier. " ++
+                            "Use 'self.{} = ...' to modify the field, or use a different name for a local variable.",
+                            &.{v(name), v(name)},
+                            left_n
+                        );
+                    }
+                }
+            }
+            
             var right_res: ExprResult = undefined;
             const leftRes = try c.semaExpr(left_n, .{});
             const leftT = leftRes.type;
@@ -942,7 +963,6 @@ fn assignStmt(c: *cy.Chunk, node: *ast.Node, left_n: *ast.Node, right: *ast.Node
                 const rightExpr = Expr.initRequire(right, leftT.id);
                 right_res = try c.semaExprOrOpAssignBinExpr(rightExpr, opts.rhsOpAssignBinExpr);
 
-                const name = c.ast.nodeString(left_n);
                 const key = try c.semaString(name, left_n);
 
                 const map = try symbol(c, @ptrCast(c.compiler.global_sym.?), Expr.init(left_n), true);
@@ -1165,6 +1185,37 @@ fn semaAccessFieldName(c: *cy.Chunk, rec: ExprResult, name: []const u8, field: *
     }
 
     const type_sym = c.sema.getTypeSym(rec.type.id);
+    
+    // Check for embedded field access first
+    if (type_sym.type == .object_t) {
+        const object_t = type_sym.cast(.object_t);
+        const result = try resolveMemberWithEmbedding(c, object_t, name, field);
+        
+        if (result.found) {
+            if (result.is_method) {
+                // Method access (direct or embedded)
+                if (result.is_embedded) {
+                    // Embedded method: return embedded field as receiver
+                    return try semaEmbeddedMethodAccess(c, rec, result.embedded_field_idx, field);
+                } else {
+                    // Direct method: return receiver as-is
+                    // The call handler will resolve the method
+                    return rec;
+                }
+            } else {
+                // Field access (existing code)
+                if (result.is_embedded) {
+                    // Generate two-step access for embedded fields
+                    return try semaEmbeddedField(c, rec, result.embedded_field_idx, result.member_idx, result.type_id, field);
+                } else {
+                    // Direct field access (existing behavior)
+                    return semaField(c, rec, result.embedded_field_idx, result.type_id, field);
+                }
+            }
+        }
+    }
+    
+    // Existing logic for non-embedded fields and other types
     const sym = type_sym.getMod().?.getSym(name) orelse {
         // TODO: This depends on $get being known, make sure $get is a nested declaration.
         const type_e = c.sema.types.items[type_sym.getStaticType().?];
@@ -1210,6 +1261,108 @@ fn semaAccessFieldName(c: *cy.Chunk, rec: ExprResult, name: []const u8, field: *
     }
     const field_sym = sym.cast(.field);
     return semaField(c, rec, field_sym.idx, field_sym.type, field);
+}
+
+/// Generate IR for accessing an embedded field that will be used as a method receiver.
+/// Optimized for minimal overhead - single field access, no additional allocations.
+fn semaEmbeddedMethodAccess(
+    c: *cy.Chunk, 
+    rec: ExprResult, 
+    embedded_field_idx: u32,
+    node: *ast.Node
+) !ExprResult {
+    // Fast path: validate receiver type (branch prediction friendly)
+    const rec_te = c.sema.getType(rec.type.id);
+    if (rec_te.kind != .object) {
+        return c.reportErrorFmt(
+            "Internal error: cannot access embedded field on non-object type", 
+            &.{}, 
+            node
+        );
+    }
+    
+    const object_t = rec_te.sym.cast(.object_t);
+    
+    // Bounds check (compile-time optimizable for constant indices)
+    if (embedded_field_idx >= object_t.numFields) {
+        return c.reportErrorFmt(
+            "Internal error: embedded field index {} out of bounds for type with {} fields", 
+            &.{v(embedded_field_idx), v(object_t.numFields)}, 
+            node
+        );
+    }
+    
+    // Get embedded field info (single pointer dereference)
+    const embedded_field = object_t.getFields()[embedded_field_idx];
+    
+    // Struct optimization (only for struct types, rare case)
+    var final_rec = rec;
+    if (rec_te.kind == .struct_t) {
+        if (rec.resType != .local) {
+            const tempv = try declareHiddenLocal(c, "$temp", rec.type.id, rec, node);
+            const temp = try semaLocal(c, tempv.id, node);
+            final_rec = temp;
+        }
+    }
+    
+    // Generate single field access IR (optimal - one IR node)
+    const embedded_loc = try c.ir.pushExpr(.field, c.alloc, embedded_field.type, node, .{
+        .idx = @intCast(embedded_field_idx),
+        .rec = final_rec.irIdx,
+        .parent_t = final_rec.type.id,
+    });
+    
+    // Return embedded field as receiver (zero-copy)
+    return ExprResult.initCustom(
+        embedded_loc, 
+        .field, 
+        CompactType.init(embedded_field.type), 
+        undefined
+    );
+}
+
+fn semaEmbeddedField(c: *cy.Chunk, rec: ExprResult, embedded_field_idx: u32, member_idx: u32, final_type_id: cy.TypeId, node: *ast.Node) !ExprResult {
+    // Generate two-step access: receiver.embedded_field.actual_member       
+    // Access the embedded field
+    const rec_te = c.sema.getType(rec.type.id);
+    if (rec_te.kind != .object) {
+        return c.reportErrorFmt("Internal error: cannot access embedded field on non-object type", &.{}, node);
+    }
+    
+    const object_t = rec_te.sym.cast(.object_t);    
+    if (embedded_field_idx >= object_t.numFields) {
+        return c.reportErrorFmt("Internal error: embedded field index {} out of bounds for type with {} fields", 
+            &.{v(embedded_field_idx), v(object_t.numFields)}, node);
+    }
+    
+    const embedded_field = object_t.getFields()[embedded_field_idx];
+    
+    var final_rec = rec;
+    if (rec_te.kind == .struct_t) {
+        if (rec.resType != .local) {
+            const tempv = try declareHiddenLocal(c, "$temp", rec.type.id, rec, node);
+            const temp = try semaLocal(c, tempv.id, node);
+            final_rec = temp;
+        }
+    }
+    
+    const embedded_loc = try c.ir.pushExpr(.field, c.alloc, embedded_field.type, node, .{
+        .idx = @intCast(embedded_field_idx),
+        .rec = final_rec.irIdx,
+        .parent_t = final_rec.type.id,
+    });
+    
+    // Access the actual member within the embedded type (field access)
+    const embedded_expr = ExprResult.initCustom(embedded_loc, .field, CompactType.init(embedded_field.type), undefined);
+    
+    // Generate second field access on the embedded field result
+    const final_loc = try c.ir.pushExpr(.field, c.alloc, final_type_id, node, .{
+        .idx = @intCast(member_idx),
+        .rec = embedded_expr.irIdx,
+        .parent_t = embedded_field.type,
+    });
+    
+    return ExprResult.initCustom(final_loc, .field, CompactType.init(final_type_id), undefined);
 }
 
 fn semaField(c: *cy.Chunk, rec: ExprResult, idx: usize, type_id: cy.TypeId, node: *ast.Node) !ExprResult {
@@ -2315,7 +2468,7 @@ fn indexOfTypedField(fields: []const *ast.Field, start: usize) ?usize {
 }
 
 /// Explicit `decl` node for distinct type declarations. Must belong to `c`.
-pub fn resolveObjectFields(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.ObjectDecl) !void {
+fn resolveObjectFields(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.ObjectDecl) !void {
     var obj: *cy.sym.ObjectType = undefined;
     switch (object_like.type) {
         .object_t => {
@@ -2336,16 +2489,29 @@ pub fn resolveObjectFields(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Object
     const rt_field_start = c.dataU8Stack.items.len;
     defer c.dataU8Stack.items.len = rt_field_start;
 
-    // Load fields.
+    // Load fields - separate regular from embedded
     var num_total_fields: u32 = 0;
     const fields = try c.alloc.alloc(cy.sym.FieldInfo, decl.fields.len);
     errdefer c.alloc.free(fields);
+    
+    // Track embedded fields separately
+    var embedded_list = std.ArrayList(cy.sym.EmbeddedFieldInfo).init(c.alloc);
+    defer embedded_list.deinit();
 
     var field_group_t: cy.TypeId = cy.NullId;
     var field_group_end: usize = undefined;
     var has_boxed_fields = false;
     for (decl.fields, 0..) |field, i| {
+        // Determine if field is embedded
+        const field_node: *ast.Node = @ptrCast(field);
+        const is_embedded = field_node.type() == .objectField_embedded;        
         const fieldName = c.ast.nodeString(field.name);
+        
+        // Set resolving flag BEFORE resolving embedded field type
+        if (is_embedded and !obj.resolving_embeddings) {
+            obj.resolving_embeddings = true;
+        }
+        
         var field_t: cy.TypeId = undefined;
         if (field.typeSpec == null) {
             if (field_group_t == cy.NullId or i > field_group_end) {
@@ -2362,12 +2528,44 @@ pub fn resolveObjectFields(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Object
             try ensureCompleteType(c, field_t, @ptrCast(field.typeSpec));
         }
 
+        // Validate embedded type is an object type
+        if (is_embedded) {
+            
+            const embedded_type = c.compiler.sema.types.items[field_t];
+            if (embedded_type.kind != .object) {
+                return c.reportErrorFmt(
+                    "Embedded field must be an object type, got {s}",
+                    &.{v(@tagName(embedded_type.kind))},
+                    @ptrCast(field)
+                );
+            }
+            
+            // Detect circular embedding using resolving flag (only for embedded fields)
+            const embedded_obj = embedded_type.sym.cast(.object_t);
+            if (embedded_obj.resolving_embeddings) {
+                return c.reportErrorFmt(
+                    "Objects can not contain a circular embedding dependency.",
+                    &.{},
+                    @ptrCast(field)
+                );
+            }
+        }
+
         const sym = try c.declareField(@ptrCast(obj), fieldName, i, field_t, @ptrCast(field));
         fields[i] = .{
             .sym = @ptrCast(sym),
             .type = field_t,
             .offset = num_total_fields,
         };
+        
+        // Track embedded fields
+        if (is_embedded) {
+            try embedded_list.append(.{
+                .field_idx = @intCast(i),
+                .embedded_type = field_t,
+                .member_cache = null,  // Built lazily
+            });
+        }
 
         if (object_like.type != .struct_t) {
             has_boxed_fields = has_boxed_fields or !c.sema.isUnboxedType(field_t);
@@ -2395,8 +2593,15 @@ pub fn resolveObjectFields(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Object
             }
         }
     }
+    
+    // Store regular fields
     obj.fields = fields.ptr;
     obj.numFields = @intCast(fields.len);
+    
+    // Store embedded fields
+    const embedded_slice = try c.alloc.dupe(cy.sym.EmbeddedFieldInfo, embedded_list.items);
+    obj.embedded_fields = embedded_slice.ptr;
+    obj.numEmbedded = @intCast(embedded_slice.len);
     switch (object_like.type) {
         .object_t => {
             var rt_fields: []bool = &.{};
@@ -2410,6 +2615,7 @@ pub fn resolveObjectFields(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Object
             data.numFields = @intCast(obj.numFields);
             data.has_boxed_fields = has_boxed_fields;
             data.fields = rt_fields.ptr;
+            obj.resolving_embeddings = false;
         },
         .struct_t => {
             var rt_fields: []bool = &.{};
@@ -2422,9 +2628,215 @@ pub fn resolveObjectFields(c: *cy.Chunk, object_like: *cy.Sym, decl: *ast.Object
             data.has_boxed_fields = has_boxed_fields;
             data.fields = rt_fields.ptr;
             obj.resolving_struct = false;
+            obj.resolving_embeddings = false;
         },
         else => return error.Unexpected,
     }
+}
+
+/// Result type for member resolution with embedding
+const MemberResolutionResult = struct { 
+    found: bool, 
+    type_id: cy.TypeId, 
+    is_embedded: bool, 
+    embedded_field_idx: u32, 
+    member_idx: u32,
+    
+    // Method resolution support (zero runtime overhead with default values)
+    is_method: bool = false,
+    method_sym: ?*cy.Sym = null,
+    
+    compile_time_resolved: bool = false,
+    resolved_method: ?*cy.sym.Func = null,
+};
+
+/// Detects if a type is static for compile-time resolution.
+fn isStaticType(c: *cy.Chunk, type_id: cy.TypeId) bool {
+    const type_e = c.sema.types.items[type_id];
+    return type_e.kind == .object;
+}
+
+/// Checks if a field type is callable (can be invoked as a function).
+fn isCallableFieldType(c: *cy.Chunk, type_id: cy.TypeId) bool {
+    if (type_id == bt.Dyn or type_id == bt.Any) {
+        return true;
+    }
+    const type_e = c.sema.getType(type_id);
+    return type_e.kind == .func_ptr or type_e.kind == .func_union;
+}
+
+/// Compile-time method resolution for static types.
+fn resolveMethodCompileTime(
+    c: *cy.Chunk, 
+    object_t: *cy.sym.ObjectType, 
+    method_name: []const u8
+) !?*cy.sym.Func {
+    const mod = object_t.getMod();
+    if (mod.getSym(method_name)) |sym| {
+        if (sym.type == .func) {
+            return sym.cast(.func).first;
+        }
+    }
+    
+    const embedded_fields = object_t.getEmbeddedFields();
+    for (embedded_fields) |*emb_info| {
+        const embedded_type = c.sema.types.items[emb_info.embedded_type];
+        if (embedded_type.kind == .object) {
+            const embedded_obj = embedded_type.sym.cast(.object_t);
+            if (try resolveMethodCompileTime(c, embedded_obj, method_name)) |method| {
+                return method;
+            }
+        }
+    }
+    
+    return null;
+}
+
+/// Resolve member access with embedding support
+pub fn resolveMemberWithEmbedding(
+    c: *cy.Chunk,
+    object_t: *cy.sym.ObjectType,
+    member_name: []const u8,
+    node: *ast.Node,
+) !MemberResolutionResult {
+    var visited = std.hash_map.StringHashMap(void).init(c.alloc);
+    defer visited.deinit();
+    return resolveMemberWithEmbeddingRecursive(c, object_t, member_name, node, &visited);
+}
+
+/// Recursive helper with circular embedding detection
+fn resolveMemberWithEmbeddingRecursive(
+    c: *cy.Chunk,
+    object_t: *cy.sym.ObjectType,
+    member_name: []const u8,
+    node: *ast.Node,
+    visited: *std.hash_map.StringHashMap(void),
+) !MemberResolutionResult {
+    const type_name = object_t.head.name();
+    try visited.put(type_name, {});
+    defer _ = visited.remove(type_name);
+    
+    // First: Check direct fields (child takes precedence)
+    const fields = object_t.getFields();
+    for (fields, 0..) |field, idx| {
+        if (std.mem.eql(u8, field.sym.head.name(), member_name)) {
+            return .{
+                .found = true,
+                .type_id = field.type,
+                .is_embedded = false,
+                .embedded_field_idx = @intCast(idx),
+                .member_idx = @intCast(idx),
+            };
+        }
+    }
+    
+    // Second: Check direct methods (O(1) hash lookup)
+    const mod = object_t.getMod();
+    if (mod.getSym(member_name)) |sym| {
+        // Verify it's a function symbol
+        if (sym.type == .func or sym.type == .func_template) {
+            return .{
+                .found = true,
+                .type_id = cy.NullId,
+                .is_embedded = false,
+                .embedded_field_idx = 0,
+                .member_idx = cy.NullId,
+                .is_method = true,
+                .method_sym = sym,
+            };
+        }
+    }
+    
+    // Third: Check embedded fields
+    if (!object_t.hasEmbeddings()) {
+        return .{ 
+            .found = false, 
+            .type_id = cy.NullId, 
+            .is_embedded = false, 
+            .embedded_field_idx = 0, 
+            .member_idx = 0,
+            .is_method = false,
+            .method_sym = null,
+        };
+    }
+    
+    const embedded_fields = object_t.getEmbeddedFields();
+    for (embedded_fields) |*emb_info| {
+        const embedded_type = c.compiler.sema.types.items[emb_info.embedded_type];
+        if (embedded_type.kind != .object) continue;
+        
+        const embedded_obj = embedded_type.sym.cast(.object_t);
+        
+        // Check for circular embedding
+        const embedded_type_name = embedded_obj.head.name();
+        if (visited.contains(embedded_type_name)) {
+            return c.reportErrorFmt("Circular embedding detected: type '{}' embeds '{}' which is already being resolved", 
+                &.{v(type_name), v(embedded_type_name)}, node);
+        }
+        
+        const emb_fields = embedded_obj.getFields();
+        
+        // Check fields in embedded type
+        for (emb_fields, 0..) |emb_field, member_idx| {
+            if (std.mem.eql(u8, emb_field.sym.head.name(), member_name)) {
+                return .{
+                    .found = true,
+                    .type_id = emb_field.type,
+                    .is_embedded = true,
+                    .embedded_field_idx = emb_info.field_idx,
+                    .member_idx = @intCast(member_idx),
+                };
+            }
+        }
+        
+        // Check methods in embedded type (O(1) hash lookup)
+        const embedded_mod = embedded_obj.getMod();
+        if (embedded_mod.getSym(member_name)) |method_sym| {
+            // Verify it's a function symbol
+            if (method_sym.type == .func or method_sym.type == .func_template) {
+                return .{
+                    .found = true,
+                    .type_id = cy.NullId,
+                    .is_embedded = true,
+                    .embedded_field_idx = emb_info.field_idx,
+                    .member_idx = cy.NullId,
+                    .is_method = true,
+                    .method_sym = method_sym,
+                };
+            }
+        }
+        
+        // Recursively search nested embeddings
+        const nested_result = try resolveMemberWithEmbeddingRecursive(
+            c, 
+            embedded_obj, 
+            member_name, 
+            node, 
+            visited
+        );
+        if (nested_result.found) {
+            // Propagate the result, adjusting embedded_field_idx to immediate embedding
+            return .{
+                .found = true,
+                .type_id = nested_result.type_id,
+                .is_embedded = true,
+                .embedded_field_idx = emb_info.field_idx,
+                .member_idx = nested_result.member_idx,
+                .is_method = nested_result.is_method,
+                .method_sym = nested_result.method_sym,
+            };
+        }
+    }
+    
+    return .{ 
+        .found = false, 
+        .type_id = cy.NullId, 
+        .is_embedded = false, 
+        .embedded_field_idx = 0, 
+        .member_idx = 0,
+        .is_method = false,
+        .method_sym = null,
+    };
 }
 
 pub fn reserveHostFunc(c: *cy.Chunk, node: *ast.FuncDecl) !*cy.Func {
@@ -3592,8 +4004,16 @@ pub fn ensureCompleteType(c: *cy.Chunk, type_id: cy.TypeId, node: *ast.Node) any
             _ = try resolveDistinctType(c, distinct_t);
         },
         .object_t => {
-            // Objects are always references.
-            return;
+            const object_t = sym.cast(.object_t);
+            if (object_t.isResolved()) {
+                return;
+            }
+            // Resolve object fields to detect circular embeddings
+            if (object_t.resolving_embeddings) {
+                return c.reportError("Objects can not contain a circular embedding dependency.", node);
+            }
+            const src_chunk = object_t.getMod().chunk;
+            try sema.resolveObjectLikeType(src_chunk, sym, @ptrCast(object_t.decl.?));
         },
         else => {
             log.tracev("{}", .{sym.type});
@@ -4183,6 +4603,61 @@ const LookupIdentResult = union(enum) {
     local: LocalVarId,
 };
 
+/// Try to resolve identifier as implicit self.field access in method context.
+/// Returns null if not in method context or field doesn't exist.
+fn tryImplicitSelfFieldAccess(c: *cy.Chunk, name: []const u8, node: *ast.Node) !?LookupIdentResult {
+    const proc = c.proc();
+    
+    // Check if we're in a method (has self parameter)
+    if (proc.func == null) return null;
+    if (!proc.func.?.isMethod()) return null;
+    
+    if (proc.implicit_field_cache.get(name)) |cached_var_id| {
+        return LookupIdentResult{ .local = cached_var_id };
+    }
+    
+    // Get self parameter (always first parameter in methods)
+    const self_var_info = proc.nameToVar.get("self") orelse return null;
+    const self_var = c.varStack.items[self_var_info.varId];
+    const self_type_id = self_var.declT;
+    
+    // Get the object type
+    const type_sym = c.sema.getTypeSym(self_type_id);
+    if (type_sym.type != .object_t) return null;
+    
+    const object_t = type_sym.cast(.object_t);
+    
+    // Try to find field in object type (including embedded fields)
+    const result = try resolveMemberWithEmbedding(c, object_t, name, node);
+    if (!result.found) return null;
+    if (result.is_method) return null; // Methods are handled separately
+    
+    // Create a local alias for self.field access
+    // This generates IR for: self.field
+    const self_local = try semaLocal(c, self_var_info.varId, node);
+    
+    var field_access: ExprResult = undefined;
+    if (result.is_embedded) {
+        // Embedded field: self.embedded_field.actual_field
+        field_access = try semaEmbeddedField(c, self_local, result.embedded_field_idx, result.member_idx, result.type_id, node);
+    } else {
+        // Direct field: self.field
+        field_access = try semaField(c, self_local, result.embedded_field_idx, result.type_id, node);
+    }
+    
+    // Create a hidden local to cache the field access
+    const cache_name = try std.fmt.allocPrint(c.alloc, "$self_{s}", .{name});
+    defer c.alloc.free(cache_name);
+    
+    const cache_var = try declareHiddenLocal(c, cache_name, result.type_id, field_access, node);
+    
+    try proc.implicit_field_cache.put(c.alloc, name, cache_var.id);
+    
+    return LookupIdentResult{
+        .local = cache_var.id,
+    };
+}
+
 /// Static var lookup is skipped for callExpr since there is a chance it can fail on a
 /// symbol with overloaded signatures.
 pub fn lookupIdent(self: *cy.Chunk, name: []const u8, node: *ast.Node) !LookupIdentResult {
@@ -4242,6 +4717,11 @@ pub fn lookupIdent(self: *cy.Chunk, name: []const u8, node: *ast.Node) !LookupId
             .local = id,
         };
     } else {
+        // Try implicit self.field access in method context
+        if (try tryImplicitSelfFieldAccess(self, name, node)) |result| {
+            return result;
+        }
+        
         const res = (try lookupStaticIdent(self, name, node)) orelse {
             if (self.use_global) {
                 return LookupIdentResult{ .global = @ptrCast(self.compiler.global_sym.?) };
@@ -5136,6 +5616,32 @@ pub const ChunkExt = struct {
         return c.semaCallFuncSymResult(sym, res, cstr.ct_call, node);
     }
 
+    /// Generate direct call for compile-time resolved static methods.
+    pub fn semaCallStaticMethod(
+        c: *cy.Chunk,
+        method: *cy.sym.Func,
+        receiver: ExprResult,
+        args: []const *ast.Node,
+        node: *ast.Node
+    ) !ExprResult {
+        const func = method;
+        const arg_start = c.arg_stack.items.len;
+        defer c.arg_stack.items.len = arg_start;
+        
+        try c.arg_stack.append(c.alloc, sema.Argument.initPreResolved(node, receiver));
+        
+        for (args) |arg| {
+            try c.arg_stack.append(c.alloc, sema.Argument.init(arg));
+        }
+        
+        const call_loc = try c.ir.pushExpr(.call_sym, c.alloc, func.retType, node, .{
+            .func = func,
+            .numArgs = @intCast(args.len + 1),
+            .args = @intCast(arg_start),
+        });
+        return ExprResult.init(call_loc, CompactType.init(func.retType));
+    }
+
     pub fn semaCallFuncTemplateRec(c: *cy.Chunk, template: *cy.sym.FuncTemplate, rec: *ast.Node, rec_res: ExprResult,
         args: []const *ast.Node, ret_cstr: ReturnCstr, node: *ast.Node) !ExprResult {
 
@@ -5319,7 +5825,6 @@ pub const ChunkExt = struct {
             const type_name = c.sema.getTypeBaseName(res.type.id);
             log.tracev("expr.{s}: end {s}", .{@tagName(node.type()), type_name});
         }
-
         if (expr.hasTargetType()) {
             // TODO: Check for exact match first since it's the common case.
             const type_e = c.sema.types.items[expr.target_t];
@@ -6186,11 +6691,45 @@ pub const ChunkExt = struct {
                 }
 
                 if (leftSym.isVariable()) {
-                    // Look for sym under left type's module.
+                    // Look for sym under left type's module (with embedding support).
                     const leftTypeSym = c.sema.getTypeSym(leftRes.type.id);
-                    const rightSym = try c.mustFindSym(leftTypeSym, rightName, callee.right);
+                    
+                    // Check for embedded methods in object types
+                    var rightSym: *cy.Sym = undefined;
+                    var recv = try sema.symbol(c, leftSym, Expr.init(callee.left), true);
+                    
+                    if (leftTypeSym.type == .object_t) {
+                        const object_t = leftTypeSym.cast(.object_t);
+                        
+                        if (isStaticType(c, leftRes.type.id)) {
+                            if (try resolveMethodCompileTime(c, object_t, rightName)) |method| {
+                                return try semaCallStaticMethod(c, method, leftRes, node.args, expr.node);
+                            }
+                        }
+                        
+                        const result = try resolveMemberWithEmbedding(c, object_t, rightName, callee.right);
+                        
+                        // Handle method resolution
+                        if (result.found and result.is_method) {
+                            rightSym = result.method_sym.?;
+                            // Update receiver for embedded methods
+                            if (result.is_embedded) {
+                                recv = try semaEmbeddedMethodAccess(c, recv, result.embedded_field_idx, callee.right);
+                            }
+                        } else {
+                            // Handle callable field resolution
+                            if (result.found and !isCallableFieldType(c, result.type_id)) {
+                                return c.reportErrorFmt("Expected `{}` to be a function.", &.{v(rightName)}, callee.right);
+                            }
+                            // use normal lookup
+                            rightSym = try c.mustFindSym(leftTypeSym, rightName, callee.right);
+                        }
+                    } else {
+                        // Non-object type, use normal lookup
+                        rightSym = try c.mustFindSym(leftTypeSym, rightName, callee.right);
+                    }
+                    
                     const func_sym = try requireFuncSym(c, rightSym, callee.right);
-                    const recv = try sema.symbol(c, leftSym, Expr.init(callee.left), true);
                     return c.semaCallFuncSymRec(func_sym, callee.left, recv,
                         node.args, expr.getRetCstr(), expr.node);
                 } else {
@@ -6205,16 +6744,47 @@ pub const ChunkExt = struct {
                     const name = c.ast.nodeString(callee.right);
                     return c.semaCallObjSym(leftRes.irIdx, name, node.args.len, args, expr.node);
                 } else {
-                    // Look for sym under left type's module.
+                    // Look for sym under left type's module (with embedding support).
                     const rightName = c.ast.nodeString(callee.right);
                     const leftTypeSym = c.sema.getTypeSym(leftRes.type.id);
-                    const rightSym = try c.mustFindSym(leftTypeSym, rightName, callee.right);
+                    
+                    // Check for embedded methods in object types
+                    var rightSym: *cy.Sym = undefined;
+                    var final_recv = leftRes;
+                    
+                    if (leftTypeSym.type == .object_t) {
+                        const object_t = leftTypeSym.cast(.object_t);
+                        const result = try resolveMemberWithEmbedding(c, object_t, rightName, callee.right);
+                        
+                        if (result.found and result.is_method) {
+                            rightSym = result.method_sym.?;
+                            // If it's an embedded method, update receiver to embedded field
+                            if (result.is_embedded) {
+                                final_recv = try semaEmbeddedMethodAccess(c, leftRes, result.embedded_field_idx, callee.right);
+                            }
+                        } else if (result.found) {
+                            // Found a field, not a method - check if it's callable
+                            const field_type = c.sema.getType(result.type_id);
+                            if (field_type.kind == .func_ptr or field_type.kind == .func_union or result.type_id == bt.Dyn or result.type_id == bt.Any) {
+                                // Field is callable (dyn or function type), fall through to normal handling
+                                rightSym = try c.mustFindSym(leftTypeSym, rightName, callee.right);
+                            } else {
+                                return c.reportErrorFmt("Expected `{}` to be a function.", &.{v(rightName)}, callee.right);
+                            }
+                        } else {
+                            // Not found in object or embeddings, try normal lookup
+                            rightSym = try c.mustFindSym(leftTypeSym, rightName, callee.right);
+                        }
+                    } else {
+                        // Non-object type, use normal lookup
+                        rightSym = try c.mustFindSym(leftTypeSym, rightName, callee.right);
+                    }
 
                     if (rightSym.type == .func) {
-                        return c.semaCallFuncSymRec(rightSym.cast(.func), callee.left, leftRes,
+                        return c.semaCallFuncSymRec(rightSym.cast(.func), callee.left, final_recv,
                             node.args, expr.getRetCstr(), expr.node);
                     } else if (rightSym.type == .func_template) {
-                        return c.semaCallFuncTemplateRec(rightSym.cast(.func_template), callee.left, leftRes,
+                        return c.semaCallFuncTemplateRec(rightSym.cast(.func_template), callee.left, final_recv,
                             node.args, expr.getRetCstr(), expr.node);
                     } else {
                         const callee_v = try c.semaExpr(node.callee, .{});

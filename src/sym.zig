@@ -905,6 +905,34 @@ pub const Impl = struct {
     }
 };
 
+/// Tracks embedded fields for automatic member surfacing
+pub const EmbeddedFieldInfo = struct {
+    /// Index into the fields array
+    field_idx: u32,
+    
+    /// TypeId of the embedded type
+    embedded_type: cy.TypeId,
+    
+    /// Cached member lookup map (built lazily on first access)
+    /// Maps member name -> MemberInfo
+    member_cache: ?*std.StringHashMapUnmanaged(MemberInfo) = null,
+    
+    pub fn deinit(self: *EmbeddedFieldInfo, alloc: std.mem.Allocator) void {
+        if (self.member_cache) |cache| {
+            cache.deinit(alloc);
+            alloc.destroy(cache);
+        }
+    }
+};
+
+/// Information about an embedded member
+pub const MemberInfo = struct {
+    kind: enum { field, method },
+    /// For fields: field index; for methods: function pointer
+    index: u32,
+    type_id: cy.TypeId,
+};
+
 pub const ObjectType = extern struct {
     head: Sym,
     type: cy.TypeId,
@@ -913,6 +941,10 @@ pub const ObjectType = extern struct {
     decl: ?*ast.Node,
     fields: [*]const FieldInfo,
     numFields: u32,
+
+    // Embedded field tracking
+    embedded_fields: [*]const EmbeddedFieldInfo,
+    numEmbedded: u32,
 
     rt_size: cy.Nullable(u32),
     variant: ?*Variant,
@@ -926,6 +958,9 @@ pub const ObjectType = extern struct {
     /// Only relevant for structs/cstructs.
     /// Used to detect circular dependency.
     resolving_struct: bool = false,
+    
+    /// Used to detect circular embedding during type resolution.
+    resolving_embeddings: bool = false,
 
     mod: vmc.Module,
 
@@ -954,6 +989,8 @@ pub const ObjectType = extern struct {
             .fields = undefined,
             .variant = null,
             .numFields = cy.NullId,
+            .embedded_fields = undefined,
+            .numEmbedded = 0,
             .rt_size = cy.NullId,
             .cstruct = false,
             .mod = undefined,
@@ -972,6 +1009,15 @@ pub const ObjectType = extern struct {
                 alloc.destroy(f.sym);
             }
             alloc.free(fields);
+
+            if (self.numEmbedded > 0) {
+                const embedded = self.embedded_fields[0..self.numEmbedded];
+                for (embedded) |*emb| {
+                    const emb_mut: *EmbeddedFieldInfo = @constCast(emb);
+                    emb_mut.deinit(alloc);
+                }
+                alloc.free(embedded);
+            }
         }
 
         for (self.impls()) |impl| {
@@ -986,6 +1032,14 @@ pub const ObjectType = extern struct {
 
     pub fn getFields(self: ObjectType) []const FieldInfo {
         return self.fields[0..self.numFields];
+    }
+
+    pub fn getEmbeddedFields(self: ObjectType) []const EmbeddedFieldInfo {
+        return self.embedded_fields[0..self.numEmbedded];
+    }
+    
+    pub fn hasEmbeddings(self: ObjectType) bool {
+        return self.numEmbedded > 0;
     }
 };
 
@@ -1574,6 +1628,8 @@ pub const ChunkExt = struct {
             .fields = undefined,
             .variant = null,
             .numFields = cy.NullId,
+            .embedded_fields = undefined,
+            .numEmbedded = 0,
             .rt_size = cy.NullId,
             .cstruct = cstruct,
             .mod = undefined,
@@ -1597,6 +1653,8 @@ pub const ChunkExt = struct {
             .fields = undefined,
             .variant = null,
             .numFields = cy.NullId,
+            .embedded_fields = undefined,
+            .numEmbedded = 0,
             .rt_size = cy.NullId,
             .cstruct = cstruct,
             .mod = undefined,
@@ -1635,6 +1693,8 @@ pub const ChunkExt = struct {
             .fields = undefined,
             .variant = null,
             .numFields = cy.NullId,
+            .embedded_fields = undefined,
+            .numEmbedded = 0,
             .rt_size = cy.NullId,
             .cstruct = false,
             .mod = undefined,

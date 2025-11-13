@@ -72,6 +72,7 @@ pub const NodeType = enum(u7) {
     noneLit,
     objectDecl,
     objectField,
+    objectField_embedded,
     octLit,
     opAssignStmt,
     passStmt,
@@ -669,6 +670,7 @@ fn NodeData(comptime node_t: NodeType) type {
         .noneLit        => Token,
         .objectDecl     => ObjectDecl,
         .objectField    => Field,
+        .objectField_embedded => Field,
         .octLit         => Span,
         .opAssignStmt   => OpAssignStmt,
         .passStmt       => Token,
@@ -806,6 +808,7 @@ pub const Node = struct {
             .noneLit        => self.cast(.noneLit).pos,
             .objectDecl     => self.cast(.objectDecl).pos,
             .objectField    => self.cast(.objectField).name.pos(),
+            .objectField_embedded => self.cast(.objectField_embedded).name.pos(),
             .octLit         => self.cast(.octLit).pos,
             .opAssignStmt   => self.cast(.opAssignStmt).left.pos(),
             .passStmt       => self.cast(.passStmt).pos,
@@ -916,7 +919,7 @@ pub const UnaryOp = enum(u8) {
 };
 
 test "ast internals." {
-    try t.eq(std.enums.values(NodeType).len, 101);
+    try t.eq(std.enums.values(NodeType).len, 102);
     try t.eq(@sizeOf(NodeHeader), 1);
 }
 

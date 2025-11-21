@@ -1,13 +1,14 @@
-var b = 123
-var a = fn(a int) int:
-    return a + b
+b := ^123
+a := fn(a int) -> int:
+    return a + b.*
 
-var func fn(int) int = a
+type Fn1 = fn(int) -> int
+func := as[Fn1] a
 
 --cytest: error
---CompileError: Expected type `fn(int) int`, got `Fn(int) int`.
+--CompileError: Cannot cast `Func[fn(int) -> int]` to `fn(int) -> int`.
 --
---main:5:24:
---var func fn(int) int = a
---                       ^
+--main:6:17:
+--func := as[Fn1] a
+--                ^
 --

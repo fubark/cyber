@@ -1,0 +1,222 @@
+use c
+use meta
+
+-- `fopen`, `fread`, `fwrite`, etc.
+#c.include('<stdio.h>')
+
+-- `open`, `fcntl`
+#c.include('<fcntl.h>')
+
+-- `access`, `rmdir`, `read`, `write`, `unlink`
+#c.include('<unistd.h>')
+
+-- `setenv`, `unsetenv`, `malloc`, `free`, `exit`
+#c.include('<stdlib.h>')
+
+-- `nanosleep`, `clock_gettime`
+#c.include('<time.h>')
+
+-- `sysctlbyname`
+#c.include('<sys/sysctl.h>')
+
+#if meta.is_vm_target():
+    #c.bind_lib(none)
+
+type size_t = c.size_t
+type ssize_t = c.ssize_t
+type c_int = c.c_int
+type FILE = void
+
+#[cond=meta.system() == .macos]
+use macos 'libc.macos.cy'
+
+type clockid_t = switch meta.system():
+    case .macos => i32
+    else => void
+
+const CLOCK_REALTIME = switch meta.system():
+    case .macos => clockid_t(0)
+    else => meta.unsupported()
+const CLOCK_MONOTONIC = switch meta.system():
+    case .macos => clockid_t(6)
+    else => meta.unsupported()
+const CLOCK_MONOTONIC_RAW = switch meta.system():
+    case .macos => clockid_t(4)
+    else => meta.unsupported()
+const CLOCK_MONOTONIC_RAW_APPROX = switch meta.system():
+    case .macos => clockid_t(5)
+    else => meta.unsupported()
+const CLOCK_UPTIME_RAW = switch meta.system():
+    case .macos => clockid_t(8)
+    else => meta.unsupported()
+const CLOCK_UPTIME_RAW_APPROX = switch meta.system():
+    case .macos => clockid_t(9)
+    else => meta.unsupported()
+const CLOCK_PROCESS_CPUTIME_ID = switch meta.system():
+    case .macos => clockid_t(12)
+    else => meta.unsupported()
+const CLOCK_THREAD_CPUTIME_ID = switch meta.system():
+    case .macos => clockid_t(16)
+    else => meta.unsupported()
+
+type fd_t = switch meta.system():
+    case .macos => i32
+    else => void
+
+const F_GETPATH = switch meta.system():
+    case .macos => c_int(50)
+    else => meta.unsupported()
+
+type mode_t = switch meta.system():
+    case .macos => i16
+    else => void
+
+type O = switch meta.system():
+    case .macos => i32
+    else => void
+
+-- TODO: packed structs would improve ergonomics of many of these system config types.
+const O_RDONLY = switch meta.system():
+    case .macos => O(0x0000)
+    else => meta.unsupported()
+const O_WRONLY = switch meta.system():
+    case .macos => O(0x0001)
+    else => meta.unsupported()
+const O_RDWR   = switch meta.system():
+    case .macos => O(0x0002)
+    else => meta.unsupported()
+const O_NONBLOCK = switch meta.system():
+    case .macos => O(0x0004)
+    else => meta.unsupported()
+const O_CREAT  = switch meta.system():
+    case .macos => O(0x0200)
+    else => meta.unsupported()
+const O_TRUNC  = switch meta.system():
+    case .macos => O(0x0400)
+    else => meta.unsupported()
+const O_CLOEXEC = switch meta.system():
+    case .macos => O(0x1000000)
+    else => meta.unsupported()
+const O_DIRECTORY = switch meta.system():
+    case .macos => O(0x100000)
+    else => meta.unsupported()
+
+type off_t = switch meta.system():
+    case .macos => i64
+    else => void
+
+const PATH_MAX = switch meta.system():
+    case .macos => 1024
+    else => meta.unsupported()
+
+type Stat = switch meta.system():
+    case .macos => macos.Stat
+    else => void
+
+type timespec = switch meta.system():
+    case .macos => macos.timespec
+    else => void
+
+#[extern]
+global errno c_int
+
+const EPERM  = c_int(1)
+const ENOENT = c_int(2)
+const EBADF  = c_int(9)
+const EACCES = c_int(13)
+const EFAULT = c_int(14)
+const EINVAL = c_int(22)
+
+const SEEK_SET = c_int(0)
+const SEEK_CUR = c_int(1)
+const SEEK_END = c_int(2)
+
+#[extern]
+fn access(pathname Ptr[byte], mode c_int) -> c_int
+
+#[extern]
+fn chdir(path Ptr[byte]) -> c_int 
+
+#[extern]
+fn clock_gettime(clockid clockid_t, tp Ptr[timespec]) -> c_int
+
+#[extern]
+fn close(fd fd_t) -> c_int
+
+#[extern]
+fn exit(status c_int) -> never
+
+#[extern]
+fn fclose(stream Ptr[FILE]) -> c_int
+
+#[extern]
+fn fcntl(fd fd_t, op c_int, arg c.variadic) -> c_int
+
+#[extern]
+fn feof(stream Ptr[FILE]) -> c_int
+
+#[extern]
+fn ferror(stream Ptr[FILE]) -> c_int
+
+#[extern]
+fn fopen(path Ptr[byte], mode Ptr[byte]) -> Ptr[FILE]
+
+#[extern]
+fn fread(ptr Ptr[void], size size_t, n size_t, stream Ptr[FILE]) -> size_t
+
+#[extern]
+fn free(ptr Ptr[void]) -> void
+
+#[extern]
+fn fstat(fd fd_t, statbuf Ptr[void]) -> c_int
+
+#[extern]
+fn fwrite(ptr Ptr[void], size size_t, n size_t, stream Ptr[FILE]) -> size_t
+
+#[extern]
+fn getcwd(buf Ptr[byte], size size_t) -> Ptr[byte]
+
+#[extern]
+fn getenv(name Ptr[byte]) -> Ptr[byte]
+
+#[extern]
+fn lseek(fd fd_t, offset off_t, whence c_int) -> off_t
+
+#[extern]
+fn malloc(size size_t) -> Ptr[void]
+
+#[extern]
+fn mkdir(pathname Ptr[byte], mode mode_t) -> c_int
+
+#[extern]
+fn nanosleep(duration Ptr[timespec], rem Ptr[timespec]) -> c_int
+
+#[extern]
+fn open(pathname Ptr[byte], flags O, mode c.variadic) -> c_int
+
+#[extern]
+fn printf(format Ptr[byte], args c.variadic) -> c_int
+
+#[extern]
+fn read(fd fd_t, buf Ptr[void], count size_t) -> ssize_t
+
+#[extern]
+fn rmdir(pathname Ptr[byte]) -> c_int
+
+#[extern]
+fn setenv(name Ptr[byte], value Ptr[byte], overwrite c_int) -> c_int
+
+#[extern]
+fn stat(pathname Ptr[byte], statbuf Ptr[Stat]) -> c_int
+
+#[extern]
+fn sysctlbyname(name Ptr[byte], oldp Ptr[void], oldlenp Ptr[size_t], newp Ptr[void], newlen size_t) -> c_int
+
+#[extern]
+fn unlink(pathname Ptr[byte]) -> c_int
+
+#[extern]
+fn unsetenv(name Ptr[byte]) -> c_int
+
+#[extern]
+fn write(fd fd_t, buf Ptr[void], count size_t) -> ssize_t

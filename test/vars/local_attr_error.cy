@@ -1,9 +1,9 @@
-@host var a
+#[bind] var a
 
 --cytest: error
---ParseError: Attributes are not allowed for local var declarations.
+--ParseError: Expected declaration statement.
 --
---main:1:7:
---@host var a
---      ^
+--main:1:9:
+--#[bind] var a
+--        ^
 --

@@ -7,45 +7,43 @@ const v = cy.fmt.v;
 const keywords = std.StaticStringMap(TokenType).initComptime(.{
     .{ "and", .and_k },
     .{ "as", .as_k },
-    .{ "await", .await_k },
+    .{ "begin", .begin_k },
     .{ "break", .break_k },
     .{ "case", .case_k },
-    .{ "catch", .catch_k },
-    .{ "coinit", .coinit_k },
-    .{ "context", .context_k },
+    .{ "const", .const_k },
     .{ "continue", .continue_k },
-    .{ "coresume", .coresume_k },
-    .{ "coyield", .coyield_k },
     .{ "cstruct", .cstruct_k },
-    .{ "def", .def_k },
-    .{ "dyn", .dyn_k },
+    .{ "cunion", .cunion_k },
     .{ "else", .else_k },
     .{ "enum", .enum_k },
     .{ "error", .error_k },
     .{ "false", .false_k },
     .{ "for", .for_k },
     .{ "fn", .fn_k },
-    .{ "Fn", .Fn_k },
+    .{ "fnsym", .fnsym_k },
+    .{ "global", .global_k },
     .{ "if", .if_k },
-    .{ "mod", .mod_k },
+    .{ "move", .move_k },
     .{ "none", .none_k },
     .{ "not", .not_k },
     .{ "or", .or_k },
     .{ "pass", .pass_k },
     .{ "return", .return_k },
+    .{ "scope", .scope_k },
+    .{ "sink", .sink_k },
     .{ "struct", .struct_k },
     .{ "switch", .switch_k },
-    .{ "symbol", .symbol_k },
-    .{ "throw", .throw_k },
     .{ "trait", .trait_k },
     .{ "true", .true_k },
     .{ "try", .try_k },
     .{ "type", .type_k },
+    .{ "undef", .undef_k },
     .{ "use", .use_k },
     .{ "var", .var_k },
     .{ "void", .void_k },
     .{ "while", .while_k },
     .{ "with", .with_k },
+    .{ "yield", .yield_k },
 });
 
 pub const TokenType = enum(u8) {
@@ -54,34 +52,38 @@ pub const TokenType = enum(u8) {
     ampersand,
     and_k,
     as_k,
-    at,
-    await_k,
+    at_ident,
     bang,
     bang_equal,
+    begin_k,
     bin,
     break_k,
     caret,
     case_k,
-    catch_k,
-    coinit_k,
     colon,
+    colon_equal,
+    colon2,
     comma,
-    context_k,
+    const_k,
     continue_k,
-    coresume_k,
-    coyield_k,
     cstruct_k,
+    cunion_k,
     dec,
-    def_k,
+    dec_u,
+    dollar,
     dot,
+    dot2,
     dot_bang,
-    dot_dot,
+    dot_dot_equal,
+    dot_dot_rangle,
+    dot_dot_rangle_equal,
     dot_star,
     dot_question,
+    double_ampersand,
     double_left_angle,
     double_right_angle,
+    double_star,
     double_vert_bar,
-    dyn_k,
     else_k,
     enum_k,
     // Error token, returned if ignoreErrors = true.
@@ -94,7 +96,8 @@ pub const TokenType = enum(u8) {
     float,
     for_k,
     fn_k,
-    Fn_k,
+    fnsym_k,
+    global_k,
     hex,
     ident,
     if_k,
@@ -104,10 +107,11 @@ pub const TokenType = enum(u8) {
     left_brace,
     left_bracket,
     left_paren,
+    left_right_angle,
     minus,
-    minus_double_dot,
     minus_right_angle,
     mod_k,
+    move_k,
     new_line,
     none_k,
     not_k,
@@ -119,16 +123,21 @@ pub const TokenType = enum(u8) {
     plus,
     pound,
     question,
+    raw_string,
+    raw_string_multi,
     return_k,
     right_angle,
     right_angle_equal,
     right_brace,
     right_bracket,
     right_paren,
-    rune,
-    raw_string,
-    raw_string_multi,
+    scope_k,
+    semicolon,
+    sink_k,
     slash,
+    space_left_bracket,
+    sq_string,
+    sq_string_multi,
     star,
     string,
     string_multi,
@@ -138,19 +147,19 @@ pub const TokenType = enum(u8) {
     stringt_expr,
     struct_k,
     switch_k,
-    symbol_k,
-    throw_k,
     tilde,
     trait_k,
     true_k,
     try_k,
     type_k,
+    undef_k,
     use_k,
     var_k,
     vert_bar,
     void_k,
     while_k,
     with_k,
+    yield_k,
 };
 
 pub const Token = extern struct {
@@ -187,6 +196,8 @@ pub const Token = extern struct {
 };
 
 const StringDelim = enum(u2) {
+    sq_single,
+    sq_triple,
     single,
     triple,
 };
@@ -200,11 +211,13 @@ pub const TokenizeState = struct {
     /// For string interpolation.
     string_delim: StringDelim = undefined,
 
+    after_whitespace: bool = false,
+
     has_template_expr: u1 = 0,
 };
 
 pub const TokenizeStateTag = enum {
-    start,
+    whitespace,
     token,
     stringt_part,
     stringt_expr,
@@ -258,11 +271,11 @@ pub const Tokenizer = struct {
         return self.src.len == self.nextPos;
     }
 
-    fn isNextChar(self: *const Tokenizer, ch: u8) bool {
-        if (self.isAtEnd()) {
+    fn isNext(self: *const Tokenizer, ch: u8, lookahead: u32) bool {
+        if (self.nextPos >= self.src.len - lookahead) {
             return false;
         }
-        return self.peek() == ch;
+        return self.src[self.nextPos + lookahead] == ch;
     }
 
     fn consume(self: *Tokenizer) u8 {
@@ -298,7 +311,7 @@ pub const Tokenizer = struct {
         }
 
         const start = t.nextPos;
-        var ch = consume(t);
+        const ch = consume(t);
         switch (ch) {
             '(' => {
                 try t.pushToken(.left_paren, start);
@@ -326,7 +339,13 @@ pub const Tokenizer = struct {
                     return next;
                 }
             },
-            '[' => try t.pushToken(.left_bracket, start),
+            '[' => {
+                if (state.after_whitespace) {
+                    try t.pushToken(.space_left_bracket, start);
+                } else {
+                    try t.pushToken(.left_bracket, start);
+                }
+            },
             ']' => try t.pushToken(.right_bracket, start),
             ',' => try t.pushToken(.comma, start),
             '.' => {
@@ -337,7 +356,20 @@ pub const Tokenizer = struct {
                     },
                     '.' => {
                         advance(t);
-                        try t.pushToken(.dot_dot, start);
+                        if (peek(t) == '>') {
+                            advance(t);
+                            if (peek(t) == '=') {
+                                advance(t);
+                                try t.pushToken(.dot_dot_rangle_equal, start);
+                            } else {
+                                try t.pushToken(.dot_dot_rangle, start);
+                            }
+                        } else if (peek(t) == '=') {
+                            advance(t);
+                            try t.pushToken(.dot_dot_equal, start);
+                        } else {
+                            try t.pushToken(.dot2, start);
+                        }
                     },
                     '?' => {
                         advance(t);
@@ -352,10 +384,25 @@ pub const Tokenizer = struct {
                     },
                 }
             },
-            ':' => {
-                try t.pushToken(.colon, start);
+            ';' => {
+                try t.pushToken(.semicolon, start);
             },
-            '@' => try t.pushToken(.at, start),
+            ':' => {
+                if (peek(t) == '=') {
+                    advance(t);
+                    try t.pushToken(.colon_equal, start);
+                } else if (peek(t) == ':') {
+                    advance(t);
+                    try t.pushToken(.colon2, start);
+                } else {
+                    try t.pushToken(.colon, start);
+                }
+            },
+            '@' => {
+                consumeIdent(t);
+                try t.pushToken(.at_ident, start);
+            },
+            '$' => try t.pushToken(.dollar, start),
             '-' => {
                 const next = peek(t);
                 if (next == '-') {
@@ -378,16 +425,19 @@ pub const Tokenizer = struct {
                 } else if (next == '>') {
                     advance(t);
                     try t.pushToken(.minus_right_angle, start);
-                } else if (next == '.' and peekAhead(t, 1) == '.') {
-                    advance(t);
-                    advance(t);
-                    try t.pushToken(.minus_double_dot, start);
                 } else {
                     try t.pushToken(.minus, start);
                 }
             },
             '%' => try t.pushToken(.percent, start),
-            '&' => try t.pushToken(.ampersand, start),
+            '&' => {
+                if (peek(t) == '&') {
+                    advance(t);
+                    try t.pushToken(.double_ampersand, start);
+                } else {
+                    try t.pushToken(.ampersand, start);
+                }
+            },
             '|' => {
                 if (peek(t) == '|') {
                     advance(t);
@@ -402,7 +452,7 @@ pub const Tokenizer = struct {
             },
             '_' => {
                 const next = peek(t);
-                if ((next >= 'A' and next <= 'Z') or (next >= 'a' and next <= 'z') or next == '$' or next == '_') {
+                if ((next >= 'A' and next <= 'Z') or (next >= 'a' and next <= 'z') or next == '_') {
                     try tokenizeKeywordOrIdent(t, start);
                 } else {
                     try t.pushToken(.underscore, start);
@@ -412,13 +462,18 @@ pub const Tokenizer = struct {
                 try t.pushToken(.caret, start);
             },
             '*' => {
-                try t.pushToken(.star, start);
+                if (peek(t) == '*') {
+                    advance(t);
+                    try t.pushToken(.double_star, start);
+                } else {
+                    try t.pushToken(.star, start);
+                }
             },
             '/' => {
                 try t.pushToken(.slash, start);
             },
             '!' => {
-                if (isNextChar(t, '=')) {
+                if (isNext(t, '=', 0)) {
                     try t.pushToken(.bang_equal, start);
                     advance(t);
                 } else {
@@ -452,6 +507,9 @@ pub const Tokenizer = struct {
                 } else if (ch2 == '<') {
                     try t.pushToken(.double_left_angle, start);
                     advance(t);
+                } else if (ch2 == '>') {
+                    try t.pushToken(.left_right_angle, start);
+                    advance(t);
                 } else {
                     try t.pushToken(.left_angle, start);
                 }
@@ -473,40 +531,37 @@ pub const Tokenizer = struct {
                 while (!isAtEnd(t)) {
                     const ch2 = peek(t);
                     switch (ch2) {
-                        ' ', '\r', '\t' => advance(t),
-                        else => return tokenizeOne(t, state),
+                        ' ',
+                        '\r',
+                        '\t' => advance(t),
+                        else => {
+                            var next = state;
+                            next.after_whitespace = true;
+                            return tokenizeOne(t, next);
+                        },
                     }
                 }
                 return .{ .stateT = .end };
             },
             '\n' => {
                 try t.pushToken(.new_line, start);
-                return .{ .stateT = .start };
+                return .{ .stateT = .whitespace };
             },
             '`' => {
-                // UTF-8 codepoint literal (rune).
-                if (isAtEnd(t)) {
-                    try t.reportError("Expected UTF-8 rune.", &.{});
-                }
-                while (true) {
-                    if (isAtEnd(t)) {
-                        try t.reportError("Expected UTF-8 rune.", &.{});
-                    }
-                    ch = peek(t);
-                    if (ch == '\\') {
-                        advance(t);
-                        if (isAtEnd(t)) {
-                            try t.reportError("Expected back tick or backslash.", &.{});
-                        }
-                        advance(t);
+                if (t.isNext('`', 0)) {
+                    if (t.isNext('`', 1)) {
+                        _ = t.consume();
+                        _ = t.consume();
+                        try t.consumeRawStringMulti();
+                        try t.pushToken(.raw_string_multi, start);
                     } else {
-                        advance(t);
-                        if (ch == '`') {
-                            break;
-                        }
+                        _ = t.consume();
+                        try t.pushToken(.raw_string, start);
                     }
+                } else {
+                    try t.consumeRawString();
+                    try t.pushToken(.raw_string, start);
                 }
-                try t.pushToken(.rune, start);
             },
             '"' => {
                 if (peek(t) == '"') {
@@ -532,18 +587,26 @@ pub const Tokenizer = struct {
                         if (ch2 == '\'') {
                             _ = consume(t);
                             _ = consume(t);
-                            try tokenizeMultiLineRawString(t, start);
-                            return state;
+                            // try tokenizeMultiLineRawString(t, start);
+                            // return state;
+                            return tokenizeStringOne(t, start, .{
+                                .stateT = state.stateT,
+                                .string_delim = .sq_triple,
+                            });
                         }
                     }
                 }
-                try tokenizeSingleLineRawString(t, start);
+                // try tokenizeSingleLineRawString(t, start);
+                return tokenizeStringOne(t, start, .{
+                    .stateT = state.stateT,
+                    .string_delim = .sq_single,
+                });
             },
             '#' => try t.pushToken(.pound, start),
             '?' => try t.pushToken(.question, start),
             else => {
                 switch (ch) {
-                    'A'...'Z', 'a'...'z', '$' => {
+                    'A'...'Z', 'a'...'z' => {
                         try tokenizeKeywordOrIdent(t, start);
                         return .{ .stateT = .token };
                     },
@@ -640,12 +703,11 @@ pub const Tokenizer = struct {
         }
 
         var state = TokenizeState{
-            .stateT = .start,
+            .stateT = .whitespace,
         };
         while (true) {
             switch (state.stateT) {
-                .start => {
-                    // First parse indent spaces.
+                .whitespace => {
                     while (true) {
                         if (!(try tokenizeIndentOne(t))) {
                             state.stateT = .token;
@@ -732,18 +794,65 @@ pub const Tokenizer = struct {
                             }
                             advance(t);
                         },
+                        else => {
+                            advance(t);
+                        },
                     }
                 },
-                '$' => {
+                '\'' => {
+                    switch (state.string_delim) {
+                        .sq_single => {
+                            if (state.has_template_expr == 1) {
+                                try t.pushToken(.stringt_part, start);
+                                const end = t.nextPos;
+                                advance(t);
+                                try t.pushToken(.stringt, end);
+                            } else {
+                                advance(t);
+                                try t.pushToken(.sq_string, start);
+                            }
+                            return .{ .stateT = .token };
+                        },
+                        .sq_triple => {
+                            var ch2 = peekAhead(t, 1) orelse 0;
+                            if (ch2 == '\'') {
+                                ch2 = peekAhead(t, 2) orelse 0;
+                                if (ch2 == '\'') {
+                                    if (state.has_template_expr == 1) {
+                                        try t.pushToken(.stringt_part, start);
+                                        const end = t.nextPos;
+                                        advance(t);
+                                        advance(t);
+                                        advance(t);
+                                        try t.pushToken(.stringt_multi, end);
+                                    } else {
+                                        advance(t);
+                                        advance(t);
+                                        advance(t);
+                                        try t.pushToken(.sq_string_multi, start);
+                                    }
+                                    return .{ .stateT = .token };
+                                }
+                            }
+                            advance(t);
+                        },
+                        else => {
+                            advance(t);
+                        },
+                    }
+                },
+                '%' => {
                     const ch2 = peekAhead(t, 1) orelse 0;
                     if (ch2 == '{') {
                         var next = state;
                         if (state.has_template_expr == 0) {
                             // Encounter first expression.
                             switch (state.string_delim) {
+                                .sq_single,
                                 .single => {
                                     try t.pushToken2(.stringt, start, save);
                                 },
+                                .sq_triple,
                                 .triple => {
                                     try t.pushToken2(.stringt_multi, start, save);
                                 },
@@ -779,7 +888,7 @@ pub const Tokenizer = struct {
                     advance(t);
                 },
                 '\n' => {
-                    if (state.string_delim == .single) {
+                    if (state.string_delim == .single or state.string_delim == .sq_single) {
                         if (t.ignoreErrors) {
                             t.nextPos = start;
                             try t.pushToken(.err, start);
@@ -805,11 +914,56 @@ pub const Tokenizer = struct {
             }
             const ch = peek(t);
             switch (ch) {
-                '0'...'9', 'A'...'Z', 'a'...'z', '$', '_' => {
+                '0'...'9', 'A'...'Z', 'a'...'z', '_' => {
                     advance(t);
                     continue;
                 },
                 else => return,
+            }
+        }
+    }
+
+    fn consumeRawStringMulti(t: *Tokenizer) !void {
+        while (true) {
+            if (isAtEnd(t)) {
+                try t.reportError("Expected raw string.", &.{});
+            }
+            switch (peek(t)) {
+                '`' => {
+                    _ = t.consume();
+                    if (t.isNext('`', 0)) {
+                        _ = t.consume();
+                    } else {
+                        continue;
+                    }
+                    if (t.isNext('`', 0)) {
+                        _ = t.consume();
+                        return;
+                    }
+                },
+                else => {
+                    _ = t.consume();
+                },
+            }
+        }
+    }
+
+    fn consumeRawString(t: *Tokenizer) !void {
+        while (true) {
+            if (isAtEnd(t)) {
+                try t.reportError("Expected raw string.", &.{});
+            }
+            switch (peek(t)) {
+                '`' => {
+                    _ = t.consume();
+                    return;
+                },
+                '\n' => {
+                    try t.reportError("Expected raw string on a single line.", &.{});
+                },
+                else => {
+                    _ = t.consume();
+                },
             }
         }
     }
@@ -834,7 +988,7 @@ pub const Tokenizer = struct {
             }
             if (peek(t) == '\'') {
                 advance(t);
-                try t.pushToken(.raw_string, start);
+                try t.pushToken(.sq_string, start);
                 return;
             } else if (peek(t) == '\n') {
                 return t.reportErrorAt("Encountered new line in single line literal.", &.{}, t.nextPos);
@@ -866,7 +1020,7 @@ pub const Tokenizer = struct {
                     advance(t);
                     advance(t);
                     advance(t);
-                    try t.pushToken(.raw_string_multi, start);
+                    try t.pushToken(.sq_string_multi, start);
                     return;
                 } else {
                     advance(t);
@@ -899,10 +1053,15 @@ pub const Tokenizer = struct {
         }
 
         var ch = peek(t);
-        if ((ch >= '0' and ch <= '9') or ch == '.' or ch == 'e') {
+        if ((ch >= '0' and ch <= '9') or ch == '.' or ch == 'e' or ch == 'u') {
             consumeDigits(t);
             if (isAtEnd(t)) {
                 try t.pushToken(.dec, start);
+                return;
+            }
+            if (peek(t) == 'u') {
+                advance(t);
+                try t.pushToken(.dec_u, start);
                 return;
             }
 
@@ -1004,6 +1163,10 @@ pub const Tokenizer = struct {
                 }
                 try t.pushToken(.bin, start);
                 return;
+            } else if (ch == 'u') {
+                advance(t);
+                try t.pushToken(.dec_u, start);
+                return;
             } else {
                 if (std.ascii.isAlphabetic(ch)) {
                     const char: []const u8 = &[_]u8{ch};
@@ -1050,8 +1213,8 @@ pub fn defaultReportFn(ctx: *anyopaque, format: []const u8, args: []const cy.fmt
 test "tokenizer internals." {
     try tt.eq(@sizeOf(Token), 8);
     try tt.eq(@alignOf(Token), 4);
-    try tt.eq(@sizeOf(TokenizeState), 4);
+    try tt.eq(@sizeOf(TokenizeState), 5);
 
-    try tt.eq(std.enums.values(TokenType).len, 100);
-    try tt.eq(keywords.kvs.len, 41);
+    try tt.eq(111, std.enums.values(TokenType).len);
+    try tt.eq(39, keywords.kvs.len);
 }

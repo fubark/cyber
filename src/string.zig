@@ -1,7 +1,3 @@
-// Copyright (c) 2023 Cyber (See LICENSE)
-
-/// Strings and string operations.
-
 const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
@@ -14,40 +10,30 @@ const log = cy.log.scoped(.string);
 /// Like `ArrayList` except the buffer is allocated as a `Astring` or `Ustring`.
 /// A final slice is returned from the backing string to avoid an extra copy.
 pub const HeapStringBuilder = struct {
-    buf_obj: *cy.HeapObject,
+    buf_obj: *cy.heap.StrBuffer,
     buf: []u8,
     len: u32,
-    isAstring: bool,
+    ascii: bool,
     hasObject: bool,
     detect_encoding: bool = true,
     vm: *cy.VM,
 
-    /// Starts as an Astring pool object.
+    /// Starts as an ascii string buffer.
     pub fn init(vm: *cy.VM) !HeapStringBuilder {
-        const obj = try cy.heap.allocPoolObject(vm);
-        obj.astring = .{
-            .typeId = bt.String,
-            .rc = 1,
-            .headerAndLen = (@as(u32, @intFromEnum(cy.heap.StringType.astring)) << 30) | @as(u32, @intCast(cy.MaxPoolObjectStringByteLen)),
-            .bufStart = undefined,
-        };
+        const obj = try vm.newStringBufferUndef(cy.heap.MaxPoolObjectUserBytes-16);
         return .{
-            .buf_obj = obj,
-            .buf = obj.astring.getMutSlice(),
+            .buf_obj = @ptrCast(obj),
+            .buf = obj.buffer.slice(u8),
             .len = 0,
-            .isAstring = true,
+            .ascii = true,
             .hasObject = true,
             .vm = vm,
         };
     }
 
-    fn getHeapObject(self: *const HeapStringBuilder) * align(@alignOf(cy.HeapObject)) cy.HeapObject {
-        return self.buf_obj;
-    }
-
     pub fn deinit(self: *HeapStringBuilder) void {
         if (self.hasObject) {
-            self.vm.releaseObject(self.buf_obj);
+            self.vm.releaseObject(@ptrCast(self.buf_obj));
             self.hasObject = false;
         }
     }
@@ -86,18 +72,18 @@ pub const HeapStringBuilder = struct {
     pub fn buildWithEncoding(self: *HeapStringBuilder, ascii: bool) !cy.Value {
         self.hasObject = false;
         if (ascii) {
-            return self.vm.allocAstringSlice(self.buf[0..self.len], self.buf_obj);
+            return self.vm.newAstrSlice(self.buf[0..self.len], self.buf_obj);
         } else {
-            return self.vm.allocUstringSlice(self.buf[0..self.len], self.buf_obj);
+            return self.vm.newUstrSlice(self.buf[0..self.len], self.buf_obj);
         }
     }
 
     pub fn build(self: *HeapStringBuilder) !*cy.HeapObject {
         var slice: cy.Value = undefined;
-        if (self.isAstring) {
-            slice = try self.vm.allocAstringSlice(self.buf[0..self.len], self.buf_obj);
+        if (self.ascii) {
+            slice = try self.vm.newAstrSlice(self.buf[0..self.len], self.buf_obj);
         } else {
-            slice = try self.vm.allocUstringSlice(self.buf[0..self.len], self.buf_obj);
+            slice = try self.vm.newUstrSlice(self.buf[0..self.len], self.buf_obj);
         }
 
         // Don't need to retain for slice since we are moving.
@@ -112,11 +98,9 @@ pub const HeapStringBuilder = struct {
         @memcpy(self.buf[oldLen..self.len], str);
         if (self.detect_encoding) {
             const append_ascii = cy.string.isAstring(str);
-            if (self.isAstring and !append_ascii) {
+            if (self.ascii and !append_ascii) {
                 // Upgrade to Ustring.
-                const len = self.buf_obj.string.len();
-                self.buf_obj.string.headerAndLen = (@as(u32, @intFromEnum(cy.heap.StringType.ustring)) << 30) | len;
-                self.isAstring = false;
+                self.ascii = false;
             }
         }
     }
@@ -128,17 +112,12 @@ pub const HeapStringBuilder = struct {
     }
 
     pub fn growTotalCapacityPrecise(self: *HeapStringBuilder, newCap: usize) !void {
-        const new_obj = try cy.heap.allocExternalObject(self.vm, 12 + newCap);
-        new_obj.string = .{
-            .typeId = bt.String,
-            .rc = 1,
-            .headerAndLen = (@as(u32, @intFromEnum(self.buf_obj.string.getType())) << 30) | @as(u30, @intCast(newCap)),
-        };
-        const new_buf = new_obj.astring.getMutSlice();
+        const new_obj = try self.vm.newStringBufferUndef(newCap);
+        const new_buf = new_obj.buffer.slice(u8);
         @memcpy(new_buf[0..self.len], self.buf[0..self.len]);
 
-        self.vm.releaseObject(self.buf_obj);
-        self.buf_obj = new_obj;
+        self.vm.releaseObject(@ptrCast(self.buf_obj));
+        self.buf_obj = @ptrCast(new_obj);
         self.buf = new_buf;
     }
 
@@ -691,31 +670,24 @@ pub fn charIndexOfCodepoint(str: []const u8, needle: u21) ?usize {
     return null;
 }
 
-fn getLineEndCpu(buf: []const u8) ?usize {
+fn indexOfNewLineCpu(buf: []const u8) ?usize {
     for (buf, 0..) |ch, i| {
-        if (ch == '\n') {
-            return i + 1;
-        } else if (ch == '\r') {
-            if (i + 1 < buf.len) {
-                if (buf[i+1] == '\n') {
-                    return i + 2;
-                }
-            }
-            return i + 1;
+        if (ch == '\n' or ch == '\r') {
+            return i;
         }
     }
     return null;
 }
 
-test "getLineEndCpu()" {
+test "indexOfNewLineCpu()" {
     const str = "abcxyz\nfoobar\rdeadbeef\r\nzzz";
-    try t.eq(getLineEndCpu(str).?, 7);
-    try t.eq(getLineEndCpu(str[7..]).?, 7);
-    try t.eq(getLineEndCpu(str[14..]).?, 10);
-    try t.eq(getLineEndCpu(str[24..]), null);
+    try t.eq(indexOfNewLineCpu(str).?, 6);
+    try t.eq(indexOfNewLineCpu(str[7..]).?, 6);
+    try t.eq(indexOfNewLineCpu(str[14..]).?, 9);
+    try t.eq(indexOfNewLineCpu(str[24..]), null);
 }
 
-pub fn getLineEnd(buf: []const u8) ?usize {
+pub fn indexOfNewLine(buf: []const u8) ?usize {
     if (comptime std.simd.suggestVectorLength(u8)) |VecSize| {
         const MaskInt = std.meta.Int(.unsigned, VecSize);
         var vbuf: @Vector(VecSize, u8) = undefined;
@@ -729,29 +701,18 @@ pub fn getLineEnd(buf: []const u8) ?usize {
             const bitIdx = @ctz(lfHits | crHits);
             if (bitIdx < VecSize) {
                 // Found.
-                const res = i + bitIdx;
-                if (buf[res] == '\n') {
-                    return res + 1;
-                } else if (buf[res] == '\r') {
-                    if (res + 1 < buf.len and buf[res+1] == '\n') {
-                        return res + 2;
-                    } else {
-                        return res + 1;
-                    }
-                } else {
-                    @panic("Unexpected.");
-                }
+                return i + bitIdx;
             }
         }
         if (i < buf.len) {
             // Remaining use cpu.
-            if (getLineEndCpu(buf[i..])) |res| {
+            if (indexOfNewLineCpu(buf[i..])) |res| {
                 return i + res;
             }
         }
         return null;
     } else {
-        return getLineEndCpu(buf);
+        return indexOfNewLineCpu(buf);
     }
 }
 

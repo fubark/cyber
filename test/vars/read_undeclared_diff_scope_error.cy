@@ -1,5 +1,5 @@
 if true:
-    var a = 123
+    a := 123
 if true:
     a
 

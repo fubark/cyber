@@ -1,12 +1,10 @@
-var foo = isDigit
+foo := str.is_ascii_digit
 foo(1.0)
 
 --cytest: error
---CompileError: Can not call function value.
---Expected: `fn(int) bool`
---Found:    `fn(float)`
+--CompileError: Expected argument `byte`, found `float`, when calling `fn (byte) -> bool`.
 --
 --main:2:5:
 --foo(1.0)
---    ^
+--    ^~~
 --

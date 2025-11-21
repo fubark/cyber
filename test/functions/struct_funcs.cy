@@ -1,54 +1,44 @@
 use t 'test'
 
-fn Node.flatGet2(self) int:
-    return 123
-
 type Node:
     value int
 
-    fn get(self) int:
-        return self.value
+fn (&Node) get() -> int:
+    return $value
 
-    fn get2(self, param int) int:
-        return self.value + param
+fn (&Node) get2(param int) -> int:
+    return $value + param
 
-    fn get3(self, param int, param2 int) int:
-        return self.value + param - param2
+fn (&Node) get3(param int, param2 int) -> int:
+    return $value + param - param2
 
-    fn get4(self) int:
-        var a = self.value
-        return a + self.value
+fn (&Node) get4() -> int:
+    a := $value
+    return a + $value
 
-    fn get5(self) int:
-        var f = fn() => self.value
-        return f()
+fn (^Node) get5() -> int:
+    f := fn() => self.value
+    return f()
 
-    fn set(self):
-        self.value = 1
+fn (&Node) set():
+    $value = 1
 
-    fn set2(self, param int):
-        self.value += param
+fn (&Node) set2(param int):
+    $value += param
 
-    fn set3(self, param int):
-        self.value = 1 + param
+fn (&Node) set3(param int):
+    $value = 1 + param
 
-fn Node.getFn() int:
+fn Node :: getFn() -> int:
     return 123
 
-fn Node.getFn2(param int) int:
+fn Node :: getFn2(param int) -> int:
     return 123 + param
 
-fn Node.getFn3(param int, param2 int) int:
+fn Node :: getFn3(param int, param2 int) -> int:
     return 123 + param - param2
 
-fn Node.flatGet(self) int:
-    return 123
-
-var n = Node{value=123}
-
--- Flat method declaration.
-t.eq(n.flatGet(), 123)
-t.eq(n.flatGet2(), 123)
+n := Node{value=123}
 
 -- Get.
 t.eq(n.get(), 123)
@@ -66,8 +56,8 @@ n.value = 123
 t.eq(n.get4(), 246)
 
 -- Get with closure.
-n.value = 123
-t.eq(n.get5(), 123)
+n2 := ^Node{value=123}
+t.eq(n2.get5(), 123)
 
 -- Set.
 n.set()
@@ -92,7 +82,7 @@ t.eq(Node.getFn2(321), 444)
 t.eq(Node.getFn3(321, 1), 443)
 
 -- Static variable method call.
-var .sn = Node{value=123}
+global sn Node = Node{value=123}
 sn.set()
 t.eq(sn.get(), 1)
 

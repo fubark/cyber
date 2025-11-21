@@ -1,53 +1,53 @@
+use meta
+
+--| Utilities for testing.
+--| Sample usage:
+--| ```cy
+--| use test
+--| 
+--| a := 123 + 321
+--| test.eq(444, a)
+--| ```
+
 --| Panics if `pred` is `false`.
-@host fn assert(pred bool) void
+fn assert(pred bool):
+    if !pred:
+        panic('Assert `true`, found `false`.')
 
 --| Returns whether two values are equal.
 --| Panics with `error.AssertError` if types or values do not match up.
-fn eq[T](a T, b T) void:
-    if !eq_(typeid[T], a, b):
-        throw error.AssertError
+fn eq(exp %T, act T):
+    if exp != act:
+        panic('Expected `%{exp}`, found `%{act}`.')
 
-@host -fn eq_[T](t int, a T, b T) bool
+fn eqType(exp type, act type):
+    if exp != act:
+        meta.error('Expected `' + type.name(exp) + '`, found `' + type.name(act) + '`.')
 
-fn eqCheck[T](a T, b T) bool:
-    return eq_(typeid[T], a, b)
+--| This will be deprecated once `eq_span` can accept `AsSpan[%T]`.
+fn eq_slice(exp []%T, act []T):
+    eq_span(exp.span(), act.span())
 
---| TODO: Remove after `Slice` is fully implemented.
---| Returns `true` if two lists have the same size and the elements are equal
+--| Returns `true` if two spans have the same size and the elements are equal
 --| as if `eq` was called on those corresponding elements.
-fn eqList[T](a List[T], b List[T]) void:
-    if a.len() != b.len():
-        fail("Length mismatch: ${a.len()} != ${b.len()}")
-    for a -> a_elem, i:
-        if !eqCheck(a_elem, b[i]):
-            fail("Expected ${b[i]}, found ${a_elem}.\nAt element ${i}.")
-
---| Returns `true` if two slices have the same size and the elements are equal
---| as if `eq` was called on those corresponding elements.
-fn eqSlice[T](a []T, b []T) void:
-    if a.len() != b.len():
-        fail("Length mismatch: ${a.len()} != ${b.len()}")
-    for a -> a_elem, i:
-        if !eqCheck(a_elem, b[i]):
-            fail("Expected ${b[i]}, found ${a_elem}.\nAt element ${i}.")
+fn eq_span(exp [&]%T, act [&]T):
+    if exp.len() != act.len():
+        fail('Length mismatch: %{exp.len()} != %{act.len()}')
+    for exp |i, elem|:
+        if elem != act[i]:
+            fail('Expected %{elem}, found %{act[i]}.\nAt element %{i}.')
 
 --| Returns `true` if two numbers are near each other within epsilon 1e-5.
-fn eqNear[T](a T, b T) bool:
-    return eqNear_(typeid[T], a, b)
+fn eqNear(exp float, act float):
+    eqNear(exp, act, 1e-5)
 
-@host fn eqNear_[T](t int, a T, b T) bool
+fn eqNear(exp float, act float, epsilon float):
+    if (exp - act).abs() >= epsilon:
+        fail('Expected `%{exp}` within `%{epsilon}`, found `%{act}`.')
 
 fn fail():
-    throw error.AssertError
+    panic('AssertError')
 
-fn fail(msg string):
-    eprint(msg)
-    throw error.AssertError
-
---| Asserts that an error was thrown when invoking a function.
-fn throws(func any, err error):
-    var res = try func()
-    if type(res) != error:
-        fail('Expected error.')
-    if res != err:
-        fail("Expected `${err}`, found `${res}`.")
+fn fail(msg str):
+    panic('AssertError: ' + msg)
+    

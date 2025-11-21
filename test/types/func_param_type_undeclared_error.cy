@@ -6,5 +6,5 @@ fn foo(a Vec2):
 --
 --main:1:10:
 --fn foo(a Vec2):
---         ^
+--         ^~~~
 --

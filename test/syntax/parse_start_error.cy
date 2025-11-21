@@ -1,11 +1,11 @@
-var
-var .a = 123
-var .b = 234
+global
+global a = 123
+global b = 234
 
 --cytest: error
---ParseError: Expected local name identifier.
+--ParseError: Expected global name.
 --
---main:1:4:
---var
---   ^
+--main:1:7:
+--global
+--      ^
 --

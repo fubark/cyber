@@ -2,613 +2,989 @@ const std = @import("std");
 const cy = @import("cyber.zig");
 const bt = cy.types.BuiltinTypes;
 const sema = cy.sema;
+const sema_type = cy.sema_type;
+const sema_func = cy.sema_func;
 const v = cy.fmt.v;
 const log = cy.log.scoped(.cte);
 const ast = cy.ast;
+const ir = cy.ir;
+const C = @import("capi.zig");
 const bcgen = @import("bc_gen.zig");
+const Value = cy.Value;
+const TypeValue = cy.TypeValue;
 
 const cte = @This();
 
-pub fn expandTemplateOnCallExpr(c: *cy.Chunk, node: *ast.CallExpr) !*cy.Sym {
-    var callee = try resolveCtSym(c, node.callee);
-    if (callee.type != .template) {
-        return c.reportErrorFmt("Expected template symbol.", &.{}, node.callee);
-    }
-    return cte.expandTemplateOnCallArgs(c, callee.cast(.template), node.args, @ptrCast(node));
-}
-
-pub fn pushNodeValuesCstr(c: *cy.Chunk, args: []const *ast.Node, template: *cy.sym.Template, ct_arg_start: usize, node: *ast.Node) !void {
-    const params = c.sema.getFuncSig(template.sigId).params();
-    if (args.len != params.len) {
-        const params_s = try c.sema.allocFuncParamsStr(params, c);
-        defer c.alloc.free(params_s);
-        return c.reportErrorFmt(
-            \\Expected template signature `{}[{}]`.
-        , &.{v(template.head.name()), v(params_s)}, node);
-    }
-    for (args, 0..) |arg, i| {
-        const param = params[i];
-        const exp_type = try resolveTemplateParamType(c, param, c.valueStack.items.ptr + ct_arg_start);
-        const res = try resolveCtValue(c, arg);
-        try c.valueStack.append(c.alloc, res.value);
-
-        if (res.type != exp_type) {
-            const cstrName = try c.sema.allocTypeName(exp_type);
-            defer c.alloc.free(cstrName);
-            const typeName = try c.sema.allocTypeName(res.type);
-            defer c.alloc.free(typeName);
-            return c.reportErrorFmt("Expected type `{}`. Found `{}`.", &.{v(cstrName), v(typeName)}, arg);
-        }
-    }
-}
-
-/// This is similar to `sema_func.resolveTemplateParamType` except it only cares about ct_ref.
-fn resolveTemplateParamType(c: *cy.Chunk, param_t: *cy.Type, ct_args: [*]const cy.Value) !*cy.Type {
-    if (param_t.kind() == .ct_ref) {
-        const ct_arg = ct_args[param_t.cast(.ct_ref).ct_param_idx];
-        if (ct_arg.getTypeId() != bt.Type) {
-            return error.TODO;
-        }
-        return c.sema.getType(ct_arg.asHeapObject().type.type);
-    } else if (param_t.info.ct_ref) {
-        // Contains nested ct-dependent arg.
-        if (param_t.sym().variant) |variant| {
-            const template = variant.getSymTemplate();
-
-            const value_start = c.valueStack.items.len;
-            defer {
-                const values = c.valueStack.items[value_start..];
-                for (values) |val| {
-                    c.vm.release(val);
-                }
-                c.valueStack.items.len = value_start;
-            }
-
-            for (variant.args) |arg| {
-                if (arg.getTypeId() == bt.Type) {
-                    const arg_t = c.sema.getType(arg.asHeapObject().type.type);
-                    const rarg_t = try resolveTemplateParamType(c, arg_t, ct_args);
-                    const rarg_t_v = try c.vm.allocType(rarg_t.id());
-                    try c.valueStack.append(c.alloc, rarg_t_v);
-                } else if (arg.getTypeId() == bt.FuncSig) {
-                    const sig = c.sema.getFuncSig(@intCast(arg.asBoxInt()));
-
-                    const type_start = c.typeStack.items.len;
-                    defer c.typeStack.items.len = type_start;
-
-                    for (sig.params()) |param| {
-                        if (param.info.ct_ref) {
-                            const fparam_t = try resolveTemplateParamType(c, param, ct_args);
-                            try c.typeStack.append(c.alloc, fparam_t);
-                        } else {
-                            try c.typeStack.append(c.alloc, param);
-                        }
-                    }
-                    var ret_t = sig.ret;
-                    if (ret_t.info.ct_ref) {
-                        ret_t = try resolveTemplateParamType(c, ret_t, ct_args);
-                    }
-                    const new_sig = try c.sema.ensureFuncSig(@ptrCast(c.typeStack.items[type_start..]), ret_t);
-                    const new_sigv = try c.vm.allocFuncSig(new_sig);
-                    try c.valueStack.append(c.alloc, new_sigv);
-                } else {
-                    return error.TODO;
-                }
-            }
-
-            const args = c.valueStack.items[value_start..];
-            const type_sym = try cte.expandTemplate(c, template, args);
-            return type_sym.getStaticType().?;
-        } else {
-            return error.Unexpected;
-        }
-    } else {
-        return param_t;
-    }
-}
-
-pub fn expandTemplateForArgs(c: *cy.Chunk, template: *cy.sym.Template, args: []const *ast.Node, node: *ast.Node) !*cy.Sym {
-    try sema.ensureResolvedTemplate(c, template);
-
-    // Accumulate compile-time args.
-    const valueStart = c.valueStack.items.len;
-    defer {
-        // Values need to be released.
-        const values = c.valueStack.items[valueStart..];
-        for (values) |val| {
-            c.vm.release(val);
-        }
-        c.valueStack.items.len = valueStart;
-    }
-
-    try pushNodeValuesCstr(c, args, template, valueStart, node);
-    const arg_vals = c.valueStack.items[valueStart..];
-    return expandTemplate(c, template, arg_vals);
-}
-
-pub fn expandValueTemplateForArgs(c: *cy.Chunk, template: *cy.sym.Template, args: []const *ast.Node, node: *ast.Node) !CtValue {
-    // Accumulate compile-time args.
-    const valueStart = c.valueStack.items.len;
-    defer {
-        // Values need to be released.
-        const values = c.valueStack.items[valueStart..];
-        for (values) |val| {
-            c.vm.release(val);
-        }
-        c.valueStack.items.len = valueStart;
-    }
-
-    try pushNodeValuesCstr(c, args, template, valueStart, node);
-    const arg_vals = c.valueStack.items[valueStart..];
-    return expandValueTemplate(c, template, arg_vals);
-}
-
-pub fn expandFuncTemplateForArgs(c: *cy.Chunk, template: *cy.sym.FuncTemplate, args: []const *ast.Node, node: *ast.Node) !*cy.Func {
-    try sema.ensureResolvedFuncTemplate(c, template);
-
-    if (template.params.len != args.len) {
-        return c.reportErrorFmt("Expected {} arguments. Found {}.", &.{v(template.params.len), v(args.len)}, node);
-    }
-
-    // Accumulate compile-time args.
-    const value_start = c.valueStack.items.len;
-    defer {
-        // Values need to be released.
-        const values = c.valueStack.items[value_start..];
-        for (values) |val| {
-            c.vm.release(val);
-        }
-        c.valueStack.items.len = value_start;
-    }
-
-    for (args, 0..) |arg, i| {
-        const res = try resolveCtValue(c, arg);
-
-        var param_t: *cy.Type = undefined;
-        if (template.params[i].infer) {
-            param_t = c.sema.getType(res.value.getTypeId());
-        } else {
-            const decl_idx = template.params[i].decl_idx;
-            param_t = try sema.resolveTypeSpecNode(c, template.func_params[decl_idx].type);
-        }
-        try c.valueStack.append(c.alloc, res.value);
-    }
-
-    const arg_vals = c.valueStack.items[value_start..];
-    return expandFuncTemplate(c, template, arg_vals);
-}
-
-pub fn expandFuncTemplate(c: *cy.Chunk, template: *cy.sym.FuncTemplate, args: []const cy.Value) !*cy.Func {
-    // Ensure variant func.
-    const res = try template.variant_cache.getOrPutContext(c.alloc, args, .{ .sema = c.sema });
-    if (!res.found_existing) {
-        // Dupe args and retain
-        const args_dupe = try c.alloc.dupe(cy.Value, args);
-        for (args_dupe) |param| {
-            c.vm.retain(param);
-        }
-
-        // Generate variant type.
-        const variant = try c.alloc.create(cy.sym.Variant);
-        variant.* = .{
-            .type = .func,
-            .args = args_dupe,
-            .data = .{ .func = .{
-                .template = template,
-                .func = undefined,
-            }},
-        };
-
-        const tchunk = template.chunk();
-        const new_func = try sema.reserveFuncTemplateVariant(tchunk, template, template.decl.child_decl, variant);
-        variant.data.func.func = new_func;
-        res.key_ptr.* = args_dupe;
-        res.value_ptr.* = variant;
-        try template.variants.append(c.alloc, variant);
-
-        // Allow circular reference by resolving after the new symbol has been added to the cache.
-        try sema.resolveFuncVariant(tchunk, new_func);
-
-        return new_func;
-    } 
-    const variant = res.value_ptr.*;
-    return variant.data.func.func;
-}
-
-fn compileExprDeep(c: *cy.Chunk, expr: *ast.Node, target_t: ?*cy.Type, queued: *std.AutoHashMapUnmanaged(*cy.Func, void)) !*cy.Func {
-    // Create temporary function.
-    const func = try c.createFunc(.userFunc, @ptrCast(c.sym), expr, false);
-
-    // Perform sema.
-    const loc = c.ir.buf.items.len;
-    _ = try sema.pushFuncProc(c, func);
-    var ret_t: *cy.Type = undefined;
-    if (target_t == null) {
-        // Infer return type.
-        const expr_res = try c.semaExpr(expr, .{});
-        ret_t = expr_res.type;
-        _ = try c.ir.pushStmt(c.alloc, .retExprStmt, expr, .{
-            .expr = expr_res.irIdx,
-        });
-    } else {
-        const expr_res = try c.semaExprCstr(expr, target_t.?);
-        _ = try c.ir.pushStmt(c.alloc, .retExprStmt, expr, .{
-            .expr = expr_res.irIdx,
-        });
-        ret_t = target_t.?;
-    }
-    const sig = try c.sema.ensureFuncSig(&.{}, ret_t);
-    try c.resolveUserLambda(func, sig);
-    func.emitted = true;
-    try sema.popFuncBlock(c);
-
-    // Perform bc gen.
-    c.buf = &c.compiler.buf;
-    // TODO: defer restore bc state.
-    try bcgen.prepareFunc(c.compiler, func);
-    try bcgen.funcBlock(c, loc, expr);
-
-    // Analyze IR for func deps.
-    var visitor = try c.ir.visitStmt(c.alloc, @intCast(loc));
-    defer visitor.deinit();
-    while (try visitor.next()) |entry| {
-        if (entry.is_stmt) {
-            continue;
-        }
-        const code = c.ir.getExprCode(entry.loc);
-        switch (code) {
-            .call_sym => {
-                const data = c.ir.getExprData(entry.loc, .call_sym);
-                try compileFuncDeep(c, data.func, queued);
-            },
-            else => {},
-        }
-    }
-    func.data = .{ .userFunc = .{ .loc = @intCast(loc) }};
-    func.emitted_deps = true;
-    return func;
-}
-
-fn compileFuncDeep(c: *cy.Chunk, func: *cy.Func, queued: *std.AutoHashMapUnmanaged(*cy.Func, void)) !void {
-    if (func.emitted_deps) {
-        return;
-    }
-    if (queued.contains(func)) {
-        return;
-    }
-    try queued.putNoClobber(c.alloc, func, {});
-    defer _ = queued.remove(func);
-
-    // Resolve signature.
-    const src_chunk = func.chunk();
-    if (func.variant != null) {
-        try sema.resolveFuncVariant(src_chunk, func);
-    } else {
-        try sema.resolveFunc2(src_chunk, func, false);
-    }
-
-    // Perform sema.
-    const loc = src_chunk.ir.buf.items.len;
-    try sema.funcDecl(src_chunk, func);
-
-    // Perform bc gen.
-    const loc_n = src_chunk.ir.getNode(loc);
-    src_chunk.buf = &c.compiler.buf;
-    // TODO: defer restore bc state.
-    try bcgen.prepareFunc(src_chunk.compiler, func);
-    switch (func.type) {
-        .hostFunc => {
-            // Nop. Already setup from `prepareFunc`.
-        },
-        .userFunc => {
-            try bcgen.funcBlock(src_chunk, loc, loc_n);
-
-            // Analyze IR for func deps.
-            var visitor = try src_chunk.ir.visitStmt(c.alloc, @intCast(loc));
-            defer visitor.deinit();
-            while (try visitor.next()) |entry| {
-                if (entry.is_stmt) {
-                    continue;
-                }
-                const code = src_chunk.ir.getExprCode(entry.loc);
-                switch (code) {
-                    .call_sym => {
-                        const data = src_chunk.ir.getExprData(entry.loc, .call_sym);
-                        try compileFuncDeep(c, data.func, queued);
-                    },
-                    else => {},
-                }
-            }
-            func.data = .{ .userFunc = .{ .loc = @intCast(loc) }};
-        },
-        else => {
-            return error.Unexpected;
-        }
-    }
-    func.emitted_deps = true;
-}
-
-/// Call function with arguments at compile-time.
-pub fn compileAndCallFunc(c: *cy.Chunk, func: *cy.Func, args: []const cy.Value) !CtValue {
-    var queued: std.AutoHashMapUnmanaged(*cy.Func, void) = .{};
-    defer queued.deinit(c.alloc);
-    try compileFuncDeep(c, func, &queued);
-    return callFunc(c, func, args);
-}
-
-fn callFunc(c: *cy.Chunk, func: *cy.Func, args: []const cy.Value) !CtValue {
-    const rt_id = c.compiler.genSymMap.get(func).?.func.id;
-    const rt_func = c.vm.funcSyms.buf[rt_id];
-    const func_val = try cy.heap.allocFunc(c.vm, rt_func);
-    defer c.vm.release(func_val);
-
-    try c.vm.prepCtEval(&c.compiler.buf);
-    const retv = try c.vm.callFunc(func_val, args, .{});
-    return CtValue{
-        .type = c.sema.getType(retv.getTypeId()),
-        .value = retv,
-    };
-}
-
-pub fn evalExpr(c: *cy.Chunk, expr: *ast.Node, target_t: ?*cy.Type) !CtValue {
-    var queued: std.AutoHashMapUnmanaged(*cy.Func, void) = .{};
-    defer queued.deinit(c.alloc);
-    const func = try compileExprDeep(c, expr, target_t, &queued);
-    defer {
-        // Remove references to the func and invalidate the sema func block.
-        _ = c.compiler.genSymMap.remove(@ptrCast(func));
-        const data = c.ir.getStmtDataPtr(func.data.userFunc.loc, .funcBlock);
-        data.skip = true;
-        c.vm.alloc.destroy(func);
-    }
-    return callFunc(c, func, &.{});
-}
-
-pub fn expandValueTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy.Value) !CtValue {
-    // Ensure variant type.
-    const res = try template.variant_cache.getOrPutContext(c.alloc, args, .{ .sema = c.sema });
-    if (!res.found_existing) {
-        // Dupe args and retain
-        const args_dupe = try c.alloc.dupe(cy.Value, args);
-        for (args_dupe) |param| {
-            c.vm.retain(param);
-        }
-
-        // Generate variant type.
-        const variant = try c.alloc.create(cy.sym.Variant);
-        variant.* = .{
-            .type = .ct_val,
-            .args = args_dupe,
-            .data = .{ .ct_val = .{
-                .template = template,
-                .ct_val = cy.Value.Void,
-            }},
-        };
-        res.key_ptr.* = args_dupe;
-        res.value_ptr.* = variant;
-        try template.variants.append(c.alloc, variant);
-
-        // Resolve dependent return type.
-        var ret_t = c.sema.getFuncSig(template.sigId).getRetType();
-        if (ret_t.info.ct_ref) {
-            ret_t = try resolveTemplateParamType(c, ret_t, variant.args.ptr);
-        }
-
-        // Resolve dependent func sig. There are no rt params since they are compile-time params.
-        const sig = try c.sema.ensureFuncSig(&.{}, ret_t);
-
-        // Generate ct func. Can assume not a `@host` func.
-        const func = try c.createFunc(.userFunc, @ptrCast(template), @ptrCast(template.decl.child_decl), false);
-        defer {
-            // Remove references to the func and invalidate the sema func block.
-            _ = c.compiler.genSymMap.remove(@ptrCast(func));
-            const src_chunk = func.chunk();
-            const data = src_chunk.ir.getStmtDataPtr(func.data.userFunc.loc, .funcBlock);
-            data.skip = true;
-            c.vm.alloc.destroy(func);
-        }
-        const func_sig = c.sema.getFuncSig(sig);
-        func.funcSigId = sig;
-        func.retType = func_sig.getRetType();
-        func.reqCallTypeCheck = func_sig.info.reqCallTypeCheck;
-        func.numParams = @intCast(func_sig.params_len);
-        func.variant = variant;
-
-        var queued: std.AutoHashMapUnmanaged(*cy.Func, void) = .{};
-        defer queued.deinit(c.alloc);
-        try compileFuncDeep(c, func, &queued);
-
-        const call_res = try callFunc(c, func, &.{});
-        c.vm.retain(call_res.value);
-        variant.data.ct_val.ct_val = call_res.value;
-        return call_res;
-    } 
-
-    const variant = res.value_ptr.*;
-    c.vm.retain(variant.data.ct_val.ct_val);
-    return CtValue{
-        .type = c.sema.getType(variant.data.ct_val.ct_val.getTypeId()),
-        .value = variant.data.ct_val.ct_val,
-    };
-}
-
-pub fn checkAndExpandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy.Value) !*cy.Type {
-    // Build args types.
-    const typeStart = c.typeStack.items.len;
-    defer c.typeStack.items.len = typeStart;
-    for (args) |arg| {
-        const arg_t = c.vm.sema.getType(arg.getTypeId());
-        try c.typeStack.append(c.alloc, arg_t);
-    }
-    const arg_types = c.typeStack.items[typeStart..];
-
-    // Check against template signature.
-    if (!cy.types.isTypeFuncSigCompat(c.compiler, arg_types, .not_void, template.sigId)) {
-        return error.SigMismatch;
-    }
-
-    const sym = try expandTemplate(c, template, args);
-    return sym.getStaticType().?;
-}
-
-pub fn expandTemplate(c: *cy.Chunk, template: *cy.sym.Template, args: []const cy.Value) !*cy.Sym {
-    try sema.ensureResolvedTemplate(c, template);
-    
-    // Ensure variant type.
-    const res = try template.variant_cache.getOrPutContext(c.alloc, args, .{ .sema = c.sema });
-    if (!res.found_existing) {
-        // Dupe args and retain
-        const args_dupe = try c.alloc.dupe(cy.Value, args);
-        for (args_dupe) |param| {
-            c.vm.retain(param);
-        }
-
-        var ct_dep = false;
-        for (args) |arg| {
-            if (arg.getTypeId() == bt.Type) {
-                const type_ = c.sema.getType(arg.asHeapObject().type.type);
-                ct_dep = ct_dep or type_.info.ct_ref;
-            } else if (arg.getTypeId() == bt.FuncSig) {
-                const sig = c.sema.getFuncSig(@intCast(arg.asHeapObject().integer.val));
-                ct_dep = ct_dep or sig.info.ct_dep;
-            }
-        }
-
-        // Generate variant type.
-        const variant = try c.alloc.create(cy.sym.Variant);
-        variant.* = .{
-            .type = .sym,
-            .args = args_dupe,
-            .data = .{ .sym = .{
-                .template = template,
-                .sym = undefined,
-            }},
-        };
-        res.key_ptr.* = args_dupe;
-        res.value_ptr.* = variant;
-        try template.variants.append(c.alloc, variant);
-
-        const new_sym = try sema.reserveTemplateVariant(c, template, template.decl.child_decl, variant);
-        variant.data.sym.sym = new_sym;
-
-        if (new_sym.getStaticType()) |new_t| {
-            new_t.info.ct_ref = ct_dep;
-        }
-
-        // Allow circular reference by resolving after the new symbol has been added to the cache.
-        // In the case of a distinct type, a new sym is returned after resolving.
-        const final_sym = try sema.resolveTemplateVariant(c, template, new_sym);
-        variant.data.sym.sym = final_sym;
-
-        return final_sym;
-    } 
-
-    const variant = res.value_ptr.*;
-    return variant.data.sym.sym;
-}
-
-/// Visit each top level ctNode, perform template param substitution or CTE,
-/// and generate new nodes. Return the root of each resulting node.
-fn execTemplateCtNodes(c: *cy.Chunk, template: *cy.sym.Template, params: []const cy.Value) ![]const *ast.Node {
-    // Build name to template param.
-    var paramMap: std.StringHashMapUnmanaged(cy.Value) = .{};
-    defer paramMap.deinit(c.alloc);
-    for (template.params, 0..) |param, i| {
-        try paramMap.put(c.alloc, param.name, params[i]);
-    }
-
-    const tchunk = template.chunk();
-    const res = try c.alloc.alloc(*ast.Node, template.ctNodes.len);
-    for (template.ctNodes, 0..) |ctNodeId, i| {
-        const node = tchunk.ast.node(ctNodeId);
-
-        // Check for simple template param replacement.
-        const child = tchunk.ast.node(node.data.comptimeExpr.child);
-        if (child.type() == .ident) {
-            const name = tchunk.ast.nodeString(child);
-            if (paramMap.get(name)) |param| {
-                res[i] = try cte.genNodeFromValue(tchunk, param, node.srcPos);
-                continue;
-            }
-        }
-        // General CTE.
-        return error.TODO;
-    }
-
-    tchunk.updateAstView(tchunk.parser.ast.view());
-    return res;
-}
-
-fn genNodeFromValue(c: *cy.Chunk, val: cy.Value, srcPos: u32) !*ast.Node {
-    switch (val.getTypeId()) {
-        bt.Type => {
-            const node = try c.parser.ast.pushNode(c.alloc, .semaSym, srcPos);
-            const sym = c.sema.getTypeSym(val.asHeapObject().type.type);
-            c.parser.ast.setNodeData(node, .{ .semaSym = .{
-                .sym = sym,
-            }});
-            return node;
-        },
-        else => return error.TODO,
-    }
-}
-
-pub const CtValue = struct {
-    type: *cy.Type,
-    value: cy.Value,
+const EvalStmtResult = struct {
+    ret: bool,
+    ret_value: Value,
 };
 
-pub fn resolveCtValueOpt(c: *cy.Chunk, expr: *ast.Node) anyerror!?CtValue {
-    const res = (try resolveCtExprOpt(c, expr)) orelse {
-        return null;
+pub fn evalFunc(c: *cy.Chunk, func: *cy.Func, args: []const Value, node: *ast.Node) !Value {
+    try sema.pushFuncResolveContext(c, func, node);
+    const ctx = sema.getResolveContext(c);
+    ctx.has_ct_params = true;
+    ctx.is_inline_eval = true;
+    const start = push_ct_block(c);
+    defer {
+        pop_ct_block(c, start);
+        sema.popResolveContext(c);
+    }
+
+    // Push param arguments.
+    const params = func.sig.params();
+    const param_nodes = func.decl.?.cast(.funcDecl).params.slice();
+    var param_node_idx: usize = 0;
+    for (args, 0..) |arg, i| {
+        while (param_nodes[param_node_idx].template_param) {
+            param_node_idx += 1;
+        }
+        const param_node = param_nodes[param_node_idx];
+        param_node_idx += 1;
+        const name = param_node.name_type.name();
+        try ctx.setCtParam(c.heap, name, params[i].get_type(), arg);
+        try ctx.ct_locals.append(c.alloc, name);
+    }
+
+    const stmts = func.decl.?.cast(.funcDecl).stmts.slice();
+    return evalFuncBody(c, stmts, func.sig.ret, @ptrCast(func.decl.?));
+}
+
+pub fn evalFuncBody(c: *cy.Chunk, stmts: []const *ast.Node, ret: *cy.Type, node: *ast.Node) !Value {
+    const eval_ctx = EvalContext{ .ret = ret };
+    const res = try evalStmts(c, eval_ctx, stmts);
+    if (res.ret) {
+        return res.ret_value;
+    }
+    if (ret == c.sema.void_t) {
+        return Value.Void;
+    } else {
+        return c.reportErrorFmt("Inline eval: Expected return.", &.{}, node);
+    }
+}
+
+fn evalStmts(c: *cy.Chunk, ctx: EvalContext, stmts: []const *ast.Node) !EvalStmtResult {
+    for (stmts) |stmt| {
+        const res = try evalStmt(c, ctx, stmt);
+        if (res.ret) {
+            return res;
+        }
+    }
+    return .{
+        .ret = false,
+        .ret_value = undefined,
     };
-    switch (res.type) {
-        .value => return res.data.value,
-        .sym => {
-            const sym = res.data.sym;
-            if (sym.getStaticType()) |type_| {
-                return CtValue{
-                    .type = c.sema.type_t,
-                    .value = try c.vm.allocType(type_.id()),
-                };
-            }
-            if (sym.type == .func) {
-                const func_sym = sym.cast(.func);
-                if (func_sym.numFuncs == 1) {
-                    const func_t = try cy.sema.getFuncSymType(c, func_sym.first.funcSigId);
-                    return CtValue{
-                        .type = func_t,
-                        .value = try c.vm.allocFuncSym(func_t.id(), func_sym.first),
-                    };
+}
+
+const EvalContext = struct {
+    ret: *cy.Type,
+};
+
+pub fn localDecl(c: *cy.Chunk, node: *ast.VarDecl) !void {
+    const name = node.name.cast(.ident).name.slice();
+    const init = try cte.eval(c, node.right);
+    try localDecl2(c, name, init.type, init.value);
+}
+
+pub fn localDecl2(c: *cy.Chunk, name: []const u8, val_t: *cy.Type, val: Value) !void {
+    const ctx = sema.getResolveContext(c);
+    try ctx.initCtVar2(c.alloc, name, val_t, val);
+    try ctx.ct_locals.append(c.alloc, name);
+}
+
+pub fn switchStmt(c: *cy.Chunk, switch_stmt: *ast.SwitchBlock, req_ct_case: bool, cb: EvalCaseFn, data: ?*anyopaque, opt_target: ?*cy.Type) !void {
+    const control = try cte.eval(c, switch_stmt.expr);
+    defer c.heap.destructValue(control);
+
+    if (control.type.kind() == .choice) {
+        const choice_t = control.type.cast(.choice);
+        const tag = control.value.asPtr(*cy.heap.Object).getValue(0).asInt();
+
+        for (switch_stmt.cases.slice()) |ct_case| {
+            var case: *ast.CaseStmt = undefined;
+            if (req_ct_case) {
+                if (ct_case.type() != .ct_stmt) {
+                    return c.reportErrorFmt("Expected compile-time `case` statement.", &.{}, ct_case);
+                }
+                case = ct_case.cast(.ct_stmt).child.cast(.case_stmt);
+            } else {
+                if (ct_case.type() == .case_stmt) {
+                    case = ct_case.cast(.case_stmt);
+                } else {
+                    const ct_stmt = ct_case.cast(.ct_stmt);
+                    if (ct_stmt.child.type() == .for_iter_stmt) {
+                        return c.reportError("TODO", @ptrCast(switch_stmt));
+                    }
+                    case = ct_case.cast(.ct_stmt).child.cast(.case_stmt);
                 }
             }
-            return c.reportErrorFmt("Unsupported conversion to compile-time value: {}", &.{v(sym.type)}, expr);
+
+            switch (case.kind) {
+                .else_ =>{
+                    const local_start = push_ct_block(c);
+
+                    try cb(c, case, data, opt_target);
+
+                    pop_ct_block(c, local_start);
+                    return;
+                },
+                .case => {
+                    for (case.data.case.conds.slice()) |cond| {
+                        if (cond.type() != .dot_lit) {
+                            const targetTypeName = choice_t.base.name();
+                            return c.reportErrorFmt("Expected enum literal to match `{}`", &.{v(targetTypeName)}, @ptrCast(cond));
+                        }
+                        const case_name = cond.cast(.dot_lit).as_dot_infer_name();
+                        const choice_case = choice_t.getCase(case_name) orelse {
+                            return c.reportErrorFmt("Expected valid case.", &.{}, @ptrCast(cond));
+                        };
+                        if (tag == choice_case.val) {
+                            if (case.data.case.capture) |capture| {
+                                if (capture.type() != .ident) {
+                                    return c.reportErrorFmt("Expected variable identifier.", &.{}, @ptrCast(capture));
+                                }
+                                const ctx = sema.getResolveContext(c);
+                                const capturev = try c.heap.unwrapChoice(control.type, control.value, case_name);
+                                try ctx.initCtParam2(c.alloc, capture.name(), choice_case.payload_t, capturev);
+                            }
+                            defer {
+                                if (case.data.case.capture) |capture| {
+                                    const ctx = sema.getResolveContext(c);
+                                    const capturev = ctx.ct_params.fetchRemove(capture.name()).?.value;
+                                    c.heap.destructValue2(capturev.getType(), capturev.value);
+                                }
+                            }
+
+                            const local_start = push_ct_block(c);
+
+                            try cb(c, case, data, opt_target);
+
+                            pop_ct_block(c, local_start);
+                            return;
+                        }
+                    }
+                },
+            }
+        }
+    } else {
+        for (switch_stmt.cases.slice(), 0..) |case_n, i| {
+            if (case_n.type() == .ct_stmt) {
+                const ct_stmt = case_n.cast(.ct_stmt);
+                if (ct_stmt.child.type() == .for_iter_stmt) {
+                    const for_stmt = ct_stmt.child.cast(.for_iter_stmt);
+                    if (for_stmt.stmts.len != 1) {
+                        return c.reportError("Expected 1 case statement.", case_n);
+                    }
+                    if (for_stmt.stmts.ptr[0].type() != .case_stmt) {
+                        return c.reportError("Expected 1 case statement.", case_n);
+                    }
+                    const for_case = for_stmt.stmts.ptr[0].cast(.case_stmt);
+
+                    const iter_n = for_stmt.iterable;
+                    const iterable = try cte.eval(c, iter_n);
+                    defer c.heap.destructValue(iterable);
+
+                    // Obtain iterator.
+                    const iterator_sym = try c.accessResolvedSymOrFail(iterable.type, "iterator", iter_n);
+                    var func_sym = try sema.requireFuncSym(c, iterator_sym, iter_n);
+                    var iter = try cte.callFuncSymRec(c, func_sym, iter_n, sema.ExprResult.initCtValue(iterable), &.{}, iter_n);
+                    defer c.heap.destructValue(iter);
+
+                    // while iter.next()
+                    const next_sym = try c.accessResolvedSymOrFail(iterable.type, "next", iter_n);
+                    func_sym = try sema.requireFuncSym(c, next_sym, iter_n);
+                    const borrow_t = try sema.getBorrowType(c, iter.type);
+                    var iter_borrow: TypeValue = undefined;
+                    if (iter.type.is_cte_boxed()) {
+                        iter_borrow = TypeValue.init(borrow_t, iter.value);
+                    } else {
+                        iter_borrow = TypeValue.init(borrow_t, Value.initPtr(&iter.value));
+                    }
+                    const args = [_]sema_func.Argument{
+                        sema_func.Argument.initReceiver(iter_n, sema.ExprResult.initCtValue(iterable)),
+                        sema_func.Argument.initPreResolved(iter_n, sema.ExprResult.initCtValue(iter_borrow)),
+                    };
+                    while (true) {
+                        const next = try cte.callFuncSym(c, func_sym, &args, &.{}, iter_n);
+                        defer c.heap.destructValue(next);
+
+                        const value = try c.heap.unwrap_option_or(next.type.cast(.option), next.value) orelse {
+                            break;
+                        };
+                        const value_t = next.type.cast(.option).child_t;
+
+                        // NOTE: Only one variable before case block so avoid pushing another ct block.
+                        if (for_stmt.each) |each| {
+                            const cx = sema.getResolveContext(c);
+                            try cx.initCtVar2(c.alloc, each.name(), value_t, value);
+                        }
+                        defer {
+                            if (for_stmt.each) |each| {
+                                const cx = sema.getResolveContext(c);
+                                cx.unsetCtParam(c.heap, each.name());
+                            }
+                        }
+
+                        const cond = for_case.data.case.conds.ptr[0];
+                        const cond_v = try evalCheck(c, cond, control.type);
+                        defer c.heap.destructValue(cond_v);
+
+                        if (try evalCompare(c, control.type, control.value, cond_v.value, cond)) {
+                            try evalCase(c, for_case, null, cb, data, opt_target);
+                            return;
+                        }
+                    }
+                    continue;
+                }
+            }
+            var case = try getCaseStmt(c, case_n, req_ct_case);
+            switch (case.kind) {
+                .else_ =>{
+                    const local_start = push_ct_block(c);
+
+                    try cb(c, case, data, opt_target);
+
+                    pop_ct_block(c, local_start);
+                    return;
+                },
+                .case => {
+                    for (case.data.case.conds.slice()) |cond| {
+                        var exp: cy.Value = undefined;
+                        if (control.type.kind() == .enum_t) {
+                            const enum_t = control.type.cast(.enum_t);
+                            if (cond.type() != .dot_lit) {
+                                const targetTypeName = enum_t.base.name();
+                                return c.reportErrorFmt("Expected enum literal to match `{}`", &.{v(targetTypeName)}, @ptrCast(cond));
+                            }
+
+                            const case_name = cond.cast(.dot_lit).as_dot_infer_name();
+                            const enum_case = enum_t.getCase(case_name) orelse {
+                                return c.reportErrorFmt("Expected valid case.", &.{}, @ptrCast(cond));
+                            };
+                            exp = Value.initInt(@intCast(enum_case.val));
+                        } else {
+                            const condv = try evalCheck(c, cond, control.type);
+                            exp = condv.value;
+                        }
+                        defer c.heap.destructValue2(control.type, exp);
+                        if (try evalCompare(c, control.type, exp, control.value, cond)) {
+                            if (case.body_kind == .fallthrough) {
+                                for (switch_stmt.cases.slice()[i+1..]) |stmt| {
+                                    case = try getCaseStmt(c, stmt, req_ct_case);
+                                    if (case.body_kind == .fallthrough) {
+                                        continue;
+                                    }
+                                    if (case.kind == .case) {
+                                        try evalCase(c, case, null, cb, data, opt_target);
+                                        return;
+                                    } else {
+                                        return error.TODO;
+                                    }
+                                    return;
+                                }
+                            }
+                            try evalCase(c, case, null, cb, data, opt_target);
+                            return;
+                        }
+                    }
+                },
+            }
+        }
+    }
+}
+
+const EvalCaseFn = *const fn(*cy.Chunk, *ast.CaseStmt, ?*anyopaque, ?*cy.Type) anyerror!void;
+
+fn evalCase(c: *cy.Chunk, case: *ast.CaseStmt, captured_opt: ?cy.TypeValue, cb: EvalCaseFn, data: ?*anyopaque, opt_target: ?*cy.Type) !void {
+    const local_start = push_ct_block(c);
+
+    if (captured_opt) |captured| {
+        const capture_n = case.data.case.capture.?;
+        try localDecl2(c, capture_n.name(), captured.type, captured.value);
+    }
+
+    try cb(c, case, data, opt_target);
+
+    pop_ct_block(c, local_start);
+}
+
+fn getCaseStmt(c: *cy.Chunk, stmt: *ast.Node, req_ct_case: bool) !*ast.CaseStmt { 
+    if (req_ct_case) {
+        if (stmt.type() != .ct_stmt) {
+            return c.reportErrorFmt("Expected compile-time `case` statement.", &.{}, stmt);
+        }
+        return stmt.cast(.ct_stmt).child.cast(.case_stmt);
+    } else {
+        if (stmt.type() == .case_stmt) {
+            return stmt.cast(.case_stmt);
+        } else {
+            return stmt.cast(.ct_stmt).child.cast(.case_stmt);
+        }
+    }
+}
+
+pub fn forRangeStmt(c: *cy.Chunk, node: *ast.ForRangeStmt, cb: *const fn(*cy.Chunk, *ast.ForRangeStmt, ?*anyopaque) anyerror!void, data: ?*anyopaque) !void {
+    const start = try cte.evalTarget(c, node.start, c.sema.i64_t);
+    if (start.type.kind() != .int) {
+        return c.reportErrorFmt("Expected integer.", &.{}, node.start);
+    }
+    const end = try cte.evalCheck(c, node.end, start.type);
+    var i = start.value.asInt();
+    var ctx = sema.getResolveContext(c);
+    var each_name: ?[]const u8 = null;
+    if (node.each) |each| {
+        each_name = each.name();
+        if (ctx.hasCtParam(each_name.?)) {
+            return c.reportErrorFmt("Redeclaration of compile-time variable `{}`.", &.{v(each_name.?)}, each);
+        }
+    }
+
+    while (i < end.value.asInt()) {
+        if (each_name) |name| {
+            ctx = sema.getResolveContext(c);
+            try ctx.setCtParam(c.heap, name, start.type, Value.initInt(i));
+        }
+
+        const local_start = push_ct_block(c);
+
+        try cb(c, node, data);
+
+        pop_ct_block(c, local_start);
+
+        i += 1;
+    }
+}
+
+pub fn push_ct_block(c: *cy.Chunk) usize {
+    const cx = sema.getResolveContext(c);
+    return cx.pushCtBlock();
+}
+
+pub fn pop_ct_block(c: *cy.Chunk, local_start: usize) void {
+    const cx = sema.getResolveContext(c);
+    cx.popCtBlock(c, local_start);
+}
+
+fn forRangeInner(c: *cy.Chunk, for_range: *ast.ForRangeStmt, data: ?*anyopaque) anyerror!void {
+    const ctx: *EvalContextAndResult = @ptrCast(@alignCast(data));
+    ctx.res = try evalStmts(c, ctx.ctx, for_range.stmts);
+}
+
+fn switchCaseInner(c: *cy.Chunk, case_stmt: *ast.CaseStmt, data: ?*anyopaque, opt_target: ?*cy.Type) anyerror!void {
+    _ = opt_target;
+    const ctx: *EvalContextAndResult = @ptrCast(@alignCast(data));
+    if (case_stmt.body_kind != .block) {
+        return error.Unsupported;
+    }
+    ctx.res = try evalStmts(c, ctx.ctx, case_stmt.body_data.block.slice());
+}
+
+fn switchExprCaseInner(c: *cy.Chunk, case_stmt: *ast.CaseStmt, data: ?*anyopaque, opt_target: ?*cy.Type) anyerror!void {
+    const ctx: *EvalContextAndResult = @ptrCast(@alignCast(data));
+    if (case_stmt.body_kind != .expr) {
+        return error.Unsupported;
+    }
+    var res: cy.TypeValue = undefined;
+    if (opt_target) |target_t| {
+        res = try evalTarget(c, case_stmt.body_data.expr, target_t);
+    } else {
+        res = try eval(c, case_stmt.body_data.expr);
+    }
+    ctx.res.ret = true;
+    ctx.res.ret_value = res.value;
+    ctx.ctx.ret = res.type;
+}
+
+const EvalContextAndResult = struct {
+    ctx: EvalContext,
+    res: EvalStmtResult,
+};
+
+const RecOp = struct {
+    node: *ast.Node,
+    left: *ast.Node,
+    op: ast.BinaryExprOp,
+};
+
+fn eval_assign_right(c: *cy.Chunk, right: *ast.Node, rec_op_opt: ?RecOp) !TypeValue {
+    if (rec_op_opt) |rec_op| {
+        return eval_bin_expr(c, rec_op.left, rec_op.op, right, rec_op.node);
+    } else {
+        return eval(c, right);
+    }
+}
+
+fn eval_assign(c: *cy.Chunk, left_n: *ast.Node, right_n: *ast.Node, op_opt: ?ast.BinaryExprOp, node: *ast.Node) !void {
+    const rec_op: ?RecOp = if (op_opt) |op| .{ .left = left_n, .op = op, .node = node } else null;
+    switch (left_n.type()) {
+        .ident => {
+            const name = left_n.name();
+            const left = try sema.lookupStaticIdent(c, name, left_n) orelse {
+                return c.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, left_n);
+            };
+            switch (left) {
+                .capture,
+                .local => {
+                    @panic("Unexpected.");
+                },
+                .ct_var => |ct_var| {
+                    const var_t = ct_var.getType();
+                    const right = try evalCheck(c, right_n, var_t);
+                    c.heap.destructValue2(var_t, ct_var.value);
+                    ct_var.* = sema.CtParam.initVar(right);
+                },
+                else => {
+                    return c.reportErrorFmt("Unsupported {}", &.{v(@tagName(left))}, left_n);
+                },
+            }
+        },
+        .deref => {
+            const deref = left_n.cast(.deref);
+            const rec = try eval(c, deref.left);
+            defer c.heap.destructValue(rec);
+            const right = try eval_assign_right(c, right_n, rec_op);
+
+            const child_t = rec.type.getRefLikeChild() orelse {
+                return c.reportError("Expected reference type.", left_n);
+            };
+
+            const dst = rec.value.asBytes();
+            c.heap.destructValueAt(child_t, dst);
+            c.heap.moveValueTo(child_t, dst, right.value);
+        },
+        .index_expr => {
+            const index_expr = left_n.cast(.index_expr);
+
+            const rec = try evalExprInfer(c, index_expr.left);
+            defer deinitExpr(c, rec);
+
+            switch (rec.kind) {
+                .ct_var => {
+                    const rec_t = rec.data.ct_var.getType();
+                    if (rec_t.kind() == .vector) {
+                        const vector_t = rec_t.cast(.vector);
+                        const idx_val = try evalCheck(c, index_expr.args.ptr[0], c.sema.i64_t);
+                        const idx: usize = @intCast(idx_val.value.asInt());
+
+                        const right = try evalCheck(c, right_n, vector_t.elem_t);
+
+                        const dst = rec.data.ct_var.value.asPtr([*]u8) + idx*vector_t.elem_t.size();
+                        c.heap.destructValueAt(vector_t.elem_t, dst);
+                        c.heap.moveValueTo(vector_t.elem_t, dst, right.value);
+                    } else {
+                        return c.reportErrorFmt("Unsupported {}", &.{v(rec_t.name())}, index_expr.left);
+                    }
+                },
+                else => {
+                    return c.reportErrorFmt("Unsupported {}", &.{v(rec.kind)}, index_expr.left);
+                }
+            }
+        },
+        else => {
+            return c.reportErrorFmt("Unsupported {}.", &.{v(left_n.type())}, left_n);
         },
     }
 }
 
-pub fn resolveCtValue(c: *cy.Chunk, expr: *ast.Node) anyerror!CtValue {
-    return (try resolveCtValueOpt(c, expr)) orelse {
-        return c.reportError("Expected compile-time value.", expr);
+fn evalStmt(c: *cy.Chunk, ctx: EvalContext, stmt: *ast.Node) !EvalStmtResult {
+    switch (stmt.type()) {
+        .op_assign_stmt => {
+            const assign_stmt = stmt.cast(.op_assign_stmt);
+            try eval_assign(c, assign_stmt.left, assign_stmt.right, assign_stmt.op, stmt);
+        },
+        .assign_stmt => {
+            const assign_stmt = stmt.cast(.assign_stmt);
+            try eval_assign(c, assign_stmt.left, assign_stmt.right, null, stmt);
+        },
+        .var_decl => {
+            try cte.localDecl(c, stmt.cast(.var_decl));
+        },
+        .for_range_stmt => {
+            var mut_ctx = EvalContextAndResult{ .ctx = ctx, .res = undefined };
+            try forRangeStmt(c, stmt.cast(.for_range_stmt), forRangeInner, &mut_ctx);
+            return mut_ctx.res;
+        },
+        .switch_stmt => {
+            var mut_ctx = EvalContextAndResult{ .ctx = ctx, .res = undefined };
+            try switchStmt(c, stmt.cast(.switch_stmt), false, switchCaseInner, &mut_ctx, null);
+            return mut_ctx.res;
+        },
+        .if_stmt => {
+            const if_stmt = stmt.cast(.if_stmt);
+            var cond_res = try cte.evalCheck(c, if_stmt.cond, c.sema.bool_t);
+            if (cond_res.value.asBool()) {
+                // const start = try sema.getResolveContext(c).pushCtBlock(c, @ptrCast(if_stmt));
+                return evalStmts(c, ctx, if_stmt.stmts);
+                // try sema.getResolveContext(c).popCtBlock(c, start);
+            } else {
+                for (if_stmt.else_blocks) |block_| {
+                    var block = block_;
+                    if (block.type() == .ct_stmt) {
+                        block = block.cast(.ct_stmt).child;
+                    }
+                    if (block.type() == .elseif_block) {
+                        const elseif_block = block.cast(.elseif_block);
+                        cond_res = try cte.evalCheck(c, elseif_block.cond, c.sema.bool_t);
+                        if (cond_res.value.asBool()) {
+                            return evalStmts(c, ctx, elseif_block.stmts);
+                        }
+                    } else if (block.type() == .else_block) {
+                        const else_block = block.cast(.else_block);
+                        return evalStmts(c, ctx, else_block.stmts);
+                    } else {
+                        return error.Unsupported;
+                    }
+                }
+            }
+        },
+        .returnExprStmt => {
+            const return_stmt = stmt.cast(.returnExprStmt);
+            const res = try evalCheck(c, return_stmt.child, ctx.ret);
+            return .{
+                .ret = true,
+                .ret_value = res.value,
+            };
+        },
+        .exprStmt => {
+            const expr_stmt = stmt.cast(.exprStmt);
+            const res = try eval(c, expr_stmt.child);
+            defer c.heap.destructValue(res);
+        },
+        .ct_stmt => {
+            const ct_stmt = stmt.cast(.ct_stmt);
+            return evalStmt(c, ctx, ct_stmt.child);
+        },
+        else => {
+            return c.reportErrorFmt("Inline eval: Unsupported {}.", &.{v(stmt.type())}, stmt);
+        }
+    }
+    return .{
+        .ret = false,
+        .ret_value = undefined,
     };
 }
 
-pub fn resolveCtSym(c: *cy.Chunk, node: *ast.Node) anyerror!*cy.Sym {
-    const ct_expr = (try resolveCtExprOpt(c, node)) orelse {
-        return c.reportError("Expected symbol.", node);
-    };
-    return cte.deriveCtExprSym(c, ct_expr, node);
+pub fn eval(c: *cy.Chunk, node: *ast.Node) anyerror!TypeValue {
+    const res = try evalExpr(c, node, ExprCstr.initInfer());
+    return exprToValue(c, res, node);
 }
 
-fn deriveCtExprSym(c: *cy.Chunk, expr: CtExpr, node: *ast.Node) !*cy.Sym {
-    switch (expr.type) {
+pub fn evalTarget(c: *cy.Chunk, node: *ast.Node, target_t: ?*cy.Type) anyerror!TypeValue {
+    const res = try evalExpr(c, node, ExprCstr.initTarget(target_t));
+    return exprToValue(c, res, node);
+}
+
+pub fn evalHint(c: *cy.Chunk, node: *ast.Node, target_t: *cy.Type) anyerror!TypeValue {
+    const res = try evalExpr(c, node, ExprCstr.initHint(target_t));
+    return exprToValue(c, res, node);
+}
+
+pub fn evalCheck(c: *cy.Chunk, node: *ast.Node, target_t: *cy.Type) anyerror!TypeValue {
+    const res = try evalExpr(c, node, ExprCstr.init_check(target_t));
+    return exprToValue(c, res, node);
+}
+
+pub fn evalCompare(c: *cy.Chunk, type_: *cy.Type, a: Value, b: Value, node: *ast.Node) !bool { 
+    switch (type_.id()) {
+        bt.Str => {
+            return std.mem.eql(u8, a.asString(), b.asString());
+        },
+        bt.Type => {
+            const a_t = a.asPtr(*cy.Type);
+            const b_t = b.asPtr(*cy.Type);
+            return a_t == b_t;
+        },
+        bt.IntLit,
+        bt.I64 => {
+            return a.val == b.val;
+        },
+        bt.I32 => {
+            return a.u32 == b.u32;
+        },
+        else => {
+            switch (type_.kind()) {
+                .enum_t => {
+                    return a.val == b.val;
+                },
+                else => {
+                    const name = try c.sema.allocTypeName(type_);
+                    defer c.alloc.free(name);
+                    return c.reportErrorFmt("Unsupported {}.", &.{v(name)}, node);
+                },
+            }
+        },
+    }
+}
+
+fn evalCallExpr(c: *cy.Chunk, call: *ast.CallExpr) !Expr {
+    const node: *ast.Node = @ptrCast(call);
+    if (call.callee.type() == .accessExpr) {
+        const callee = call.callee.cast(.accessExpr);
+
+        const left = try evalExprInfer(c, callee.left);
+        defer deinitExpr(c, left);
+
+        switch (left.kind) {
+            .sym => {
+                const sym = left.data.sym;
+                if (sym.type == .func) {
+                    return c.reportErrorFmt("Can not access function symbol `{}`.", &.{v(sym.name())}, callee.right);
+                }
+                if (sym.isValue()) {
+                    return error.Unexpected;
+                }
+
+                // Look for sym under left module.
+                const right_name = callee.right.name();
+                const right_sym = try c.getResolvedSymOrFail(sym, right_name, callee.right);
+
+                const res = try sema.callSym(c, right_sym, callee.right, call.args.slice(), true, node);
+                return Expr.initValue(res.data.ct_value);
+            },
+            .value => {
+                const left_value = left.data.value;
+                // Look for sym under left type's module.
+                const right_name = callee.right.name();
+                const right_sym = try c.accessResolvedSymOrFail(left_value.type, right_name, callee.right);
+
+                if (right_sym.type == .func) {
+                    const res = try c.semaCallFuncSymRec(right_sym.cast(.func), callee.left, sema.ExprResult.initCtValue(left_value), call.args.slice(), true, node);
+                    return Expr.initValue(res.data.ct_value);
+                // } else if (rightSym.type == .func_template) {
+                //     const template = rightSym.cast(.func_template);
+                //     if (template.callable) {
+                //         return c.semaCallGenericFuncRec(template, callee.left, leftRes, call.args, node);
+                //     } else {
+                //         return c.reportErrorFmt("Function template must be expanded first.", &.{v(right_name)}, callee.left);
+                //     }
+                // } else {
+                //     const callee_v = try c.semaExpr(call.callee, .{});
+                //     return c.semaCallValue(callee_v, call.callee, call.args, callee.right);
+                } else {
+                    return c.reportErrorFmt("Unsupported {}", &.{v(right_sym.type)}, node);
+                }
+            },
+            else => {
+                return c.reportErrorFmt("Unsupported {}", &.{v(left.kind)}, node);
+            },
+        }
+    } else if (call.callee.type() == .ident or call.callee.type() == .at_lit) {
+        const name = call.callee.name();
+
+        const callee = try sema.lookupStaticIdent(c, name, node) orelse {
+            return c.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, node);
+        };
+        switch (callee) {
+            .capture,
+            .local => {
+                @panic("Unexpected.");
+            },
+            .static => |sym| {
+                const res = try sema.callSym(c, sym, call.callee, call.args.slice(), true, node);
+                return Expr.initValue(res.data.ct_value);
+            },
+            // .ct_value => |ct_value| {
+            //     defer c.heap.release(ct_value.value);
+            //     if (ct_value.type.id() == bt.Type) {
+            //         const type_ = ct_value.value.asPtr(*cy.Type);
+            //         const sym = type_.sym();
+            //         return callSym(c, @ptrCast(sym), call.callee, call.args, req_value, node);
+            //     } else {
+            //         if (ct_value.type.kind() == .func_sym) {
+            //             const func = ct_value.value.asPtr(*cy.Func);
+            //             return c.semaCallFunc(func, call.args, node);
+            //         } else {
+            //             return error.TODO;
+            //         }
+            //     }
+            // },
+            // .param_value => |param_value| {
+            //     defer cy.TypeParamValue.deinit(c.heap, param_value);
+            //     switch (param_value.type.id()) {
+            //         else => {
+            //             if (param_value.type.kind() == .func_sym) {
+            //                 return c.semaCallFunc(param_value.value.fnsym, call.args, node);
+            //             } else if (param_value.type.id() == bt.Type) {
+            //                 return callSym(c, &param_value.value.type.sym().head, call.callee, call.args, req_value, node);
+            //             }
+            //             std.debug.panic("TODO: {s}", .{param_value.type.name()});
+            //         }
+            //     }
+            //     return error.TODO;
+            // },
+            else => {
+                return c.reportErrorFmt("Unsupported {}", &.{v(@tagName(callee))}, node);
+            },
+        }
+    } else if (call.callee.type() == .dollar_lit) {
+        const cx = sema.getResolveContext(c);
+        if (cx.type != .func or !cx.data.func.isMethod()) {
+            return c.reportErrorFmt("Can only infer `self` from a method body.", &.{}, call.callee);
+        }
+
+        const self_param = cx.ct_params.get("self").?;
+
+        const callee = call.callee.cast(.dollar_lit);
+        const right_name = callee.name.name();
+
+        // Look for sym under left type's module.
+        const right_sym = try c.accessResolvedSymOrFail(self_param.getType(), right_name, callee.name);
+
+        if (right_sym.type == .func) {
+            const res = try c.semaCallFuncSymRec(right_sym.cast(.func), callee.name, sema.ExprResult.initCtValue2(self_param.getType(), self_param.value), call.args.slice(), true, node);
+            return Expr.initValue(res.data.ct_value);
+        // } else if (rightSym.type == .func_template) {
+        //     const template = rightSym.cast(.func_template);
+        //     if (template.callable) {
+        //         return c.semaCallGenericFuncRec(template, callee.left, leftRes, call.args, node);
+        //     } else {
+        //         return c.reportErrorFmt("Function template must be expanded first.", &.{v(right_name)}, callee.left);
+        //     }
+        // } else {
+        //     const callee_v = try c.semaExpr(call.callee, .{});
+        //     return c.semaCallValue(callee_v, call.callee, call.args, callee.right);
+        } else {
+            return c.reportErrorFmt("Unsupported {}", &.{v(right_sym.type)}, node);
+        }
+    } else {
+        const callee = try evalExprInfer(c, call.callee);
+        defer deinitExpr(c, callee);
+        switch (callee.kind) {
+            .sym => {
+                const sym = callee.data.sym;
+                if (sym.type == .func) {
+                    return c.reportErrorFmt("Expected function `{}`.", &.{v(sym.name())}, call.callee);
+                }
+                if (sym.isValue()) {
+                    return error.Unexpected;
+                }
+                const res = try sema.callSym(c, sym, call.callee, call.args.slice(), true, node);
+                return Expr.initValue(res.data.ct_value);
+            },
+            .func => {
+                // return c.semaCallFunc(calleeRes.data.func, call.args, @ptrCast(node));
+            },
+            .value => {
+                // return c.semaCallValue(calleeRes, call.callee, call.args, node);
+            },
+            else => {
+            },
+        }
+        return c.reportErrorFmt("Unsupported {}", &.{v(call.callee.type())}, node);
+    }
+
+    // const res = try c.semaCallExpr(true, node);
+    // if (res.resType != .ct_value) {
+    //     return error.Unexpected;
+    // }
+    // return Expr.initValue(res.data.ct_value);
+}
+
+pub const CallCstr = struct {
+    req_value: bool,
+};
+
+pub fn evalCall(c: *cy.Chunk, func: *cy.Func, args: []const Value, cstr: CallCstr, node: *ast.Node) !sema.ExprResult {
+    switch (func.type) {
+        .host_ct => {
+            const ctx = cy.CtFuncContext{
+                .func = func, 
+                .args = args.ptr,
+                .node = node,
+            };
+
+            if (!cstr.req_value) {
+                if (func.data.host_ct.ptr) |ptr| {
+                    var res: sema.ExprResult = undefined;
+                    if (!ptr(c, &ctx, &res)) {
+                        return error.CompileError;
+                    }
+                    return res;
+                }
+            }
+
+            const eval_ptr = func.data.host_ct.eval orelse {
+                return c.reportErrorFmt("Inline eval unsupported for `{}.{}`.", &.{v(func.parent_mod_sym().name()), v(func.name())}, node);
+            };
+            const res = eval_ptr(c, &ctx);
+            if (res.type.id() == bt.Null) {
+                return error.CompileError;
+            }
+            return sema.ExprResult.initCtValue(res);
+        },
+        .hostFunc => {
+            if (func.data.hostFunc.eval) |eval_ptr| {
+                const ctx = cy.CtFuncContext{
+                    .func = func, 
+                    .args = args.ptr,
+                    .node = node,
+                };
+                const res = eval_ptr(c, &ctx);
+                if (res.type.id() == bt.Null) {
+                    return error.CompileError;
+                }
+                return sema.ExprResult.initCtValue(res);
+            }
+        },
+        .userFunc => {
+            if (func.data.userFunc.eval) |eval_ptr| {
+                const ctx = cy.CtFuncContext{
+                    .func = func, 
+                    .args = args.ptr,
+                    .node = node,
+                };
+                const res = eval_ptr(c, &ctx);
+                if (res.type.id() == bt.Null) {
+                    return error.CompileError;
+                }
+                return sema.ExprResult.initCtValue(res);
+            }
+            const val = try evalFunc(c, func, args, node);
+            return sema.ExprResult.initCtValue2(func.sig.ret, val);
+        },
+        else => {},
+    }
+    return c.reportErrorFmt("Inline eval: Unsupported function: `{}`", &.{v(func.type)}, node);
+}
+
+pub const ExprCstr = struct {
+    type: ?*cy.Type,
+
+    /// For templates params, the target is `c.sema.type` and `type` contains a generic type constraint.
+    match_generic_type: bool = false,
+
+    check: bool,
+    fit_target: bool,
+
+    /// Declaration sites do not need a fully resolved type.
+    /// Const eval and IR generation do.
+    /// IR generation can assume all declared types have been resolved already.
+    /// This only affects newly created types (instance types).
+    resolve_new_type: bool = true,
+
+    fn initTarget(type_: ?*cy.Type) ExprCstr {
+        return .{
+            .check = false,
+            .type = type_,
+            .fit_target = true,
+        };
+    }
+
+    fn initHint(type_: *cy.Type) ExprCstr {
+        return .{
+            .check = false,
+            .type = type_,
+            .fit_target = false,
+        };
+    }
+
+    pub fn init_check_generic(type_: *cy.Type) ExprCstr {
+        return .{
+            .check = true,
+            .match_generic_type = true,
+            .type = type_,
+            .fit_target = true,
+        };
+    }
+
+    pub fn init_check(type_: *cy.Type) ExprCstr {
+        return .{
+            .check = true,
+            .type = type_,
+            .fit_target = true,
+        };
+    }
+
+    fn initInfer() ExprCstr {
+        return .{
+            .check = false,
+            .type = null,
+            .fit_target = false,
+        };
+    }
+};
+
+pub fn exprToValue(c: *cy.Chunk, expr: Expr, node: *ast.Node) !TypeValue {
+    switch (expr.kind) {
+        .ct_var => {
+            const val_t = expr.data.ct_var.getType();
+            const val = expr.data.ct_var.value;
+            const deref = try c.heap.copyValue2(val_t, val);
+            return TypeValue.init(val_t, deref);
+        },
+        .value => return expr.data.value,
+        .func => {
+            const func = expr.data.func;
+            const func_t = try cy.sema.getFuncSymType(c, func.sig);
+            return TypeValue{
+                .type = func_t,
+                .value = Value.initPtr(func),
+            };
+        },
+        .sym => {
+            const sym = expr.data.sym;
+            switch (sym.type) {
+                .userVar => {
+                    return c.reportErrorFmt("Cannot reference runtime variable at compile-time.", &.{}, node);
+                },
+                .func => {
+                    const func_sym = sym.cast(.func);
+                    if (func_sym.numFuncs == 1) {
+                        const func_t = try cy.sema.getFuncSymType(c, func_sym.first.sig);
+                        return TypeValue{
+                            .type = func_t,
+                            .value = Value.initPtr(func_sym.first),
+                        };
+                    }
+                },
+                .choice_case => {
+                    const choice_case = sym.cast(.choice_case);
+                    if (choice_case.payload_t.id() == bt.Void) {
+                        return TypeValue{
+                            .type = choice_case.type,
+                            .value = try c.heap.newChoice(choice_case.type, choice_case.head.name(), cy.Value.Void),
+                        };
+                    }
+                },
+                .enum_case => {
+                    const enum_case = sym.cast(.enum_case);
+                    return TypeValue{
+                        .type = enum_case.type,
+                        .value = Value.initInt(@intCast(enum_case.val)),
+                    };
+                },
+                else => {
+                    if (sym.getStaticType()) |type_| {
+                        return TypeValue{
+                            .type = c.sema.type_t,
+                            .value = Value.initPtr(type_),
+                        };
+                    }
+                },
+            }
+            return c.reportErrorFmt("Unsupported conversion to compile-time value: {}", &.{v(sym.type)}, node);
+        },
+    }
+}
+
+pub fn evalSym(c: *cy.Chunk, node: *ast.Node) anyerror!*cy.Sym {
+    const res = try evalExprInfer(c, node);
+    return cte.deriveCtExprSym(c, res, node);
+}
+
+fn deriveCtExprSym(c: *cy.Chunk, expr: Expr, node: *ast.Node) !*cy.Sym {
+    switch (expr.kind) {
         .sym => {
             return expr.data.sym;
         },
+        .ct_var,
+        .func => {
+            return error.TODO;
+        },
         .value => {
-            defer c.vm.release(expr.data.value.value);
+            defer c.heap.destructValue(expr.data.value);
             if (expr.data.value.type.id() == bt.Type) {
-                const type_ = c.sema.getType(expr.data.value.value.asHeapObject().type.type);
+                const type_ = expr.data.value.value.asPtr(*cy.Type);
                 return @ptrCast(type_.sym());
             }
             const type_n = try c.sema.allocTypeName(expr.data.value.type);
@@ -618,8 +994,8 @@ fn deriveCtExprSym(c: *cy.Chunk, expr: CtExpr, node: *ast.Node) !*cy.Sym {
     }
 }
 
-pub fn deriveCtExprType2(c: *cy.Chunk, expr: CtExpr) !*cy.Type {
-    switch (expr.type) {
+pub fn deriveCtExprType2(c: *cy.Chunk, expr: Expr) !*cy.Type {
+    switch (expr.kind) {
         .sym => {
             const sym = expr.data.sym;
             if (sym.getStaticType()) |type_| {
@@ -628,7 +1004,7 @@ pub fn deriveCtExprType2(c: *cy.Chunk, expr: CtExpr) !*cy.Type {
             if (sym.type == .func) {
                 const func_sym = sym.cast(.func);
                 if (func_sym.numFuncs == 1) {
-                    return sema.getFuncSymType(c, func_sym.first.funcSigId);
+                    return sema.getFuncSymType(c, func_sym.first.sig);
                 }
             }
 
@@ -638,17 +1014,26 @@ pub fn deriveCtExprType2(c: *cy.Chunk, expr: CtExpr) !*cy.Type {
                 return error.BadSym;
             }
         },
+        .func => {
+            return error.TODO;
+        },
+        .ct_var => {
+            if (expr.data.ct_var.getType().id() == bt.Type) {
+                return expr.data.ct_var.value.asPtr(*cy.Type);
+            }
+            return error.BadValue;
+        },
         .value => {
-            defer c.vm.release(expr.data.value.value);
+            defer c.heap.destructValue(expr.data.value);
             if (expr.data.value.type.id() == bt.Type) {
-                return c.sema.getType(expr.data.value.value.asHeapObject().type.type);
+                return expr.data.value.value.asPtr(*cy.Type);
             }
             return error.BadValue;
         },
     }
 }
 
-fn deriveCtExprType(c: *cy.Chunk, expr: CtExpr, node: *ast.Node) !*cy.Type {
+fn deriveCtExprType(c: *cy.Chunk, expr: Expr, node: *ast.Node) !*cy.Type {
     return deriveCtExprType2(c, expr) catch |err| {
         if (err == error.TemplateSym) {
             return c.reportErrorFmt("Expected a type symbol. `{}` is a type template and must be expanded to a type first.", &.{
@@ -667,198 +1052,1414 @@ fn deriveCtExprType(c: *cy.Chunk, expr: CtExpr, node: *ast.Node) !*cy.Type {
     };
 }
 
-pub fn resolveCtType(c: *cy.Chunk, expr: *ast.Node) !*cy.Type {
-    const ct_expr = (try resolveCtExprOpt(c, expr)) orelse {
-        return c.reportError("Expected type.", expr);
-    };
-    return cte.deriveCtExprType(c, ct_expr, expr);
+pub fn evalType(c: *cy.Chunk, node: *ast.Node) !*cy.Type {
+    const res = try evalExprInfer(c, node);
+    return cte.deriveCtExprType(c, res, node);
 }
 
-pub fn resolveCtExpr(c: *cy.Chunk, expr: *ast.Node) anyerror!CtExpr {
-    return (try resolveCtExprOpt(c, expr)) orelse {
-        return c.reportError("Expected compile-time expression.", expr);
-    };
+/// Resolves a type specifier node to a `Type`.
+pub fn eval_type2(c: *cy.Chunk, resolve_new_type: bool, node: *ast.Node) !*cy.Type {
+    var cstr = ExprCstr.initInfer();
+    cstr.resolve_new_type = resolve_new_type;
+    const res = try evalExpr(c, node, cstr);
+    return cte.deriveCtExprType(c, res, node);
 }
 
-const CtExprType = enum(u8) {
+pub fn evalFitTarget(c: *cy.Chunk, tval: TypeValue, target_t: *cy.Type, node: *ast.Node) !?Value {
+    _ = node;
+    if (target_t.kind() == .option) {
+        const option = target_t.cast(.option);
+        if (option.child_t.id() == tval.type.id()) {
+            return try c.heap.newSome(option, tval.value);
+        }
+    }
+
+    if (target_t.id() == bt.I64) {
+        if (tval.type.id() == bt.IntLit) {
+            return Value.initInt(tval.value.as_int_lit());
+        }
+    }
+
+    if (target_t.id() == bt.StrLit) {
+        if (tval.type.id() == bt.Str) {
+            const s = tval.value.asString();
+            defer c.heap.release(tval.value);
+            return try c.heap.newGenericStr(s);
+        }
+    }
+
+    if (target_t.id() == bt.Str) {
+        if (tval.type.id() == bt.StrLit) {
+            const s = tval.value.as_str_lit();
+            defer c.heap.release(tval.value);
+            return try c.heap.newStr(s);
+        }
+    }
+
+    if (target_t.id() == bt.IntLit) {
+        if (tval.type.id() == bt.I64) {
+            return Value.initGenericInt(tval.value.asInt());
+        }
+    }
+
+    return null;
+}
+
+pub fn evalExpr(c: *cy.Chunk, node: *ast.Node, cstr: ExprCstr) anyerror!Expr {
+    const res = try evalExprNoCheck(c, node, cstr);
+    if (!cstr.fit_target and !cstr.check) {
+        return res;
+    }
+
+    // Convert to TypeValue.
+    // TODO: Maybe `Expr` should always be a TypeValue.
+    const res_val = try exprToValue(c, res, node);
+    const target_t = cstr.type orelse {
+        return Expr.initValue(res_val);
+    };
+
+    if (cstr.match_generic_type) {
+        if (res_val.type.id() == bt.Type) {
+            switch (target_t.kind()) {
+                .generic => {
+                    return Expr.initValue(res_val);
+                },
+                .generic_trait => {
+                    const _type = res_val.value.asPtr(*cy.Type);
+                    // try sema_type.ensure_resolved_type(c, _type, node);
+                    if (try sema_type.implements(c, _type, target_t.cast(.generic_trait), node)) {
+                        return Expr.initValue(res_val);
+                    }
+                },
+                else => {},
+            }
+        }
+    } else {
+        if (res_val.type.id() == target_t.id()) {
+            return Expr.initValue(res_val);
+        }
+    }
+
+    if (cstr.fit_target) {
+        if (try evalFitTarget(c, res_val, target_t, node)) |new| {
+            return Expr.initValue2(target_t, new);
+        }
+    }
+
+    if (cstr.check) {
+        const exp_name = try c.sema.allocTypeName(target_t);
+        defer c.alloc.free(exp_name);
+        const act_name = try c.sema.allocTypeName(res_val.type);
+        defer c.alloc.free(act_name);
+        return c.reportErrorFmt("Expected type `{}`. Found `{}`.", &.{v(exp_name), v(act_name)}, node);
+    }
+    return res;
+}
+
+pub fn evalExprInfer(c: *cy.Chunk, node: *ast.Node) !Expr {
+    return evalExpr(c, node, ExprCstr.initInfer());
+}
+
+pub fn evalExprCheck(c: *cy.Chunk, node: *ast.Node, type_: *cy.Type) !Expr {
+    return evalExpr(c, node, ExprCstr.init_check(type_));
+}
+
+pub fn deinitExpr(c: *cy.Chunk, expr: Expr) void {
+    switch (expr.kind) {
+        .ct_var,
+        .sym,
+        .func => {},
+        .value => {
+            c.heap.destructValue(expr.data.value);
+        },
+    }
+}
+
+const ExprKind = enum(u8) {
+    ct_var,
     value,
     sym,
+    func,
 };
 
-const CtExpr = struct {
-    type: CtExprType,
+const Expr = struct {
+    kind: ExprKind,
     data: union {
-        value: CtValue,
+        ct_var: *sema.CtParam,
+        value: TypeValue,
         sym: *cy.Sym,
+        func: *cy.Func,
     },    
 
-    fn initValue(value: CtValue) CtExpr {
-        return .{ .type = .value, .data = .{ .value = value }};
+    fn initCtVar(ptr: *sema.CtParam) Expr {
+        return .{ .kind = .ct_var, .data = .{ .ct_var = ptr }};
     }
 
-    fn initSym(sym: *cy.Sym) CtExpr {
-        return .{ .type = .sym, .data = .{ .sym = sym }};
+    fn initValue2(type_: *cy.Type, value: cy.Value) Expr {
+        return .{ .kind = .value, .data = .{ .value = cy.TypeValue.init(type_, value) }};
+    }
+
+    fn initValue(value: TypeValue) Expr {
+        return .{ .kind = .value, .data = .{ .value = value }};
+    }
+
+    fn initSym(sym: *cy.Sym) Expr {
+        return .{ .kind = .sym, .data = .{ .sym = sym }};
+    }
+
+    fn initFunc(func: *cy.Func) Expr {
+        return .{ .kind = .func, .data = .{ .func = func }};
     }
 };
 
-pub fn resolveCtExprOpt(c: *cy.Chunk, expr: *ast.Node) anyerror!?CtExpr {
-    switch (expr.type()) {
-        .raw_string_lit => {
-            const str = c.ast.asRawStringLit(expr);
-            return CtExpr.initValue(.{
-                .type = c.sema.string_t,
-                .value = try c.vm.allocString(str),
-            });
-        },
-        .floatLit => {
-            const literal = c.ast.nodeString(expr);
-            const val = try std.fmt.parseFloat(f64, literal);
-            return CtExpr.initValue(.{
-                .type = c.sema.float_t,
-                .value = cy.Value.initF64(val),
-            });
-        },
-        .decLit => {
-            const literal = c.ast.nodeString(expr);
-            const val = try std.fmt.parseInt(i64, literal, 10);
-            return CtExpr.initValue(.{
-                .type = c.sema.int_t,
-                .value = try c.vm.allocInt(val),
-            });
-        },
-        .ident => {
-            const name = c.ast.nodeString(expr);
-            const res = try sema.lookupIdent(c, name, expr);
-            switch (res) {
-                .global, .local => return null,
-                .static => |sym| {
-                    return CtExpr.initSym(sym);
-                },
-                .ct_value => |ct_value| {
-                    return CtExpr.initValue(ct_value);
-                },
-            }
-        },
-        .array_expr => {
-            const array_expr = expr.cast(.array_expr);
-            var left = try resolveCtSym(c, array_expr.left);
-            if (left.type != .template) {
-                return c.reportErrorFmt("Unsupported array expression.", &.{}, expr);
-            }
-            const template = left.cast(.template);
-            if (template.kind == .value) {
-                const val = try cte.expandValueTemplateForArgs(c, template, array_expr.args, expr);
-                return CtExpr.initValue(val);
-            } else {
-                const sym = try cte.expandTemplateForArgs(c, template, array_expr.args, expr);
-                return CtExpr.initSym(sym);
-            }
-        },
-        .ptr_slice => {
-            const ptr_slice = expr.cast(.ptr_slice);
-            const sym = try cte.expandTemplateForArgs(c, c.sema.ptr_slice_tmpl, &.{ ptr_slice.elem }, expr);
-            return CtExpr.initSym(sym);
-        },
-        .ptr => {
-            const ptr = expr.cast(.ptr);
-            const sym = try cte.expandTemplateForArgs(c, c.sema.pointer_tmpl, &.{ ptr.elem }, expr);
-            return CtExpr.initSym(sym);
-        },
-        .ref => {
-            const ref = expr.cast(.ref);
-            const sym = try cte.expandTemplateForArgs(c, c.sema.ref_tmpl, &.{ ref.elem }, expr);
-            return CtExpr.initSym(sym);
-        },
-        .ref_slice => {
-            const ref_slice = expr.cast(.ref_slice);
-            const sym = try cte.expandTemplateForArgs(c, c.sema.ref_slice_tmpl, &.{ ref_slice.elem }, expr);
-            return CtExpr.initSym(sym);
-        },
-        .expandOpt => {
-            const expand_opt = expr.cast(.expandOpt);
-            const sym =try cte.expandTemplateForArgs(c, c.sema.option_tmpl, &.{expand_opt.param}, expr);
-            return CtExpr.initSym(sym);
-        },
-        .array_type => {
-            const array_type = expr.cast(.array_type);
-            const sym = try cte.expandTemplateForArgs(c, c.sema.array_tmpl, &.{ array_type.size, array_type.elem }, expr);
-            return CtExpr.initSym(sym);
-        },
-        .accessExpr => {
-            const access_expr = expr.cast(.accessExpr);
-            const parent = try resolveCtSym(c, access_expr.left);
-            if (access_expr.right.type() != .ident) {
-                return c.reportErrorFmt("Expected identifier.", &.{}, access_expr.right);
-            }
-            const name = c.ast.nodeString(access_expr.right);
-            const sym = try c.getResolvedDistinctSym(parent, name, access_expr.right, true);
-            return CtExpr.initSym(sym);
-        },
-        .callExpr => {
-            const call = expr.cast(.callExpr);
-            if (!call.ct) {
-                return c.reportError("Expected compile-time function call.", expr);
-            }
-            const expr_cstr = sema.Expr.init(expr);
-            const res = try c.semaCallExpr(expr_cstr, true);
-            if (res.resType != .ct_value) {
-                return error.Unexpected;
-            }
-            return CtExpr.initValue(res.data.ct_value);
-        },
-        .group => {
-            const group = expr.cast(.group);
-            return try resolveCtExprOpt(c, group.child);
-        },
-        .func_type => {
-            const func_type = expr.cast(.func_type);
-            const sig = try sema.resolveFuncType(c, func_type);
-            const arg = try c.vm.allocFuncSig(sig);
-            defer c.vm.release(arg);
-            
-            const resolve_ctx = sema.getResolveContext(c);
-            var sym: *cy.Sym = undefined;
-            if (resolve_ctx.prefer_ct_type) {
-                sym = try cte.expandTemplate(c, c.sema.func_sym_tmpl, &.{ arg });
-            } else {
-                if (func_type.is_union) {
-                    sym = try cte.expandTemplate(c, c.sema.func_union_tmpl, &.{ arg });
-                } else {
-                    sym = try cte.expandTemplate(c, c.sema.func_ptr_tmpl, &.{ arg });
-                }
-            }
-            return CtExpr.initSym(sym);
-        },
-        .comptimeExpr => {
-            const ct_expr = expr.cast(.comptimeExpr);
+fn getStructField(c: *cy.Chunk, struct_t: *cy.types.Struct, name: []const u8, node: *ast.Node) !cy.types.Field {
+    const field_sym = struct_t.base.sym().getMod().getSym(name) orelse {
+        return c.reportErrorFmt("Inline eval: No such field `{}`.", &.{v(name)}, node);
+    };
+    if (field_sym.type != .field) {
+        return c.reportErrorFmt("Inline eval: `{}` is not a field.", &.{v(name)}, node);
+    }
+    return struct_t.fields()[field_sym.cast(.field).idx];
+}
 
-            // Check for ct builtins.
-            const mod = c.compiler.ct_builtins_chunk.?.sym.getMod();
-            if (ct_expr.child.type() == .ident) {
-                const name = c.ast.nodeString(ct_expr.child);
-                if (mod.getSym(name)) |sym| {
-                    if (sym.getStaticType()) |type_| {
-                        return CtExpr.initValue(.{
-                            .type = c.sema.type_t,
-                            .value = try c.vm.allocType(type_.id()),
-                        });
+// Mimics `semaInitStruct`.
+pub fn evalInitStruct(c: *cy.Chunk, struct_t: *cy.types.Struct, init_lit: *ast.InitLit) !Expr {
+    const node: *ast.Node = @ptrCast(init_lit);
+    const sym = struct_t.base.sym();
+
+    try sema_type.ensure_resolved_type(c, &struct_t.base, @ptrCast(init_lit));
+
+    // Set up a temp buffer to map initializer entries to type fields.
+    const fieldsDataStart = c.listDataStack.items.len;
+    try c.listDataStack.resize(c.alloc, c.listDataStack.items.len + struct_t.fields_len);
+    defer c.listDataStack.items.len = fieldsDataStart;
+
+    // Initially set to NullId so missed mappings are known from a linear scan.
+    const fieldNodes = c.listDataStack.items[fieldsDataStart..];
+    @memset(fieldNodes, .{ .node = null });
+
+    for (init_lit.args.slice()) |arg| {
+        const pair = arg.cast(.keyValue);
+        const fieldName = pair.key.name();
+        const info = try sema.checkSymInitField(c, @ptrCast(sym), fieldName, pair.key);
+        fieldNodes[info.idx] = .{ .node = pair.value };
+    }
+
+    const fields = struct_t.fields();
+    const arg_start = c.valueStack.items.len;
+    defer {
+        for (c.valueStack.items[arg_start..], 0..) |arg, i| {
+            const field = fields[i];
+            c.heap.destructValue2(field.type, arg);
+        }
+        c.valueStack.items.len = arg_start;
+    }
+
+    for (0..fieldNodes.len) |i| {
+        const item = c.listDataStack.items[fieldsDataStart+i];
+        if (item.node == null) {
+            if (fields[i].init_n) |_| {
+                const arg = try c.heap.copyValue2(fields[i].type, fields[i].init_value);
+                try c.valueStack.append(c.alloc, arg);
+            } else {
+                if (!struct_t.cstruct) {
+                    return c.reportErrorFmt("Initialization requires the field `{}`.", &.{v(struct_t.fields_ptr[i].sym.head.name())}, node);
+                }
+                const arg = try evalCZero(c, fields[i].type, node);
+                try c.valueStack.append(c.alloc, arg);
+            }
+        } else {
+            const arg = try evalCheck(c, item.node.?, fields[i].type);
+            try c.valueStack.append(c.alloc, arg.value);
+        }
+    }
+
+    const new = try c.heap.new_object_undef(struct_t.base.id(), struct_t.size);
+    const dst = new.object.getBytePtr();
+
+    for (fields, 0..) |field, i| {
+        const arg = c.valueStack.items[arg_start + i];
+        try c.heap.copyValueTo2(field.type, dst + field.offset, arg);
+    }
+    return Expr.initValue2(@ptrCast(struct_t), Value.initPtr(new));
+}
+
+pub fn initPartialVector(c: *cy.Chunk, vector_t: *cy.types.PartialVector, init_n: *ast.InitLit) !Expr {
+    const nargs = init_n.args.len;
+    if (nargs > vector_t.n) {
+        return c.reportErrorFmt("Expected at most `{}` elements, found `{}`.", &.{v(vector_t.n), v(nargs)}, @ptrCast(init_n));
+    }
+
+    const arr = try c.heap.new_object_undef(vector_t.base.id(), vector_t.size);
+    arr.object.firstValue = Value.initInt(@intCast(nargs));
+    const dst: [*]u8 = arr.object.getBytePtr() + 8;
+    for (init_n.args.slice(), 0..) |arg, i| {
+        const res = try evalCheck(c, arg, vector_t.elem_t);
+        defer c.heap.destructValue(res);
+        try c.heap.copyValueTo2(vector_t.elem_t, dst + vector_t.elem_t.size() * i, res.value);
+    }
+
+    return Expr.initValue2(&vector_t.base, Value.initPtr(arr));
+}
+
+pub fn initVector(c: *cy.Chunk, vector_t: *cy.types.Vector, init_n: *ast.InitLit) !Expr {
+    const nargs = init_n.args.len;
+    if (nargs != vector_t.n) {
+        return c.reportErrorFmt("Expected `{}` elements, found `{}`.", &.{v(vector_t.n), v(nargs)}, @ptrCast(init_n));
+    }
+
+    const arr = try c.heap.new_object_undef(vector_t.base.id(), vector_t.size);
+    const dst: [*]u8 = @ptrCast(arr);
+    for (init_n.args.slice(), 0..) |arg, i| {
+        const res = try evalCheck(c, arg, vector_t.elem_t);
+        defer c.heap.destructValue(res);
+        try c.heap.copyValueTo2(vector_t.elem_t, dst + vector_t.elem_t.size() * i, res.value);
+    }
+
+    return Expr.initValue2(&vector_t.base, Value.initPtr(arr));
+}
+
+pub fn evalExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: ExprCstr) anyerror!Expr {
+    const opt_target = cstr.type;
+    switch (node.type()) {
+        // .enumMemberSym => {
+        //     const data = c.ir.getExprData(loc, .enumMemberSym);
+        //     const val_t = c.ir.getExprType(loc);
+        //     const val = cy.Value.initInt(@intCast(data.val));
+        //     return TypeValue.init(val_t, val);
+        // },
+        .as_expr => {
+            const as_expr = node.cast(.as_expr);
+            var target_t: *cy.Type = undefined;
+            if (as_expr.target) |target| {
+                target_t = try eval_type2(c, false, target);
+            } else {
+                target_t = opt_target orelse {
+                    return c.reportError("Expected target type for auto cast.", node);
+                };
+            }
+
+            const expr = try evalHint(c, as_expr.expr, target_t);
+            if (target_t.id() == expr.type.id()) {
+                return Expr.initValue2(target_t, expr.value);
+            }
+
+            if (target_t.kind() == .float) {
+                if (expr.type.kind() == .int) {
+                    if (expr.type.cast(.int).bits == target_t.cast(.float).bits) {
+                        return Expr.initValue2(target_t, expr.value);
                     }
                 }
             }
+            return c.reportError("Unsupported auto cast.", node);
+        },
+        .if_expr => {
+            const if_expr = node.cast(.if_expr);
+            const cond = try cte.evalCheck(c, if_expr.cond, c.sema.bool_t);
+            if (cond.value.asBool()) {
+                const res = try cte.evalTarget(c, if_expr.body, opt_target);
+                return Expr.initValue(res);
+            } else {
+                const res = try cte.evalTarget(c, if_expr.else_expr, opt_target);
+                return Expr.initValue(res);
+            }
+        },
+        .undef_lit => {
+            return c.reportErrorFmt("Undefined values are not allowed at compile-time.", &.{}, node);
+        },
+        .noneLit => {
+            const target_t = opt_target orelse {
+                return c.reportErrorFmt("Could not determine optional type for `none`.", &.{}, node);
+            };
+            if (target_t.kind() == .option) {
+                const option_t = target_t.cast(.option);
+                if (option_t.zero_union) {
+                    const value = Value.initInt(0);
+                    return Expr.initValue2(target_t, value);
+                } else {
+                    const value = try c.heap.newNone(option_t);
+                    return Expr.initValue2(target_t, value);
+                }
+            }
+            if (target_t.isPointer()) {
+                return Expr.initValue2(target_t, Value.initPtr(null));
+            }
+            return c.reportErrorFmt("Cannot infer `none`. Expected `Option` target type.", &.{}, node);
+        },
+        .init_expr => {
+            const init_expr = node.cast(.init_expr);
+            const sym = try evalSym(c, init_expr.left);
+            switch (sym.type) {
+                .type => {
+                    if (init_expr.lit.array_like) {
+                        if (try c.getResolvedSym(sym, "@init_sequence", node)) |init_elems| {
+                            _ = init_elems;
+                        
+                            return error.TODO;
+                            // return evalInitArray(c, init_elems, node.lit);
+                        }
+                    } 
 
-            return c.reportErrorFmt("Unexpected compile-time expression.", &.{}, expr);
+                    const type_ = sym.cast(.type).type;
+                    switch (type_.kind()) {
+                        .partial_vector => {
+                            return initPartialVector(c, type_.cast(.partial_vector), init_expr.lit);
+                        },
+                        .vector => {
+                            return initVector(c, type_.cast(.vector), init_expr.lit);
+                        },
+                        .struct_t => {
+                            if (!init_expr.lit.array_like or init_expr.lit.args.len == 0) {
+                                return evalInitStruct(c, type_.cast(.struct_t), init_expr.lit);
+                            }
+                        },
+                        .generic_vector => {
+                            const vector_t = type_.cast(.generic_vector);
+                            const array_t = try sema.getVectorType(c, vector_t.elem_t, @intCast(init_expr.lit.args.len));
+                            return initVector(c, array_t.cast(.vector), init_expr.lit);
+                        },
+                        else => {
+                            return c.reportErrorFmt("TODO: {}", &.{v(type_.kind())}, node);
+                        },
+                    }
+                },
+                else => {},
+            }
+        },
+        .init_lit => {
+            const init_lit = node.cast(.init_lit);
+
+            if (opt_target) |target_t| {
+                if (target_t.kind() == .struct_t) {
+                    if (init_lit.args.len == 0) {
+                        // TODO: Replace special cases with calls to @init_sequence, @init_record.
+                        if (target_t.isInstanceOf(c.sema.slice_tmpl)) {
+                            const new = try c.heap.newInstance(target_t, &.{
+                                C.toFieldInit("buf", @bitCast(Value.initPtr(null))),
+                                C.toFieldInit("ptr", @bitCast(Value.initPtr(null))),
+                                C.toFieldInit("_len", @bitCast(Value.initInt(0))),
+                                C.toFieldInit("header", @bitCast(Value.initInt(@bitCast(@as(u64, 1) << 63)))),
+                            });
+                            return Expr.initValue2(target_t, new);
+                        }
+                        if (target_t.isInstanceOf(c.sema.span_tmpl)) {
+                            const new = try c.heap.newInstance(target_t, &.{
+                                C.toFieldInit("base", @bitCast(Value.initPtr(null))),
+                                C.toFieldInit("length", @bitCast(Value.initInt(0))),
+                            });
+                            return Expr.initValue2(target_t, new);
+                        }
+                        if (target_t.isInstanceOf(c.sema.array_tmpl)) {
+                            const new = try c.heap.newInstance(target_t, &.{
+                                C.toFieldInit("buf", @bitCast(Value.initPtr(null))),
+                                C.toFieldInit("length", @bitCast(Value.initInt(0))),
+                                C.toFieldInit("header", @bitCast(Value.initInt(0))),
+                            });
+                            return Expr.initValue2(target_t, new);
+                        }
+                        if (target_t.isInstanceOf(c.sema.map_tmpl)) {
+                            const generic_map_t = target_t.cast(.struct_t).fields()[0].type;
+                            const base = try c.heap.newInstance(generic_map_t, &.{
+                                C.toFieldInit("meta", @bitCast(Value.initPtr(null))),
+                                C.toFieldInit("_keys", @bitCast(Value.initPtr(null))),
+                                C.toFieldInit("vals", @bitCast(Value.initPtr(null))),
+                                C.toFieldInit("nvac", @bitCast(Value.initInt(0))),
+                                C.toFieldInit("len", @bitCast(Value.initInt(0))),
+                                C.toFieldInit("cap", @bitCast(Value.initInt(0))),
+                            });
+                            const new = try c.heap.newInstance(target_t, &.{
+                                C.toFieldInit("base", @bitCast(base)),
+                            });
+                            return Expr.initValue2(target_t, new);
+                        }
+                        if (target_t.isInstanceOf(c.sema.hash_map_tmpl)) {
+                            const new = try c.heap.newInstance(target_t, &.{
+                                C.toFieldInit("meta", @bitCast(Value.initPtr(null))),
+                                C.toFieldInit("_keys", @bitCast(Value.initPtr(null))),
+                                C.toFieldInit("vals", @bitCast(Value.initPtr(null))),
+                                C.toFieldInit("nvac", @bitCast(Value.initInt(0))),
+                                C.toFieldInit("len", @bitCast(Value.initInt(0))),
+                                C.toFieldInit("cap", @bitCast(Value.initInt(0))),
+                            });
+                            return Expr.initValue2(target_t, new);
+                        }
+                    }
+                    if (!init_lit.array_like or init_lit.args.len == 0) {
+                        return evalInitStruct(c, target_t.cast(.struct_t), init_lit);
+                    }
+                } else if (target_t.kind() == .partial_vector) {
+                    return initPartialVector(c, target_t.cast(.partial_vector), init_lit);
+                } else if (target_t.kind() == .vector) {
+                    return initVector(c, target_t.cast(.vector), init_lit);
+                } else {
+                    // TODO.
+                }
+            }
+        },
+        .sq_string_lit => {
+            // TODO: Escape.
+            const str = node.cast(.sq_string_lit).asString();
+            return evalStringLiteral(c, str, opt_target);
+        },
+        .string_lit => {
+            // TODO: Escape.
+            const str = node.cast(.string_lit).asString();
+            return evalStringLiteral(c, str, opt_target);
+        },
+        .raw_string_lit => {
+            const lit = node.cast(.raw_string_lit).asRawString();
+            return Expr.initValue(.{
+                .type = c.sema.str_t,
+                .value = try c.heap.newStr(lit),
+            });
+        },
+        .raw_string_multi_lit => {
+            const lit = node.cast(.raw_string_multi_lit).asRawStringMulti();
+            return Expr.initValue(.{
+                .type = c.sema.str_t,
+                .value = try c.heap.newStr(lit),
+            });
+        },
+        .special_string_lit => {
+            const lit = node.cast(.special_string_lit);
+            _ = lit;
+        },
+        .floatLit => {
+            const literal = node.cast(.floatLit).value.slice();
+            if (opt_target) |target_t| {
+                if (target_t.id() == bt.F32) {
+                    const val = try std.fmt.parseFloat(f32, literal);
+                    return Expr.initValue(.{
+                        .type = c.sema.f32_t,
+                        .value = Value.initFloat32(val),
+                    });
+                }
+            }
+            const val = try std.fmt.parseFloat(f64, literal);
+            return Expr.initValue(.{
+                .type = c.sema.f64_t,
+                .value = Value.initFloat64(val),
+            });
+        },
+        .trueLit => {
+            return Expr.initValue(.{
+                .type = c.sema.bool_t,
+                .value = Value.True,
+            });
+        },
+        .falseLit => {
+            return Expr.initValue(.{
+                .type = c.sema.bool_t,
+                .value = Value.False,
+            });
+        },
+        .dot_lit => {
+            const dot_lit = node.cast(.dot_lit);
+            const name = dot_lit.as_dot_infer_name();
+            if (opt_target) |target_t| {
+                if (target_t.kind() == .enum_t) {
+                    try sema_type.ensure_resolved_type(c, target_t, node);
+                    const case = target_t.cast(.enum_t).getCase(name) orelse {
+                        return c.reportErrorFmt("Could not infer `{}` enum case from `{}`.", &.{v(target_t.name()), v(name)}, node);
+                    };
+                    return Expr.initValue(.{
+                        .type = target_t,
+                        .value = Value.initInt(@intCast(case.val)),
+                    });
+                }
+            }
+        },
+        .at_lit => {
+            const at_lit = node.cast(.at_lit);
+            const name = at_lit.as_at_infer_name();
+            return Expr.initValue(.{
+                .type = c.sema.symbol_t,
+                .value = try c.sema.initSymbol(name),
+            });
+        },
+        .hexLit => {
+            const literal = node.cast(.hexLit).asHex();
+            if (opt_target) |target_t| {
+                if (try evalUnsignedLiteral(c, literal, target_t, 16, node)) |res| {
+                    return res;
+                }
+            }
+            const val = try std.fmt.parseInt(u64, literal, 16);
+            return Expr.initValue(.{
+                .type = c.sema.i64_t,
+                .value = Value.initInt(@bitCast(val)),
+            });
+        },
+        .octLit => {
+            const literal = node.cast(.octLit).asOct();
+            if (opt_target) |target_t| {
+                if (try evalUnsignedLiteral(c, literal, target_t, 8, node)) |res| {
+                    return res;
+                }
+            }
+            const val = try std.fmt.parseInt(u64, literal, 8);
+            return Expr.initValue(.{
+                .type = c.sema.i64_t,
+                .value = Value.initInt(@bitCast(val)),
+            });
+        },
+        .dec_u => {
+            const literal = node.cast(.dec_u).asDecU();
+            if (opt_target) |target_t| {
+                if (try evalUnsignedLiteral(c, literal, target_t, 10, node)) |res| {
+                    return res;
+                }
+            }
+            const val = try std.fmt.parseInt(u64, literal, 10);
+            return Expr.initValue(.{
+                .type = c.sema.i64_t,
+                .value = Value.initInt(@bitCast(val)),
+            });
+        },
+        .decLit => {
+            const literal = node.cast(.decLit).value.slice();
+            if (opt_target) |target_t| {
+                if (try evalSignedLiteral(c, literal, target_t, 10, node)) |res| {
+                    return res;
+                }
+            }
+            const val = try std.fmt.parseInt(i64, literal, 10);
+            return Expr.initValue(.{
+                .type = c.sema.i64_t,
+                .value = Value.initInt(val),
+            });
+        },
+        .ident => {
+            const name = node.cast(.ident).name.slice();
+            return eval_ident(c, name, node);
+        },
+        .expand_lit => {
+            const expand_lit = node.cast(.expand_lit);
+            const val = try cte.eval(c, expand_lit.child);
+            return Expr.initValue(val);
+        },
+        .infer_param => {
+            const name = node.cast(.infer_param).name.name();
+
+            const ctx = sema.getResolveContext(c);
+            if (ctx.data.func.instance != null) {
+                // Resolving variant func.
+                const res = try sema.lookupStaticIdent(c, name, node) orelse {
+                    return c.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, node);
+                };
+                switch (res) {
+                    .capture,
+                    .local => {
+                        return c.reportErrorFmt("Expected compile-time expression.", &.{}, node);
+                    },
+                    .static => |sym| {
+                        return Expr.initSym(sym);
+                    },
+                    .ct_var => {
+                        return error.TODO;
+                    },
+                    .ct_value => |ct_value| {
+                        return Expr.initValue(ct_value);
+                    },
+                }
+            } else {
+                // Exit eval and visit type spec node to find all infer params not just this one.
+                return error.FoundInferParam;
+            }
+        },
+        .generic_expand => {
+            const ctx = sema.getResolveContext(c);
+            if (ctx.getSelfSym()) |sym| {
+                return Expr.initSym(sym);
+            }
+        },
+        .unwrap_or => {
+            const unwrap = node.cast(.unwrap_or);
+            const option = try eval(c, unwrap.opt);
+            defer c.heap.destructValue(option);
+            if (option.type.kind() != .option) {
+                const name = try c.sema.allocTypeName(option.type);
+                defer c.alloc.free(name);
+                return c.reportErrorFmt("Expected `Option` type, found `{}`.", &.{v(name)}, node);
+            }
+
+            const option_t = option.type.cast(.option);
+            const ptr = option.value.asPtr([*]const i64);
+            if (ptr[0] == 1) {
+                const payload = try c.heap.copyValue3(option_t.child_t, @ptrCast(ptr + 1));
+                return Expr.initValue2(option_t.child_t, payload);
+            } else {
+                const default = try eval(c, unwrap.default);
+                return Expr.initValue(default);
+            }
+        },
+        .unwrap_choice => {
+            const unwrap = node.cast(.unwrap_choice);
+            const choice = try eval(c, unwrap.left);
+            defer c.heap.destructValue(choice);
+
+            const choice_t = choice.type.cast(.choice);
+            const name = unwrap.right.name();
+            const case = choice_t.getCase(name) orelse {
+                return c.reportErrorFmt("Choice case `{}` does not exist.", &.{v(name)}, unwrap.right);
+            };
+
+            const tag = choice.value.asPtr(*i64).*;
+            if (tag == @as(i64, @intCast(case.val))) {
+                const res = try c.heap.copyValue3(case.payload_t, @ptrCast(choice.value.asPtr([*]u8) + 8));
+                return Expr.initValue2(case.payload_t, res);
+            } else {
+                const act = choice_t.getCaseByTag(@intCast(tag));
+                return c.reportErrorFmt("Expected choice tag `{}`, found `{}`.", &.{v(name), v(act.head.name())}, unwrap.right);
+            }
+        },
+        .switchExpr => {
+            const block = node.cast(.switchExpr);
+            const eval_ctx = EvalContext{
+                .ret = c.sema.void_t,
+            };
+            var mut_ctx = EvalContextAndResult{ .ctx = eval_ctx, .res = undefined };
+            try switchStmt(c, block, false, switchExprCaseInner, &mut_ctx, opt_target);
+            if (!mut_ctx.res.ret) {
+                return c.reportError("Expected expression value.", node);
+            }
+            return Expr.initValue2(mut_ctx.ctx.ret, mut_ctx.res.ret_value);
+        },
+        .deref => {
+            const deref = node.cast(.deref);
+
+            const rec = try eval(c, deref.left);
+            defer c.heap.destructValue(rec);
+
+            const child_t = rec.type.getRefLikeChild() orelse {
+                return c.reportError("Expected reference type.", node);
+            };
+            const res = try c.heap.copyValue3(child_t, rec.value.asBytes());
+            return Expr.initValue2(child_t, res);
+        },
+        .index_expr => {
+            const index_expr = node.cast(.index_expr);
+
+            const rec_expr = try evalExprInfer(c, index_expr.left);
+            defer deinitExpr(c, rec_expr);
+
+            switch (rec_expr.kind) {
+                .ct_var => {
+                    return error.TODO;
+                },
+                .value => {
+                    const rec = rec_expr.data.value;
+                    if (rec.type.kind() == .pointer) {
+                        const pointer = rec.type.cast(.pointer);
+
+                        if (pointer.child_t.kind() == .struct_t) {
+                            if (pointer.child_t.sym().instance) |instance| {
+                                if (instance.data.sym.template == c.sema.raw_buffer_tmpl) {
+                                    const elem_t = instance.params[0].asPtr(*cy.Type);
+                                    const idxv = try evalTarget(c, index_expr.args.ptr[0], c.sema.i64_t);
+                                    if (idxv.type.kind() != .int) {
+                                        return c.reportError("Expected integer.", index_expr.args.ptr[0]);
+                                    }
+                                    const idx: usize = @intCast(idxv.value.asInt());
+                                    const buf = rec.value.asPtr(*cy.heap.RawBuffer);
+                                    const src = buf.getElemPtr(idx, elem_t.size());
+
+                                    const str: *cy.heap.Str = @ptrCast(@alignCast(src));
+                                    _ = str;
+
+                                    const res = try c.heap.copyValue3(elem_t, @ptrCast(@alignCast(src)));
+                                    return Expr.initValue2(elem_t, res);
+                                }
+                            }
+                        }
+                    }
+
+                    if (try c.accessResolvedSym(rec.type, "@index_addr", node)) |sym| {
+                        const func_sym = try sema.requireFuncSym(c, sym, node);
+                        const addr = try callFuncSymRec(c, func_sym, index_expr.left, sema.ExprResult.initCtValue(rec), &.{ index_expr.args.ptr[0] }, node);
+
+                        if (addr.type.isPointer() or addr.type.kind() == .borrow) {
+                            const child_t = addr.type.getRefLikeChild().?;
+                            const res = try c.heap.copyValue3(child_t, addr.value.asBytes());
+                            return Expr.initValue2(child_t, res);
+                        } else {
+                            return c.reportErrorFmt("Expected `Ptr`, `Borrow` return type for `@index_addr`.", &.{}, node);
+                        }
+                    }
+                    return c.reportErrorFmt("Inline eval: Cannot index receiver.", &.{}, index_expr.args.ptr[0]);
+                },
+                .func => {
+                    return error.TODO;
+                },
+                .sym => {
+                    const sym = rec_expr.data.sym;
+                    if (sym.type == .template) {
+                        const template = sym.cast(.template);
+                        const new = try cy.template.expand_template_ast2(c, template, index_expr.args.slice(), cstr.resolve_new_type, node);
+                        return Expr.initSym(new);
+                    } else if (sym.type == .func_template) {
+                        const template = sym.cast(.func_template);
+                        const new = try cy.template.expandTemplateFuncForArgs(c, template, index_expr.args.slice(), node);
+                        return Expr.initFunc(new);
+                    } else {
+                        return c.reportErrorFmt("Unsupported expand expression.", &.{}, node);
+                    }
+                },
+            }
+        },
+        .borrow => {
+            const borrow = node.cast(.borrow);
+            const sym = try cy.template.expand_template_ast(c, c.sema.borrow_tmpl, &.{ borrow.child }, node);
+            return Expr.initSym(sym);
+        },
+        .ex_borrow => {
+            const borrow = node.cast(.ex_borrow);
+            const sym = try cy.template.expand_template_ast(c, c.sema.ex_borrow_tmpl, &.{ borrow.child }, node);
+            return Expr.initSym(sym);
+        },
+        .ref => {
+            const ref = node.cast(.ref);
+            const child = try eval(c, ref.child);
+            defer c.heap.destructValue(child);
+
+            if (child.type.id() != bt.Type) {
+                return c.reportErrorFmt("Expected child type. Cannot lift values during const evaluation.", &.{}, node);
+            }
+            const sym = try cy.template.expand_template_ast(c, c.sema.ref_tmpl, &.{ ref.child }, node);
+            return Expr.initSym(sym);
+        },
+        .option_type => {
+            const option_type = node.cast(.option_type);
+            const sym = try cy.template.expand_template_ast(c, c.sema.option_tmpl, &.{option_type.child}, node);
+            return Expr.initSym(sym);
+        },
+        .partial_vector_type => {
+            const vector_t = node.cast(.partial_vector_type);
+            const sym = try cy.template.expand_template_ast(c, c.sema.partial_vector_tmpl, &.{vector_t.child, vector_t.n}, node);
+            return Expr.initSym(sym);
+        },
+        .vector_type => {
+            const vector_t = node.cast(.vector_type);
+            const sym = try cy.template.expand_template_ast(c, c.sema.vector_tmpl, &.{vector_t.child, vector_t.n}, node);
+            return Expr.initSym(sym);
+        },
+        .generic_vector_type => {
+            const vector_t = node.cast(.generic_vector_type);
+            const sym = try cy.template.expand_template_ast(c, c.sema.generic_vector_tmpl, &.{ vector_t.elem_t }, node);
+            return Expr.initSym(sym);
+        },
+        .span_type => {
+            const span_type = node.cast(.span_type);
+            const sym = try cy.template.expand_template_ast2(c, c.sema.span_tmpl, &.{span_type.child}, cstr.resolve_new_type, node);
+            return Expr.initSym(sym);
+        },
+        .slice_type => {
+            const slice_type = node.cast(.slice_type);
+            const sym = try cy.template.expand_template_ast(c, c.sema.slice_tmpl, &.{slice_type.child}, node);
+            return Expr.initSym(sym);
+        },
+        .accessExpr => {
+            const access_expr = node.cast(.accessExpr);
+            const parent = try evalExprInfer(c, access_expr.left);
+            defer deinitExpr(c, parent);
+
+            if (access_expr.right.type() != .ident) {
+                return c.reportErrorFmt("Expected identifier.", &.{}, access_expr.right);
+            }
+            const name = access_expr.right.name();
+            switch (parent.kind) {
+                .value => {
+                    return accessValue(c, parent.data.value, name, access_expr.right);
+                },
+                .ct_var => {
+                    const recv = cy.TypeValue.init(parent.data.ct_var.getType(), parent.data.ct_var.value);
+                    return accessValue(c, recv, name, access_expr.right);
+                },
+                .func => {
+                    return c.reportError("TODO", access_expr.left);
+                },
+                .sym => {
+                    const sym = try c.getResolvedSymOrFail(parent.data.sym, name, access_expr.right);
+                    try c.checkResolvedSymIsDistinct(sym, access_expr.right);
+                    if (sym.type == .const_) {
+                        const const_ = sym.cast(.const_);
+                        try sema.resolveConst(c, const_);
+                        const dupe = try c.heap.copyValue2(const_.type, const_.value);
+                        return Expr.initValue2(const_.type, dupe);
+                    }
+                    return Expr.initSym(sym);
+                },
+            }
+        },
+        .dollar => {
+            const cx = sema.getResolveContext(c);
+            const res = Expr.initCtVar(cx.ct_params.getPtr("self").?);
+            return Expr.initValue(try exprToValue(c, res, node));
+        },
+        .dollar_lit => {
+            const dollar_lit = node.cast(.dollar_lit);
+
+            const cx = sema.getResolveContext(c);
+            const self_param = cx.ct_params.getPtr("self") orelse {
+                return c.reportError("Expected `self`.", node);
+            };
+            const self_param_value = try exprToValue(c, Expr.initCtVar(self_param), node);
+            return accessValue(c, self_param_value, dollar_lit.name.name(), dollar_lit.name);
+        },
+        .callExpr => {
+            const call_expr = node.cast(.callExpr);
+            return evalCallExpr(c, call_expr);
+        },
+        .group => {
+            const group = node.cast(.group);
+            return evalExprNoCheck(c, group.child, cstr);
+        },
+        .fn_type => {
+            const func_type = node.cast(.fn_type);
+            const sig = try sema_type.resolveFuncType(c, func_type);
+            const arg = cy.Value.initFuncSig(sig);
+            const sym = try cy.template.expand_template(c, c.sema.func_ptr_tmpl, &.{c.sema.funcsig_t}, &.{ arg });
+            return Expr.initSym(sym);
+        },
+        .fnsym_type => {
+            const func_type = node.cast(.fnsym_type);
+            const sig = try sema_type.resolveFuncType(c, func_type);
+            const arg = cy.Value.initFuncSig(sig);
+            const sym = try cy.template.expand_template(c, c.sema.func_sym_tmpl, &.{c.sema.funcsig_t}, &.{ arg });
+            return Expr.initSym(sym);
         },
         .struct_decl => {
             // Unnamed struct.
-            const sym: *cy.Sym = @ptrCast(expr.cast(.struct_decl).name);
-            return CtExpr.initSym(sym);
+            const sym: *cy.Sym = @ptrCast(node.cast(.struct_decl).name);
+            return Expr.initSym(sym);
         },
-        .semaSym => {
-            const sym = expr.cast(.semaSym).sym;
-            return CtExpr.initSym(sym);
+        .unary_expr => {
+            const unary = node.cast(.unary_expr);
+            return eval_un_expr(c, opt_target, unary);
+        },
+        .binExpr => {
+            const expr = node.cast(.binExpr);
+            const res = try eval_bin_expr(c, expr.left, expr.op, expr.right, node);
+            return Expr.initValue(res);
+        },
+        else => {},
+    }
+    return c.reportErrorFmt("Unsupported compile-time expression: `{}`", &.{v(node.type())}, node);
+}
+
+fn eval_ident(c: *cy.Chunk, name: []const u8, node: *ast.Node) !Expr {
+    const res = try sema.lookupStaticIdent(c, name, node) orelse {
+        return c.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, node);
+    };
+    switch (res) {
+        .capture,
+        .local => {
+            @panic("Unexpected.");
+        },
+        .static => |sym| {
+            if (sym.type == .const_) {
+                const const_ = sym.cast(.const_);
+                try sema.resolveConst(c, const_);
+                const dupe = try c.heap.copyValue2(const_.type, const_.value);
+                return Expr.initValue2(const_.type, dupe);
+            }
+            return Expr.initSym(sym);
+        },
+        .ct_var => |ct_var| {
+            return Expr.initCtVar(ct_var);
+        },
+        .ct_value => |ct_value| {
+            return Expr.initValue(ct_value);
+        },
+    }
+}
+
+fn eval_un_expr(c: *cy.Chunk, opt_target: ?*cy.Type, unary: *ast.Unary) !Expr {
+    const node: *ast.Node = @ptrCast(unary);
+    switch (unary.op) {
+        .minus => {
+            if (unary.child.type() == .decLit) {
+                var buf: [32]u8 = undefined;
+                buf[0] = '-';
+                const literal = unary.child.cast(.decLit).value.slice();
+                @memcpy(buf[1..1+literal.len], literal);
+                const neg_literal = buf[0..literal.len+1];
+                if (opt_target) |target_t| {
+                    if (try evalSignedLiteral(c, neg_literal, target_t, 10, node)) |res| {
+                        return res;
+                    }
+                }
+                const val = try sema.semaParseInt(c, i64, neg_literal, 10, node);
+                return Expr.initValue(.{
+                    .type = c.sema.i64_t,
+                    .value = Value.initInt(val),
+                });
+            }
+
+            const child = try eval(c, unary.child);
+            defer c.heap.destructValue(child);
+
+            const arg = cy.sema_func.Argument.initPreResolved(unary.child, sema.ExprResult.initCtValue(child));
+
+            // Look for sym under child type's module.
+            const childTypeSym = child.type.sym();
+            const sym = try c.getResolvedSymOrFail(@ptrCast(childTypeSym), unary.op.name(), node);
+            const func_sym = try sema.requireFuncSym(c, sym, node);
+            const res = try callFuncSym(c, func_sym, &.{arg}, &.{}, node);
+            return Expr.initValue(res);
+        },
+        .lnot => {
+            const child = try eval(c, unary.child);
+            defer c.heap.destructValue(child);
+
+            if (child.type.id() == bt.Type) {
+                const sym = try cy.template.expand_template(c, c.sema.result_tmpl, &.{c.sema.type_t}, &.{child.value});
+                return Expr.initSym(sym);
+            }
+
+            const arg = cy.sema_func.Argument.initPreResolved(unary.child, sema.ExprResult.initCtValue(child));
+
+            const sym = try c.getResolvedSymOrFail(&child.type.sym().head, unary.op.name(), node);
+            const func_sym = try sema.requireFuncSym(c, sym, node);
+            const res = try callFuncSym(c, func_sym, &.{arg}, &.{}, node);
+            return Expr.initValue(res);
+        },
+        .bitwiseNot => {
+            const child = try evalTarget(c, unary.child, opt_target);
+            defer c.heap.destructValue(child);
+
+            const arg = cy.sema_func.Argument.initPreResolved(unary.child, sema.ExprResult.initCtValue(child));
+
+            const childTypeSym = child.type.sym();
+            const sym = try c.getResolvedSymOrFail(@ptrCast(childTypeSym), unary.op.name(), node);
+            const func_sym = try sema.requireFuncSym(c, sym, node);
+            const res = try callFuncSym(c, func_sym, &.{arg}, &.{}, node);
+            return Expr.initValue(res);
+        },
+        else => {},
+    }
+    return c.reportErrorFmt("Unsupported compile-time expression: `{}`", &.{v(node.type())}, node);
+}
+
+fn eval_bin_expr(c: *cy.Chunk, left_n: *ast.Node, op: ast.BinaryExprOp, right_n: *ast.Node, node: *ast.Node) !TypeValue {
+    switch (op) {
+        .bang_equal => {
+            const left = try eval(c, left_n);
+            defer c.heap.destructValue(left);
+            const right = try evalCheck(c, right_n, left.type);
+            defer c.heap.destructValue(right);
+
+            const res = try evalCompare(c, left.type, left.value, right.value, node);
+            return TypeValue.init(c.sema.bool_t, Value.initBool(!res));
+        },
+        .equal_equal => {
+            const left = try eval(c, left_n);
+            defer c.heap.destructValue(left);
+            const right = try evalCheck(c, right_n, left.type);
+            defer c.heap.destructValue(right);
+
+            const res = try evalCompare(c, left.type, left.value, right.value, node);
+            return TypeValue.init(c.sema.bool_t, Value.initBool(res));
+        },
+        .star,
+        .pow,
+        .less,
+        .greater,
+        .bitwiseLeftShift,
+        .plus,
+        .minus => {
+            switch (left_n.type()) {
+                .floatLit => {
+                    // Infer type from right.
+                    const right = try eval(c, right_n);
+                    const left = try evalHint(c, left_n, right.type);
+
+                    const leftTypeSym = left.type.sym();
+                    const sym = try c.getResolvedSymOrFail(@ptrCast(leftTypeSym), op.name(), node);
+                    const func_sym = try sema.requireFuncSym(c, sym, node);
+                    const args = [_]sema_func.Argument{
+                        sema_func.Argument.initReceiver(left_n, sema.ExprResult.initCtValue(left)),
+                        sema_func.Argument.initPreResolved(right_n, sema.ExprResult.initCtValue(right)),
+                    };
+                    return callFuncSym(c, func_sym, &args, &.{}, node);
+                },
+                else => {},
+            }
+            const left = try eval(c, left_n);
+            defer c.heap.destructValue(left);
+
+            const leftTypeSym = left.type.sym();
+            const sym = try c.getResolvedSymOrFail(@ptrCast(leftTypeSym), op.name(), node);
+            const func_sym = try sema.requireFuncSym(c, sym, node);
+            return callFuncSymRec(c, func_sym, left_n, sema.ExprResult.initCtValue(left), &.{ right_n }, node);
+        },
+        .or_op => {
+            const left = try evalCheck(c, left_n, c.sema.bool_t);
+            if (left.value.asBool()) {
+                return TypeValue.init(c.sema.bool_t, Value.True);
+            }
+            return evalCheck(c, right_n, c.sema.bool_t);
+        },
+        .and_op => {
+            const left = try evalCheck(c, left_n, c.sema.bool_t);
+            if (!left.value.asBool()) {
+                return TypeValue.init(c.sema.bool_t, Value.False);
+            }
+            return evalCheck(c, right_n, c.sema.bool_t);
         },
         else => {
-            return c.reportErrorFmt("Unsupported compile-time expression: `{}`", &.{v(expr.type())}, expr);
+            return c.reportErrorFmt("Inline eval: Unsupported op: `{}`\n", &.{v(op)}, node);
+        },
+    }
+}
+
+fn evalStringLiteral(c: *cy.Chunk, str: []const u8, opt_target: ?*cy.Type) !Expr {
+    if (opt_target) |target_t| {
+        if (target_t.id() == bt.StrLit) {
+            return Expr.initValue(.{
+                .type = c.sema.str_lit_t,
+                .value = try c.heap.newGenericStr(str),
+            });
         }
+        // if (target_t.isPointer()) {
+        //     const target_ptr = target_t.cast(.pointer);
+        //     if (target_ptr.child_t.id() == bt.R8 or target_ptr.child_t.id() == bt.I8) {
+        //         return Expr.initValue(.{
+        //             .type = target_t,
+        //             .value = try c.heap.newStrZ(str),
+        //         });
+        //     }
+        // }
+
+        if (target_t.id() == bt.IntLit) {
+            if (try sema.semaTryStringLitCodepoint(c, str, 64)) |val| {
+                return Expr.initValue(.{
+                    .type = c.sema.int_lit_t,
+                    .value = val,
+                });
+            }
+        }
+
+        if (target_t.kind() == .int) {
+            if (try sema.semaTryStringLitCodepoint(c, str, target_t.cast(.int).bits)) |val| {
+                return Expr.initValue(.{
+                    .type = target_t,
+                    .value = val,
+                });
+            }
+        } else if (target_t.kind() == .raw) {
+            if (try sema.semaTryStringLitCodepoint(c, str, target_t.cast(.raw).bits)) |val| {
+                return Expr.initValue(.{
+                    .type = target_t,
+                    .value = val,
+                });
+            }
+        }
+    }
+
+    return Expr.initValue(.{
+        .type = c.sema.str_t,
+        .value = try c.heap.newStr(str),
+    });
+}
+
+fn accessValue(c: *cy.Chunk, recv: cy.TypeValue, name: []const u8, name_n: *ast.Node) !Expr {
+    if (recv.type.id() == bt.Type) {
+        const type_ = recv.value.asPtr(*cy.Type);
+        const sym = try c.getResolvedSymOrFail(@ptrCast(type_.sym()), name, name_n);
+        try c.checkResolvedSymIsDistinct(sym, name_n);
+        return Expr.initSym(sym);
+    }
+    switch (recv.type.kind()) {
+        .struct_t => {
+            const struct_t = recv.type.cast(.struct_t);
+            const field = try getStructField(c, struct_t, name, name_n);
+            const src = recv.value.asPtr([*]const u8);
+            const res = try c.heap.copyValue3(field.type, src + field.offset);
+            return Expr.initValue2(field.type, res);
+        },
+        .pointer => {
+            const pointer = recv.type.cast(.pointer);
+            if (pointer.ref) {
+                if (pointer.child_t.kind() == .struct_t) {
+                    const struct_t = pointer.child_t.cast(.struct_t);
+                    const field = try getStructField(c, struct_t, name, name_n);
+                    const res = try c.heap.copyValue3(field.type, recv.value.asPtr([*]const u8) + field.offset);
+                    return Expr.initValue2(field.type, res);
+                }
+            }
+        },
+        .borrow => {
+            const borrow = recv.type.cast(.borrow);
+            if (borrow.child_t.kind() == .struct_t) {
+                const struct_t = borrow.child_t.cast(.struct_t);
+                const field = try getStructField(c, struct_t, name, name_n);
+                const res = try c.heap.copyValue3(field.type, recv.value.asPtr([*]const u8) + field.offset);
+                return Expr.initValue2(field.type, res);
+            }
+        },
+        else => {}
+    }
+    return c.reportErrorFmt("Inline eval: Cannot access receiver. {}", &.{v(recv.type.kind())}, name_n);
+}
+
+pub fn callFuncSym(c: *cy.Chunk, sym: *cy.sym.FuncSym, pre_args: []const cy.sema_func.Argument, args: []*ast.Node, node: *ast.Node) !TypeValue {
+    const res = try cy.sema_func.matchFuncSym2(c, sym, pre_args, args, true, node);
+    if (res.resType != .ct_value) {
+        return error.Unexpected;
+    }
+    return res.data.ct_value;
+}
+
+pub fn callFuncSymRec(c: *cy.Chunk, sym: *cy.sym.FuncSym, rec: *ast.Node, rec_res: sema.ExprResult,
+    args: []const *ast.Node, node: *ast.Node) !TypeValue {
+    const rec_arg = cy.sema_func.Argument.initReceiver(rec, rec_res);
+    if (sym.first.type == .trait) {
+        return error.TODO;
+    } else {
+        const res = try cy.sema_func.matchFuncSym2(c, sym, &.{rec_arg}, args, true, node);
+        if (res.resType != .ct_value) {
+            return error.Unexpected;
+        }
+        return res.data.ct_value;
+    }
+}
+
+pub fn evalCZero(c: *cy.Chunk, type_: *cy.Type, node: *ast.Node) !Value {
+    switch (type_.id()) {
+        bt.Bool  => return Value.False,
+        bt.R8,
+        bt.I8  => return Value.initInt8(0),
+        bt.R16,
+        bt.I16 => return Value.initInt16(0),
+        bt.R32,
+        bt.F32,
+        bt.I32   => return Value.initInt32(0),
+        bt.R64,
+        bt.I64,
+        bt.F64 => return Value.initInt(0),
+        else => {
+            switch (type_.kind()) {
+                .struct_t => {
+                    const struct_t = type_.cast(.struct_t);
+                    if (!struct_t.cstruct) {
+                        const name = try c.sema.allocTypeName(type_);
+                        defer c.alloc.free(name);
+                        return c.reportErrorFmt("Unsupported zero initializer for `{}`. Can only zero initialize a `cstruct` type.", &.{v(name)}, node);
+                    }
+
+                    const fields = struct_t.fields();
+                    const arg_start = c.valueStack.items.len;
+                    defer {
+                        for (c.valueStack.items[arg_start..], 0..) |arg, i| {
+                            const field = fields[i];
+                            c.heap.destructValue2(field.type, arg);
+                        }
+                        c.valueStack.items.len = arg_start;
+                    }
+
+                    for (fields) |field| {
+                        const arg = try evalCZero(c, field.type, node);
+                        try c.valueStack.append(c.alloc, arg);
+                    }
+
+                    const new = try c.heap.new_object_undef(struct_t.base.id(), struct_t.size);
+                    const dst = new.object.getBytePtr();
+
+                    for (fields, 0..) |field, i| {
+                        const arg = c.valueStack.items[arg_start + i];
+                        try c.heap.copyValueTo2(field.type, dst + field.offset, arg);
+                    }
+                    return Value.initPtr(new);
+                },
+                // .fixed_array => {
+                //     const array_t = type_.cast(.fixed_array);
+                //     const args = try c.ir.allocArray(*ir.Expr, array_t.n);
+                //     for (0..array_t.n) |i| {
+                //         const arg = try semaCZero(c, array_t.elem_t, node);
+                //         args[i] = arg.ir;
+                //     }
+                //     return semaFixedArray(c, type_, args, node);
+                // },
+                // .pointer => {
+                //     const pointer = type_.cast(.pointer);
+                //     if (!pointer.ref) {
+                //         return c.semaConst(0, type_, node);
+                //     }
+                // },
+                .func_ptr => {
+                    const func_ptr = type_.cast(.func_ptr);
+                    if (func_ptr.sig.extern_) {
+                        return Value.initInt(0);
+                    }
+                },
+                else => {},
+            }
+            const name = try c.sema.allocTypeName(type_);
+            defer c.alloc.free(name);
+            return c.reportErrorFmt("Unsupported zero initializer for `{}`.", &.{v(name)}, node);
+        },
+    }
+}
+
+fn evalSignedLiteral(c: *cy.Chunk, literal: []const u8, target_t: *cy.Type, base: u8, node: *ast.Node) !?Expr {
+    switch (target_t.id()) {
+        bt.R8 => {
+            const val = try sema.semaParseInt(c, u8, literal, base, node);
+            return Expr.initValue(.{
+                .type = c.sema.r8_t,
+                .value = Value.initR8(val),
+            });
+        },
+        bt.I8 => {
+            const val = try sema.semaParseInt(c, i8, literal, base, node);
+            return Expr.initValue(.{
+                .type = c.sema.i8_t,
+                .value = Value.initInt8(val),
+            });
+        },
+        bt.R16 => {
+            const val = try sema.semaParseInt(c, u16, literal, base, node);
+            return Expr.initValue(.{
+                .type = c.sema.r16_t,
+                .value = Value.initR16(val),
+            });
+        },
+        bt.I16 => {
+            const val = try sema.semaParseInt(c, i16, literal, base, node);
+            return Expr.initValue(.{
+                .type = c.sema.i16_t,
+                .value = Value.initInt16(val),
+            });
+        },
+        bt.R32 => {
+            const val = try sema.semaParseInt(c, u32, literal, base, node);
+            return Expr.initValue(.{
+                .type = c.sema.r32_t,
+                .value = Value.initR32(val),
+            });
+        },
+        bt.I32 => {
+            const val = try sema.semaParseInt(c, i32, literal, base, node);
+            return Expr.initValue(.{
+                .type = c.sema.i32_t,
+                .value = Value.initInt32(val),
+            });
+        },
+        bt.IntLit => {
+            const val = try sema.semaParseInt(c, u64, literal, base, node);
+            return Expr.initValue(.{
+                .type = c.sema.int_lit_t,
+                .value = Value.initGenericInt(@bitCast(val)),
+            });
+        },
+        bt.F32 => {
+            const val = try std.fmt.parseFloat(f32, literal);
+            return Expr.initValue(.{
+                .type = c.sema.f32_t,
+                .value = Value.initFloat32(val),
+            });
+        },
+        bt.F64 => {
+            const val = try std.fmt.parseFloat(f64, literal);
+            return Expr.initValue(.{
+                .type = c.sema.f64_t,
+                .value = Value.initFloat64(val),
+            });
+        },
+        bt.R64 => {
+            const val = try sema.semaParseInt(c, u64, literal, base, node);
+            return Expr.initValue(.{
+                .type = c.sema.r64_t,
+                .value = Value.initR64(val),
+            });
+        },
+        else => {
+            return null;
+        },
+    }
+}
+
+fn evalUnsignedLiteral(c: *cy.Chunk, literal: []const u8, target_t: *cy.Type, base: u8, node: *ast.Node) !?Expr {
+    switch (target_t.id()) {
+        bt.R8 => {
+            const val = try sema.semaParseInt(c, u8, literal, base, node);
+            return Expr.initValue(.{
+                .type = c.sema.r8_t,
+                .value = Value.initR8(val),
+            });
+        },
+        bt.I8 => {
+            const val = try sema.semaParseInt(c, u8, literal, base, node);
+            return Expr.initValue(.{
+                .type = c.sema.i8_t,
+                .value = Value.initR8(val),
+            });
+        },
+        bt.R16 => {
+            const val = try sema.semaParseInt(c, u16, literal, base, node);
+            return Expr.initValue(.{
+                .type = c.sema.r16_t,
+                .value = Value.initR16(val),
+            });
+        },
+        bt.I16 => {
+            const val = try sema.semaParseInt(c, u16, literal, base, node);
+            return Expr.initValue(.{
+                .type = c.sema.i16_t,
+                .value = Value.initR16(val),
+            });
+        },
+        bt.R32 => {
+            const val = try sema.semaParseInt(c, u32, literal, base, node);
+            return Expr.initValue(.{
+                .type = c.sema.r32_t,
+                .value = Value.initR32(val),
+            });
+        },
+        bt.I32 => {
+            const val = try sema.semaParseInt(c, u32, literal, base, node);
+            return Expr.initValue(.{
+                .type = c.sema.i32_t,
+                .value = Value.initR32(val),
+            });
+        },
+        bt.IntLit => {
+            const val = try sema.semaParseInt(c, u64, literal, base, node);
+            return Expr.initValue(.{
+                .type = c.sema.int_lit_t,
+                .value = Value.initGenericInt(@bitCast(val)),
+            });
+        },
+        bt.F32 => {
+            if (base != 10) {
+                return null;
+            }
+            const val = try sema.semaParseFloat(c, f32, literal, node);
+            return Expr.initValue(.{
+                .type = c.sema.f32_t,
+                .value = Value.initFloat32(val),
+            });
+        },
+        bt.F64 => {
+            if (base != 10) {
+                return null;
+            }
+            const val = try sema.semaParseFloat(c, f64, literal, node);
+            return Expr.initValue(.{
+                .type = c.sema.f64_t,
+                .value = Value.initFloat64(val),
+            });
+        },
+        bt.R64 => {
+            const val = try sema.semaParseInt(c, u64, literal, base, node);
+            return Expr.initValue(.{
+                .type = c.sema.r64_t,
+                .value = Value.initR64(val),
+            });
+        },
+        else => {
+            return null;
+        },
     }
 }

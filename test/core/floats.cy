@@ -1,27 +1,29 @@
-use t 'test'
-use m 'math'
+use test
+use math
+use meta
 
 -- Default notation.
-t.eq(1.0, 1.0)
-t.eq(-1.0, -1.0)
-t.eq(-(-1.0), 1.0)
+test.eq(1.0, 1.0)
+test.eq(-1.0, -1.0)
+test.eq(1.0, -(-1.0))
 
 -- Scientific notation.
-t.eq(1.23e2, 123.0)
-t.eqNear(123e-2, 1.23)
+test.eq(123.0, 1.23e2)
+test.eqNear(1.23, 123e-2)
 
--- float.$call()
-t.eq(float(100), 100.0)
-t.eq(float(100.1), 100.1)
-t.eq(float('100'), 100.0)
-t.eq(float('100.1'), 100.1)
-t.eq(float(true), 1.0)
-t.eq(float(false), 0.0)
+-- float.$init()
+test.eq(100.0, float(100))
+test.eq(100.1, float(100.1))
+if meta.is_vm_target():
+    test.eq(100.0, float('100'))
+    test.eq(100.1, float('100.1'))
+test.eq(1.0, float(true))
+test.eq(0.0, float(false))
 
 -- Infinity.
-t.eq(1.0 / 0, m.inf)
+test.eq(math.inf, 1.0 / 0)
 
 -- NaN.
-t.eq(m.isNaN(0.0 * (1.0 / 0)), true)
+test.eq(true, math.isNaN(0.0 * (1.0 / 0)))
 
 --cytest: pass

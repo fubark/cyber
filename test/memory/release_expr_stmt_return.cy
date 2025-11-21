@@ -1,5 +1,4 @@
-var a = 'abc'
-a.concat('xyz')
-pass
+a := 'abc'
+_ = a.concat('xyz')
 
 --cytest: pass

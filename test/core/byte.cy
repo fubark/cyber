@@ -1,72 +1,74 @@
-use t 'test'
+use test
+use meta
 
 -- Initialized with `byte` function.
-var a = byte(10)
-t.eq(a, 10)
+a := byte(10)
+test.eq(byte(10), a)
 
 -- Hex notation.
-t.eq(byte(0xff), 255)
-t.eq(byte(0xFF), 255)
+test.eq(byte(255), byte(0xff))
+test.eq(byte(255), byte(0xFF))
 
 -- Octal notation.
-t.eq(byte(0o77), 63)
+test.eq(byte(63), byte(0o77))
 
 -- Binary notation.
-t.eq(byte(0b11), 3)
+test.eq(byte(3), byte(0b11))
 
 -- Equals.
-t.eq(byte(3) == byte(2), false)
-t.eq(byte(3) == byte(3), true)
+test.eq(false, byte(3) == byte(2))
+test.eq(true, byte(3) == byte(3))
 
 -- Not equals.
-t.eq(byte(3) != byte(2), true)
-t.eq(byte(3) != byte(3), false)
+test.eq(true, byte(3) != byte(2))
+test.eq(false, byte(3) != byte(3))
 
 -- Comparisons.
-t.eq(byte(1) < 2, true)
-t.eq(byte(2) < 1, false)
-t.eq(byte(1) > 2, false)
-t.eq(byte(2) > 1, true)
-t.eq(byte(1) <= 2, true)
-t.eq(byte(2) <= 2, true)
-t.eq(byte(3) <= 2, false)
-t.eq(byte(1) >= 2, false)
-t.eq(byte(2) >= 2, true)
-t.eq(byte(3) >= 2, true)
+test.eq(true, byte(1) < 2)
+test.eq(false, byte(2) < 1)
+test.eq(false, byte(1) > 2)
+test.eq(true, byte(2) > 1)
+test.eq(true, byte(1) <= 2)
+test.eq(true, byte(2) <= 2)
+test.eq(false, byte(3) <= 2)
+test.eq(false, byte(1) >= 2)
+test.eq(true, byte(2) >= 2)
+test.eq(true, byte(3) >= 2)
 
 -- Bitwise and.
-t.eq(byte(4) & 2, 0)
-t.eq(byte(4) & 4, 4)
-t.eq(byte(7) & 2, 2)
+test.eq(byte(0), byte(4) && 2)
+test.eq(byte(4), byte(4) && 4)
+test.eq(byte(2), byte(7) && 2)
 
 -- Bitwise or.
-t.eq(byte(4) | 2, 6)
-t.eq(byte(4) | 4, 4)
+test.eq(byte(6), byte(4) || 2)
+test.eq(byte(4), byte(4) || 4)
 
 -- Bitwise xor.
-t.eq(byte(4) || 2, 6)
-t.eq(byte(4) || 4, 0)
+test.eq(byte(6), byte(4) ~ 2)
+test.eq(byte(0), byte(4) ~ 4)
 
 -- Bitwise not.
-t.eq(~byte(0), 255)
-t.eq(~byte(1), 254)
+test.eq(byte(255), ~byte(0))
+test.eq(byte(254), ~byte(1))
 
 -- Bitwise right shift.
-t.eq(byte(16) >> 2, 4)
-t.eq(byte(2) >> 2, 0)
+test.eq(byte(4), byte(16) >> 2)
+test.eq(byte(0), byte(2) >> 2)
 
 -- Bitwise left shift.
-t.eq(byte(2) << 4, 32)
+test.eq(byte(32), byte(2) << 4)
 
 -- fmt()
-t.eq(byte(122).fmt(.bin), '1111010')
-t.eq(byte(122).fmt(.oct), '172')
-t.eq(byte(122).fmt(.dec), '122')
-t.eq(byte(122).fmt(.hex), '7a')
-t.eq(byte(122).fmt(.asc), 'z')
-t.eq(byte(2).fmt(.bin, {pad=`0`, width=8}), '00000010')
-t.eq(byte(8).fmt(.oct, {pad=`0`, width=3}), '010')
-t.eq(byte(10).fmt(.dec, {pad=`0`, width=4}), '0010')
-t.eq(byte(16).fmt(.hex, {pad=`0`, width=4}), '0010')
+test.eq('122', byte(122).fmt(.dec))
+test.eq('0b1111010', byte(122).fmt(.bin))
+test.eq('0o172', byte(122).fmt(.oct))
+test.eq('0x7a', byte(122).fmt(.hex))
+if meta.is_vm_target():
+    test.eq('z', byte(122).fmt(.ch))
+    -- test.eq('00000010', byte(2).fmt(.bin, {pad=`0`, width=8}))
+    -- test.eq('010', byte(8).fmt(.oct, {pad=`0`, width=3}))
+    -- test.eq('0010', byte(10).fmt(.dec, {pad=`0`, width=4}))
+    -- test.eq('0010', byte(16).fmt(.hex, {pad=`0`, width=4}))
 
 --cytest: pass

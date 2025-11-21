@@ -1,5 +1,3 @@
-// Copyright (c) 2023 Cyber (See LICENSE)
-
 const std = @import("std");
 const stdx = @import("stdx");
 const fatal = cy.fatal;
@@ -10,13 +8,13 @@ const vmc = cy.vmc;
 const types = cy.types;
 const rt = cy.rt;
 const sema = cy.sema;
+const ir = cy.ir;
 const bt = cy.types.BuiltinTypes;
 const Value = cy.Value;
 const vm_ = @import("../vm.zig");
 const TrackGlobalRC = vm_.TrackGlobalRC;
 const fmt = @import("../fmt.zig");
-const cc = @import("../capi.zig");
-const CS = @import("../capi_shim.zig");
+const C = @import("../capi.zig");
 
 const debug = builtin.mode == .Debug;
 const log = cy.log.scoped(.bindings);
@@ -68,6 +66,7 @@ pub const Symbol = enum {
     UnknownError,
     Unicode,
     Unsupported,
+    ParseError,
 
     running,
     paused,
@@ -90,15 +89,11 @@ pub const Symbol = enum {
 const anyNone = cy.builtins.anyNone;
 const anySome = cy.builtins.anySome;
 
-pub fn getBuiltinSymbol(id: u32) ?Symbol {
+pub fn getBuiltinSymbol(id: u64) ?Symbol {
     return std.meta.intToEnum(Symbol, id) catch {
         return null;
     };
 }
-
-pub fn prepareThrowSymbol(vm: *cy.UserVM, sym: Symbol) Value {
-    return vm.prepareThrowSymbol(@intFromEnum(sym));
-}  
 
 pub fn bindCore(self: *cy.VM) !void {
     @branchHint(.cold);
@@ -108,333 +103,8 @@ pub fn bindCore(self: *cy.VM) !void {
 }
 
 fn ensureSymbol(vm: *cy.VM, name: []const u8, sym: Symbol) !void {
-    const id = try vm.ensureSymbol(name);
+    const id = try vm.sema.ensureSymbol(name);
     std.debug.assert(id == @intFromEnum(sym));
-}
-
-// TODO: Provide sort where the sort fields and compare strategy are provided instead of a lessFn,
-//       since Cyber's VM is non reentrant.
-pub fn listSort(vm: *cy.VM, args: [*]const Value, nargs: u8) Value {
-    const obj = args[0].asHeapObject();
-    const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
-    const LessContext = struct {
-        lessFn: Value,
-        vm: *cy.UserVM,
-        newFramePtr: u32,
-    };
-    var lessCtx = LessContext{
-        .lessFn = args[1],
-        .vm = vm,
-        .newFramePtr = vm.getNewFramePtrOffset(args, nargs),
-    };
-
-    const S = struct {
-        fn less(ctx_: *LessContext, a: Value, b: Value) bool {
-            const res = ctx_.vm.callFunc(ctx_.newFramePtr, ctx_.lessFn, &.{a, b}) catch {
-                return false;
-            };
-            return res.toBool();
-        }
-    };
-    std.sort.pdq(Value, list.items(), &lessCtx, S.less);
-    return Value.None;
-}
-
-pub fn listRemove(vm: *cy.VM) Value {
-    const index: i64 = @intCast(vm.getInt(1));
-    const list = vm.getValue(0).asHeapObject();
-    const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
-    if (index < 0 or index >= inner.len) {
-        return rt.prepThrowError(vm, .OutOfBounds);
-    } 
-    vm.release(inner.buf[@intCast(index)]);
-    inner.remove(@intCast(index));
-    return Value.Void;
-}
-
-/// `mapIndex` with a different error message.
-pub fn getGlobal(vm: *cy.VM) Value {
-    const map = vm.getValue(0).asHeapObject();
-    if (map.map.map().get(vm.getValue(1))) |val| {
-        vm.retain(val);
-        return val;
-    } else {
-        return vm.prepPanic("Variable is not defined in `$global`.");
-    }
-}
-
-pub fn tableInitPair(vm: *cy.VM) anyerror!Value {
-    const table = vm.getValue(0).asHeapObject();
-    try table.table.set(vm, vm.getValue(1), vm.getValue(2));
-    return Value.Void;
-}
-
-pub fn tableGet(vm: *cy.VM) Value {
-    const table = vm.getValue(0).asHeapObject();
-    const name = vm.getString(1);
-    if (table.table.map().getByString(name)) |val| {
-        vm.retain(val);
-        return val;
-    } else {
-        return vm.prepPanic("Missing field.");
-    }
-    return Value.Void;
-}
-
-pub fn tableSet(vm: *cy.VM) anyerror!Value {
-    const table = vm.getValue(0).asHeapObject();
-    try table.table.set(vm, vm.getValue(1), vm.getValue(2));
-    return Value.Void;
-}
-
-pub fn tableIndex(vm: *cy.VM) Value {
-    const table = vm.getValue(0).asHeapObject();
-    if (table.table.map().get(vm.getValue(1))) |val| {
-        vm.retain(val);
-        return val;
-    } else {
-        return vm.prepPanic("Missing field.");
-    }
-    return Value.Void;
-}
-
-pub fn mapIndex(vm: *cy.VM) Value {
-    const map = vm.getValue(0).asHeapObject();
-    if (map.map.map().get(vm.getValue(1))) |val| {
-        vm.retain(val);
-        return val;
-    } else {
-        return vm.prepPanic("Missing key in map.");
-    }
-}
-
-pub fn mapSetIndex(vm: *cy.VM) anyerror!Value {
-    const map = vm.getValue(0).asHeapObject();
-    try map.map.set(vm, vm.getValue(1), vm.getValue(2));
-    return Value.Void;
-}
-
-pub fn listIndex(vm: *cy.VM) Value {
-    const index: i64 = @intCast(vm.getInt(1));
-    const list = vm.getValue(0).asHeapObject();
-    const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
-    if (index < 0 or index > inner.len) {
-        return vm.prepPanic("Out of bounds.");
-    } 
-    const value = inner.buf[@intCast(index)];
-    vm.retain(value);
-    return value;
-}
-
-pub fn listSetIndex(vm: *cy.VM) Value {
-    const index: i64 = @intCast(vm.getInt(1));
-    const list = vm.getValue(0).asHeapObject();
-    const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
-    if (index < 0 or index > inner.len) {
-        return vm.prepPanic("Out of bounds.");
-    } 
-    vm.release(inner.buf[@intCast(index)]);
-    vm.retain(vm.getValue(2));
-    inner.buf[@intCast(index)] = vm.getValue(2);
-    return Value.Void;
-}
-
-pub fn List_slice(vm: *cy.VM) anyerror!Value {
-    const list = vm.getValue(0).asHeapObject();
-    const start = vm.getInt(1);
-    const end = vm.getInt(2);
-    const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
-    if (start < 0) {
-        return error.OutOfBounds;
-    }
-    if (end > inner.len) {
-        return error.OutOfBounds;
-    }
-    if (end < start) {
-        return error.OutOfBounds;
-    }
-
-    const elems = inner.buf[@intCast(start)..@intCast(end)];
-    for (elems) |elem| {
-        vm.retain(elem);
-    }
-
-    const list_t = vm.getValue(0).getTypeId();
-    return cy.heap.allocList(vm, list_t, elems);
-}
-
-pub fn ListValue_slice(vm: *cy.VM) anyerror!Value {
-    const list = vm.getValue(0).asHeapObject();
-    const slice_t: cy.TypeId = @intCast(vm.getInt(1));
-    const range = vm.getValue(2).castHeapObject(*cy.heap.Range);
-    const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
-    if (range.start < 0) {
-        return error.OutOfBounds;
-    }
-    if (range.end > inner.len) {
-        return error.OutOfBounds;
-    }
-    if (range.end < range.start) {
-        return error.OutOfBounds;
-    }
-
-    const ptr = inner.buf.ptr + @as(usize, @intCast(range.start));
-    return vm.allocRefSlice(slice_t, ptr, @intCast(range.end - range.start));
-}
-
-pub fn listInsert(vm: *cy.VM) Value {
-    const index: i64 = @intCast(vm.getInt(1));
-    const value = vm.getValue(2);
-    const list = vm.getValue(0).asHeapObject();
-    const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
-    if (index < 0 or index > inner.len) {
-        return rt.prepThrowError(vm, .OutOfBounds);
-    } 
-    inner.growTotalCapacity(vm.alloc, inner.len + 1) catch cy.fatal();
-    vm.retain(value);
-    inner.insertAssumeCapacity(@intCast(index), value);
-    return Value.Void;
-}
-
-pub fn listJoin(vm: *cy.VM) anyerror!Value {
-    const elem_t: cy.TypeId = @intCast(vm.getInt(1));
-    const obj = vm.getValue(0).asHeapObject();
-    const items = obj.list.items();
-    if (items.len > 0) {
-        var is_ascii = vm.getObject(*cy.heap.String, 2).getType().isAstring();
-        const sep = vm.getString(2);
-
-        var out_ascii: bool = undefined;
-
-        var builder = try cy.string.HeapStringBuilder.init(vm);
-        builder.detect_encoding = false;
-        const w = builder.writer();
-        defer builder.deinit();
-
-        // Record first string part.
-        out_ascii = try vm.writeValue2(w, elem_t, items[0], false);
-        is_ascii = is_ascii and out_ascii;
-
-        // Record other string parts.
-        for (items[1..]) |item| {
-            _ = try w.writeAll(sep);
-            out_ascii = try vm.writeValue2(w, elem_t, item, false);
-            is_ascii = is_ascii and out_ascii;
-        }
-
-        return builder.buildWithEncoding(is_ascii);
-    } else {
-        const empty = vm.emptyString;
-        vm.retain(empty);
-        return empty;
-    }
-}
-
-pub fn listAppendAll(vm: *cy.VM) anyerror!Value {
-    const obj = vm.getValue(0).asHeapObject();
-    const list = vm.getValue(1).asHeapObject();
-    for (list.list.items()) |it| {
-        vm.retain(it);
-        try obj.list.append(vm.alloc, it);
-    }
-    return Value.Void;
-}
-
-pub fn listAppend(vm: *cy.VM) anyerror!Value {
-    const obj = vm.getValue(0).asHeapObject();
-    vm.retain(vm.getValue(1));
-    try obj.list.append(vm.alloc, vm.getValue(1));
-    return Value.Void;
-}
-
-pub fn listIteratorNext(vm: *cy.VM) anyerror!Value {
-    const obj = vm.getValue(0).asHeapObject();
-    const option_t = vm.getType(@intCast(vm.getInt(1)));
-    const list = &obj.listIter.inner.list.asHeapObject().list;
-    if (obj.listIter.inner.nextIdx < list.list.len) {
-        defer obj.listIter.inner.nextIdx += 1;
-        const val = list.list.ptr[obj.listIter.inner.nextIdx];
-        vm.retain(val);
-        return vm.newSome(option_t, val);
-    } else {
-        return vm.newNone(option_t);
-    }
-}
-
-pub fn listIterator(vm: *cy.VM) Value {
-    vm.retain(vm.getValue(0));
-    return vm.allocListIter(@intCast(vm.getInt(1)), vm.getValue(0)) catch fatal();
-}
-
-pub fn listResize(vm: *cy.VM) !Value {
-    const elem_t: cy.TypeId = @intCast(vm.getInt(1));
-    const recv = vm.getValue(0);
-    const list = recv.asHeapObject();
-    const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
-    const size: u32 = @intCast(vm.getInt(2));
-    if (inner.len < size) {
-        if (vm.getType(elem_t).isBoxed() and elem_t != bt.Float) {
-            return error.InvalidArgument;
-        }
-        const oldLen = inner.len;
-        try inner.resize(vm.alloc, size);
-        for (inner.items()[oldLen..size]) |*item| {
-            item.* = Value.False;
-        }
-    } else if (inner.len > size) {
-        // Remove items.
-        for (inner.items()[size..inner.len]) |item| {
-            vm.release(item);
-        }
-        try inner.resize(vm.alloc, size);
-    }
-    return Value.Void;
-}
-
-pub fn mapIterator(vm: *cy.VM) Value {
-    const obj = vm.getValue(0).asHeapObject();
-    vm.retainObject(obj);
-    return vm.allocMapIterator(vm.getValue(0)) catch fatal();
-}
-
-pub fn mapIteratorNext(vm: *cy.VM) !Value {
-    const obj = vm.getValue(0).asHeapObject();
-    const map: *cy.ValueMap = @ptrCast(&obj.mapIter.map.castHeapObject(*cy.heap.Map).inner);
-
-    const option_t = (try vm.findType("?MapEntry[dyn, dyn]")).?;
-    const entry_t = option_t.cast(.option).child_t;
-
-    if (map.next(&obj.mapIter.nextIdx)) |entry| {
-        vm.retain(entry.key);
-        vm.retain(entry.value);
-
-        const val = try vm.newInstance(entry_t, &.{
-            CS.toFieldInit("key", entry.key),
-            CS.toFieldInit("value", entry.value),
-        });
-        return vm.newSome(option_t, val);
-    } else {
-        return vm.newNone(option_t);
-    }
-}
-
-pub fn mapSize(vm: *cy.VM) Value {
-    const obj = vm.getValue(0).asHeapObject();
-    const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-    return Value.initInt(@intCast(inner.size));
-}
-
-pub fn mapRemove(vm: *cy.VM) Value {
-    const obj = vm.getValue(0).asHeapObject();
-    const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-    const removed = inner.remove(vm, vm.getValue(1));
-    return Value.initBool(removed);
-}
-
-pub fn listLen(vm: *cy.VM) Value {
-    const list = vm.getValue(0).asHeapObject();
-    const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
-    return Value.initInt(@intCast(inner.len));
 }
 
 // Keep as reference in case resume should be a function call.
@@ -462,87 +132,14 @@ pub fn listLen(vm: *cy.VM) Value {
 //     return Value.None;
 // }
 
-pub fn mapContains(vm: *cy.VM) Value {
-    const obj = vm.getValue(0).asHeapObject();
-    const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-    return Value.initBool(inner.contains(vm.getValue(1)));
+pub fn byteNot(vm: *cy.VM) callconv(.c) Value {
+    return Value.initMask8(~vm.getByte(0));
 }
 
-pub fn mapGet(vm: *cy.VM) Value {
-    const obj = vm.getValue(0).asHeapObject();
-    const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-    if (inner.get(vm.getValue(1))) |val| {
-        vm.retain(val);
-        return anySome(vm, val) catch cy.fatal();
-    } else return anyNone(vm) catch cy.fatal();
-}
-
-pub fn byteNot(vm: *cy.VM) Value {
-    return Value.initByte(~vm.getByte(0));
-}
-
-pub fn byteFmt(vm: *cy.VM) anyerror!Value {
-    const val = vm.getByte(0);
-    const format = try std.meta.intToEnum(cy.builtins.NumberFormat, vm.getInt(1));
-    return cy.builtins.intFmtExt(vm, @intCast(val), format, .{});
-}
-
-pub fn byteFmt2(vm: *cy.VM) anyerror!Value {
-    const val = vm.getByte(0);
-    const format = try std.meta.intToEnum(cy.builtins.NumberFormat, vm.getInt(1));
-    const optsv = vm.getObject(*cy.heap.Table, 2);
-    const opts = try cy.builtins.getIntFmtOptions(optsv);
-    return cy.builtins.intFmtExt(vm, @intCast(val), format, opts);
-}
-
-pub fn byteLess(vm: *cy.VM) Value {
-    return Value.initBool(vm.getByte(0) < vm.getByte(1));
-}
-
-pub fn byteLessEq(vm: *cy.VM) Value {
-    return Value.initBool(vm.getByte(0) <= vm.getByte(1));
-}
-
-pub fn byteGreater(vm: *cy.VM) Value {
-    return Value.initBool(vm.getByte(0) > vm.getByte(1));
-}
-
-pub fn byteGreaterEq(vm: *cy.VM) Value {
-    return Value.initBool(vm.getByte(0) >= vm.getByte(1));
-}
-
-pub fn byteCall(vm: *cy.VM) Value {
-    return vm.getValue(0);
-}
-
-pub fn byteAdd(vm: *cy.VM) Value {
-    return Value.initByte(vm.getByte(0) +% vm.getByte(1));
-}
-
-pub fn byteSub(vm: *cy.VM) Value {
-    return Value.initByte(vm.getByte(0) -% vm.getByte(1));
-}
-
-pub fn byteMul(vm: *cy.VM) Value {
-    return Value.initByte(vm.getByte(0) *% vm.getByte(1));
-}
-
-pub fn byteDiv(vm: *cy.VM) Value {
+pub fn bytePow(vm: *cy.VM) callconv(.c) Value {
     const right = vm.getByte(1);
     if (right == 0) return vm.prepPanic("Division by zero.");
-    return Value.initByte(@divTrunc(vm.getByte(0), right));
-}
-
-pub fn byteMod(vm: *cy.VM) Value {
-    const right = vm.getByte(1);
-    if (right == 0) return vm.prepPanic("Division by zero.");
-    return Value.initByte(@mod(vm.getByte(0), right));
-}
-
-pub fn bytePow(vm: *cy.VM) Value {
-    const right = vm.getByte(1);
-    if (right == 0) return vm.prepPanic("Division by zero.");
-    return Value.initByte(std.math.powi(u8, vm.getByte(0), right) catch |err| {
+    return Value.initMask8(std.math.powi(i8, vm.getByte(0), right) catch |err| {
         switch (err) {
             error.Underflow => return vm.prepPanic("Underflow."),
             error.Overflow => return vm.prepPanic("Overflow."),
@@ -550,155 +147,488 @@ pub fn bytePow(vm: *cy.VM) Value {
     });
 }
 
-pub fn byteAnd(vm: *cy.VM) Value {
-    return Value.initByte(vm.getByte(0) & vm.getByte(1));
+pub fn Int_gt_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+    switch (ctx.func.parent.parent.?.cast(.type).instance.?.params[0].as_int_lit()) {
+        8 => {
+            const left = ctx.args[0].asI8();
+            const right = ctx.args[1].asI8();
+            return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left > right));
+        },
+        16 => {
+            const left = ctx.args[0].asI16();
+            const right = ctx.args[1].asI16();
+            return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left > right));
+        },
+        32 => {
+            const left = ctx.args[0].asI32();
+            const right = ctx.args[1].asI32();
+            return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left > right));
+        },
+        64 => {
+            const left = ctx.args[0].asInt();
+            const right = ctx.args[1].asInt();
+            return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left > right));
+        },
+        else => @panic("unexpected"),
+    }
 }
 
-pub fn byteOr(vm: *cy.VM) Value {
-    return Value.initByte(vm.getByte(0) | vm.getByte(1));
+pub fn Int_lt_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+    switch (ctx.func.parent.parent.?.cast(.type).instance.?.params[0].as_int_lit()) {
+        8 => {
+            const left = ctx.args[0].asI8();
+            const right = ctx.args[1].asI8();
+            return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left < right));
+        },
+        16 => {
+            const left = ctx.args[0].asI16();
+            const right = ctx.args[1].asI16();
+            return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left < right));
+        },
+        32 => {
+            const left = ctx.args[0].asI32();
+            const right = ctx.args[1].asI32();
+            return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left < right));
+        },
+        64 => {
+            const left = ctx.args[0].asInt();
+            const right = ctx.args[1].asInt();
+            return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left < right));
+        },
+        else => @panic("unexpected"),
+    }
 }
 
-pub fn byteXor(vm: *cy.VM) Value {
-    return Value.initByte(vm.getByte(0) ^ vm.getByte(1));
+pub fn Int_uge_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+    switch (ctx.func.parent.parent.?.cast(.type).instance.?.params[0].as_int_lit()) {
+        8 => {
+            const left = ctx.args[0].asU8();
+            const right = ctx.args[1].asU8();
+            return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left >= right));
+        },
+        16 => {
+            const left = ctx.args[0].asU16();
+            const right = ctx.args[1].asU16();
+            return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left >= right));
+        },
+        32 => {
+            const left = ctx.args[0].asU32();
+            const right = ctx.args[1].asU32();
+            return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left >= right));
+        },
+        64 => {
+            const left = ctx.args[0].asUint();
+            const right = ctx.args[1].asUint();
+            return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left >= right));
+        },
+        else => @panic("unexpected"),
+    }
 }
 
-pub fn byteLeftShift(vm: *cy.VM) Value {
-    const right = vm.getInt(1);
-    if (right > 8 or right < 0) return vm.prepPanic("Out of bounds.");
-    return Value.initByte(vm.getByte(0) << @intCast(right));
+pub fn Int_ugt_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+    switch (ctx.func.parent.parent.?.cast(.type).instance.?.params[0].as_int_lit()) {
+        8 => {
+            const left = ctx.args[0].asU8();
+            const right = ctx.args[1].asU8();
+            return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left > right));
+        },
+        16 => {
+            const left = ctx.args[0].asU16();
+            const right = ctx.args[1].asU16();
+            return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left > right));
+        },
+        32 => {
+            const left = ctx.args[0].asU32();
+            const right = ctx.args[1].asU32();
+            return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left > right));
+        },
+        64 => {
+            const left = ctx.args[0].asUint();
+            const right = ctx.args[1].asUint();
+            return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left > right));
+        },
+        else => @panic("unexpected"),
+    }
 }
 
-pub fn byteRightShift(vm: *cy.VM) Value {
-    const right = vm.getByte(1);
-    if (right > 8 or right < 0) return vm.prepPanic("Out of bounds.");
-    return Value.initByte(vm.getByte(0) >> @intCast(right));
+pub fn Int_ult_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+    switch (ctx.func.parent.parent.?.cast(.type).instance.?.params[0].as_int_lit()) {
+        8 => {
+            const left = ctx.args[0].asU8();
+            const right = ctx.args[1].asU8();
+            return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left < right));
+        },
+        16 => {
+            const left = ctx.args[0].asU16();
+            const right = ctx.args[1].asU16();
+            return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left < right));
+        },
+        32 => {
+            const left = ctx.args[0].asU32();
+            const right = ctx.args[1].asU32();
+            return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left < right));
+        },
+        64 => {
+            const left = ctx.args[0].asUint();
+            const right = ctx.args[1].asUint();
+            return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left < right));
+        },
+        else => @panic("unexpected"),
+    }
 }
 
-pub fn intNeg(vm: *cy.VM) Value {
-    return Value.initInt(-vm.getInt(0));
+pub fn Int_neg_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+    const val = ctx.args[0].asInt();
+    return cy.TypeValue.init(c.sema.i64_t, Value.initInt(-val));
 }
 
-pub fn intLess(vm: *cy.VM) Value {
-    return Value.initBool(vm.getInt(0) < vm.getInt(1));
-}
-
-pub fn intLessEq(vm: *cy.VM) Value {
-    return Value.initBool(vm.getInt(0) <= vm.getInt(1));
-}
-
-pub fn intGreater(vm: *cy.VM) Value {
-    return Value.initBool(vm.getInt(0) > vm.getInt(1));
-}
-
-pub fn intGreaterEq(vm: *cy.VM) Value {
-    return Value.initBool(vm.getInt(0) >= vm.getInt(1));
-}
-
-pub fn intAdd(vm: *cy.VM) Value {
-    return Value.initInt(vm.getInt(0) +% vm.getInt(1));
-}
-
-pub fn intSub(vm: *cy.VM) Value {
-    return Value.initInt(vm.getInt(0) -% vm.getInt(1));
-}
-
-pub fn intMul(vm: *cy.VM) Value {
-    return Value.initInt(vm.getInt(0) *% vm.getInt(1));
-}
-
-pub fn intDiv(vm: *cy.VM) Value {
-    const right = vm.getInt(1);
-    if (right == 0) return vm.prepPanic("Division by zero.");
-    return Value.initInt(@divTrunc(vm.getInt(0), right));
-}
-
-pub fn intMod(vm: *cy.VM) Value {
-    const right = vm.getInt(1);
-    if (right == 0) return vm.prepPanic("Division by zero.");
-    return Value.initInt(@mod(vm.getInt(0), right));
-}
-
-pub fn intPow(vm: *cy.VM) Value {
-    const right = vm.getInt(1);
-    if (right == 0) return vm.prepPanic("Division by zero.");
-    return Value.initInt(std.math.powi(i64, vm.getInt(0), right) catch |err| {
-        switch (err) {
-            error.Underflow => return vm.prepPanic("Underflow."),
-            error.Overflow => return vm.prepPanic("Overflow."),
-        }
+pub fn Int_neg(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const expr = ctx.args[0].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.neg, expr.type, ctx.node, .{
+        .expr = expr,
     });
+    out.* = cy.sema.ExprResult.init2(loc);
 }
 
-pub fn intAnd(vm: *cy.VM) Value {
-    return Value.initInt(vm.getInt(0) & vm.getInt(1));
+pub fn Int_add(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const left = ctx.args[0].asPtr(*ir.Expr);
+    const right = ctx.args[1].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.add, left.type, ctx.node, .{
+        .left = left,
+        .right = right,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
 }
 
-pub fn intOr(vm: *cy.VM) Value {
-    return Value.initInt(vm.getInt(0) | vm.getInt(1));
+pub fn Int_mul_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+    const arg_t = ctx.func.sig.params_ptr[0].get_type();
+    if (arg_t.id() == bt.I64) {
+        const left = ctx.args[0].asInt();
+        const right = ctx.args[1].asInt();
+        return cy.TypeValue.init(c.sema.i64_t, Value.initInt(left * right));
+    } else {
+        return c.reportErrorFmt("TODO: `{}`", &.{cy.fmt.v(arg_t.name())}, ctx.node);
+    }
 }
 
-pub fn intXor(vm: *cy.VM) Value {
-    return Value.initInt(vm.getInt(0) ^ vm.getInt(1));
+pub fn Int_add_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+    const arg_t = ctx.func.sig.params_ptr[0].get_type();
+    if (arg_t.id() == bt.I64) {
+        const left = ctx.args[0].asInt();
+        const right = ctx.args[1].asInt();
+        return cy.TypeValue.init(c.sema.i64_t, Value.initInt(left + right));
+    } else {
+        return c.reportErrorFmt("TODO: `{}`", &.{cy.fmt.v(arg_t.name())}, ctx.node);
+    }
 }
 
-pub fn intLeftShift(vm: *cy.VM) Value {
-    const right = vm.getInt(1);
-    if (right > 64 or right < 0) return vm.prepPanic("Out of bounds.");
-    return Value.initInt(vm.getInt(0) << @intCast(right));
+pub fn Int_sub_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+    const arg_t = ctx.func.sig.params_ptr[0].get_type();
+    if (arg_t.id() == bt.I64) {
+        const left = ctx.args[0].asInt();
+        const right = ctx.args[1].asInt();
+        return cy.TypeValue.init(c.sema.i64_t, Value.initInt(left - right));
+    } else {
+        return c.reportErrorFmt("TODO: `{}`", &.{cy.fmt.v(arg_t.name())}, ctx.node);
+    }
 }
 
-pub fn intRightShift(vm: *cy.VM) Value {
-    const right = vm.getInt(1);
-    if (right > 64 or right < 0) return vm.prepPanic("Out of bounds.");
-    return Value.initInt(vm.getInt(0) >> @intCast(right));
+pub fn Int_sub(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const left = ctx.args[0].asPtr(*ir.Expr);
+    const right = ctx.args[1].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.sub, left.type, ctx.node, .{
+        .left = left,
+        .right = right,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
 }
 
-pub fn intNot(vm: *cy.VM) Value {
-    return Value.initInt(~vm.getInt(0));
+pub fn Int_mul(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const left = ctx.args[0].asPtr(*ir.Expr);
+    const right = ctx.args[1].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.imul, left.type, ctx.node, .{
+        .left = left,
+        .right = right,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
 }
 
-pub fn floatNeg(vm: *cy.VM) Value {
-    return Value.initF64(-vm.getFloat(0));
+pub fn Int_umul(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const left = ctx.args[0].asPtr(*ir.Expr);
+    const right = ctx.args[1].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.mul, left.type, ctx.node, .{
+        .left = left,
+        .right = right,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
 }
 
-pub fn floatLess(vm: *cy.VM) Value {
-    return Value.initBool(vm.getFloat(0) < vm.getFloat(1));
+pub fn Int_udiv(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const left = ctx.args[0].asPtr(*ir.Expr);
+    const right = ctx.args[1].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.div, left.type, ctx.node, .{
+        .left = left,
+        .right = right,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
 }
 
-pub fn floatLessEq(vm: *cy.VM) Value {
-    return Value.initBool(vm.getFloat(0) <= vm.getFloat(1));
+pub fn Int_div(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const left = ctx.args[0].asPtr(*ir.Expr);
+    const right = ctx.args[1].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.idiv, left.type, ctx.node, .{
+        .left = left,
+        .right = right,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
 }
 
-pub fn floatGreater(vm: *cy.VM) Value {
-    return Value.initBool(vm.getFloat(0) > vm.getFloat(1));
+pub fn Int_umod(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const left = ctx.args[0].asPtr(*ir.Expr);
+    const right = ctx.args[1].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.mod, left.type, ctx.node, .{
+        .left = left,
+        .right = right,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
 }
 
-pub fn floatGreaterEq(vm: *cy.VM) Value {
-    return Value.initBool(vm.getFloat(0) >= vm.getFloat(1));
+pub fn Int_mod(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const left = ctx.args[0].asPtr(*ir.Expr);
+    const right = ctx.args[1].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.imod, left.type, ctx.node, .{
+        .left = left,
+        .right = right,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
 }
 
-pub fn floatAdd(vm: *cy.VM) Value {
-    return Value.initF64(vm.getFloat(0) + vm.getFloat(1));
+pub fn Int_and(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const left = ctx.args[0].asPtr(*ir.Expr);
+    const right = ctx.args[1].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.and_op, left.type, ctx.node, .{
+        .left = left,
+        .right = right,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
 }
 
-pub fn floatSub(vm: *cy.VM) Value {
-    return Value.initF64(vm.getFloat(0) - vm.getFloat(1));
+pub fn Int_or(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const left = ctx.args[0].asPtr(*ir.Expr);
+    const right = ctx.args[1].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.or_op, left.type, ctx.node, .{
+        .left = left,
+        .right = right,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
 }
 
-pub fn floatMul(vm: *cy.VM) Value {
-    return Value.initF64(vm.getFloat(0) * vm.getFloat(1));
+pub fn Int_xor(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const left = ctx.args[0].asPtr(*ir.Expr);
+    const right = ctx.args[1].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.xor, left.type, ctx.node, .{
+        .left = left,
+        .right = right,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
 }
 
-pub fn floatDiv(vm: *cy.VM) Value {
-    return Value.initF64(vm.getFloat(0) / vm.getFloat(1));
+pub fn Int_asr(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const left = ctx.args[0].asPtr(*ir.Expr);
+    const right = ctx.args[1].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.asr, left.type, ctx.node, .{
+        .left = left,
+        .right = right,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
 }
 
-pub fn floatMod(vm: *cy.VM) Value {
-    return Value.initF64(@mod(vm.getFloat(0), vm.getFloat(1)));
+pub fn Int_lsr(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const left = ctx.args[0].asPtr(*ir.Expr);
+    const right = ctx.args[1].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.lsr, left.type, ctx.node, .{
+        .left = left,
+        .right = right,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
 }
 
-pub fn floatPow(vm: *cy.VM) Value {
-    return Value.initF64(std.math.pow(f64, vm.getFloat(0), vm.getFloat(1)));
+pub fn Int_lsr_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+    const arg_t = ctx.func.sig.params_ptr[0].get_type();
+    if (arg_t.id() == bt.I64) {
+        const left = ctx.args[0].asInt();
+        const right = ctx.args[1].asInt();
+        return cy.TypeValue.init(arg_t, Value.initInt(left >> @intCast(right)));
+    } else {
+        return c.reportErrorFmt("TODO: `{}`", &.{cy.fmt.v(arg_t.name())}, ctx.node);
+    }
+}
+
+pub fn Int_lsl_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+    const arg_t = ctx.func.sig.params_ptr[0].get_type();
+    if (arg_t.id() == bt.I64) {
+        const left = ctx.args[0].asInt();
+        const right = ctx.args[1].asInt();
+        return cy.TypeValue.init(arg_t, Value.initInt(left << @intCast(right)));
+    } else {
+        return c.reportErrorFmt("TODO: `{}`", &.{cy.fmt.v(arg_t.name())}, ctx.node);
+    }
+}
+
+pub fn Int_lsl(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const left = ctx.args[0].asPtr(*ir.Expr);
+    const right = ctx.args[1].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.lsl, left.type, ctx.node, .{
+        .left = left,
+        .right = right,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
+}
+
+pub fn Int_not(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const expr = ctx.args[0].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.not, expr.type, ctx.node, .{
+        .expr = expr,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
+}
+
+pub fn Int_not_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+    const arg_t = ctx.func.sig.params_ptr[0].get_type();
+    switch (arg_t.id()) {
+        bt.R8,
+        bt.R16,
+        bt.R32,
+        bt.R64,
+        bt.I8,
+        bt.I16,
+        bt.I32,
+        bt.I64 => {
+            return cy.TypeValue.init(arg_t, Value.initRaw(~ctx.args[0].val));
+        },
+        else => {
+            const name = try c.sema.allocTypeName(arg_t);
+            return c.reportErrorFmt("TODO: `{}`", &.{cy.fmt.v(name)}, ctx.node);
+        },
+    }
+}
+
+pub fn float_neg_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+    const float_t = ctx.func.sig.params_ptr[0].get_type();
+    if (float_t.id() == bt.F64) {
+        const val = ctx.args[0].asF64();
+        return cy.TypeValue.init(c.sema.f64_t, Value.initFloat64(-val));
+    } else {
+        const val = ctx.args[0].asF32();
+        return cy.TypeValue.init(c.sema.f32_t, Value.initFloat32(-val));
+    }
+}
+
+pub fn float_neg(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const expr = ctx.args[0].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.fneg, ctx.func.sig.ret, ctx.node, .{
+        .expr = expr,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
+}
+
+pub fn cmp(comptime cond: ir.Condition) fn(*cy.Chunk, *cy.CtFuncContext, *cy.sema.ExprResult) anyerror!void {
+    const S = struct {
+        fn func(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+            const left = ctx.args[0].asPtr(*ir.Expr);
+            const right = ctx.args[1].asPtr(*ir.Expr);
+            const loc = try c.ir.newExpr(.cmp, c.sema.bool_t, ctx.node, .{
+                .left = left,
+                .right = right,
+                .cond = cond,
+            });
+            out.* = cy.sema.ExprResult.init2(loc);
+        }
+    };
+    return S.func;
+}
+
+pub fn float_add(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const left = ctx.args[0].asPtr(*ir.Expr);
+    const right = ctx.args[1].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.fadd, ctx.func.sig.ret, ctx.node, .{
+        .left = left,
+        .right = right,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
+}
+
+pub fn float_sub(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const left = ctx.args[0].asPtr(*ir.Expr);
+    const right = ctx.args[1].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.fsub, ctx.func.sig.ret, ctx.node, .{
+        .left = left,
+        .right = right,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
+}
+
+pub fn float_abs(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const child = ctx.args[0].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.fabs, ctx.func.sig.ret, ctx.node, .{
+        .expr = child,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
+}
+
+pub fn float_mul(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const left = ctx.args[0].asPtr(*ir.Expr);
+    const right = ctx.args[1].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.fmul, ctx.func.sig.ret, ctx.node, .{
+        .left = left,
+        .right = right,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
+}
+
+pub fn float_mul_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+    const float_t = ctx.func.sig.params_ptr[0].get_type();
+    if (float_t.id() == bt.F64) {
+        const left = ctx.args[0].asF64();
+        const right = ctx.args[1].asF64();
+        return cy.TypeValue.init(c.sema.f64_t, Value.initFloat64(left * right));
+    } else {
+        const left = ctx.args[0].asF32();
+        const right = ctx.args[1].asF32();
+        return cy.TypeValue.init(c.sema.f32_t, Value.initFloat32(left * right));
+    }
+}
+
+pub fn float_div(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const left = ctx.args[0].asPtr(*ir.Expr);
+    const right = ctx.args[1].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.fdiv, ctx.func.sig.ret, ctx.node, .{
+        .left = left,
+        .right = right,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
+}
+
+pub fn float_mod(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
+    const left = ctx.args[0].asPtr(*ir.Expr);
+    const right = ctx.args[1].asPtr(*ir.Expr);
+    const loc = try c.ir.newExpr(.fmod, ctx.func.sig.ret, ctx.node, .{
+        .left = left,
+        .right = right,
+    });
+    out.* = cy.sema.ExprResult.init2(loc);
+}
+
+pub fn float_pow(t: *cy.Thread) callconv(.c) C.Ret {
+    const ret = t.ret(f64);
+    ret.* = std.math.pow(f64, t.param(f64), t.param(f64));
+    return C.RetOk;
+}
+
+pub fn float_pow32(t: *cy.Thread) callconv(.c) C.Ret {
+    const ret = t.ret(f32);
+    ret.* = std.math.pow(f32, t.param(f32), t.param(f32));
+    return C.RetOk;
 }
 
 pub const QuickenType = enum(u8) {
@@ -722,8 +652,7 @@ pub const ModuleBuilder = struct {
             .vm = c.vm,
         };
         if (symOpt) |sym| {
-            const chunk = sym.getMod().?.chunk;
-            new.chunk = chunk;
+            new.chunk = c.chunks.items[sym.declNode().src()];
             new.sym = sym;
         }
         return new;
@@ -734,7 +663,7 @@ pub const ModuleBuilder = struct {
     }
 
     pub fn declareFuncSig(self: *const ModuleBuilder, name: [*:0]const u8, params: []const *cy.Type, ret: *cy.Type, ptr: cy.ZHostFuncFn) !void {
-        cc.declareFunc(self.sym.toC(), name, @ptrCast(@constCast(params.ptr)), params.len, @ptrCast(ret), @ptrCast(ptr));
+        C.declareFunc(self.sym.toC(), name, @ptrCast(@constCast(params.ptr)), params.len, @ptrCast(ret), @ptrCast(ptr));
     }
 
     pub fn ensureMethodGroup(self: *const ModuleBuilder, name: []const u8) !vmc.MethodGroupId {
@@ -777,8 +706,8 @@ pub const ModuleBuilder = struct {
 
         for (fields, 0..) |field, i| {
             const id = try self.vm.ensureFieldSym(field);
-            try self.vm.addFieldSym(sym.type, id, @intCast(i), bt.Any);
-            _ = try self.chunk.declareField(@ptrCast(sym), field, @intCast(i), bt.Any, cy.NullId);
+            try self.vm.addFieldSym(sym.type, id, @intCast(i), bt.Object);
+            _ = try self.chunk.declareField(@ptrCast(sym), field, @intCast(i), bt.Object, cy.NullId);
         }
         sym.fields = modFields.ptr;
         sym.numFields = @intCast(modFields.len);

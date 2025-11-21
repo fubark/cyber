@@ -5,10 +5,13 @@
 -- gcc -c -fPIC foo.c -o foo.o
 -- gcc -shared foo.o -o libfoo.so
 
-use os
+use c
 
-var ffi = os.newFFI()
-ffi.cfunc('add', .{symbol.int, symbol.int}, symbol.int)
--- dyn lib = ffi.bindLib('./libfoo.so')
-var lib = ffi.bindLib('./libfoo.dylib')
-print lib['add'](123, 321)
+#if meta.is_vm_target():
+    #c.bind_lib('./libfoo.dylib')
+
+#[extern]
+fn add(a, b int) -> int
+
+fn main():
+    print(add(123, 321))

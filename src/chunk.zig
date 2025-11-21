@@ -22,6 +22,13 @@ pub const ChunkId = u32;
 pub const SymId = u32;
 pub const FuncId = u32;
 
+const VarAccessPath = struct {
+    // Maybe redundant with recParentLocal()
+    var_id: sema.LocalId = undefined,
+
+    struct_field_offset: usize = 0,
+};
+
 /// A compilation unit.
 /// It contains data to compile from source into a module with exported symbols.
 pub const Chunk = struct {
@@ -31,8 +38,17 @@ pub const Chunk = struct {
     sema: *cy.Sema,
     vm: *cy.VM,
 
-    /// Source code. Can be owned depending on `srcOwned`
+    /// Heap for compile-time values.
+    heap: *cy.Heap,
+
+    /// Source code. Owned.
     src: []const u8,
+
+    /// Whether `src` needs to be loaded from `srcUri`.
+    pending_load_src: bool,
+    loaded: bool,
+
+    importer: ?*ast.Node,
 
     /// Read-only view of the AST.
     ast: cy.ast.AstView,
@@ -44,68 +60,51 @@ pub const Chunk = struct {
 
     /// Used for temp string building.
     tempBufU8: std.ArrayListUnmanaged(u8),
+    u16_stack: std.ArrayListUnmanaged(u16),
 
     /// Since nodes are currently processed recursively,
     /// set the current node so that error reporting has a better
     /// location context for helper methods that simply return no context errors.
     curNode: ?*ast.Node,
 
+    /// The current expr that has a continuation body, otherwise null.
+    cur_cont_expr: ?*ast.LambdaContExpr,
+
     ///
     /// Sema pass.
     ///
     semaProcs: std.ArrayListUnmanaged(sema.Proc),
     semaBlocks: std.ArrayListUnmanaged(sema.Block),
-    capVarDescs: std.AutoHashMapUnmanaged(sema.LocalVarId, sema.CapVarDesc),
 
     /// Generic stacks.
-    dataStack: std.ArrayListUnmanaged(Data),
-    dataU8Stack: std.ArrayListUnmanaged(DataU8),
     listDataStack: std.ArrayListUnmanaged(ListData),
 
-    /// Stack for building func signatures. (eg. for nested func calls)
+    /// Stack for building func signatures. (e.g. for nested func calls)
     typeStack: std.ArrayListUnmanaged(*types.Type),
 
     valueStack: std.ArrayListUnmanaged(cy.Value),
+    func_template_param_stack: std.ArrayListUnmanaged(cy.sym.FuncTemplateParam),
 
-    /// IR buffer can be swapped in, this will go away when migrating to `Worker`.
-    ir: *cy.ir.Buffer,
-    own_ir: cy.ir.Buffer,
+    expr_stack: std.ArrayListUnmanaged(sema.ExprResult),
 
-    /// Maps a IR local to a VM local.
-    genIrLocalMapStack: std.ArrayListUnmanaged(u8),
+    func_param_stack: std.ArrayListUnmanaged(sema.FuncParam),
+
+    active_field_stack: std.ArrayListUnmanaged(bool),
+
+    ir: cy.ir.Buffer,
 
     /// VM locals. From a block's `localStart` offset, this is indexed by the virtual reg 
     /// which includes function prelude regs and params for simplicity.
 
-    /// Slots for locals and temps.
-    /// Each procedure has a maximum of 255 registers starting at index 0.
-    /// The slot at index 255 isn't used and represents Null.
-    /// The slots in the front are reserved for the call convention and params.
-    slot_stack: std.ArrayListUnmanaged(bc.Slot),
-
     /// Local vars.
-    varStack: std.ArrayListUnmanaged(sema.LocalVar),
+    varStack: std.ArrayListUnmanaged(sema.Local),
     varShadowStack: std.ArrayListUnmanaged(cy.sema.VarShadow),
 
     /// Main sema block id.
     mainSemaProcId: sema.ProcId,
 
-    /// Names to chunk syms or using namespace (use imports, use aliases).
-    /// Chunk syms have a higher precedence.
-    /// This is populated after symbol queries.
-    sym_cache: std.StringHashMapUnmanaged(*cy.Sym),
-
-    /// Symbols in the fallback using namespace.
-    use_alls: std.ArrayListUnmanaged(*cy.Sym),
-    use_global: bool,
-
-    /// Successful module func signature matches are cached.
-    funcCheckCache: std.HashMapUnmanaged(sema.ModFuncSigKey, *cy.Func, cy.hash.KeyU96Context, 80),
-
-    /// Object type dependency graph.
-    /// This is only needed for default initializers so it is created on demand per chunk.
-    typeDeps: std.ArrayListUnmanaged(TypeDepNode),
-    typeDepsMap: std.AutoHashMapUnmanaged(*cy.Sym, u32),
+    /// Builtins is always a fallback module for symbol lookups.
+    fallback_modules: std.ArrayListUnmanaged(*cy.Sym),
 
     /// Syms owned by this chunk. Does not include field syms.
     syms: std.ArrayListUnmanaged(*cy.Sym),
@@ -114,71 +113,64 @@ pub const Chunk = struct {
     /// Includes lambdas which are not linked from a named sym.
     funcs: std.ArrayListUnmanaged(*cy.Func),
 
+    host_funcs: std.StringHashMapUnmanaged(C.BindFunc),
+    host_types: std.StringHashMapUnmanaged(C.BindType),
+    host_globals: std.StringHashMapUnmanaged(C.BindGlobal),
+
+    /// Run before chunk is destroyed.
+    on_destroy: C.ModuleOnDestroyFn = null,
+
+    /// Run after declarations have been loaded.
+    on_load: C.ModuleOnLoadFn = null,
+
     /// Reference the current resolve context.
     resolve_stack: std.ArrayListUnmanaged(sema.ResolveContext),
 
-    arg_stack: std.ArrayListUnmanaged(cy.sema_func.Argument),
+    has_pending_ct_stmts: bool,
+    resolving_ct_stmts: bool,
 
     ///
     /// Codegen pass
     ///
-    proc_stack: std.ArrayListUnmanaged(bc.Proc),
-    procs: std.ArrayListUnmanaged([]const u8),
+    proc_stack: std.ArrayListUnmanaged(bc.Proc), // TODO: This isn't needed anymore. `cur_proc` should be enough.
+    funcs_debug: std.ArrayListUnmanaged(FuncDebugInfo),
     blocks: std.ArrayListUnmanaged(bc.Block),
     blockJumpStack: std.ArrayListUnmanaged(BlockJump),
 
-    regStack: std.ArrayListUnmanaged(u8),
-    operandStack: std.ArrayListUnmanaged(u8),
+    /// Maps ir local to bc reg.
+    bc_local_map: std.ArrayList(bc.Reg),
 
-    unwind_stack: std.ArrayListUnmanaged(bc.UnwindEntry),
+    relocations: std.ArrayList(bc.Relocation),
+    rt_relocations: std.ArrayList(bc.Relocation),
 
-    curBlock: *bc.Proc,
+    cur_proc: *bc.Proc,
 
-    /// Shared final code buffer.
-    buf: *cy.ByteCodeBuffer,
+    // TODO: inline the active `Proc`.
+    cur_sema_proc: *sema.Proc,
+
+    temp_access_path: VarAccessPath,
+
+    buf: cy.ByteCodeBuffer,
     jitBuf: *jitgen.CodeBuffer,
     x64Enc: X64.Encoder,
-
-    /// Whether the src is owned by the chunk.
-    srcOwned: bool,
 
     /// This chunk's sym.
     sym: *cy.sym.Chunk,
 
-    /// For binding @host func declarations.
-    host_funcs: std.StringHashMapUnmanaged(C.FuncFn),
-    func_loader: C.FuncLoaderFn = null,
-    /// For binding @host var declarations.
-    varLoader: C.VarLoaderFn = null,
-    /// For binding @host type declarations.
-    host_types: std.StringHashMapUnmanaged(C.HostType),
-    type_loader: C.TypeLoaderFn = null,
-    /// Run after type declarations are loaded.
-    onTypeLoad: C.ModuleOnTypeLoadFn = null,
-    /// Run after declarations have been loaded.
-    onLoad: C.ModuleOnLoadFn = null,
-    /// Run before chunk is destroyed.
-    onDestroy: C.ModuleOnDestroyFn = null,
-    /// Counter for loading @host vars.
-    curHostVarIdx: u32,
+    has_bind_lib: bool,
+    bind_lib: ?[]const u8,
+    has_extern_func: bool,
 
-    hasStaticInit: bool,
+    has_static_init: bool,
 
     encoder: cy.ast.Encoder,
 
-    /// For declaring unnamed types.
-    /// This does not mean that the id is unique since user defined types may have been declared
-    /// before this id is used.
-    nextUnnamedId: u32,
-
     indent: u32,
-
-    /// Funcs deferred to a later sema pass. (eg. func variants, funcs from parent type variants)
-    /// Assumed to have resolved signatures.
-    deferred_funcs: std.ArrayListUnmanaged(*cy.Func),
 
     /// Fallback for name resolving. Used by libcyber's `clFindType`.
     resolve_name_fn: ?*const fn(c: *Chunk, name: []const u8) ?sema.NameResult = null,
+
+    reserved_syms: bool = false,
 
     /// LLVM
     tempTypeRefs: if (cy.hasJIT) std.ArrayListUnmanaged(llvm.TypeRef) else void,
@@ -187,74 +179,79 @@ pub const Chunk = struct {
     builder: if (cy.hasJIT) llvm.BuilderRef else void,
     ctx: if (cy.hasJIT) llvm.ContextRef else void,
     llvmFuncs: if (cy.hasJIT) []LLVM_Func else void, // One-to-one with `semaFuncDecls`
+    
+    user_data: ?*anyopaque,
 
-    /// Chunk owns `srcUri` and `src`.
-    pub fn init(self: *Chunk, c: *cy.Compiler, id: ChunkId, srcUri: []const u8, src: []const u8) !void {
+    pub fn init(self: *Chunk, c: *cy.Compiler, id: ChunkId, srcUri: []const u8, src: ?[]const u8) !void {
         self.* = .{
             .id = id,
             .alloc = c.alloc,
             .compiler = c,
+            .heap = &c.heap,
             .sema = &c.sema,
+            .cur_sema_proc = undefined,
             .vm = c.vm,
-            .src = src,
+            .src = src orelse "",
             .ast = undefined,
             .srcUri = srcUri,
             .sym = undefined,
             .parser = undefined,
             .semaProcs = .{},
             .semaBlocks = .{},
-            .capVarDescs = .{},
             .proc_stack = .{},
-            .procs = .{},
+            .funcs_debug = .{},
             .blocks = .{},
             .blockJumpStack = .{},
             .varShadowStack = .{},
             .varStack = .{},
             .typeStack = .{},
             .valueStack = .{},
+            .expr_stack = .{},
+            .func_param_stack = .{},
+            .active_field_stack = .{},
+            .temp_access_path = .{},
+            .func_template_param_stack = .{},
             .ir = undefined,
-            .own_ir = cy.ir.Buffer.init(),
-            .slot_stack = .{},
-            .genIrLocalMapStack = .{},
-            .dataStack = .{},
-            .dataU8Stack = .{},
             .listDataStack = .{},
-            .regStack = .{},
-            .operandStack = .{},
-            .unwind_stack = .{},
-            .curBlock = undefined,
-            .buf = undefined,
+            .cur_proc = undefined,
+            .buf = cy.ByteCodeBuffer.init(c.alloc, c.vm),
             .jitBuf = undefined,
             .x64Enc = undefined,
             .curNode = null,
+            .cur_cont_expr = null,
             .tempBufU8 = .{},
-            .srcOwned = true,
+            .u16_stack = .{},
             .mainSemaProcId = cy.NullId,
-            .sym_cache = .{},
-            .use_alls = .{},
-            .use_global = false,
-            .funcCheckCache = .{},
-            .curHostVarIdx = 0,
+            .fallback_modules = .{},
             .tempTypeRefs = undefined,
             .tempValueRefs = undefined,
             .builder = undefined,
             .ctx = undefined,
             .llvmFuncs = undefined,
-            .typeDeps = .{},
-            .typeDepsMap = .{},
-            .hasStaticInit = false,
+            .has_static_init = false,
             .encoder = undefined,
-            .nextUnnamedId = 1,
             .indent = 0,
-            .deferred_funcs = .{},
             .syms = .{},
             .funcs = .{},
-            .resolve_stack = .{},
-            .arg_stack = .{},
-            .host_types = .{},
             .host_funcs = .{},
+            .host_types = .{},
+            .host_globals = .{},
+            .resolve_stack = .{},
+            .user_data = null,
+            .has_bind_lib = false,
+            .bind_lib = null,
+            .has_pending_ct_stmts = false,
+            .resolving_ct_stmts = false,
+            .pending_load_src = src == null,
+            .loaded = false,
+            .importer = null,
+            .has_extern_func = false,
+            .bc_local_map = .{},
+            .relocations = .{},
+            .rt_relocations = .{},
         };
-        self.ir = &self.own_ir;
+        self.encoder.c = c;
+        self.ir.init(c.alloc);
         try self.parser.init(c.alloc);
 
         if (cy.hasJIT) {
@@ -262,15 +259,24 @@ pub const Chunk = struct {
             self.tempValueRefs = .{};
             // self.exprResStack = .{};
             // self.exprStack = .{};
-            self.llvmFuncs = &.{};
+            self.llvmFuncs = &.{}; 
+        }
+    }
+
+    // Compile-time values are destructed first since they depend on type syms.
+    pub fn deinitCtValues(self: *Chunk) void {
+        for (self.syms.items) |sym| {
+            cy.sym.deinit_sym_ct_values(self.heap, sym);
+        }
+        for (self.funcs.items) |func| {
+            cy.sym.deinit_func_ct_values(self.heap, func);
         }
     }
 
     pub fn deinit(self: *Chunk) void {
         self.tempBufU8.deinit(self.alloc);
+        self.u16_stack.deinit(self.alloc);
 
-        self.host_funcs.deinit(self.alloc);
-        self.host_types.deinit(self.alloc);
         self.semaBlocks.deinit(self.alloc);
 
         for (self.semaProcs.items) |*sproc| {
@@ -279,27 +285,22 @@ pub const Chunk = struct {
         self.semaProcs.deinit(self.alloc);
 
         self.proc_stack.deinit(self.alloc);
-        self.procs.deinit(self.alloc);
+        self.funcs_debug.deinit(self.alloc);
         self.blocks.deinit(self.alloc); 
 
         self.blockJumpStack.deinit(self.alloc);
         self.varShadowStack.deinit(self.alloc);
         self.varStack.deinit(self.alloc);
-        self.regStack.deinit(self.alloc);
-        self.operandStack.deinit(self.alloc);
-        self.unwind_stack.deinit(self.alloc);
-        self.capVarDescs.deinit(self.alloc);
 
         self.typeStack.deinit(self.alloc);
         self.valueStack.deinit(self.alloc);
-        self.own_ir.deinit(self.alloc);
-        self.dataStack.deinit(self.alloc);
-        self.dataU8Stack.deinit(self.alloc);
+        self.expr_stack.deinit(self.alloc);
+        self.func_param_stack.deinit(self.alloc);
+        self.active_field_stack.deinit(self.alloc);
+        self.func_template_param_stack.deinit(self.alloc);
+        self.ir.deinit(self.alloc);
         self.listDataStack.deinit(self.alloc);
-        self.genIrLocalMapStack.deinit(self.alloc);
-        self.slot_stack.deinit(self.alloc);
         self.resolve_stack.deinit(self.alloc);
-        self.arg_stack.deinit(self.alloc);
 
         if (cy.hasJIT) {
             self.tempTypeRefs.deinit(self.alloc);
@@ -309,34 +310,36 @@ pub const Chunk = struct {
             self.alloc.free(self.llvmFuncs);
         }
 
-        self.typeDeps.deinit(self.alloc);
-        self.typeDepsMap.deinit(self.alloc);
-
-        self.sym_cache.deinit(self.alloc);
-        self.use_alls.deinit(self.alloc);
+        self.fallback_modules.deinit(self.alloc);
 
         for (self.funcs.items) |func| {
-            self.alloc.destroy(func);
+            func.destroy(self.alloc);
         }
         self.funcs.deinit(self.alloc);
 
+        self.host_funcs.deinit(self.alloc);
+        self.host_types.deinit(self.alloc);
+        self.host_globals.deinit(self.alloc);
+
         // Deinit chunk syms. Any retained values must already be freed in case they need to reference syms.
         for (self.syms.items) |sym| {
-            sym.destroy(self.vm, self.alloc);
+            sym.destroy(self.heap, self.alloc);
         }
         self.syms.deinit(self.alloc);
 
-        for (self.deferred_funcs.items) |func| {
-            self.alloc.destroy(func);
-        }
-        self.deferred_funcs.deinit(self.alloc);
+        self.buf.deinit();
 
-        // Free source last since nodes, syms depend on it.
+        if (self.bind_lib) |dl_bind| {
+            self.alloc.free(dl_bind);
+            self.bind_lib = null;
+        }
+
+        self.bc_local_map.deinit(self.alloc);
+        self.relocations.deinit(self.alloc);
+        self.rt_relocations.deinit(self.alloc);
+
         self.alloc.free(self.srcUri);
         self.parser.deinit();
-        if (self.srcOwned) {
-            self.alloc.free(self.src);
-        }
     }
 
     pub fn fromC(mod: C.Module) *cy.Chunk {
@@ -345,11 +348,21 @@ pub const Chunk = struct {
 
     pub fn updateAstView(self: *cy.Chunk, view: cy.ast.AstView) void {
         self.ast = view;
-        self.encoder.ast = view;
     }
 
     pub fn genBlock(self: *cy.Chunk) *bc.Block {
         return &self.blocks.items[self.blocks.items.len-1];
+    }
+
+    pub fn loopBlock(self: *cy.Chunk, start: usize) ?usize {
+        var i: usize = self.semaBlocks.items.len;
+        while (i > start) {
+            i -= 1;
+            if (self.semaBlocks.items[i].loop) {
+                return i;
+            }
+        }
+        return null;
     }
 
     pub fn block(self: *cy.Chunk) *sema.Block {
@@ -360,35 +373,17 @@ pub const Chunk = struct {
         return &self.semaProcs.items[self.semaProcs.items.len-1];
     }
 
-    pub fn getProcParams(c: *const cy.Chunk, p: *sema.Proc) []const sema.LocalVar {
+    pub fn procBlock(self: *cy.Chunk) *sema.Block {
+        return &self.semaBlocks.items[self.proc().block_start];
+    }
+
+    pub fn getProcParams(c: *const cy.Chunk, p: *sema.Proc) []const sema.Local {
         return c.varStack.items[p.varStart..p.varStart+p.numParams];
     }
 
     /// Includes aliases.
-    pub fn getProcVars(c: *const cy.Chunk, p: *sema.Proc) []const sema.LocalVar {
+    pub fn getProcVars(c: *const cy.Chunk, p: *sema.Proc) []const sema.Local {
         return c.varStack.items[p.varStart+p.numParams..];
-    }
-
-    pub fn getNextUniqUnnamedIdent(c: *Chunk, buf: *[16]u8) []const u8 {
-        const symMap = c.sym.getMod().symMap;
-        var fbuf = std.io.fixedBufferStream(buf);
-        const w = fbuf.writer();
-        w.writeAll("unnamed") catch cy.fatal();
-        while (true) {
-            fbuf.pos = "unnamed".len;
-            std.fmt.formatInt(c.nextUnnamedId, 10, .lower, .{}, w) catch cy.fatal();
-            const name = fbuf.getWritten();
-            if (symMap.contains(name)) {
-                c.nextUnnamedId += 1;
-            } else {
-                defer c.nextUnnamedId += 1;
-                return name;
-            }
-        }
-    }
-
-    pub inline fn isInStaticInitializer(self: *Chunk) bool {
-        return self.compiler.svar_init_stack.items.len > 0;
     }
 
     pub inline fn semaBlockDepth(self: *Chunk) u32 {
@@ -429,44 +424,17 @@ pub const Chunk = struct {
         }
     }
 
-    fn genEnsureRequiredType(self: *Chunk, genv: bc.GenValue, requiredType: types.Type) !void {
-        if (requiredType.typeT != .any) {
-            if (genv.vtype.typeT == requiredType.typeT) {
-                return;
-            }
-
-            const reqTypeSymId = types.typeToSymbol(requiredType);
-            const typeSymId = types.typeToSymbol(genv.vtype);
-            if (typeSymId != reqTypeSymId) {
-                return self.reportError("Type {} can not be casted to required type {}", &.{v(genv.vtype.typeT), fmt.v(requiredType.typeT)});
-            }
-        }
+    pub fn get_chunk_by_uri(self: *Chunk, uri: []const u8) !?*cy.Chunk {
+        var buf: [1024]u8 = undefined;
+        const ruri = try cy.compiler.resolveModuleUriFrom(self, &buf, uri, null);
+        return self.compiler.chunk_map.get(ruri);
     }
 
-    fn canUseVarAsDst(svar: sema.LocalVar) bool {
-        // If boxed, the var needs to be copied out of the box.
-        // If static selected, the var needs to be copied to a local.
-        return !svar.isBoxed and !svar.isStaticAlias;
-    }
-
-    pub fn pushTempOperand(self: *Chunk, operand: u8) !void {
-        try self.operandStack.append(self.alloc, operand);
-    }
-
-    pub fn pushReg(self: *Chunk, reg: u8) !void {
-        try self.regStack.append(self.alloc, reg);
-    }
-
-    pub fn pushEmptyJumpNotCond(self: *Chunk, condLocal: LocalId) !u32 {
+    pub fn pushEmptyJumpNotCond(self: *Chunk, reg: bc.Reg, node: *ast.Node) !u32 {
         const start: u32 = @intCast(self.buf.ops.items.len);
-        try self.buf.pushOp3(.jumpNotCond, condLocal, 0, 0);
+        try self.pushCode(.jump_f, &.{0, 0, 0, 0}, node);
+        self.buf.setOpArgU16(start + 1, reg);
         return start;
-    }
-
-    pub fn pushJumpBackCond(self: *Chunk, toPc: usize, condLocal: LocalId) !void {
-        const pc = self.buf.ops.items.len;
-        try self.buf.pushOp3(.jumpCond, condLocal, 0, 0);
-        self.buf.setOpArgU16(pc + 2, @bitCast(-@as(i16, @intCast(pc - toPc))));
     }
 
     pub fn pushJumpBackTo(self: *Chunk, toPc: usize) !void {
@@ -487,9 +455,10 @@ pub const Chunk = struct {
         return start;
     }
 
-    pub fn pushEmptyJumpCond(self: *Chunk, condLocal: LocalId) !u32 {
+    pub fn pushEmptyJumpCond(self: *Chunk, reg: bc.Reg, node: *ast.Node) !u32 {
         const start: u32 = @intCast(self.buf.ops.items.len);
-        try self.buf.pushOp3(.jumpCond, condLocal, 0, 0);
+        try self.buf.pushCode(.jump_t, &.{0, 0, 0, 0}, node);
+        self.buf.setOpArgU16(start + 1, reg);
         return start;
     }
 
@@ -498,11 +467,11 @@ pub const Chunk = struct {
     }
 
     pub fn patchJumpCondToCurPc(self: *Chunk, jumpPc: u32) void {
-        self.buf.setOpArgU16(jumpPc + 2, @intCast(self.buf.ops.items.len - jumpPc));
+        self.buf.setOpArgU16(jumpPc + 3, @intCast(self.buf.ops.items.len - jumpPc));
     }
 
     pub fn patchJumpNotCondToCurPc(self: *Chunk, jumpPc: u32) void {
-        self.buf.setOpArgU16(jumpPc + 2, @intCast(self.buf.ops.items.len - jumpPc));
+        self.buf.setOpArgU16(jumpPc + 3, @intCast(self.buf.ops.items.len - jumpPc));
     }
 
     /// Patches block breaks. For `if` and `match` blocks.
@@ -521,56 +490,73 @@ pub const Chunk = struct {
         return keepIdx;
     }
 
-    pub fn patchBreaks(self: *Chunk, jumpStackStart: usize, breakPc: usize) usize {
-        var keepIdx = jumpStackStart;
+    pub fn patchBreaks(self: *Chunk, jumpStackStart: usize, block_offset: usize, breakPc: usize) usize {
+        var jump_stack_end = jumpStackStart;
         for (self.blockJumpStack.items[jumpStackStart..]) |jump| {
             switch (jump.jumpT) {
                 .brk => {
-                    if (breakPc > jump.pc) {
-                        self.buf.setOpArgU16(jump.pc + 1, @intCast(breakPc - jump.pc));
+                    if (jump.block_offset == block_offset) {
+                        if (breakPc > jump.pc) {
+                            self.buf.setOpArgU16(jump.pc + 1, @intCast(breakPc - jump.pc));
+                        } else {
+                            self.buf.setOpArgU16(jump.pc + 1, @bitCast(-@as(i16, @intCast(jump.pc - breakPc))));
+                        }
                     } else {
-                        self.buf.setOpArgU16(jump.pc + 1, @bitCast(-@as(i16, @intCast(jump.pc - breakPc))));
+                        self.blockJumpStack.items[jump_stack_end] = jump;
+                        jump_stack_end += 1;
                     }
                 },
                 else => {
-                    self.blockJumpStack.items[keepIdx] = jump;
-                    keepIdx += 1;
+                    self.blockJumpStack.items[jump_stack_end] = jump;
+                    jump_stack_end += 1;
                 },
             }
         }
-        return keepIdx;
+        return jump_stack_end;
     }
 
-    pub fn patchForBlockJumps(self: *Chunk, jumpStackStart: usize, breakPc: usize, contPc: usize) void {
+    pub fn patchForBlockJumps(self: *Chunk, jumpStackStart: usize, block_offset: usize, breakPc: usize, contPc: usize) usize {
+        var jump_stack_end = jumpStackStart;
         for (self.blockJumpStack.items[jumpStackStart..]) |jump| {
             switch (jump.jumpT) {
                 .brk => {
-                    if (breakPc > jump.pc) {
-                        self.buf.setOpArgU16(jump.pc + 1, @intCast(breakPc - jump.pc));
+                    if (jump.block_offset == block_offset) {
+                        if (breakPc > jump.pc) {
+                            self.buf.setOpArgU16(jump.pc + 1, @intCast(breakPc - jump.pc));
+                        } else {
+                            self.buf.setOpArgU16(jump.pc + 1, @bitCast(-@as(i16, @intCast(jump.pc - breakPc))));
+                        }
                     } else {
-                        self.buf.setOpArgU16(jump.pc + 1, @bitCast(-@as(i16, @intCast(jump.pc - breakPc))));
+                        self.blockJumpStack.items[jump_stack_end] = jump;
+                        jump_stack_end += 1;
                     }
                 },
                 .cont => {
-                    if (contPc > jump.pc) {
-                        self.buf.setOpArgU16(jump.pc + 1, @intCast(contPc - jump.pc));
+                    if (jump.block_offset == block_offset) {
+                        if (contPc > jump.pc) {
+                            self.buf.setOpArgU16(jump.pc + 1, @intCast(contPc - jump.pc));
+                        } else {
+                            self.buf.setOpArgU16(jump.pc + 1, @bitCast(-@as(i16, @intCast(jump.pc - contPc))));
+                        }
                     } else {
-                        self.buf.setOpArgU16(jump.pc + 1, @bitCast(-@as(i16, @intCast(jump.pc - contPc))));
+                        self.blockJumpStack.items[jump_stack_end] = jump;
+                        jump_stack_end += 1;
                     }
                 },
             }
         }
+        return jump_stack_end;
     }
 
-    pub fn getMaxUsedRegisters(self: *Chunk) u8 {
-        return self.curBlock.max_slots;
+    pub fn getMaxUsedRegisters(self: *Chunk) bc.Reg {
+        return self.cur_proc.max_regs;
     }
 
     pub fn blockNumLocals(self: *Chunk) usize {
         return sema.curBlock(self).locals.items.len + sema.curBlock(self).params.items.len;
     }
 
-    pub fn genGetVarPtr(self: *const Chunk, id: sema.LocalVarId) ?*sema.LocalVar {
+    pub fn genGetVarPtr(self: *const Chunk, id: sema.LocalId) ?*sema.Local {
         if (id != cy.NullId) {
             return &self.vars.items[id];
         } else {
@@ -578,7 +564,7 @@ pub const Chunk = struct {
         }
     }
 
-    pub fn genGetVar(self: *const Chunk, id: sema.LocalVarId) ?sema.LocalVar {
+    pub fn genGetVar(self: *const Chunk, id: sema.LocalId) ?sema.Local {
         if (id != cy.NullId) {
             return self.vars.items[id];
         } else {
@@ -596,53 +582,103 @@ pub const Chunk = struct {
             rt.print(self.vm, "Locals:\n");
             const params = self.getProcParams(sproc);
             for (params) |svar| {
-                rt.printFmt(self.vm, "{} (param), local: {}, dyn: {}, type: {}, lifted: {}\n", &.{
+                rt.printFmt(self.vm, "{} (param), local: {}, dyn: {}, type: {}\n", &.{
                     v(svar.name()), v(svar.local), v(svar.decl_t.id() == bt.Dyn), v(svar.decl_t),
-                    v(svar.inner.local.lifted),
                 });
             }
             const vars = self.getProcVars(sproc);
             for (vars) |svar| {
-                rt.printFmt(self.vm, "{}, local: {}, dyn: {}, type: {}, lifted: {}\n", &.{
+                rt.printFmt(self.vm, "{}, local: {}, dyn: {}, type: {}\n", &.{
                     v(svar.name()), v(svar.local), v(svar.decl_t.id() == bt.Dyn), v(svar.decl_t),
-                    v(svar.inner.local.lifted),
                 });
             }
         }
     }
 
+    pub fn appendContextTrace(self: *Chunk, report: *cy.compiler.Report, msg: []const u8, ctx_n: *ast.Node) !*cy.compiler.Report {
+        const trace = try self.alloc.create(cy.compiler.Report);
+        trace.* = .{
+            .type = .context,
+            .msg = try self.alloc.dupe(u8, msg),
+            .chunk = ctx_n.src(),
+            .loc = @intFromPtr(ctx_n),
+        };
+        report.next = trace;
+        return trace;
+    }
+
+    pub fn appendErrorTrace(self: *Chunk, report: *cy.compiler.Report) !void {
+        var last = report;
+        if (self.resolve_stack.items.len > 0) {
+            var i: usize = self.resolve_stack.items.len;
+            while (i > 0) {
+                i -= 1;
+                const ctx = self.resolve_stack.items[i];
+                const caller = ctx.caller orelse continue;
+                const trace = try self.alloc.create(cy.compiler.Report);
+                trace.* = .{
+                    .type = .compile_err,
+                    .msg = "",
+                    .chunk = caller.src(),
+                    .loc = @intFromPtr(caller),
+                };
+                last.next = trace;
+                last = trace;
+            }
+        }
+    }
+
     pub fn reportError(self: *Chunk, msg: []const u8, opt_node: ?*ast.Node) error{OutOfMemory, CompileError} {
-        const pos = if (opt_node) |node| node.pos() else null;
-        try self.compiler.addReport(.compile_err, msg, self.id, pos);
+        const id = try self.addReport(msg, opt_node);
+        try self.appendErrorTrace(&self.compiler.reports.items[id]);
         return error.CompileError;
     }
 
-    pub fn reportErrorFmt(self: *Chunk, format: []const u8, args: []const fmt.FmtValue, opt_node: ?*ast.Node) error{CompileError, OutOfMemory, FormatError} {
-        const pos = if (opt_node) |node| node.pos() else null;
-        try self.compiler.addReportFmt(.compile_err, format, args, self.id, pos);
+    pub fn addReport(self: *Chunk, msg: []const u8, opt_node: ?*ast.Node) !usize {
+        var chunk_id: u32 = undefined;
+        if (opt_node) |node| {
+            chunk_id = node.src();
+        } else {
+            const ctx = sema.getResolveContext(self);
+            chunk_id = ctx.chunk.id;
+        }
+        return self.compiler.addReport(.compile_err, msg, chunk_id, @intFromPtr(opt_node));
+    }
+
+    pub fn reportErrorFmt(self: *Chunk, format: []const u8, args: []const fmt.FmtValue, opt_node: ?*ast.Node) error{CompileError, OutOfMemory, FormatError, WriteFailed} {
+        const id = try self.addReportFmt(format, args, opt_node);
+        try self.appendErrorTrace(&self.compiler.reports.items[id]);
         return error.CompileError;
+    }
+
+    pub fn addReportFmt(self: *Chunk, format: []const u8, args: []const fmt.FmtValue, opt_node: ?*ast.Node) !usize {
+        var chunk_id: u32 = undefined;
+        if (opt_node) |node| {
+            chunk_id = node.src();
+        } else {
+            if (self.resolve_stack.items.len > 0) {
+                const ctx = sema.getResolveContext(self);
+                chunk_id = ctx.chunk.id;
+            } else {
+                chunk_id = self.id;
+            }
+        }
+        return self.compiler.addReportFmt(.compile_err, format, args, chunk_id, @intFromPtr(opt_node));
     }
 
     /// An optional debug sym is only included in Trace builds.
     pub fn pushOptionalDebugSym(c: *Chunk, node: *ast.Node) !void {
         if (cy.Trace or c.compiler.vm.config.gen_all_debug_syms) {
             try c.buf.pushFailableDebugSym(
-                c.buf.ops.items.len, c.id, node.pos(), c.curBlock.id,
-                cy.fiber.UnwindKey.initNull(),
+                c.buf.ops.items.len, c.cur_proc.chunk_id, node.pos(), c.cur_proc.id,
             );
         }
     }
 
     pub fn pushFailableDebugSym(self: *Chunk, node: *ast.Node) !void {
-        const key = try bc.getLastUnwindKey(self);
         try self.buf.pushFailableDebugSym(
-            self.buf.ops.items.len, self.id, node.pos(), self.curBlock.id,
-            key,
+            self.buf.ops.items.len, self.cur_proc.chunk_id, node.pos(), self.cur_proc.id,
         );
-    }
-
-    fn pushFailableDebugSymAt(self: *Chunk, pc: usize, node: *ast.Node, unwindTempIdx: u32) !void {
-        try self.buf.pushFailableDebugSym(pc, self.id, node, self.curBlock.frameLoc, unwindTempIdx);
     }
 
     pub fn fmtExtraDesc(self: *Chunk, comptime format: []const u8, vals: anytype) !u32 {
@@ -682,19 +718,133 @@ pub const Chunk = struct {
         try c.buf.pushOperands(bytes);
     }
 
-    pub usingnamespace cy.sym.ChunkExt;
-    pub usingnamespace cy.module.ChunkExt;
-    pub usingnamespace cy.types.ChunkExt;
-    pub usingnamespace cy.sema.ChunkExt;
-    pub usingnamespace jitgen.ChunkExt;
+    pub fn findResolvedType(c: *cy.Chunk, spec: []const u8, node: *ast.Node) !?*cy.Type {
+        const type_ = (try c.vm.findType(spec)) orelse {
+            return null;
+        };
+        try cy.sema_type.ensure_resolved_type(c, type_, node);
+        return type_;
+    }
+
+    pub const createTypeSym = cy.sym.createTypeSym;
+    pub const createTypeAlias = cy.sym.createTypeAlias;
+    pub const createTypeConst = cy.sym.createTypeConst;
+    pub const createFuncSym = cy.sym.createFuncSym;
+    pub const createFunc = cy.sym.createFunc;
+    pub const createConst = cy.sym.createConst;
+    pub const createField = cy.sym.createField;
+    pub const createHostVar = cy.sym.createHostVar;
+    pub const createUserVar = cy.sym.createUserVar;
+    pub const createEnumCase = cy.sym.createEnumCase;
+    pub const createChoiceCase = cy.sym.createChoiceCase;
+    pub const createUnionCase = cy.sym.createUnionCase;
+    pub const createFuncTemplate = cy.sym.createFuncTemplate;
+    pub const createChunkSym = cy.sym.createChunkSym;
+    pub const createUseAlias = cy.sym.createUseAlias;
+    pub const createTemplate = cy.sym.createTemplate;
+    pub const createVariantMember = cy.sym.createVariantMember;
+    pub const createVariantFunc = cy.sym.createVariantFunc;
+    pub const createExternVar = cy.sym.createExternVar;
+    pub const getSymValueType = cy.sym.getSymValueType;
+
+    pub const declareEnumCase = cy.module.declareEnumCase;
+    pub const declareChoiceCase = cy.module.declareChoiceCase;
+    pub const declareUnionCase = cy.module.declareUnionCase;
+    pub const declareField = cy.module.declareField;
+    pub const accessResolvedSym = cy.module.accessResolvedSym;
+    pub const accessResolvedSymOrFail = cy.module.accessResolvedSymOrFail;
+    pub const appendFunc = cy.module.appendFunc;
+    pub const addUserLambda = cy.module.addUserLambda;
+    pub const reserveTypeSym = cy.module.reserveTypeSym;
+    pub const reserveDistinctType = cy.module.reserveDistinctType;
+    pub const reserveTypeAlias = cy.module.reserveTypeAlias;
+    pub const reserve_type_const = cy.module.reserve_type_const;
+    pub const reserveFunc = cy.module.reserveFunc;
+    pub const reserveUserFunc = cy.module.reserveUserFunc;
+    pub const reserveTemplate = cy.module.reserveTemplate;
+    pub const reserveTraitFunc = cy.module.reserveTraitFunc;
+    pub const reserveConst = cy.module.reserveConst;
+    pub const reserveFuncTemplateSym = cy.module.reserveFuncTemplateSym;
+    pub const reserveUseAlias = cy.module.reserveUseAlias;
+    pub const reserveVariantMember = cy.module.reserveVariantMember;
+    pub const reserveVariantFunc = cy.module.reserveVariantFunc;
+    pub const reserveUserVar = cy.module.reserveUserVar;
+    pub const reserveHostVar = cy.module.reserveHostVar;
+    pub const reserveExternVar = cy.module.reserveExternVar;
+    pub const resolveFunc = cy.module.resolveFunc;
+    pub const resolveHostFunc = cy.module.resolveHostFunc;
+    pub const resolveUserFunc = cy.module.resolveUserFunc;
+    pub const resolveUserLambda = cy.module.resolveUserLambda;
+    pub const resolveFuncInfo = cy.module.resolveFuncInfo;
+    pub const resolveHostCtFunc = cy.module.resolveHostCtFunc;
+    pub const resolveHostSemaFunc = cy.module.resolveHostSemaFunc;
+    pub const resolveHostVar = cy.module.resolveHostVar;
+    pub const resolveUserVarType = cy.module.resolveUserVarType;
+    pub const checkResolvedSymIsDistinct = cy.module.checkResolvedSymIsDistinct;
+    pub const getResolvedSym = cy.module.getResolvedSym;
+    pub const getResolvedSymOrFail = cy.module.getResolvedSymOrFail;
+
+    pub const checkOption = sema.checkOption;
+    pub const checkResult = sema.checkResult;
+    pub const semaInitExpr = sema.semaInitExpr;
+    pub const semaObjectInit2 = sema.semaObjectInit2;
+    pub const semaInitStruct = sema.semaInitStruct;
+    pub const semaInitFixedArray = sema.semaInitVector;
+    pub const semaTupleInit = sema.semaTupleInit;
+    pub const semaPtrOrType = sema.semaPtrOrType;
+    pub const semaRefOrType = sema.semaRefOrType;
+    pub const semaBorrowOrType = sema.semaBorrowOrType;
+    pub const semaBinExpr = sema.semaBinExpr;
+    pub const semaUnExpr = sema.semaUnExpr;
+    pub const semaIsError = sema.semaIsError;
+    pub const semaIsNone = sema.semaIsNone;
+    pub const semaIsZero = sema.semaIsZero;
+    pub const semaConst = sema.semaConst;
+    pub const semaConst8 = sema.semaConst8;
+    pub const semaConst16 = sema.semaConst16;
+    pub const semaConst32 = sema.semaConst32;
+    pub const semaNone = sema.semaNone;
+    pub const semaFalse = sema.semaFalse;
+    pub const semaString = sema.semaString;
+    pub const semaStringTarget = sema.semaStringTarget;
+    pub const semaRawString = sema.semaRawString;
+    pub const semaRawStringAs = sema.semaRawStringAs;
+    pub const semaStringAs = sema.semaStringAs;
+    pub const semaTrue = sema.semaTrue;
+    pub const semaVoid = sema.semaVoid;
+    pub const semaExprOrOpAssignBinExpr = sema.semaExprOrOpAssignBinExpr;
+    pub const semaExprSkipSym = sema.semaExprSkipSym;
+    pub const semaExpr = sema.semaExpr;
+    pub const semaExprHint = sema.semaExprHint;
+    pub const semaExprCstr = sema.semaExprCstr;
+    pub const semaExprNoCheck = sema.semaExprNoCheck;
+    pub const semaExprTarget = sema.semaExprTarget;
+    pub const semaCallExpr = sema.semaCallExpr;
+    pub const semaCallValue = sema.semaCallValue;
+    pub const semaCallUnion = sema.semaCallUnion;
+    pub const semaCallPtr = sema.semaCallPtr;
+    pub const semaCallFunc = sema.semaCallFunc;
+    pub const semaCallFunc2 = sema.semaCallFunc2;
+    pub const semaCallFuncResult = sema.semaCallFuncResult;
+    pub const semaCallFuncSym = sema.semaCallFuncSym;
+    pub const semaCallFuncSym1 = sema.semaCallFuncSym1;
+    pub const semaCallFuncSym2 = sema.semaCallFuncSym2;
+    pub const semaCallFuncSymRec = sema.semaCallFuncSymRec;
+    pub const semaCallFuncSymRec2 = sema.semaCallFuncSymRec2;
+    // pub const semaCallGenericFunc = sema.semaCallGenericFunc;
+    // pub const semaCallGenericFuncRec = sema.semaCallGenericFuncRec;
+
+    // pub usingnamespace jitgen.ChunkExt;
+};
+
+const FuncDebugInfo = struct {
+    func: ?*cy.Func,
+
+    name: []const u8,
+    src_chunk: u32,
 };
 
 test "chunk internals." {
-    if (builtin.mode == .ReleaseFast) {
-        try t.eq(@sizeOf(Data), 4);
-    } else {
-        try t.eq(@sizeOf(Data), 4);
-    }
 }
 
 const BlockJumpType = enum {
@@ -707,6 +857,7 @@ const BlockJumpType = enum {
 const BlockJump = struct {
     jumpT: BlockJumpType,
     pc: u32,
+    block_offset: u32,
 };
 
 const ReservedTempLocal = struct {
@@ -732,20 +883,3 @@ pub const ListData = union {
     constIdx: u16,
     jumpToEndPc: u32,
 };
-
-pub const DataU8 = extern union {
-    irLocal: u8,
-    boxed: bool,
-};
-
-pub const Data = union {
-    placeholder: u32,
-};
-
-pub fn pushData(c: *cy.Chunk, data: Data) !void {
-    try c.dataStack.append(c.alloc, data);
-}
-
-pub fn popData(c: *cy.Chunk) Data {
-    return c.dataStack.pop();
-}

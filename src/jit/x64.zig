@@ -67,7 +67,7 @@ pub const Register = enum(u8) {
 
 pub const Encoder = struct {
     alloc: std.mem.Allocator,
-    buf: *std.ArrayListAlignedUnmanaged(u8, std.heap.page_size_min),
+    buf: *std.ArrayListAlignedUnmanaged(u8, std.mem.Alignment.fromByteUnits(std.heap.page_size_min)),
 
     fn ensureUnusedCap(self: Encoder, size: usize) !void {
         _ = try gen.ensureUnusedCap(self.buf, self.alloc, size);
@@ -552,6 +552,10 @@ pub const Memory = union(enum) {
         return .{ .sib = Sib{ .base = base_, .disp = disp, .scaleIndex = ScaleIndex.none } };
     }
 
+    pub fn initRip(disp: i32) Memory {
+        return .{ .rip = disp };
+    }
+
     fn base(self: Memory) Base {
         return switch (self) {
             .moffs => |moffs| .{ .reg = moffs.seg },
@@ -572,6 +576,10 @@ pub const Base = union(enum) {
     none,
     reg: Register,
     frame: FrameIndex,
+
+    pub fn initReg(r: Register) Base {
+        return .{ .reg = r };
+    }
 };
 
 const FrameIndex = enum(u32) {

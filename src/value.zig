@@ -6,27 +6,23 @@ const t = stdx.testing;
 const debug = builtin.mode == .Debug;
 const log = cy.log.scoped(.value);
 const cy = @import("cyber.zig");
-const c = @import("capi.zig");
+const C = @import("capi.zig");
 const rt = cy.rt;
 const bt = cy.types.BuiltinTypes;
 const fmt = @import("fmt.zig");
-const vmc = @import("vm_c.zig");
+const vmc = @import("vmc");
+const build_options = @import("build_options");
 
 const SignMask: u64 = 1 << 63;
 const TaggedValueMask: u64 = 0x7ffc000000000000;
 
-const BooleanMask: u64 = TaggedValueMask | (@as(u64, TagBoolean) << 32);
-const FalseMask: u64 = BooleanMask;
-const TrueMask: u64 = BooleanMask | TrueBitMask;
-const TrueBitMask: u64 = 1;
-const VoidMask: u64 = TaggedValueMask | (@as(u64, TagVoid) << 32);
 const ErrorMask: u64 = TaggedValueMask | (@as(u64, TagError) << 32);
-const SymbolMask: u64 = TaggedValueMask | (@as(u64, TagSymbol) << 32);
 
 const TagMask: u32 = vmc.TAG_MASK;
 const TaggedPrimitiveMask: u64 = vmc.TAGGED_PRIMITIVE_MASK;
 const TaggedUpperMask: u64 = vmc.TAGGED_UPPER_MASK;
 const MinPtrMask: u64 = vmc.MIN_PTR_MASK;
+const MinRefMask: u64 = vmc.MIN_REF_MASK;
 const PtrPayloadMask: u64 = vmc.PTR_PAYLOAD_MASK;
 
 /// The tag id is also the primitive type id.
@@ -37,6 +33,15 @@ pub const TagError: TagId = 3;
 pub const TagSymbol: TagId = 6;
 pub const TagInteger: TagId = 7;
 
+pub const TypeValue = extern struct {
+    type: *cy.Type,
+    value: Value,
+
+    pub fn init(type_: *cy.Type, value: Value) TypeValue {
+        return .{ .type = type_, .value = value };
+    }
+};
+
 /// NaN tagging over a f64 value.
 /// Represents a f64 value if not a quiet nan.
 /// Otherwise, the sign bit represents either a pointer value or a special value (true, false, none, etc).
@@ -44,27 +49,32 @@ pub const TagInteger: TagId = 7;
 /// and one more bit (so that QNANs can also be a number value) take up 13 bits.
 pub const Value = packed union {
     val: u64,
+    ptr: ?*anyopaque,
+    u32: u32,
+    u16: u16,
     byte: u8,
 
-    call_info: cy.fiber.CallInfo,
+    call_info: cy.thread.CallInfo,
     retPcPtr: [*]cy.Inst,
     retFramePtr: [*]Value,
 
     /// This is only used to return something from binded functions that have void return.
     /// It should never be encountered by user code.
     /// TODO: Remove once binded functions no longer have a Value return.
-    pub const Void = Value{ .val = VoidMask };
-
+    pub const Void = Value{ .val = 0 };
+    
     pub const True = Value{ .val = 1 };
     pub const False = Value{ .val = 0 };
-    pub const BoxTrue = Value{ .val = TrueMask };
-    pub const BoxFalse = Value{ .val = FalseMask };
 
     /// Interrupt value. Represented as an error tag literal with a null tag id.
     /// Returned from native funcs.
     pub const Interrupt = Value{ .val = ErrorMask | (@as(u32, 0xFF) << 8) | std.math.maxInt(u8) };
 
-    pub inline fn asBoxInt(self: *const Value) i64 {
+    pub inline fn as_int_lit(self: *const Value) i64 {
+        return @bitCast(self.val);
+    }
+
+    pub inline fn asRefInt(self: *const Value) i64 {
         return self.asHeapObject().integer.val;
     }
 
@@ -72,11 +82,51 @@ pub const Value = packed union {
         return @bitCast(self.val);
     }
 
+    pub inline fn asUint(self: *const Value) u64 {
+        return self.val;
+    }
+
+    pub inline fn asRefByte(self: *const Value) u8 {
+        return self.asHeapObject().byte.val;
+    }
+
     pub inline fn asByte(self: *const Value) u8 {
         return self.byte;
     }
 
-    pub inline fn asPointer(self: *const Value) ?*anyopaque {
+    pub inline fn asI8(self: *const Value) i8 {
+        return @bitCast(self.byte);
+    }
+
+    pub inline fn asU8(self: *const Value) u8 {
+        return self.byte;
+    }
+
+    pub inline fn asI16(self: *const Value) i16 {
+        return @bitCast(self.u16);
+    }
+
+    pub inline fn asU16(self: *const Value) u16 {
+        return self.u16;
+    }
+
+    pub inline fn asRefI32(self: *const Value) i32 {
+        return @as(*i32, @ptrCast(&self.asHeapObject().integer.val)).*;
+    }
+
+    pub inline fn asI32(self: *const Value) i32 {
+        return @bitCast(self.u32);
+    }
+
+    pub inline fn asU32(self: *const Value) u32 {
+        return self.u32;
+    }
+
+    pub inline fn asPtr(self: *const Value, comptime Ptr: type) Ptr {
+        return @ptrFromInt(self.val);
+    }
+
+    pub inline fn asAnyPtr(self: *const Value) ?*anyopaque {
         const addr: usize = @intCast(self.val);
         return @ptrFromInt(addr);
     }
@@ -105,51 +155,68 @@ pub const Value = packed union {
         return @intFromFloat(self.asF64());
     }
 
+    pub inline fn asF32(self: *const Value) f32 {
+        return @bitCast(self.u32);
+    }
+
     pub inline fn asF64(self: *const Value) f64 {
-        @setRuntimeSafety(debug);
         return @bitCast(self.val);
     }
 
-    pub inline fn asSymbolId(self: *const Value) u32 {
-        return @intCast(self.val & @as(u64, 0xFFFFFFFF));
+    pub inline fn asRefF64(self: *const Value) f64 {
+        return @bitCast(self.asHeapObject().object.firstValue.val);
+    }
+
+    pub inline fn asSymbol(self: *const Value) u64 {
+        return self.val;
+    }
+
+    pub inline fn asRefSymbol(self: *const Value) u64 {
+        return @bitCast(self.asHeapObject().integer.val);
+    }
+
+    pub inline fn asError(self: *const Value) u64 {
+        return self.val;
+    }
+
+    pub inline fn asRefError(self: *const Value) u64 {
+        return @bitCast(self.asHeapObject().integer.val);
+    }
+
+    pub fn as_str_lit(val: Value) []const u8 {
+        return val.asPtr(*cy.heap.StrLit).slice();
     }
 
     pub fn asString(val: Value) []const u8 {
-        if (cy.Trace) {
-            if (!val.isString()) cy.panic("Not a string.");
-        }
-        const obj = val.asHeapObject();
-        return obj.string.getSlice();
+        return val.asPtr(*cy.heap.Str).slice();
     }
 
-    pub inline fn toF64(self: *const Value) f64 {
+    pub fn asStrZ(val: Value) []const u8 {
+        return val.asPtr(*cy.heap.StrZ).slice();
+    }
+
+    pub inline fn refToF64(self: *const Value) f64 {
         @setRuntimeSafety(debug);
-        if (self.isFloat()) {
-            return self.asF64();
-        } else {
-            return @call(.never_inline, otherToF64, .{self}) catch cy.fatal();
-        }
+        return @call(.never_inline, refToF64OrErr, .{self}) catch cy.fatal();
     }
 
-    pub fn otherToF64(self: *const Value) !f64 {
-        if (self.isPointer()) {
-            const obj = self.asHeapObject();
-            if (obj.getTypeId() == bt.String) {
-                const str = obj.string.getSlice();
+    pub fn refToF64OrErr(self: *const Value) !f64 {
+        const obj = self.asHeapObject();
+        switch (obj.getTypeId()) {
+            bt.Str => {
+                const str = obj.string.slice();
                 return std.fmt.parseFloat(f64, str) catch 0;
-            } else {
+            },
+            bt.Bool => {
+                return if (self.asRefBool()) 1 else 0;
+            },
+            bt.I64 => {
+                return @floatFromInt(self.asRefInt());
+            },
+            else => {
                 log.tracev("unsupported conv to number: {}", .{obj.getTypeId()});
                 return error.Unsupported;
-            }
-        } else {
-            switch (self.getTag()) {
-                TagBoolean => return if (self.asBool()) 1 else 0,
-                TagInteger => return @floatFromInt(self.asBoxInt()),
-                else => {
-                    log.tracev("unsupported conv to number: {}", .{self.getTag()});
-                    return error.Unsupported;
-                }
-            }
+            },
         }
     }
 
@@ -157,28 +224,28 @@ pub const Value = packed union {
         return !self.isNone();
     }
 
-    pub fn toBool(self: *const Value) bool {
-        if (self.isBoxBool()) {
-            return self.asBoxBool();
+    pub fn refToBool(self: *const Value) bool {
+        if (self.isRefBool()) {
+            return self.asRefBool();
         }
-        if (self.isFloat() and self.asF64() == 0) {
+        if (self.isRefFloat() and self.asRefF64() == 0) {
             return false;
         }
-        if (self.isBoxInt() and self.asBoxInt() == 0) {
+        if (self.isRefInt() and self.asRefInt() == 0) {
             return false;
         }
-        if (self.isString() and self.asString().len == 0) {
+        if (self.isRefString() and self.asString().len == 0) {
             return false;
         }
         return true;
     }
 
-    pub inline fn isArray(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().getTypeId() == bt.Array;
+    pub inline fn isRefArray(self: *const Value) bool {
+        return self.asHeapObject().getTypeId() == bt.Array;
     }
 
-    pub inline fn isString(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().getTypeId() == bt.String;
+    pub inline fn isRefString(self: *const Value) bool {
+        return self.asHeapObject().getTypeId() == bt.Str;
     }
 
     pub inline fn bothFloats(a: Value, b: Value) bool {
@@ -189,146 +256,96 @@ pub const Value = packed union {
         return a.isBoxInt() and b.isBoxInt();
     }
 
-    pub inline fn isError(self: *const Value) bool {
-        return self.val & (TaggedPrimitiveMask | SignMask) == ErrorMask;
-    }
-
     pub inline fn getPrimitiveTypeId(self: *const Value) u32 {
         if (self.isFloat()) {
-            return bt.Float;
+            return bt.F64;
         } else {
             return self.getTag();
         }
     }
 
-    pub inline fn decodeType(self: *const Value, is_ref: *bool) cy.TypeId {
-        const bits = self.val & TaggedPrimitiveMask;
-        if (bits >= TaggedValueMask) {
-            if (bits >= MinPtrMask) {
-                const obj = self.asHeapObject();
-                is_ref.* = obj.isRef();
-                return obj.getTypeId();
-            } else {
-                is_ref.* = false;
-                return self.getTag();
-            }
-        } else {
-            is_ref.* = false;
-            return bt.Float;
-        }
-    }
-
-    pub inline fn getTypeId(self: *const Value) u32 {
-        if (self.val & TaggedValueMask == TaggedValueMask) {
-            if (self.val >= MinPtrMask) {
-                return self.asHeapObject().getTypeId();
-            } else {
-                return self.getTag();
-            }
-        } else {
-            return bt.Float;
-        }
-    }
-
-    pub inline fn isFloatOrPointer(self: *const Value) bool {
-        // This could be faster if the 3 bits past the 48 pointer bits represents a non primitive number value.
-        return self.isFloat() or self.isPointer();
-    }
-
-    pub inline fn isFloat(self: *const Value) bool {
-        // Only a number(f64) if not all tagged bits are set.
-        return self.val & TaggedValueMask != TaggedValueMask;
-    }
-
-    pub inline fn isBoxInt(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().getTypeId() == bt.Integer;
-    }
-
-    pub inline fn isPointer(self: *const Value) bool {
-        return self.val >= MinPtrMask;
+    pub inline fn getRefeeType(self: *const Value) cy.TypeId {
+        return self.asHeapObject().getTypeId();
     }
 
     pub inline fn isObjectType(self: *const Value, typeId: cy.TypeId) bool {
-        return isPointer(self) and self.asHeapObject().getTypeId() == typeId;
+        return self.asHeapObject().getTypeId() == typeId;
+    }
+    
+    pub inline fn isFloatOrPointer(self: *const Value) bool {
+        // This could be faster if the 3 bits past the 48 pointer bits represents a non primitive number value.
+        return self.isFloat() or self.isBoxPtr();
+    }
+
+    pub inline fn isRefFloat(self: *const Value) bool {
+        return self.asHeapObject().getTypeId() == bt.F64;
+    }
+
+    pub inline fn isRefInt(self: *const Value) bool {
+        return self.asHeapObject().getTypeId() == bt.I64;
     }
 
     pub inline fn isPointerT(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().getTypeId() == bt.Pointer;
-    }
-
-    pub inline fn isMap(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().getTypeId() == bt.Map;
-    }
-
-    pub inline fn isList(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().getTypeId() == bt.List;
+        return self.isBoxPtr() and self.asBoxObject().getTypeId() == bt.Pointer;
     }
 
     pub inline fn isClosure(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().getTypeId() == bt.Closure;
-    }
-
-    pub inline fn castHostObject(self: *const Value, comptime T: type) T {
-        return @ptrFromInt(@as(usize, @intCast(self.val & PtrPayloadMask)) + 8);
+        return self.isBoxPtr() and self.asBoxObject().getTypeId() == bt.Closure;
     }
 
     pub inline fn asHeapObject(self: *const Value) *cy.HeapObject {
-        return @ptrFromInt(@as(usize, @intCast(self.val & PtrPayloadMask)));
+        return @ptrFromInt(self.val);
     }
 
-    pub inline fn castHeapObject(self: *const Value, comptime Ptr: type) Ptr {
-        return @ptrFromInt(@as(usize, @intCast(self.val & PtrPayloadMask)));
+    pub inline fn asBytes(self: *const Value) [*]u8 {
+        return @ptrFromInt(self.val);
     }
 
-    pub inline fn asAnyOpaque(self: *const Value) ?*anyopaque {
-        return @ptrFromInt(@as(usize, @intCast(self.val & PtrPayloadMask)));
-    }
-
-    pub inline fn isVoid(self: *const Value) bool {
-        return self.val == VoidMask;
+    pub inline fn asValues(self: *const Value) [*]Value {
+        return @ptrFromInt(self.val);
     }
 
     pub inline fn asBool(self: *const Value) bool {
         return self.val == 1;
     }
 
-    pub inline fn asBoxBool(self: *const Value) bool {
-        return self.val == TrueMask;
+    pub inline fn asRefBool(self: *const Value) bool {
+        return self.asHeapObject().object.firstValue.val == 1;
     }
 
     pub inline fn isTrue(self: *const Value) bool {
         return self.val == 1;
     }
 
-    pub inline fn isBoxTrue(self: *const Value) bool {
-        return self.val == TrueMask;
-    }
-
     pub inline fn isInterrupt(self: *const Value) bool {
         return self.val == Interrupt.val;
     }
 
-    pub inline fn isBoxBool(self: *const Value) bool {
-        return self.val & (TaggedPrimitiveMask | SignMask) == BooleanMask;
-    }
-
-    pub inline fn assumeNotPtrIsBool(self: *const Value) bool {
-        return self.val & TaggedPrimitiveMask == BooleanMask;
+    pub inline fn isRefBool(self: *const Value) bool {
+        return self.asHeapObject().getTypeId() == bt.Bool;
     }
 
     pub inline fn getTag(self: *const Value) u4 {
         return @intCast(@as(u32, @intCast(self.val >> 32)) & TagMask);
     }
 
-    pub inline fn isSymbol(self: *const Value) bool {
-        return self.val & (TaggedPrimitiveMask | SignMask) == SymbolMask;
+    pub inline fn initFuncSig(ptr: *cy.FuncSig) Value {
+        return .{ .ptr = ptr };
     }
 
-    pub inline fn initSymbol(symId: u32) Value {
-        return .{ .val = SymbolMask | symId };
+    pub inline fn initType(ptr: *cy.Type) Value {
+        return .{ .ptr = ptr };
     }
 
-    pub inline fn initF64(val: f64) Value {
+    pub inline fn initSymbol(symId: u64) Value {
+        return .{ .val = symId };
+    }
+
+    pub inline fn initFloat32(val: f32) Value {
+        return .{ .u32 = @bitCast(val) };
+    }
+
+    pub inline fn initFloat64(val: f64) Value {
         return .{ .val = @as(u64, @bitCast(val)) };
     }
 
@@ -336,12 +353,36 @@ pub const Value = packed union {
         return .{ .val = @bitCast(val) };
     }
 
-    pub inline fn initByte(val: u8) Value {
+    pub inline fn initGenericInt(val: i64) Value {
+        return .{ .val = @bitCast(val) };
+    }
+
+    pub inline fn initR8(val: u8) Value {
+        return .{ .byte = val };
+    }
+
+    pub inline fn initInt8(val: i8) Value {
+        return .{ .byte = @bitCast(val) };
+    }
+
+    pub inline fn initR32(val: u32) Value {
+        return .{ .u32 = val };
+    }
+
+    pub inline fn initInt32(val: i32) Value {
+        return .{ .u32 = @bitCast(val) };
+    }
+
+    pub inline fn initR16(val: u16) Value {
+        return .{ .u16 = val };
+    }
+
+    pub inline fn initR64(val: u64) Value {
         return .{ .val = val };
     }
 
-    pub inline fn initI32(val: i32) Value {
-        return initInt(@intCast(val));
+    pub inline fn initInt16(val: i16) Value {
+        return .{ .u16 = @bitCast(val) };
     }
 
     pub inline fn initRaw(val: u64) Value {
@@ -356,20 +397,8 @@ pub const Value = packed union {
         }
     }
 
-    pub inline fn initBoxBool(b: bool) Value {
-        if (b) {
-            return BoxTrue;
-        } else {
-            return BoxFalse;
-        }
-    }
-
-    pub inline fn initHostPtr(ptr: ?*anyopaque) Value {
-        return .{ .val = MinPtrMask | ((@intFromPtr(ptr)-8) & PtrPayloadMask) };
-    }
-
     pub inline fn initPtr(ptr: ?*anyopaque) Value {
-        return .{ .val = MinPtrMask | (@intFromPtr(ptr) & PtrPayloadMask) };
+        return .{ .val = @intFromPtr(ptr) };
     }
 
     pub inline fn floatIsSpecial(val: f64) bool {
@@ -386,105 +415,42 @@ pub const Value = packed union {
         return std.math.floor(val) == val;
     }
 
-    pub inline fn initErrorSymbol(id: u32) Value {
-        return .{ .val = ErrorMask | id };
+    pub inline fn initError(err: u64) Value {
+        return .{ .val = err };
     }
 
-    pub inline fn asErrorSymbol(self: *const Value) u32 {
-        return @intCast(self.val & 0xffffffff);
-    }
-
-    pub fn fromSliceC(self: c.ValueSlice) []const Value {
+    pub fn fromSliceC(self: C.ValueSlice) []const Value {
         if (self.len == 0) {
             return &.{};
         }
         return @ptrCast(self.ptr[0..self.len]);
     }
 
-    pub fn toSliceC(slice: []const cy.Value) c.ValueSlice {
+    pub fn toSliceC(slice: []const cy.Value) C.ValueSlice {
         return .{
             .ptr = @ptrCast(slice.ptr),
             .len = slice.len,
         };
     }
 
-    pub fn toC(self: Value) c.Value {
+    pub fn toC(self: Value) C.Value {
         return @bitCast(self);
     }
 };
 
 pub fn isHostFunc(vm: *cy.VM, val: Value) bool {
-    if (!val.isPointer()) {
-        return false;
-    }
-    const type_id = val.asHeapObject().getTypeId();
+    const obj = val.asHeapObject();
+    const type_id = obj.getTypeId();
     if (type_id == bt.Func) {
-        return val.asHeapObject().func.kind == .host;
+        return obj.func.kind == .host;
     }
     const type_e = vm.getType(type_id);
     if (type_e.kind() == .func_ptr) {
-        return val.asHeapObject().func_ptr.kind == .host;
+        return vm.funcSyms.buf[@intCast(obj.integer.val)].type == .host_func;
     } else if (type_e.kind() == .func_union) {
-        return val.asHeapObject().func_union.kind == .host;
+        return obj.func_union.kind == .host;
     } else {
         return false;
-    }
-}
-
-pub fn shallowCopy(vm: *cy.VM, type_id: cy.TypeId, val: Value) anyerror!Value {
-    if (!vm.sema.getType(type_id).isBoxed()) {
-        return val;
-    }
-    const obj = val.asHeapObject();
-    switch (obj.getTypeId()) {
-        bt.Map => {
-            const new = try cy.heap.allocEmptyMap(vm);
-            const newMap = cy.ptrAlignCast(*cy.MapInner, &(new.asHeapObject()).map.inner);
-
-            const map = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-            var iter = map.iterator();
-            while (iter.next()) |entry| {
-                cy.arc.retain(vm, entry.key);
-                cy.arc.retain(vm, entry.value);
-                try newMap.put(vm.alloc, entry.key, entry.value);
-            }
-            return new;
-        },
-        bt.String => {
-            cy.arc.retainObject(vm, obj);
-            return val;
-        },
-        bt.Fiber => {
-            fmt.panic("Unsupported copy fiber.", &.{});
-        },
-        bt.TccState => {
-            fmt.panic("Unsupported copy tcc state.", &.{});
-        },
-        else => {
-            const type_ = @as(*const cy.VM, @ptrCast(vm)).getType(obj.getTypeId());
-            switch (type_.kind()) {
-                .int => {
-                    return vm.allocInt(obj.integer.val);
-                },
-                .struct_t => {
-                    const struct_t = type_.cast(.struct_t);
-                    const size = struct_t.size;
-                    const src = obj.object.getValuesConstPtr()[0..size];
-
-                    const new = try vm.allocEmptyObject2(obj.getTypeId(), size);
-                    const dst = new.asHeapObject().object.getValuesPtr()[0..size];
-                    @memcpy(dst, src);
-
-                    if (type_.retain_layout) |retain_layout| {
-                        vm.retainLayout(dst.ptr, 0, retain_layout);
-                    }
-                    return new;
-                },
-                else => {
-                    fmt.panic("Unsupported copy host object. {}", &.{fmt.v(type_.kind())});
-                },
-            }
-        },
     }
 }
 
@@ -510,9 +476,6 @@ test "asF64" {
 test "value internals." {
     try t.eq(@sizeOf(Value), 8);
     try t.eq(@alignOf(Value), 8);
-    try t.eq(Value.Void.val, 0x7FFC000100000000);
-    try t.eq(Value.BoxTrue.val, 0x7FFC000200000001);
-    try t.eq(Value.BoxFalse.val, 0x7FFC000200000000);
     try t.eq(Value.Interrupt.val, 0x7ffc00030000ffff);
     try t.eq(vmc.MIN_PTR_MASK, 0xFFFC000000000000);
     try t.eq(Value.initInt(0).val, 0);
@@ -522,4 +485,32 @@ test "value internals." {
     // const retInfoT = std.meta.fieldInfo(Value, .retInfo).type;
     // try t.eq(@offsetOf(retInfoT, "numRetVals"), 0);
     // try t.eq(@offsetOf(retInfoT, "retFlag"), 1);
+}
+
+pub fn PtrSpan(T: type) type {
+    return extern struct {
+        ptr: [*]T,
+        len: usize,
+    };
+}
+
+pub fn Option(T: type) type {
+    return extern struct {
+        tag: u64,
+        inner: T,
+
+        pub fn some(value: T) @This() {
+            return .{
+                .tag = 1,
+                .inner = value,
+            };
+        }
+
+        pub fn none() @This() {
+            return .{
+                .tag = 0,
+                .inner = undefined,
+            };
+        }
+    };
 }

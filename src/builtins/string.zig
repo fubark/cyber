@@ -1,183 +1,227 @@
 const std = @import("std");
 const cy = @import("../cyber.zig");
+const Ret = cy.C.Ret;
+const RetOk = cy.C.RetOk;
 const rt = cy.rt;
 const Value = cy.Value;
 const fatal = cy.fatal;
 const bindings = @import("bindings.zig");
 const string = cy.string;
+const bt = cy.types.BuiltinTypes;
 
-pub fn concat(vm: *cy.VM) !Value {
-    const obj = vm.getObject(*cy.heap.String, 0);
-    const stype = obj.getType();
-    const str = obj.getSlice();
-    if (stype.isAstring()) {
-        const obj2 = vm.getObject(*cy.heap.String, 1);
-        const rstr = obj2.getSlice();
-        if (obj2.getType().isAstring()) {
-            return vm.allocAstringConcat(str, rstr);
-        } else {
-            return vm.allocUstringConcat(str, rstr);
-        }
+pub fn initPtrSpan(t: *cy.Thread) !Ret {
+    const ret = t.ret(cy.heap.Str);
+    const span = t.param(cy.heap.PtrSpan);
+    if (span.len == 0) {
+        ret.* = try t.heap.init_str("");
+        return RetOk;
     } else {
-        const obj2 = vm.getObject(*cy.heap.String, 1);
-        const rstr = obj2.getSlice();
-        return vm.allocUstringConcat(str, rstr);
+        const ptr: [*]const u8 = @ptrFromInt(span.ptr);
+        ret.* = try t.heap.init_str(ptr[0..@intCast(span.len)]);
+        return RetOk;
     }
 }
 
-pub fn concatAny(vm: *cy.VM) !Value {
-    const obj = vm.getObject(*cy.heap.String, 0);
-    const stype = obj.getType();
-    const str = obj.getSlice();
+pub fn concat(t: *cy.Thread) !Ret {
+    const ret = t.ret(cy.heap.Str);
+    const str = t.param(*cy.heap.Str);
+    const str2 = t.param(cy.heap.Str);
+    defer t.heap.destructStr(&str2);
+    ret.* = try concat2(&t.heap, str, &str2);
+    return RetOk;
+}
 
-    const val = vm.getValue(1);
-    var out_ascii: bool = undefined;
-    const val_str = try vm.getOrBufPrintValueStr2(&cy.tempBuf, val, &out_ascii);
-
-    if (stype.isAstring()) {
-        if (out_ascii) {
-            return vm.allocAstringConcat(str, val_str);
-        } else {
-            return vm.allocUstringConcat(str, val_str);
-        }
+fn concat2(heap: *cy.Heap, left: *cy.heap.Str, right: *const cy.heap.Str) !cy.heap.Str {
+    if (left.ascii() and right.ascii()) {
+        return heap.init_astr_concat(left.slice(), right.slice());
     } else {
-        return vm.allocUstringConcat(str, val_str);
+        return heap.init_ustr_concat(left.slice(), right.slice());
     }
 }
 
-pub fn sliceFn(vm: *cy.VM) Value {
-    const obj = vm.getObject(*cy.heap.String, 0);
-    const stype = obj.getType();
-    const str = obj.getSlice();
-    const parent = obj.getParentByType(stype);
+pub fn concat_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+    const left = ctx.args[0].asPtr(*cy.heap.Str);
+    const right = ctx.args[1].asPtr(*cy.heap.Str);
+    defer c.heap.releaseObject(@ptrCast(right));
 
-    const start = vm.getInt(1);
-    var end: i64 = undefined;
-    const has_end = vm.getBool(3);
-    if (!has_end) {
-        end = @intCast(str.len);
-    } else {
-        end = vm.getInt(2);
-    }
-    if (start < 0) {
-        return rt.prepThrowError(vm, .OutOfBounds);
-    }
-    if (end > str.len) {
-        return rt.prepThrowError(vm, .OutOfBounds);
+    const res = try concat2(c.heap, left, right);
+    const boxed = try c.heap.lift(bt.Str, res);
+    return cy.TypeValue.init(c.sema.str_t, boxed);
+}
+
+pub fn sliceFn(t: *cy.Thread) callconv(.c) Ret {
+    const ret = t.ret(cy.heap.Str);
+    const obj = t.param(*cy.heap.Str);
+    const str = obj.slice();
+    const buf = obj.buf();
+
+    const start: usize = @intCast(t.param(u64));
+    const end = str.len;
+    if (start > end) {
+        return t.ret_panic("OutOfBounds");
     }
     if (end < start) {
-        return rt.prepThrowError(vm, .OutOfBounds);
+        return t.ret_panic("OutOfBounds");
     }
 
     const ustart: u32 = @intCast(start);
     const uend: u32 = @intCast(end);
-    if (stype.isAstring()) {
-        vm.retainObject(parent);
-        return vm.allocAstringSlice(str[ustart..uend], parent) catch fatal();
+    if (obj.ascii()) {
+        t.heap.retainObjectOpt(@ptrCast(buf));
+        ret.* = try t.heap.init_astr_slice(str[ustart..uend], buf);
+        return RetOk;
     } else {
-        vm.retainObject(parent);
+        t.heap.retainObjectOpt(@ptrCast(buf));
         if (cy.string.isAstring(str[ustart..uend])) {
-            return vm.allocAstringSlice(str[ustart..uend], parent) catch fatal();
+            ret.* = try t.heap.init_astr_slice(str[ustart..uend], buf);
+            return RetOk;
         } else {
-            return vm.allocUstringSlice(str[ustart..uend], parent) catch fatal();
+            ret.* = try t.heap.init_ustr_slice(str[ustart..uend], buf);
+            return RetOk;
         }
     }
 }
 
-pub fn insertByte(vm: *cy.VM) anyerror!Value {
-    const str = vm.getObject(*cy.heap.String, 0);
-    const slice = str.getSlice();
-    const idx = try cy.builtins.intAsIndex(vm.getInt(1), slice.len + 1);
-    const byte = vm.getByte(2);
-    if (str.getType().isAstring()) {
-        if (byte < 128) {
-            return vm.allocAstringConcat3(slice[0..idx], &.{ byte }, slice[idx..]);
-        } else {
-            return vm.allocUstringConcat3(slice[0..idx], &.{ byte }, slice[idx..]);
-        }
+pub fn slice2(t: *cy.Thread) callconv(.c) Ret {
+    const ret = t.ret(cy.heap.Str);
+    const obj = t.param(*cy.heap.Str);
+    const str = obj.slice();
+    const buf = obj.buf();
+
+    const start: usize = @intCast(t.param(u64));
+    const end: usize = @intCast(t.param(u64));
+    if (start > str.len) {
+        return t.ret_panic("OutOfBounds");
+    }
+    if (end > str.len) {
+        return t.ret_panic("OutOfBounds");
+    }
+    if (end < start) {
+        return t.ret_panic("OutOfBounds");
+    }
+
+    const ustart: u32 = @intCast(start);
+    const uend: u32 = @intCast(end);
+    if (obj.ascii()) {
+        t.heap.retainObjectOpt(@ptrCast(buf));
+        ret.* = try t.heap.init_astr_slice(str[ustart..uend], buf);
+        return RetOk;
     } else {
-        return vm.allocUstringConcat3(slice[0..idx], &.{byte}, slice[idx..]);
+        t.heap.retainObjectOpt(@ptrCast(buf));
+        if (cy.string.isAstring(str[ustart..uend])) {
+            ret.* = try t.heap.init_astr_slice(str[ustart..uend], buf);
+            return RetOk;
+        } else {
+            ret.* = try t.heap.init_ustr_slice(str[ustart..uend], buf);
+            return RetOk;
+        }
     }
 }
 
-pub fn insertFn(vm: *cy.VM) anyerror!Value {
-    const obj = vm.getObject(*cy.heap.String, 0);
-    const str = obj.getSlice();
-    const idx = vm.getInt(1);
+pub fn insertByte(t: *cy.Thread) anyerror!Ret {
+    const ret = t.ret(cy.heap.Str);
+    const str = t.param(*cy.heap.Str);
+    const slice = str.slice();
+    const idx = try cy.core.intAsIndex(t.param(i64), slice.len + 1);
+    const byte = t.param(u8);
+    if (str.ascii() and byte < 128) {
+        ret.* = try t.heap.init_astr_concat3(slice[0..idx], &.{ byte }, slice[idx..]);
+        return RetOk;
+    } else {
+        ret.* = try t.heap.init_ustr_concat3(slice[0..idx], &.{byte}, slice[idx..]);
+        return RetOk;
+    }
+}
+
+pub fn insertFn(t: *cy.Thread) anyerror!Ret {
+    const ret = t.ret(cy.heap.Str);
+
+    const obj = t.param(*cy.heap.Str);
+    const str = obj.slice();
+    const idx = t.param(i64);
+    const insert = t.param(cy.heap.Str);
     if (idx < 0 or idx > str.len) {
         return error.OutOfBounds;
     }
     const uidx: u32 = @intCast(idx);
-    const stype = obj.getType();
-    if (stype.isAstring()) {
-        const obj2 = vm.getObject(*cy.heap.String, 2);
-        const insert = obj2.getSlice();
-        if (obj2.getType().isAstring()) {
-            return vm.allocAstringConcat3(str[0..uidx], insert, str[uidx..]) catch fatal();
+    if (obj.ascii()) {
+        if (insert.ascii()) {
+            ret.* = try t.heap.init_astr_concat3(str[0..uidx], insert.slice(), str[uidx..]);
+            return RetOk;
         } else {
-            return vm.allocUstringConcat3(str[0..uidx], insert, str[uidx..]) catch fatal();
+            ret.* = try t.heap.init_ustr_concat3(str[0..uidx], insert.slice(), str[uidx..]);
+            return RetOk;
         }
     } else {
-        const insert = vm.getString(2);
-        return vm.allocUstringConcat3(str[0..uidx], insert, str[uidx..]) catch fatal();
+        ret.* = try t.heap.init_ustr_concat3(str[0..uidx], insert.slice(), str[uidx..]);
+        return RetOk;
     }
 }
 
-pub fn find(vm: *cy.VM) Value {
-    const obj = vm.getObject(*cy.heap.String, 0);
-    const str = obj.getSlice();
-    const needle = vm.getString(1);
+pub fn index(t: *cy.Thread) !Ret {
+    const ret = t.ret(cy.value.Option(i64));
+    const obj = t.param(*cy.heap.Str);
+    const str = obj.slice();
+    const needle = t.param(cy.heap.Str).slice();
     if (needle.len > 0 and needle.len <= str.len) {
         if (needle.len == 1) {
             // One ascii char special case. Perform indexOfChar.
             if (string.indexOfChar(str, needle[0])) |idx| {
-                return intSome(vm, @intCast(idx)) catch cy.fatal();
+                ret.* = cy.value.Option(i64).some(@intCast(idx));
+                return RetOk;
             }
         }
         if (string.indexOf(str, needle)) |idx| {
-            return intSome(vm, @intCast(idx)) catch cy.fatal();
+            ret.* = cy.value.Option(i64).some(@intCast(idx));
+            return RetOk;
         }
     }
-    return intNone(vm) catch cy.fatal();
+    ret.* = cy.value.Option(i64).none();
+    return RetOk;
 }
 
-pub fn startsWith(vm: *cy.VM) Value {
-    const str = vm.getString(0);
-    const needle = vm.getString(1);
-    return Value.initBool(std.mem.startsWith(u8, str, needle));
+pub fn starts_with(t: *cy.Thread) callconv(.c) Ret {
+    const ret = t.ret(bool);
+    const str = t.param(*cy.heap.Str).slice();
+    const needle = t.param(cy.heap.Str);
+    defer t.heap.destructStr(&needle);
+
+    ret.* = std.mem.startsWith(u8, str, needle.slice());
+    return RetOk;
 }
 
+pub fn ends_with(t: *cy.Thread) callconv(.c) Ret {
+    const ret = t.ret(bool);
+    const str = t.param(*cy.heap.Str).slice();
+    const needle = t.param(cy.heap.Str);
+    defer t.heap.destructStr(&needle);
 
-pub fn endsWith(vm: *cy.VM) Value {
-    const str = vm.getString(0);
-    const needle = vm.getString(1);
-    return Value.initBool(std.mem.endsWith(u8, str, needle));
+    ret.* = std.mem.endsWith(u8, str, needle.slice());
+    return RetOk;
 }
 
-
-pub fn isAscii(vm: *cy.VM) Value {
-    const obj = vm.getObject(*cy.heap.String, 0);
-    const stype = obj.getType();
-    return Value.initBool(stype.isAstring());
+pub fn isAscii(t: *cy.Thread) callconv(.c) Ret {
+    const ret = t.ret(bool);
+    const str = t.param(*cy.heap.Str).slice();
+    const ascii = cy.string.isAstring(str);
+    ret.* = ascii;
+    return RetOk;
 }
 
-const intSome = cy.builtins.intSome;
-const intNone = cy.builtins.intNone;
+pub fn index_any_rune(t: *cy.Thread) anyerror!Ret {
+    const ret = t.ret(cy.value.Option(i64));
+    const obj = t.param(*cy.heap.Str);
+    const str = obj.slice();
+    const set_list = t.param(cy.heap.Span).items(u64);
 
-pub fn findAnyRune(vm: *cy.VM) anyerror!Value {
-    const obj = vm.getObject(*cy.heap.String, 0);
-    const str = obj.getSlice();
-    const set_list = vm.getObject(*cy.heap.List, 1).items();
-    const stype = obj.getType();
-
-    const tempBuf = &vm.u8Buf;
+    const tempBuf = &t.c.vm.u8Buf;
     tempBuf.clearRetainingCapacity();
-    defer if (tempBuf.capacity > 4096) tempBuf.clearAndFree(vm.alloc);
+    defer if (tempBuf.capacity > 4096) tempBuf.clearAndFree(t.alloc);
 
     var set_is_ascii = true;
     for (set_list) |rune| {
-        if (rune.val >= 0 and rune.val < 128) {
-            try tempBuf.append(vm.alloc, @intCast(rune.val));
+        if (rune >= 0 and rune < 128) {
+            try tempBuf.append(t.alloc, @intCast(rune));
         } else {
             set_is_ascii = false;
         }
@@ -185,23 +229,26 @@ pub fn findAnyRune(vm: *cy.VM) anyerror!Value {
     const set_str = tempBuf.items;
 
     if (set_list.len > 0) {
-        if (stype.isAstring()) {
+        if (obj.ascii()) {
             if (set_is_ascii) {
                 if (@call(.never_inline, string.indexOfAsciiSet, .{str, set_str})) |idx| {
-                    return intSome(vm, @intCast(idx));
+                    ret.* = cy.value.Option(i64).some(@intCast(idx));
+                    return RetOk;
                 }
             } else {
                 // Reduce search set to just ASCII codepoints.
                 if (set_str.len > 0) {
                     if (string.indexOfAsciiSet(str, set_str)) |idx| {
-                        return intSome(vm, @intCast(idx));
+                        ret.* = cy.value.Option(i64).some(@intCast(idx));
+                        return RetOk;
                     }
                 }
             }
         } else {
             if (set_is_ascii) {
                 if (string.indexOfAsciiSet(str, set_str)) |idx| {
-                    return intSome(vm, @intCast(idx));
+                    ret.* = cy.value.Option(i64).some(@intCast(idx));
+                    return RetOk;
                 }
             } else {
                 // Scalar.
@@ -216,161 +263,196 @@ pub fn findAnyRune(vm: *cy.VM) anyerror!Value {
                         break;
                     };
                     for (set_list) |set_rune| {
-                        if (set_rune.val == cp) {
-                            return intSome(vm, @intCast(idx));
+                        if (set_rune == cp) {
+                            ret.* = cy.value.Option(i64).some(@intCast(idx));
+                            return RetOk;
                         }
                     }
                 }
             }
         }
     }
-    return intNone(vm);
+    ret.* = cy.value.Option(i64).none();
+    return RetOk;
 }
 
-pub fn findRune(vm: *cy.VM) Value {
-    const obj = vm.getObject(*cy.heap.String, 0);
-    const str = obj.getSlice();
-    const needle = vm.getInt(1);
-    const stype = obj.getType(); 
+pub fn index_rune(t: *cy.Thread) !Ret {
+    const ret = t.ret(cy.value.Option(i64));
+    const obj = t.param(*cy.heap.Str);
+    const str = obj.slice();
+    const needle = t.param(i64);
 
     if (needle > 0) {
         const code: u21 = @intCast(needle);
         const needleIsAscii = code < 128;
-        if (stype.isAstring()) {
+        if (obj.ascii()) {
             if (needleIsAscii) {
                 if (string.indexOfChar(str, @intCast(code))) |idx| {
-                    return intSome(vm, @intCast(idx)) catch cy.fatal();
+                    ret.* = cy.value.Option(i64).some(@intCast(idx));
+                    return RetOk;
                 }
             }
         } else {
             if (needleIsAscii) {
                 if (string.indexOfChar(str, @intCast(code))) |idx| {
-                    return intSome(vm, @intCast(idx)) catch cy.fatal();
+                    ret.* = cy.value.Option(i64).some(@intCast(idx));
+                    return RetOk;
                 }
             } else {
                 var slice: [4]u8 = undefined;
                 _ = std.unicode.utf8Encode(code, &slice) catch fatal();
                 if (string.indexOf(str, &slice)) |idx| {
-                    return intSome(vm, @intCast(idx)) catch cy.fatal();
+                    ret.* = cy.value.Option(i64).some(@intCast(idx));
+                    return RetOk;
                 }
             }
         }
     }
-    return intNone(vm) catch cy.fatal();
+    ret.* = cy.value.Option(i64).none();
+    return RetOk;
 }
 
-pub fn upper(vm: *cy.VM) Value {
-    const obj = vm.getObject(*cy.heap.String, 0);
-    const str = obj.getSlice();
-    const stype = obj.getType();
-    if (stype.isAstring()) {
-        const new = vm.allocUnsetAstringObject(str.len) catch fatal();
-        const newBuf = new.astring.getMutSlice();
+pub fn index_newline(t: *cy.Thread) !Ret {
+    const ret = t.ret(cy.value.Option(i64));
+    const str = t.param(*cy.heap.Str).slice();
+    if (cy.string.indexOfNewLine(str)) |idx| {
+        ret.* = cy.value.Option(i64).some(@intCast(idx));
+        return RetOk;
+    } else {
+        ret.* = cy.value.Option(i64).none();
+        return RetOk;
+    }
+}
+
+pub fn upper(t: *cy.Thread) !Ret {
+    const ret = t.ret(cy.heap.Str);
+    const str_v = t.param(*cy.heap.Str);
+    const str = str_v.slice();
+    if (str_v.ascii()) {
+        const new = try t.heap.init_astr_undef(str.len);
+        const newBuf = new.mutSlice();
         _ = std.ascii.upperString(newBuf, str);
-        return vm.allocOwnedAstring(new) catch fatal();
+        ret.* = new;
     } else {
-        const new = vm.allocUnsetUstringObject(str.len) catch fatal();
-        const newBuf = new.ustring.getMutSlice();
+        const new = try t.heap.init_ustr_undef(str.len);
+        const newBuf = new.mutSlice();
         _ = std.ascii.upperString(newBuf, str);
-        return vm.allocOwnedUstring(new) catch fatal();
+        ret.* = new;
     }
+    return RetOk;
 }
 
-pub fn lower(vm: *cy.VM) Value {
-    const obj = vm.getObject(*cy.heap.String, 0);
-    const str = obj.getSlice();
-    const stype = obj.getType();
-    if (stype.isAstring()) {
-        const new = vm.allocUnsetAstringObject(str.len) catch fatal();
-        const newBuf = new.astring.getMutSlice();
+pub fn lower(t: *cy.Thread) !Ret {
+    const ret = t.ret(cy.heap.Str);
+    const str_v = t.param(*cy.heap.Str);
+    const str = str_v.slice();
+    if (str_v.ascii()) {
+        const new = try t.heap.init_astr_undef(str.len);
+        const newBuf = new.mutSlice();
         _ = std.ascii.lowerString(newBuf, str);
-        return vm.allocOwnedAstring(new) catch fatal();
+        ret.* = new;
     } else {
-        const new = vm.allocUnsetUstringObject(str.len) catch fatal();
-        const newBuf = new.ustring.getMutSlice();
+        const new = try t.heap.init_ustr_undef(str.len);
+        const newBuf = new.mutSlice();
         _ = std.ascii.lowerString(newBuf, str);
-        return vm.allocOwnedUstring(new) catch fatal();
+        ret.* = new;
     }
+    return RetOk;
 }
 
-pub fn less(vm: *cy.VM) Value {
-    const obj = vm.getObject(*cy.heap.String, 0);
-    const str = obj.getSlice();
-    const right = vm.getString(1);
-    return Value.initBool(std.mem.lessThan(u8, str, right));
+pub fn less(t: *cy.Thread) callconv(.c) Ret {
+    const ret = t.ret(bool);
+    const str = t.param(cy.heap.Str);
+    defer t.heap.destructStr(&str);
+    const right = t.param(cy.heap.Str);
+    defer t.heap.destructStr(&right);
+    ret.* = std.mem.lessThan(u8, str.slice(), right.slice());
+    return RetOk;
 }
 
-pub fn lenFn(vm: *cy.VM) Value {
-    const obj = vm.getObject(*cy.heap.String, 0);
-    return Value.initInt(obj.len());
+pub fn lenFn(t: *cy.Thread) callconv(.c) Ret {
+    const ret = t.ret(i64);
+    const str = t.param(*cy.heap.Str);
+    ret.* = str.len();
+    return RetOk;
 }
 
-pub fn count(vm: *cy.VM) Value {
-    const obj = vm.getObject(*cy.heap.String, 0);
-    const stype = obj.getType();
-    if (stype.isAstring()) {
-        return Value.initInt(obj.len());
+pub fn count(t: *cy.Thread) callconv(.c) Ret {
+    const ret = t.ret(i64);
+    const str = t.param(*cy.heap.Str);
+    if (str.ascii()) {
+        ret.* = str.len();
     } else {
-        return Value.initInt(@intCast(cy.string.countRunes(obj.getSlice())));
+        ret.* = @intCast(cy.string.countRunes(str.slice()));
     }
+    return RetOk;
 }
 
-pub fn seek(vm: *cy.VM) anyerror!Value {
-    const obj = vm.getObject(*cy.heap.String, 0);
-    const str = obj.getSlice();
-    const idx = vm.getInt(1);
-    const stype = obj.getType();
-    if (stype.isAstring()) {
+pub fn seek_pos(t: *cy.Thread) anyerror!Ret {
+    const ret = t.ret(i64);
+    const obj = t.param(*cy.heap.Str);
+    const str = obj.slice();
+    const idx = t.param(i64);
+    if (obj.ascii()) {
         if (idx < 0 or idx >= str.len) {
-            return error.OutOfBounds;
+            return t.ret_panic("OutOfBounds");
         }
-        return Value.initInt(@intCast(idx));
+        ret.* = @intCast(idx);
+        return RetOk;
     } else {
         const uidx: u32 = @intCast(idx);
         var bad_byte: bool = undefined;
         const start: u32 = @intCast(try string.ustringSeekByRuneIndex(str, 0, 0, uidx, &bad_byte));
-        return Value.initInt(@intCast(start));
+        ret.* = @intCast(start);
+        return RetOk;
     }
 }
 
-pub fn runeAt(vm: *cy.VM) anyerror!Value {
-    const obj = vm.getObject(*cy.heap.String, 0);
-    const str = obj.getSlice();
-    const idx = vm.getInt(1);
+pub fn rune_at(t: *cy.Thread) anyerror!Ret {
+    const ret = t.ret(u32);
+
+    const obj = t.param(*cy.heap.Str);
+    const str = obj.slice();
+    const idx = t.param(i64);
     if (idx < 0 or idx >= str.len) {
-        return error.OutOfBounds;
+        return t.ret_panic("OutOfBounds");
     }
-    const stype = obj.getType();
-    if (stype.isAstring()) {
-        return Value.initInt(@intCast(str[@intCast(idx)]));
+    if (obj.ascii()) {
+        ret.* = @intCast(str[@intCast(idx)]);
+        return RetOk;
     } else {
         const uidx: u32 = @intCast(idx);
         const rune_len = std.unicode.utf8ByteSequenceLength(str[uidx]) catch {
-            return Value.initInt(@intCast(std.unicode.replacement_character));
+            ret.* = @intCast(std.unicode.replacement_character);
+            return RetOk;
         };
         if (uidx + rune_len > str.len) {
-            return Value.initInt(@intCast(std.unicode.replacement_character));
+            ret.* = @intCast(std.unicode.replacement_character);
+            return RetOk;
         }
         const rune = std.unicode.utf8Decode(str[uidx..uidx+rune_len]) catch {
-            return Value.initInt(@intCast(std.unicode.replacement_character));
+            ret.* = @intCast(std.unicode.replacement_character);
+            return RetOk;
         };
-        return Value.initInt(@intCast(rune));
+        ret.* = @intCast(rune);
+        return RetOk;
     }
 }
 
-pub fn sliceAt(vm: *cy.VM) anyerror!Value {
-    const obj = vm.getObject(*cy.heap.String, 0);
-    const str = obj.getSlice();
-    const stype = obj.getType();
-    const idx = vm.getInt(1);
+pub fn runeStrAt(t: *cy.Thread) anyerror!Ret {
+    const ret = t.ret(cy.heap.Str);
+    const obj = t.param(*cy.heap.Str);
+    const str = obj.slice();
+    const idx = t.param(i64);
 
     if (idx < 0 or idx >= str.len) {
-        return error.OutOfBounds;
+        return t.ret_panic("OutOfBounds");
     }
     const uidx: u32 = @intCast(idx);
-    if (stype.isAstring()) {
+    if (obj.ascii()) {
         // TODO: return slice.
-        return vm.retainOrAllocAstring(str[uidx..uidx + 1]) catch fatal();
+        ret.* = try t.heap.init_astr(str[uidx..uidx + 1]);
+        return RetOk;
     } else {
         var bad_byte: bool = undefined;
         const slice = string.runeSliceAt(str, uidx, &bad_byte);
@@ -378,137 +460,116 @@ pub fn sliceAt(vm: *cy.VM) anyerror!Value {
         if (slice.len == 1 and !bad_byte) {
             // TODO: If single ascii runes are interned by default,
             //       it's better to fetch that instead to reduce dependency on parent.
-            vm.retainObject(@ptrCast(obj));
-            return vm.allocAstringSlice(slice, @ptrCast(obj)) catch fatal();
+            _ = try t.heap.copy_str(obj.*);
+            ret.* = try t.heap.init_astr_slice(slice, obj.buf());
+            return RetOk;
         } else {
-            vm.retainObject(@ptrCast(obj));
-            return vm.allocUstringSlice(slice, @ptrCast(obj)) catch fatal();
+            _ = try t.heap.copy_str(obj.*);
+            ret.* = try t.heap.init_ustr_slice(slice, obj.buf());
+            return RetOk;
         }
     }
 }
 
-pub fn trim(vm: *cy.VM) Value {
-    const obj = vm.getObject(*cy.heap.String, 0);
-    const str = obj.getSlice();
-    const stype = obj.getType();
+pub fn stringReplace(t: *cy.Thread) !Ret {
+    const ret = t.ret(cy.heap.Str);
+    const obj = t.param(*cy.heap.Str);
+    const str = obj.slice();
 
-    const trimRunes = vm.getString(2);
+    const needle = t.param(cy.heap.Str);
+    defer t.heap.destructStr(&needle);
 
-    var res: []const u8 = undefined;
-    const mode = bindings.getBuiltinSymbol(vm.getSymbol(1)) orelse {
-        return rt.prepThrowError(vm, .InvalidArgument);
-    };
-    switch (mode) {
-        .left => res = std.mem.trimLeft(u8, str, trimRunes),
-        .right => res = std.mem.trimRight(u8, str, trimRunes),
-        .ends => res = std.mem.trim(u8, str, trimRunes),
-        else => {
-            return rt.prepThrowError(vm, .InvalidArgument);
-        }
-    }
+    const replace = t.param(cy.heap.Str);
+    defer t.heap.destructStr(&replace);
 
-    vm.retainObject(@ptrCast(obj));
-    if (stype.isAstring()) {
-        return vm.allocAstringSlice(res, @ptrCast(obj)) catch fatal();
-    } else {
-        return vm.allocUstringSlice(res, @ptrCast(obj)) catch fatal();
-    }
-}
-
-pub fn stringReplace(vm: *cy.VM) Value {
-    const obj = vm.getObject(*cy.heap.String, 0);
-    const str = obj.getSlice();
-    const stype = obj.getType();
-
-    const needle = vm.getObject(*cy.heap.String, 1);
-    const replace = vm.getObject(*cy.heap.String, 2);
-
-    if (stype.isAstring()) {
-        if (astringReplace(vm, str, needle, replace)) |val| {
-            return val;
+    if (obj.ascii()) {
+        if (try astringReplace(t, str, needle, replace)) |val| {
+            ret.* = val;
+            return RetOk;
         } else {
-            vm.retainObject(@ptrCast(obj));
-            return Value.initPtr(obj);
+            ret.* = try t.heap.copy_str(obj.*);
+            return RetOk;
         }
     } else {
-        if (ustringReplace(vm, str, needle, replace)) |val| {
-            return val;
+        if (try ustringReplace(t, str, needle, replace)) |val| {
+            ret.* = val;
+            return RetOk;
         } else {
-            vm.retainObject(@ptrCast(obj));
-            return Value.initPtr(obj);
+            ret.* = try t.heap.copy_str(obj.*);
+            return RetOk;
         }
     }
 }
 
-fn astringReplace(vm: *cy.VM, str: []const u8, needlev: *cy.heap.String, replacev: *cy.heap.String) ?Value {
-    const needle = needlev.getSlice();
-    const replacement = replacev.getSlice();
+fn astringReplace(t: *cy.Thread, str: []const u8, needlev: cy.heap.Str, replacev: cy.heap.Str) !?cy.heap.Str {
+    const needle = needlev.slice();
+    const replacement = replacev.slice();
 
-    const idxBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
+    const idxBuf = &t.c.vm.u8Buf;
     idxBuf.clearRetainingCapacity();
-    defer if (idxBuf.capacity > 4096) idxBuf.clearAndFree(vm.alloc);
-    const newLen = string.prepReplacement(str, needle, replacement, idxBuf.writer(vm.alloc)) catch fatal();
+    defer if (idxBuf.capacity > 4096) idxBuf.clearAndFree(t.alloc);
+    const newLen = try string.prepReplacement(str, needle, replacement, idxBuf.writer(t.alloc));
     const numIdxes = @divExact(idxBuf.items.len, 4);
     if (numIdxes > 0) {
-        if (replacev.getType().isAstring()) {
-            const new = vm.allocUnsetAstringObject(newLen) catch fatal();
-            const newBuf = new.astring.getMutSlice();
+        if (replacev.ascii()) {
+            const new = try t.heap.init_astr_undef(newLen);
+            const newBuf = new.mutSlice();
             const idxes = @as([*]const u32, @ptrCast(idxBuf.items.ptr))[0..numIdxes];
             string.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
-            return vm.allocOwnedAstring(new) catch fatal();
+            return new;
         } else {
-            const new = vm.allocUnsetUstringObject(newLen) catch fatal();
-            const newBuf = new.ustring.getMutSlice();
+            const new = try t.heap.init_ustr_undef(newLen);
+            const newBuf = new.mutSlice();
             const idxes = @as([*]const u32, @ptrCast(idxBuf.items.ptr))[0..numIdxes];
             string.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
-            return vm.allocOwnedUstring(new) catch fatal();
+            return new;
         }
     } else {
         return null;
     }
 }
 
-fn ustringReplace(vm: *cy.VM, str: []const u8, needlev: *cy.heap.String, replacev: *cy.heap.String) ?Value {
-    const needle = needlev.getSlice();
-    const replacement = replacev.getSlice();
+fn ustringReplace(t: *cy.Thread, str: []const u8, needlev: cy.heap.Str, replacev: cy.heap.Str) !?cy.heap.Str {
+    const needle = needlev.slice();
+    const replacement = replacev.slice();
 
-    const idxBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
+    const idxBuf = &t.c.vm.u8Buf;
     idxBuf.clearRetainingCapacity();
-    defer if (idxBuf.capacity > 4096) { idxBuf.clearAndFree(vm.alloc); };
-    const newLen = string.prepReplacement(str, needle, replacement, idxBuf.writer(vm.alloc)) catch fatal();
+    defer if (idxBuf.capacity > 4096) { idxBuf.clearAndFree(t.alloc); };
+    const newLen = try string.prepReplacement(str, needle, replacement, idxBuf.writer(t.alloc));
     const numIdxes = @divExact(idxBuf.items.len, 4);
     if (numIdxes > 0) {
-        const new = vm.allocUnsetUstringObject(newLen) catch fatal();
-        const newBuf = new.ustring.getMutSlice();
+        const new = try t.heap.init_ustr_undef(newLen);
+        const newBuf = new.mutSlice();
         const idxes = @as([*]const u32, @ptrCast(idxBuf.items.ptr))[0..numIdxes];
         cy.string.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
-        return vm.allocOwnedUstring(new) catch fatal();
+        return new;
     } else {
         return null;
     }
 }
 
-pub fn repeat(vm: *cy.VM) Value {
-    const obj = vm.getObject(*cy.heap.String, 0);
-    const str = obj.getSlice();
+pub fn repeat(t: *cy.Thread) !Ret {
+    const ret = t.ret(cy.heap.Str);
+    const obj = t.param(*cy.heap.Str);
+    const str = obj.slice();
 
-    const n = vm.getInt(1);
+    const n = t.param(i64);
     if (n < 0) {
-        return rt.prepThrowError(vm, .InvalidArgument);
+        return t.ret_panic("InvalidArgument");
     }
 
     const un: u32 = @intCast(n);
     const len = un * str.len;
     if (un > 1 and len > 0) {
-        var new: *cy.HeapObject = undefined;
+        var new: cy.heap.Str = undefined;
         var buf: []u8 = undefined;
-        const stype = obj.getType();
-        if (stype.isAstring()) {
-            new = vm.allocUnsetAstringObject(len) catch fatal();
-            buf = new.astring.getMutSlice();
+        if (obj.ascii()) {
+            new = try t.heap.init_astr_undef(len);
+            buf = new.mutSlice();
         } else {
-            new = vm.allocUnsetUstringObject(len) catch fatal();
-            buf = new.ustring.getMutSlice();
+            new = try t.heap.init_ustr_undef(len);
+            buf = new.mutSlice();
         }
         // This is already quite fast since it has good cache locality.
         // Might be faster if the front of the buffer up to a certain size was used to memcpy instead of just 1 `str`.
@@ -519,82 +580,15 @@ pub fn repeat(vm: *cy.VM) Value {
             dst += @intCast(str.len);
         }
 
-        return Value.initPtr(new);
+        ret.* = new;
+        return RetOk;
     } else {
         if (un == 0) {
-            vm.retain(vm.emptyString);
-            return vm.emptyString;
+            ret.* = try t.heap.init_empty_str();
+            return RetOk;
         } else {
-            vm.retainObject(@ptrCast(obj));
-            return Value.initPtr(obj);
+            ret.* = try t.heap.copy_str(obj.*);
+            return RetOk;
         }
-    }
-}
-
-pub fn split(vm: *cy.VM) anyerror!Value {
-    const obj = vm.getObject(*cy.heap.String, 0);
-    const str = obj.getSlice();
-    const stype = obj.getType();
-    const parent = obj.getParentByType(stype);
-    const delim = vm.getString(1);
-
-    const list_t = (try vm.findType("List[string]")).?;
-    const res = try vm.allocEmptyList(list_t.id());
-    if (delim.len == 0) {
-        return res;
-    }
-    const list = res.asHeapObject();
-
-    var iter = std.mem.splitSequence(u8, str, delim);
-    while (iter.next()) |part| {
-        if (stype.isAstring()) {
-            vm.retainObject(parent);
-            const partv = try vm.allocAstringSlice(part, parent);
-            try list.list.append(vm.alloc, partv);
-        } else {
-            vm.retainObject(parent);
-            const partv = try vm.allocUstringSlice(part, parent);
-            try list.list.append(vm.alloc, partv);
-        }
-    }
-    return res;
-}
-
-pub fn stringCall(vm: *cy.VM) anyerror!Value {
-    const val = vm.getValue(0);
-    if (val.isString()) {
-        vm.retain(val);
-        return val; 
-    } else {
-        const str = try vm.getOrBufPrintValueStr(&cy.tempBuf, val);
-        return vm.retainOrAllocAstring(str);
-    }
-}
-
-pub fn string_interpolate(vm: *cy.VM) !Value {
-    const strs = vm.getValue(0).asHeapObject().list.items();
-    const args = vm.getValue(1).asHeapObject().list.items();
-
-    const firstStr = strs[0].castHeapObject(*cy.heap.String);
-    const firstSlice = firstStr.getSlice();
-    try vm.u8Buf.resize(vm.alloc, firstSlice.len);
-    defer if (vm.u8Buf.capacity > 4096) vm.u8Buf.clearAndFree(vm.alloc);
-    @memcpy(vm.u8Buf.items, firstSlice);
-    var is_ascii = firstStr.getType().isAstring();
-
-    const w = vm.u8Buf.writer(vm.alloc);
-    for (args, 0..) |arg, i| {
-        const out_ascii = try vm.writeValue(w, arg.getTypeId(), cy.vm.unbox2(vm, arg), false);
-        is_ascii = is_ascii and out_ascii;
-
-        const str = strs[i+1].asHeapObject();
-        try w.writeAll(str.string.getSlice());
-        is_ascii = is_ascii and str.string.getType().isAstring();
-    }
-
-    if (is_ascii) {
-        return vm.retainOrAllocUstring(vm.u8Buf.items);
-    } else {
-        return vm.retainOrAllocAstring(vm.u8Buf.items);
     }
 }

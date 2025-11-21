@@ -1,9 +1,9 @@
 1[0] = 2
 
 --cytest: error
---CompileError: Can not find the symbol `$setIndex` for `int`.
+--CompileError: Unsupported type `int` for index assignment.
 --
 --main:1:1:
 --1[0] = 2
---^
+--^~~~
 --

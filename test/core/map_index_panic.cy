@@ -1,10 +1,11 @@
-var a = Map{}
-a['foo']
+a := Map[str, str]{}
+_ = a['foo']
 
---cytest: error
---panic: Missing key in map.
+--cytest: panic
+--panic: MissingKey
 --
---main:2:1 main:
---a['foo']
---^
+--[trace]
+--main:2:5 main:
+--_ = a['foo']
+--    ^
 --

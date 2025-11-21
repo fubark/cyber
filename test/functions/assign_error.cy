@@ -7,9 +7,9 @@ fn foo(a int):
 foo = toNum
 
 --cytest: error
---CompileError: Can not reassign to a namespace function.
+--CompileError: Cannot reassign to a static function.
 --
 --main:7:1:
 --foo = toNum
---^
+--^~~~~~~~~~~
 --

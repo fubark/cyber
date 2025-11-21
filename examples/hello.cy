@@ -1,6 +1,6 @@
 use math
 
-var worlds = {'World', '世界', 'दुनिया', 'mundo'}
-worlds.append(math.random().fmt())
-for worlds -> w:
-    print "Hello, ${w}!"
+nouns := []str{'World', '世界', 'दुनिया', 'mundo'}
+nouns <<= math.random().fmt()
+for nouns |n|:
+    print('Hello, %{n}!')

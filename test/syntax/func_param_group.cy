@@ -1,12 +1,12 @@
 use test
 
 -- Functions.
-fn sum(a, b, c int) int:
+fn sum(a, b, c int) -> int:
     return a + b + c
 
 test.eq(sum(1, 2, 3), 6)
 
-fn compute(a, b int, c, d string) int:
+fn compute(a, b int, c, d str) -> int:
     return a + b + c.len() + d.len()
 
 test.eq(compute(1, 2, 'abc', 'xyz'), 9)
@@ -15,23 +15,23 @@ test.eq(compute(1, 2, 'abc', 'xyz'), 9)
 type T:
     i int
 
-    fn sum(self, a, b, c int) int:
-        return self.i + a + b + c
+fn (&T) sum(a, b, c int) -> int:
+    return self.i + a + b + c
 
-    fn compute(self, a, b int, c, d string) int:
-        return self.i + a + b + c.len() + d.len()
+fn (&T) compute(a, b int, c, d str) -> int:
+    return self.i + a + b + c.len() + d.len()
 
-var o = T{i=10}
+o := T{i=10}
 test.eq(o.sum(1, 2, 3), 16)
 test.eq(o.compute(1, 2, 'abc', 'xyz'), 19)
 
 -- Lambdas.
-var sum_fn = fn(a, b, c int) int:
+sum_fn := fn(a, b, c int) -> int:
     return a + b + c
 
 test.eq(sum_fn(1, 2, 3), 6)
 
-var compute_fn = fn(a, b int, c, d string) int:
+compute_fn := fn(a, b int, c, d str) -> int:
     return a + b + c.len() + d.len()
 
 test.eq(compute_fn(1, 2, 'abc', 'xyz'), 9)

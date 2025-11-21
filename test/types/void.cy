@@ -1,8 +1,8 @@
 use test
 
 -- Initialize void.
-var a = _
-test.eq(typeOf(a), void)
-test.eq(a, _)
+a := _
+test.eqType(void, type.of(a))
+test.eq(_, a)
 
 --cytest: pass

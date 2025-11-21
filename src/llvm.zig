@@ -1,10 +1,8 @@
-const c = @cImport({
+pub const c = @cImport({
     @cInclude("llvm-c/Core.h");
     @cInclude("llvm-c/Analysis.h");
     @cInclude("llvm-c/ExecutionEngine.h");
 });
-
-pub usingnamespace c;
 
 /// Top Level.
 pub const DisposeMessage = c.LLVMDisposeMessage;

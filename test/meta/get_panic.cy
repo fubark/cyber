@@ -1,18 +1,19 @@
 type Foo:
     a    int
 
-    fn $get(self, name string):
-        panic('error')
+fn (&Foo) @get(name str):
+    panic('error')
 
-var f = Foo{a=123}
+f := Foo{a=123}
 f.foo
 
---cytest: error
+--cytest: panic
 --panic: error
 --
---main:5:9 $get:
---        panic('error')
---        ^
+--[trace]
+--main:5:5 Foo.@get:
+--    panic('error')
+--    ^
 --main:8:3 main:
 --f.foo
 --  ^

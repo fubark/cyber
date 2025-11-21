@@ -1,16 +1,21 @@
 const std = @import("std");
 
-pub fn createModule(b: *std.Build) *std.Build.Module {
+pub fn createModule(b: *std.Build, rtarget: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Module {
+    const tcc = b.addTranslateC(.{
+        .root_source_file = b.path("lib/tcc/vendor/libtcc.h"),
+        .target = rtarget,
+        .optimize = optimize,
+    });
     const mod = b.createModule(.{
-        .root_source_file = b.path("lib/tcc/tcc.zig"),
+        .root_source_file = tcc.getOutput(),
     });
     mod.addIncludePath(b.path("lib/tcc/vendor"));
     return mod;
 }
 
-pub fn addImport(root: *std.Build.Module, b: *std.Build, name: []const u8, mod: *std.Build.Module) void {
+pub fn addImport(root: *std.Build.Module, name: []const u8, mod: *std.Build.Module) void {
     root.addImport(name, mod);
-    root.addIncludePath(b.path("lib/tcc/vendor"));
+    root.addIncludePath(root.owner.path("lib/tcc/vendor"));
 }
 
 const BuildOptions = struct {
@@ -19,19 +24,23 @@ const BuildOptions = struct {
     optimize: std.builtin.OptimizeMode,
 };
 
-pub fn buildAndLink(b: *std.Build, mod: *std.Build.Module, opts: BuildOptions) void {
-    const lib = b.addStaticLibrary(.{
-        .name = "tcc",
+pub fn buildAndLink(b: *std.Build, mod: *std.Build.Module, opts: BuildOptions) !void {
+    const root = b.createModule(.{
         .target = opts.target,
         .optimize = opts.optimize,
     });
+    const lib = b.addLibrary(.{
+        .linkage = .static,
+        .name = "tcc",
+        .root_module = root,
+    });
     lib.addIncludePath(b.path("lib/tcc/vendor"));
     lib.linkLibC();
-    lib.root_module.sanitize_c = false;
+    lib.root_module.sanitize_c = .off;
 
-    var c_flags = std.ArrayList([]const u8).init(b.allocator);
+    var c_flags = try std.ArrayList([]const u8).initCapacity(b.allocator, 0);
     if (opts.selinux) {
-        c_flags.append("-DHAVE_SELINUX=1") catch @panic("error");
+        try c_flags.append(b.allocator, "-DHAVE_SELINUX=1");
     }
     // c_flags.append("-D_GNU_SOURCE=1") catch @panic("error");
     if (opts.target.result.os.tag == .windows) {}
@@ -40,11 +49,11 @@ pub fn buildAndLink(b: *std.Build, mod: *std.Build.Module, opts: BuildOptions) v
         // c_flags.append("-O0") catch @panic("error");
     }
 
-    var sources = std.ArrayList([]const u8).init(b.allocator);
-    sources.appendSlice(&.{
+    var sources = try std.ArrayList([]const u8).initCapacity(b.allocator, 0);
+    try sources.appendSlice(b.allocator, &.{
         "lib/tcc/vendor/libtcc.c",
         // "/vendor/lib/libtcc1.c",
-    }) catch @panic("error");
+    });
     for (sources.items) |src| {
         lib.addCSourceFile(.{
             .file = b.path(src),

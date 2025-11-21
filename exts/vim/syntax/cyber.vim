@@ -1,12 +1,13 @@
 " Match language specific keywords
 syntax keyword cyberKeyword
-    \ if else switch while for each break continue pass
-    \ or and not is
-    \ var as dyn def
-    \ fn return
-    \ coinit coyield coresume
-    \ type object enum true false none
-    \ try catch recover
+    \ if else switch case while for break continue pass
+    \ or and not
+    \ var move const global
+    \ fn return self
+    \ yield
+    \ type object struct cstruct cunion enum trait as
+    \ true false none undef 
+    \ catch error
     \ use
 
 syntax match cyberComment "--.*$"

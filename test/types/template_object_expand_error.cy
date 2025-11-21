@@ -1,12 +1,12 @@
 type Foo[T type]:
     a T
 
-var f = Foo[string, int]{a='abc'}
+f := Foo[string, int]{a='abc'}
 
 --cytest: error
---CompileError: Expected template signature `Foo[type]`.
+--CompileError: Expected 1 template parameters.
 --
---main:4:9:
---var f = Foo[string, int]{a='abc'}
---        ^
+--main:4:6:
+--f := Foo[string, int]{a='abc'}
+--     ^~~~~~~~~~~~~~~~
 --

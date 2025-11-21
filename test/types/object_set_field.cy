@@ -3,7 +3,7 @@ use test
 type S:
     a float
 
-var o = S{a=123.0}
+o := ^S{a=123.0}
 
 -- Exact type.
 o.a = 234.0

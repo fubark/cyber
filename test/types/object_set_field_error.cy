@@ -1,13 +1,13 @@
 type S:
     a float
 
-var o = S{a=123}
+o := ^S{a=123}
 o.a = 'abc'
 
 --cytest: error
---CompileError: Expected type `float`, got `string`.
+--CompileError: Expected type `float`, got `str`.
 --
 --main:5:7:
 --o.a = 'abc'
---      ^
+--      ^~~~~
 --

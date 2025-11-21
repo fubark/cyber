@@ -5,93 +5,97 @@ const t = stdx.testing;
 const cy = @import("cyber.zig");
 const log = cy.log.scoped(.ast);
 
-pub const NodeType = enum(u7) {
+pub const NodeType = enum(u8) {
     // To allow non optional nodes.
     // Can be used to simplify code by accepting *Node only instead of ?*Node.
     null,
 
     accessExpr,
     all,
-    array_lit,
-    array_expr,
-    array_type,
-    assignStmt,
+    as_expr,
+    assign_stmt,
+    at_lit,
     attribute,
-    await_expr,
+    begin_stmt,
     binExpr,
     binLit,
+    borrow,
     breakStmt,
-    caseBlock,
+    case_stmt,
     callExpr,
-    castExpr,
     catchStmt,
-    coinit,
-    comptimeExpr,
-    comptimeStmt,
-    context_decl,
+    const_decl,
     continueStmt,
-    coresume,
-    coyield,
     cstruct_decl,
-    ct_if_stmt,
-    ct_else_block,
-    custom_decl,
+    ct_stmt,
+    cunion_decl,
+    custom_type_decl,
     decLit,
+    dec_u,
     deref,
-    distinct_decl,
-    dot_init_lit,
+    dollar,
+    dollar_lit,
+    dot,
     dot_lit,
     else_block,
+    elseif_block,
     enumDecl,
     enumMember,
     error_lit,
-    expandOpt,
+    ex_borrow,
+    expand_lit,
     exprStmt,
     falseLit,
-    forIterStmt,
-    forRangeStmt,
+    for_iter_stmt,
+    for_range_stmt,
     floatLit,
     funcDecl,
     func_param,
-    func_type,
+    fn_type,
+    fnsym_type,
+    generic_expand,
+    generic_vector_type,
+    global_decl,
     group,
     hexLit,
     ident,
     if_expr,
     if_stmt,
     if_unwrap_stmt,
-    impl_with,
+    impl_decl,
     import_stmt,
+    index_expr,
+    infer_param,
     init_expr,
     init_lit,
     keyValue,
     label_decl,
+    lambda_cont_expr,
+    lambda_cont,
     lambda_expr, 
     lambda_multi,
-    localDecl,
-    name_path,
+    move_expr,
     namedArg,
     noneLit,
     octLit,
-    opAssignStmt,
+    op_assign_stmt,
+    option_type,
+    partial_vector_type,
     passStmt,
     ptr,
-    ptr_slice,
     range,
     raw_string_lit,
     raw_string_multi_lit,
-
-    // Ref type or address of operator.
     ref,
-
-    ref_slice,
     returnExprStmt,
     returnStmt,
     root,
-    rune_lit,
-    semaSym,
     seqDestructure,
-    staticDecl,
+    slice_type,
+    span_type,
+    special_string_lit,
+    sq_string_lit,
+    sq_string_multi_lit,
     string_lit,
     string_multi_lit,
     stringt,
@@ -101,86 +105,202 @@ pub const NodeType = enum(u7) {
     struct_decl,
     struct_field,
     switchExpr,
-    switchStmt,
-    symbol_lit,
-    throwExpr,
+    switch_stmt,
+    template,
     trait_decl,
     trueLit,
-    tryExpr,
     tryStmt,
-    typeAliasDecl,
-    template,
+    type_alias_decl,
+    type_const_decl,
     unary_expr,
+    undef_lit,
+    union_case,
     unwrap,
     unwrap_choice,
     unwrap_or,
+    unwrap_or_block,
+    unwrap_res,
+    unwrap_res_or,
+    unwrap_res_or_block,
     use_alias,
+    var_decl,
+    vector_type,
     void_lit,
     whileCondStmt,
     whileInfStmt,
-    whileOptStmt,
+    while_unwrap_stmt,
+    with,
+    yield_stmt,
 };
+
+pub fn ConstSlice(T: type) type {
+    return extern struct {
+        ptr: [*]const T,
+        len: usize,
+
+        pub fn slice(self: *const @This()) []const T {
+            return self.ptr[0..self.len];
+        }
+    };
+}
+
+pub fn Slice(T: type) type {
+    return extern struct {
+        ptr: [*]T,
+        len: usize,
+
+        pub fn slice(self: *@This()) []T {
+            return self.ptr[0..self.len];
+        }
+    };
+}
 
 pub const AttributeType = enum(u8) {
-    host,
+    bind,
+    extern_,
+    call,
+    generator,
+    cond,
+    unsafe,
+    global_init,
+    consteval,
 };
 
-const PtrSlice = struct {
-    elem: *Node align(8),
+const OptionType = extern struct {
+    child: *Node,
     pos: u32,
 };
 
-const ExpandOpt = struct {
-    param: *Node align(8),
+const Borrow = extern struct {
+    child: *Node,
     pos: u32,
 };
 
-const RefSlice = struct {
-    elem: *Node align(8),
+const ExBorrow = extern struct {
+    child: *Node,
     pos: u32,
 };
 
-const Ref = struct {
-    elem: *Node align(8),
+const Ref = extern struct {
+    child: *Node,
     pos: u32,
 };
 
-const Ptr = struct {
-    elem: *Node align(8),
+const Ptr = extern struct {
+    child: *Node,
     pos: u32,
 };
 
 const ExprStmt = struct {
     child: *Node align(8),
-    isLastRootStmt: bool = false, 
 };
 
-const ReturnExprStmt = struct {
-    child: *Node align(8),
+const ReturnExprStmt = extern struct {
+    child: *Node,
     pos: u32,
 };
 
-pub const ImportStmt = struct {
-    name: *Node align(8),
+const MoveExpr = struct {
+    expr: *Node align(8),
+    pos: u32,
+};
+
+pub const ImportStmt = extern struct {
+    name: *Node,
     spec: ?*Node,
     pos: u32,
 };
 
-pub const Token = struct {
-    pos: u32 align(8),
-    end: u32,
+pub const Ident = extern struct {
+    src: u32 align(8),
+    pos: u32,
+    name: ConstSlice(u8),
+
+    fn end(self: *Ident) u32 {
+        return @intCast(self.pos + self.name.len);
+    }
 };
 
-// idents and literals.
-pub const Span = struct {
-    // This can be different from Node.srcPos if the literal was generated.
-    pos: u32 align(8),
-    end: u32,
-    srcGen: bool,
+pub const PrefixLit = extern struct {
+    name: *Node,
+    pos: u32,
 };
 
-pub const NamePath = struct {
-    path: []*Node align(8),
+pub const SpecialStringKind = enum(u8) {
+    c,
+    ascii_cp,
+    unicode_cp,
+};
+
+pub const SpecialStringLiteral = extern struct {
+    kind: SpecialStringKind,
+    lit: *Literal,
+    pos: u32,
+
+    pub fn asString(self: *@This()) []const u8 {
+        var node: *Node = @ptrCast(self.lit);
+        if (node.type() == .sq_string_multi_lit or node.type() == .string_multi_lit) {
+            return self.lit.asStringMulti();
+        } else {
+            return self.lit.asString();
+        }
+    }
+};
+
+pub const Literal = extern struct {
+    src: u32 align(8),
+    pos: u32,
+
+    // Contains the content including the prefix or delimiters.
+    value: ConstSlice(u8),
+
+    fn end(self: *Literal) u32 {
+        return @intCast(self.pos + self.value.len);
+    }
+
+    pub fn as_dot_infer_name(self: *Literal) []const u8 {
+        return self.value.ptr[1..self.value.len];
+    }
+
+    pub fn as_at_infer_name(self: *Literal) []const u8 {
+        return self.value.ptr[1..self.value.len];
+    }
+
+    pub fn asRawString(self: *Literal) []const u8 {
+        return self.value.ptr[1..self.value.len - 1];
+    }
+
+    pub fn asRawStringMulti(self: *Literal) []const u8 {
+        return self.value.ptr[3..self.value.len - 3];
+    }
+
+    pub fn asString(self: *Literal) []const u8 {
+        return self.value.ptr[1..self.value.len - 1];
+    }
+
+    pub fn asStringMulti(self: *Literal) []const u8 {
+        return self.value.ptr[3..self.value.len - 3];
+    }
+
+    pub fn asSymbol(self: *Literal) []const u8 {
+        return self.value.ptr[1..self.value.len];
+    }
+
+    pub fn asHex(self: *Literal) []const u8 {
+        return self.value.ptr[2..self.value.len];
+    }
+
+    pub fn asBin(self: *Literal) []const u8 {
+        return self.value.ptr[2..self.value.len];
+    }
+
+    pub fn asOct(self: *Literal) []const u8 {
+        return self.value.ptr[2..self.value.len];
+    }
+
+    pub fn asDecU(self: *Literal) []const u8 {
+        return self.value.ptr[0..self.value.len-1];
+    }
 };
 
 const NamedArg = struct {
@@ -198,18 +318,19 @@ pub const TryStmt = struct {
 const CatchStmt = struct {
     errorVar: ?*Node align(8),
     stmts: []*Node,
+    src: u32,
     pos: u32,
 };
 
-const TryExpr = struct {
-    expr: *Node align(8),
-    catchExpr: ?*Node,
+const AsExpr = extern struct {
+    expr: *Node,
+    target: ?*Node,
     pos: u32,
 };
 
-const CastExpr = struct {
-    expr: *Node align(8),
-    typeSpec: *Node,
+const AssignIndexStmt = struct {
+    left: *IndexExpr align(8),
+    right: *Node,
 };
 
 const AssignStmt = struct {
@@ -217,8 +338,8 @@ const AssignStmt = struct {
     right: *Node,
 };
 
-pub const BinExpr = struct {
-    left: *Node align(8),
+pub const BinExpr = extern struct {
+    left: *Node,
     right: *Node,
     op: BinaryExprOp,
     op_pos: u32,
@@ -231,58 +352,88 @@ const OpAssignStmt = struct {
     assign_pos: u32,
 };
 
-pub const CaseBlock = struct {
-    // conds.len == 0 if `else` case.
-    conds: []*Node align(8),
-    capture: ?*Node,
-    stmts: []*Node,
-    bodyIsExpr: bool,
+pub const CaseKind = enum(u8) {
+    case,
+    else_,
+};
+
+pub const CaseBodyKind = enum(u8) {
+    block,
+    expr,
+    fallthrough,
+};
+
+pub const CaseStmt = extern struct {
+    kind: CaseKind,
+    data: extern union {
+        case: extern struct {
+            conds: Slice(*Node),
+            capture: ?*Node,
+        },
+        else_: extern struct {
+            src: u32,
+        },
+    },
+    body_data: extern union {
+        block: Slice(*Node),
+        expr: *Node,
+    },
+    body_kind: CaseBodyKind,
     pos: u32,
 };
 
-pub const SwitchBlock = struct {
-    expr: *Node align(8),
-    cases: []*CaseBlock,
+pub const SwitchBlock = extern struct {
+    expr: *Node,
+
+    // CaseStmt, CtStmt/CaseStmt, or CtStmt/ForStmt
+    cases: Slice(*Node),
     pos: u32,
 };
 
-pub const Attribute = struct {
+pub const Attribute = extern struct {
     type: AttributeType align(8),
     value: ?*Node,
+    src: u32,
     pos: u32,
+
+    pub fn getString(self: *Attribute) !?[]const u8 {
+        const value = self.value orelse {
+            return null;
+        };
+        if (value.type() != .sq_string_lit) {
+            return error.Unsupported;
+        }
+        return value.cast(.sq_string_lit).asString();
+    }
 };
 
-const ThrowExpr = struct {
-    child: *Node align(8),
+const Group = extern struct {
+    child: *Node,
     pos: u32,
+    end: u32,
 };
 
-const Group = struct {
-    child: *Node align(8),
-    pos: u32,
-};
-
-const Coresume = struct {
-    child: *Node align(8),
-    pos: u32,
-};
-
-const Coinit = struct {
-    child: *CallExpr align(8),
+pub const BeginStmt = struct {
+    stmts: []const *Node,
     pos: u32,
 };
 
 pub const IfStmt = struct {
     cond: *Node align(8),
     stmts: []const *Node,
-    else_blocks: []*ElseBlock,
+    else_blocks: []*Node,
+    pos: u32,
+};
+
+pub const ElseIfBlock = struct {
+    cond: *Node align(8),
+    stmts: []const *Node,
     pos: u32,
 };
 
 pub const ElseBlock = struct {
-    // for else ifs only.
-    cond: ?*Node align(8),
     stmts: []const *Node,
+    src: u32,
     pos: u32,
 };
 
@@ -290,17 +441,12 @@ pub const IfUnwrapStmt = struct {
     opt: *Node align(8),
     unwrap: *Node,
     stmts: []const *Node,
-    else_blocks: []*ElseBlock,
+    else_blocks: []*Node,
     pos: u32,
 };
 
-const AwaitExpr = struct {
-    child: *Node align(8),
-    pos: u32,
-};
-
-const AccessExpr = struct {
-    left: *Node align(8),
+pub const AccessExpr = extern struct {
+    left: *Node,
     right: *Node,
 };
 
@@ -311,67 +457,111 @@ const UnwrapChoice = struct {
 
 const DerefExpr = struct {
     left: *Node align(8),
+    end: u32,
 };
 
 const Unwrap = struct {
     opt: *Node align(8),
+    end: u32,
 };
 
-const UnwrapOr = struct {
+pub const UnwrapOr = struct {
     opt: *Node align(8),
     default: *Node,
 };
 
-pub const CallExpr = struct {
-    callee: *Node align(8),
-    args: []*Node,
-    hasNamedArg: bool,
-    ct: bool = false,
+pub const UnwrapOrBlock = struct {
+    opt: *Node align(8),
+    else_stmts: []const *Node,
 };
 
-pub const ArrayLit = struct {
-    args: []*Node align(8),
+const UnwrapRes = struct {
+    res: *Node align(8),
+    end: u32,
+};
+
+pub const UnwrapResOr = struct {
+    res: *Node align(8),
+    default: *Node,
+};
+
+pub const UnwrapResOrBlock = struct {
+    res: *Node align(8),
+    capture: ?*Node,
+    else_stmts: []const *Node,
+};
+
+pub const CallExpr = extern struct {
+    callee: *Node,
+    args: Slice(*Node),
+    hasNamedArg: bool,
+    end: u32,
+};
+
+const GenericExpand = extern struct {
+    left: *Node,
+    end: u32,
+};
+
+const ExpandLit = struct {
+    child: *Node align(8),
     pos: u32,
     end: u32,
 };
 
-pub const DotInitLit = struct {
-    init: *InitLit align(8),
-    pos: u32,
-};
-
-const ArrayExpr = struct {
+pub const InitExpr = struct {
     left: *Node align(8),
-    args: []*Node,
+    lit: *InitLit,
 };
 
-const ArrayType = struct {
-    size: *Node align(8),
-    elem: *Node,
-    pos: u32,
-};
-
-const InitExpr = struct {
-    left: *Node align(8),
-    init: *InitLit,
-};
-
-pub const InitLit = struct {
+pub const InitLit = extern struct {
     // KeyValue or Expr.
-    args: []*Node align(8),
+    args: Slice(*Node),
+    src: u32,
     pos: u32,
+    end: u32,
 
     /// This only reflects the literal by itself.
+    /// true when args is empty.
     array_like: bool,
 };
 
-const Unary = struct {
-    child: *Node align(8),
-    op: UnaryOp,
+pub const IndexExpr = extern struct {
+    left: *Node,
+    args: Slice(*Node),
+    end: u32,
 };
 
-pub const Root = struct {
-    stmts: []const *Node align(8),
+pub const GenericVectorType = extern struct {
+    elem_t: *Node,
+    pos: u32,
+};
+
+pub const VectorType = extern struct {
+    child: *Node,
+    n: *Node,
+    pos: u32,
+};
+
+pub const SpanType = extern struct {
+    child: *Node,
+    pos: u32,
+};
+
+pub const SliceType = extern struct {
+    child: *Node,
+    pos: u32,
+};
+
+pub const Unary = extern struct {
+    child: *Node,
+    op: UnaryOp,
+    pos: u32,
+};
+
+pub const Root = extern struct {
+    stmts: Slice(*Node),
+    src: u32,
 };
 
 pub const KeyValue = struct {
@@ -379,147 +569,231 @@ pub const KeyValue = struct {
     value: *Node,
 };
 
+pub const ComptimeStmt = struct {
+    child: *Node align(8),
+    pos: u32,
+};
+
 pub const ComptimeExpr = struct {
     child: *Node align(8),
 };
 
-const ComptimeStmt = struct {
-    expr: *Node align(8),
+pub const FuncType = extern struct {
+    params: ConstSlice(*FuncParam),
+    ret: ?*Node,
+    src: u32,
     pos: u32,
+    extern_: ?*Attribute = null,
 };
 
-pub const FuncType = struct {
+pub const LambdaContExpr = struct {
+    // Child expr.
+    child: *Node align(8),
+
+    stmts: []*Node,
+};
+
+pub const LambdaCont = struct {
     params: []const *FuncParam align(8),
+
+    stmts: []const *Node,
+    sig_t: FuncSigType,
     ret: ?*Node,
+    src: u32,
     pos: u32,
-    is_union: bool,
+    end: u32,
 };
 
 pub const LambdaExpr = struct {
     params: []const *FuncParam align(8),
-    // For single expr lambda, `stmts.ptr` refers to the node.
+    expr: *Node,
+    sig_t: FuncSigType,
+    ret: ?*Node,
+    src: u32,
+    pos: u32,
+};
+
+pub const LambdaMulti = struct {
+    params: []const *FuncParam align(8),
+
+    // Initially empty for `lambda_cont`, but set during sema from a LambdaContExpr.
     stmts: []const *Node,
+    
     sig_t: FuncSigType,
     ret: ?*Node,
+    src: u32,
     pos: u32,
+    sig_end: u32,
 };
 
-pub const FuncDecl = struct {
-    name: *Node align(8),
-    attrs: []*Attribute,
-    params: []const *FuncParam,
+pub const With = extern struct {
+    params: ConstSlice(*FuncParam),
+    src: u32,
+    pos: u32,
+    end: u32,
+};
+
+pub const FuncDecl = extern struct {
+    name: *Node,
+
+    // If method, `parent` refers the receiver type.
+    parent: ?*Node,
+
+    attrs: Slice(*Attribute),
+    with: ?*With,
+    params: ConstSlice(*FuncParam),
     ret: ?*Node,
+    scope_ret: bool,
     hidden: bool,
-    stmts: []*Node,
+    stmts: Slice(*Node),
     sig_t: FuncSigType,
     pos: u32,
 };
 
-pub const FuncParam = struct {
-    name_type: *Node align(8),
+// TODO: Consider splitting into FuncParam and TemplateParam.
+pub const FuncParam = extern struct {
+    name_type: *Node,
     type: ?*Node,
 
-    // Used by sema to indicate that the parameter's type is inferred.
-    sema_infer_tparam: bool = false,
-    sema_tparam: bool = false,
+    template_param: bool,
+    scope_param: bool,
+    sink_param: bool,
+
+    // For template param only.
+    const_param: bool,
+    pos: u32,
+};
+
+pub const YieldStmt = struct {
+    child: ?*Node align(8),
+    src: u32,
+    pos: u32,
+};
+
+pub const TypeConstDecl = extern struct {
+    name: *Node,
+
+    hidden: bool,
+    attrs: Slice(*Attribute),
+
+    stmts: Slice(*Node),
+    pos: u32,
+};
+
+pub const TypeAliasDecl = extern struct {
+    name: *Node,
+    parent: ?*Node,
+
+    hidden: bool,
+    attrs: Slice(*Attribute),
+
+    /// Host defined target if `underscore`.
+    target: *Node,
+
+    pos: u32,
 };
 
 pub const UseAlias = struct {
     name: *Node align(8),
-    target: *Node,
-    pos: u32,
-};
 
-pub const TypeAliasDecl = struct {
-    name: *Node align(8),
-    typeSpec: *Node,
     hidden: bool,
-    pos: u32,
-};
-
-pub const CustomDecl = struct {
-    name: *Node align(8),
-    attrs: []*Attribute,
-    hidden: bool,
-    funcs: []*FuncDecl,
-    pos: u32,
-};
-
-pub const DistinctDecl = struct {
-    name: *Node align(8),
     attrs: []*Attribute,
     target: *Node,
+
+    pos: u32,
+};
+
+pub const CustomTypeDecl = extern struct {
+    name: *Node,
+    attrs: Slice(*Attribute),
     hidden: bool,
-    funcs: []*FuncDecl,
     pos: u32,
 };
 
 pub const Field = struct {
     name: *Node align(8),
     typeSpec: ?*Node,
+    init: ?*Node,
     hidden: bool,
 };
 
-pub const TraitDecl = struct {
-    name: *Node align(8),
-    attrs: []*Attribute,
-    funcs: []*FuncDecl,
+pub const TraitDecl = extern struct {
+    name: *Node,
+    attrs: Slice(*Attribute),
+    funcs: Slice(*FuncDecl),
     pos: u32,
 };
 
-pub const ImplWith = struct {
-    trait: *Node align(8),
+pub const ImplDecl = extern struct {
+    trait: *Node,
     pos: u32,
 };
 
-pub const StructDecl = struct {
-    /// If unnamed, this points to the *Sym.
-    name: ?*Node align(8),
-    attrs: []*Attribute,
-    impl_withs: []*ImplWith,
-    fields: []*Field,
-    funcs: []*FuncDecl,
-    unnamed: bool,
+pub const UnionCase = extern struct {
+    name: *Node,
+    payload_t: *Node,
+    pos: u32,
+};
+
+pub const CUnionDecl = extern struct {
+    name: *Node,
+    attrs: Slice(*Attribute),
+    impls: Slice(*ImplDecl),
+    cases: Slice(*UnionCase),
+    pos: u32,
+};
+
+pub const StructDecl = extern struct {
+    name: *Node,
+    attrs: Slice(*Attribute),
+    impls: Slice(*ImplDecl),
+    fields: Slice(*Field),
     is_tuple: bool,
     pos: u32,
 };
 
-pub const StaticVarDecl = struct {
-    name: *Node align(8),
-    attrs: []*Attribute,
-    typeSpec: ?*Node,
+pub const ConstDecl = extern struct {
+    name: *Node,
+    parent: ?*Node,
+    attrs: Slice(*Attribute),
+    type: ?*Node,
     right: ?*Node,
-    typed: bool,
-    // Declared with `.` prefix.
-    root: bool,
     hidden: bool,
     pos: u32,
 };
 
-pub const VarDecl = struct {
+pub const GlobalDecl = extern struct {
     name: *Node align(8),
+    parent: ?*Node,
+    attrs: Slice(*Attribute),
+    typeSpec: *Node,
+    right: ?*Node,
+    hidden: bool,
+    pos: u32,
+};
+
+pub const VaList = struct {
+    elem: ?*Node align(8),
+    src: u32,
+    pos: u32,
+};
+
+pub const VarDecl = extern struct {
+    name: *Node,
     typeSpec: ?*Node,
     right: *Node,
-    typed: bool,
-    pos: u32
+    pos: u32,
 };
 
-pub const ContextDecl = struct {
-    name: *Node align(8),
-    type: ?*Node,
-    right: ?*Node,
-    pos: u32
-};
-
-pub const EnumMember = struct {
-    name: *Node align(8),
+pub const EnumMember = extern struct {
+    name: *Node,
     typeSpec: ?*Node,
     pos: u32,
 };
 
-pub const EnumDecl = struct {
-    name: *Node align(8),
-    members: []*EnumMember,
+pub const EnumDecl = extern struct {
+    name: *Node,
+    members: Slice(*EnumMember),
     isChoiceType: bool,
     hidden: bool,
     pos: u32,
@@ -527,6 +801,7 @@ pub const EnumDecl = struct {
 
 const WhileInfStmt = struct {
     stmts: []*Node align(8),
+    src: u32,
     pos: u32,
 };
 
@@ -536,18 +811,19 @@ const WhileCondStmt = struct {
     pos: u32,
 };
 
-pub const WhileOptStmt = struct {
+pub const WhileUnwrapStmt = struct {
     opt: *Node align(8),
     capture: *Node,
     stmts: []const *Node,
     pos: u32,
 };
 
-const ForRangeStmt = struct {
+pub const ForRangeStmt = struct {
     start: *Node align(8),
     end: *Node,
     each: ?*Node,
     increment: bool,
+    end_inclusive: bool,
     stmts: []*Node,
     pos: u32,
 };
@@ -560,17 +836,14 @@ pub const ForIterStmt = struct {
     pos: u32,
 };
 
-const SemaSym = struct {
-    sym: *cy.Sym align(8),
-};
-
 pub const SeqDestructure = struct {
     args: []*Node align(8),
     pos: u32,
+    end: u32,
 };
 
 pub const TemplateDecl = struct {
-    params: []*FuncParam align(8),
+    params: []*FuncParam,
     child_decl: *Node,
 
     pub fn getAttrs(self: *TemplateDecl) []const *Attribute {
@@ -585,11 +858,14 @@ pub const TemplateDecl = struct {
     }
 };
 
-pub const Range = struct {
-    start: ?*Node align(8),
+pub const Range = extern struct {
+    start: ?*Node,
     end: ?*Node,
     inc: bool,
+    end_inclusive: bool,
+    src: u32,
     pos: u32,
+    op_end: u32,
 };
 
 const IfExpr = struct {
@@ -614,7 +890,12 @@ const StringTemplateExpr = struct {
 pub const FuncSigType = enum(u8) {
     func,
     infer,
-    template,
+    method,
+};
+
+pub const Token = struct {
+    src: u32 align(8),
+    pos: u32,
 };
 
 fn NodeData(comptime node_t: NodeType) type {
@@ -622,118 +903,133 @@ fn NodeData(comptime node_t: NodeType) type {
         .null           => Node,
         .accessExpr     => AccessExpr,
         .all            => Token,
-        .array_lit      => ArrayLit,
-        .array_expr     => ArrayExpr,
-        .array_type     => ArrayType,
-        .assignStmt     => AssignStmt,
+        .as_expr        => AsExpr,
+        .assign_stmt    => AssignStmt,
+        .at_lit         => Literal,
         .attribute      => Attribute,
-        .await_expr     => AwaitExpr,
+        .begin_stmt    => BeginStmt,
         .binExpr        => BinExpr,
-        .binLit         => Span,
-        .ref            => Ref,
-        .ref_slice      => RefSlice,
+        .binLit         => Literal,
+        .borrow         => Borrow,
         .breakStmt      => Token,
-        .caseBlock      => CaseBlock,
+        .case_stmt      => CaseStmt,
         .callExpr       => CallExpr,
-        .castExpr       => CastExpr,
         .catchStmt      => CatchStmt,
-        .coinit         => Coinit,
-        .comptimeExpr   => ComptimeExpr,
-        .comptimeStmt   => ComptimeStmt,
-        .context_decl   => ContextDecl,
+        .const_decl     => ConstDecl,
         .continueStmt   => Token,
-        .coresume       => Coresume,
-        .coyield        => Token,
         .cstruct_decl   => StructDecl,
-        .ct_if_stmt     => IfStmt,
-        .ct_else_block  => ElseBlock,
-        .custom_decl    => CustomDecl,
-        .decLit         => Span,
+        .ct_stmt        => ComptimeStmt,
+        .cunion_decl    => CUnionDecl,
+        .custom_type_decl => CustomTypeDecl,
+        .decLit         => Literal,
+        .dec_u          => Literal,
         .deref          => DerefExpr,
-        .distinct_decl  => DistinctDecl,
-        .dot_init_lit   => DotInitLit,
-        .dot_lit        => Span,
+        .dollar         => Token,
+        .dollar_lit     => PrefixLit,
+        .dot            => Token,
+        .dot_lit        => Literal,
         .else_block     => ElseBlock,
+        .elseif_block   => ElseIfBlock,
         .enumDecl       => EnumDecl,
         .enumMember     => EnumMember,
-        .error_lit      => Span,
-        .expandOpt      => ExpandOpt,
+        .error_lit      => PrefixLit,
+        .ex_borrow      => ExBorrow,
+        .expand_lit     => ExpandLit,
         .exprStmt       => ExprStmt,
         .falseLit       => Token,
-        .forIterStmt    => ForIterStmt,
-        .forRangeStmt   => ForRangeStmt,
-        .floatLit       => Span,
+        .for_iter_stmt  => ForIterStmt,
+        .for_range_stmt => ForRangeStmt,
+        .floatLit       => Literal,
         .funcDecl       => FuncDecl,
         .func_param     => FuncParam,
-        .func_type      => FuncType,
+        .fn_type        => FuncType,
+        .fnsym_type     => FuncType,
+        .generic_expand => GenericExpand,
+        .generic_vector_type => GenericVectorType,
+        .global_decl    => GlobalDecl,
         .group          => Group,
-        .hexLit         => Span,
-        .ident          => Span,
+        .hexLit         => Literal,
+        .ident          => Ident,
         .if_expr        => IfExpr,
         .if_stmt        => IfStmt,
         .if_unwrap_stmt => IfUnwrapStmt,
-        .impl_with      => ImplWith,
+        .impl_decl      => ImplDecl,
         .import_stmt    => ImportStmt,
+        .index_expr     => IndexExpr,
+        .infer_param    => PrefixLit,
         .init_expr      => InitExpr,
         .init_lit       => InitLit,
         .keyValue       => KeyValue,
         .label_decl     => void,
+        .lambda_cont_expr => LambdaContExpr,
+        .lambda_cont    => LambdaMulti,
         .lambda_expr    => LambdaExpr,
-        .lambda_multi   => LambdaExpr,
-        .localDecl      => VarDecl,
-        .name_path      => NamePath,
+        .lambda_multi   => LambdaMulti,
+        .move_expr      => MoveExpr,
         .namedArg       => NamedArg,
         .noneLit        => Token,
-        .octLit         => Span,
-        .opAssignStmt   => OpAssignStmt,
+        .octLit         => Literal,
+        .op_assign_stmt => OpAssignStmt,
+        .option_type    => OptionType,
+        .partial_vector_type => VectorType,
         .passStmt       => Token,
         .ptr            => Ptr,
-        .ptr_slice      => PtrSlice,
+        .raw_string_lit => Literal,
+        .raw_string_multi_lit => Literal,
         .range          => Range,
-        .raw_string_lit => Span,
-        .raw_string_multi_lit => Span,
+        .slice_type     => SliceType,
+        .span_type      => SpanType,
+        .sq_string_lit  => Literal,
+        .sq_string_multi_lit => Literal,
+        .ref            => Ref,
         .returnExprStmt => ReturnExprStmt,
         .returnStmt     => Token,
         .root           => Root,
-        .rune_lit       => Span,
-        .semaSym        => SemaSym,
         .seqDestructure => SeqDestructure,
-        .staticDecl     => StaticVarDecl,
-        .string_lit     => Span,
-        .string_multi_lit => Span,
+        .special_string_lit => SpecialStringLiteral,
+        .string_lit     => Literal,
+        .string_multi_lit => Literal,
         .stringt        => StringTemplate,
         .stringt_multi  => StringTemplate,
-        .stringt_part   => Span,
+        .stringt_part   => Literal,
         .stringt_expr   => StringTemplateExpr,
         .struct_decl    => StructDecl,
         .struct_field   => Field,
         .switchExpr     => SwitchBlock,
-        .switchStmt     => SwitchBlock,
-        .symbol_lit     => Span,
-        .throwExpr      => ThrowExpr,
+        .switch_stmt    => SwitchBlock,
+        .template       => TemplateDecl,
         .trait_decl     => TraitDecl,
         .trueLit        => Token,
-        .tryExpr        => TryExpr,
         .tryStmt        => TryStmt,
-        .typeAliasDecl  => TypeAliasDecl,
-        .template       => TemplateDecl,
+        .type_alias_decl => TypeAliasDecl,
+        .type_const_decl => TypeConstDecl,
         .unary_expr     => Unary,
+        .undef_lit      => Token,
+        .union_case     => UnionCase,
         .unwrap         => Unwrap,
         .unwrap_choice  => UnwrapChoice,
         .unwrap_or      => UnwrapOr,
+        .unwrap_or_block => UnwrapOrBlock,
+        .unwrap_res     => UnwrapRes,
+        .unwrap_res_or  => UnwrapResOr,
+        .unwrap_res_or_block => UnwrapResOrBlock,
         .use_alias      => UseAlias,
+        .var_decl       => VarDecl,
+        .vector_type    => VectorType,
         .void_lit       => Token,
         .whileCondStmt  => WhileCondStmt,
         .whileInfStmt   => WhileInfStmt,
-        .whileOptStmt   => WhileOptStmt,
+        .while_unwrap_stmt => WhileUnwrapStmt,
+        .with           => With,
+        .yield_stmt     => YieldStmt,
     };
 }
 
-const NodeHeader = packed struct {
+const NodeHeader = extern struct {
     type: NodeType,
-    is_block_expr: bool,
 };
 
+/// Each Node's position includes is between the source's start position and end position.
 pub const Node = struct {
     dummy: u8 align(8) = undefined,
 
@@ -745,14 +1041,6 @@ pub const Node = struct {
         @as(*NodeHeader, @ptrFromInt(@intFromPtr(self) - 1)).*.type = node_t;
     }
 
-    pub fn isBlockExpr(self: *Node) bool {
-        return @as(*NodeHeader, @ptrFromInt(@intFromPtr(self) - 1)).*.is_block_expr;
-    }
-
-    pub fn setBlockExpr(self: *Node, is_block_expr: bool) void {
-        @as(*NodeHeader, @ptrFromInt(@intFromPtr(self) - 1)).*.is_block_expr = is_block_expr;
-    }
-
     pub fn cast(self: *Node, comptime node_t: NodeType) *NodeData(node_t) {
         if (cy.Trace) {
             if (self.type() != node_t) {
@@ -762,88 +1050,268 @@ pub const Node = struct {
         return @ptrCast(@alignCast(self));
     }
 
+    pub fn declName(self: *Node) []const u8 {
+        switch (self.type()) {
+            .raw_string_lit => return self.cast(.raw_string_lit).asRawString(),
+            .at_lit => return self.cast(.at_lit).value.slice(),
+            .ident => return self.cast(.ident).name.slice(),
+            else => std.debug.panic("Expected declaration name. {}", .{self.type()}),
+        }
+    }
+
+    pub fn getNamePathBase(self: *Node) NamePathBase {
+        if (self.type() != .accessExpr) {
+            return .{
+                .name = self.declName(),
+                .node = self,
+            };
+        } else {
+            const base = self.cast(.accessExpr).right;
+            return .{
+                .name = base.declName(),
+                .node = base,
+            };
+        }
+    }
+
+    pub fn name(self: *Node) []const u8 {
+        return self.nameOrNull() orelse {
+            std.debug.panic("Expected name. {}", .{self.type()});
+        };
+    }
+
+    pub fn nameOrNull(self: *Node) ?[]const u8 {
+        switch (self.type()) {
+            .sq_string_lit => return self.cast(.sq_string_lit).asString(),
+            .at_lit => return self.cast(.at_lit).value.slice(),
+            .ident => return self.cast(.ident).name.slice(),
+            else => return null,
+        }
+    }
+
+    /// Source id.
+    pub fn src(self: *Node) u32 {
+        return switch (self.type()) {
+            .null           => cy.NullId,
+            .all            => self.cast(.all).src,
+            .accessExpr     => self.cast(.accessExpr).left.src(),
+            .as_expr        => self.cast(.as_expr).expr.src(),
+            .assign_stmt    => self.cast(.assign_stmt).left.src(),
+            .at_lit         => self.cast(.at_lit).src,
+            .attribute      => self.cast(.attribute).src,
+            .begin_stmt    => self.cast(.begin_stmt).stmts[0].src(),
+            .binExpr        => self.cast(.binExpr).left.src(),
+            .binLit         => self.cast(.binLit).src,
+            .borrow         => self.cast(.borrow).child.src(),
+            .breakStmt      => self.cast(.breakStmt).src,
+            .callExpr       => self.cast(.callExpr).callee.src(),
+            .case_stmt      => {
+                const case_stmt = self.cast(.case_stmt);
+                switch (case_stmt.kind) {
+                    .case => return case_stmt.data.case.conds.ptr[0].src(),
+                    .else_ => return case_stmt.data.else_.src,
+                }
+            },
+            .catchStmt      => self.cast(.catchStmt).src,
+            .const_decl     => self.cast(.const_decl).name.src(),
+            .continueStmt   => self.cast(.continueStmt).src,
+            .cstruct_decl   => self.cast(.cstruct_decl).name.src(),
+            .ct_stmt        => self.cast(.ct_stmt).child.src(),
+            .cunion_decl    => self.cast(.cunion_decl).name.src(),
+            .custom_type_decl => self.cast(.custom_type_decl).name.src(),
+            .decLit         => self.cast(.decLit).src,
+            .dec_u          => self.cast(.dec_u).src,
+            .deref          => self.cast(.deref).left.src(),
+            .dollar         => self.cast(.dollar).src,
+            .dollar_lit     => self.cast(.dollar_lit).name.src(),
+            .dot            => self.cast(.dot).src,
+            .dot_lit        => self.cast(.dot_lit).src,
+            .else_block     => self.cast(.else_block).src,
+            .elseif_block   => self.cast(.elseif_block).cond.src(),
+            .enumDecl       => self.cast(.enumDecl).name.src(),
+            .enumMember     => self.cast(.enumMember).name.src(),
+            .error_lit      => self.cast(.error_lit).name.src(),
+            .ex_borrow      => self.cast(.ex_borrow).child.src(),
+            .expand_lit     => self.cast(.expand_lit).child.src(),
+            .exprStmt       => self.cast(.exprStmt).child.src(),
+            .falseLit       => self.cast(.falseLit).src,
+            .floatLit       => self.cast(.floatLit).src,
+            .for_iter_stmt  => self.cast(.for_iter_stmt).iterable.src(),
+            .for_range_stmt => self.cast(.for_range_stmt).start.src(),
+            .funcDecl       => self.cast(.funcDecl).name.src(),
+            .func_param     => self.cast(.func_param).name_type.src(),
+            .fn_type        => self.cast(.fn_type).src,
+            .fnsym_type     => self.cast(.fnsym_type).src,
+            .generic_expand => self.cast(.generic_expand).left.src(),
+            .generic_vector_type => self.cast(.generic_vector_type).elem_t.src(),
+            .global_decl    => self.cast(.global_decl).name.src(),
+            .group          => self.cast(.group).child.src(),
+            .hexLit         => self.cast(.hexLit).src,
+            .ident          => self.cast(.ident).src,
+            .if_expr        => self.cast(.if_expr).cond.src(),
+            .if_stmt        => self.cast(.if_stmt).cond.src(),
+            .if_unwrap_stmt => self.cast(.if_unwrap_stmt).opt.src(),
+            .init_expr      => self.cast(.init_expr).left.src(),
+            .init_lit       => self.cast(.init_lit).src,
+            .keyValue       => self.cast(.keyValue).key.src(),
+            .impl_decl      => self.cast(.impl_decl).trait.src(),
+            .import_stmt    => self.cast(.import_stmt).name.src(),
+            .index_expr     => self.cast(.index_expr).left.src(),
+            .infer_param    => self.cast(.infer_param).name.src(),
+            .label_decl     => cy.NullId,
+            .lambda_cont_expr => self.cast(.lambda_cont_expr).child.src(),
+            .lambda_cont    => self.cast(.lambda_cont).src,
+            .lambda_expr    => self.cast(.lambda_expr).src,
+            .lambda_multi   => self.cast(.lambda_multi).src,
+            .move_expr      => self.cast(.move_expr).expr.src(),
+            .namedArg       => self.cast(.namedArg).arg.src(),
+            .noneLit        => self.cast(.noneLit).src,
+            .octLit         => self.cast(.octLit).src,
+            .op_assign_stmt => self.cast(.op_assign_stmt).left.src(),
+            .option_type    => self.cast(.option_type).child.src(),
+            .partial_vector_type => self.cast(.partial_vector_type).n.src(),
+            .passStmt       => self.cast(.passStmt).src,
+            .ptr            => self.cast(.ptr).child.src(),
+            .range          => self.cast(.range).src,
+            .raw_string_lit => self.cast(.raw_string_lit).src,
+            .raw_string_multi_lit => self.cast(.raw_string_multi_lit).src,
+            .ref            => self.cast(.ref).child.src(),
+            .returnExprStmt => self.cast(.returnExprStmt).child.src(),
+            .returnStmt     => self.cast(.returnStmt).src,
+            .root           => self.cast(.root).src,
+            .seqDestructure => self.cast(.seqDestructure).args[0].src(),
+            .slice_type     => self.cast(.slice_type).child.src(),
+            .span_type      => self.cast(.span_type).child.src(),
+            .special_string_lit => @as(*Node, @ptrCast(self.cast(.special_string_lit).lit)).src(),
+            .sq_string_lit => self.cast(.sq_string_lit).src,
+            .sq_string_multi_lit => self.cast(.sq_string_multi_lit).src,
+            .string_lit     => self.cast(.string_lit).src,
+            .string_multi_lit => self.cast(.string_multi_lit).src,
+            .stringt        => self.cast(.stringt).parts[0].src(),
+            .stringt_multi  => self.cast(.stringt_multi).parts[0].src(),
+            .stringt_part   => self.cast(.stringt_part).src,
+            .stringt_expr   => self.cast(.stringt_expr).child.src(),
+            .struct_decl    => self.cast(.struct_decl).name.src(),
+            .struct_field   => self.cast(.struct_field).name.src(),
+            .switchExpr     => self.cast(.switchExpr).expr.src(),
+            .switch_stmt    => self.cast(.switch_stmt).expr.src(),
+            .template       => self.cast(.template).child_decl.src(),
+            .trait_decl     => self.cast(.trait_decl).name.src(),
+            .trueLit        => self.cast(.trueLit).src,
+            .tryStmt        => self.cast(.tryStmt).catchStmt.src,
+            .type_alias_decl => self.cast(.type_alias_decl).name.src(),
+            .type_const_decl => self.cast(.type_const_decl).name.src(),
+            .unary_expr     => self.cast(.unary_expr).child.src(),
+            .undef_lit      => self.cast(.undef_lit).src,
+            .union_case     => self.cast(.union_case).name.src(),
+            .unwrap         => self.cast(.unwrap).opt.src(),
+            .unwrap_choice  => self.cast(.unwrap_choice).left.src(),
+            .unwrap_or      => self.cast(.unwrap_or).opt.src(),
+            .unwrap_or_block => self.cast(.unwrap_or_block).opt.src(),
+            .unwrap_res     => self.cast(.unwrap_res).res.src(),
+            .unwrap_res_or  => self.cast(.unwrap_res_or).res.src(),
+            .unwrap_res_or_block => self.cast(.unwrap_res_or_block).res.src(),
+            .use_alias      => self.cast(.use_alias).name.src(),
+            .var_decl       => self.cast(.var_decl).name.src(),
+            .vector_type    => self.cast(.vector_type).n.src(),
+            .void_lit       => self.cast(.void_lit).src,
+            .whileInfStmt   => self.cast(.whileInfStmt).src,
+            .whileCondStmt  => self.cast(.whileCondStmt).cond.src(),
+            .while_unwrap_stmt => self.cast(.while_unwrap_stmt).opt.src(),
+            .with           => self.cast(.with).src,
+            .yield_stmt     => self.cast(.yield_stmt).src,
+        };
+    }
+
     pub fn pos(self: *Node) u32 {
         return switch (self.type()) {
             .null           => cy.NullId,
             .all            => self.cast(.all).pos,
             .accessExpr     => self.cast(.accessExpr).left.pos(),
-            .array_lit      => self.cast(.array_lit).pos,
-            .array_expr     => self.cast(.array_expr).left.pos(),
-            .array_type     => self.cast(.array_type).pos,
-            .assignStmt     => self.cast(.assignStmt).left.pos(),
+            .as_expr        => self.cast(.as_expr).pos,
+            .assign_stmt    => self.cast(.assign_stmt).left.pos(),
+            .at_lit         => self.cast(.at_lit).pos,
             .attribute      => self.cast(.attribute).pos,
-            .await_expr     => self.cast(.await_expr).pos,
-            .binExpr        => self.cast(.binExpr).op_pos,
+            .begin_stmt    => self.cast(.begin_stmt).pos,
+            .binExpr        => self.cast(.binExpr).left.pos(),
             .binLit         => self.cast(.binLit).pos,
+            .borrow         => self.cast(.borrow).pos,
             .breakStmt      => self.cast(.breakStmt).pos,
             .callExpr       => self.cast(.callExpr).callee.pos(),
-            .caseBlock      => self.cast(.caseBlock).pos,
-            .castExpr       => self.cast(.castExpr).expr.pos(),
+            .case_stmt      => self.cast(.case_stmt).pos,
             .catchStmt      => self.cast(.catchStmt).pos,
-            .coinit         => self.cast(.coinit).pos,
-            .comptimeExpr   => self.cast(.comptimeExpr).child.pos()-1,
-            .comptimeStmt   => self.cast(.comptimeStmt).pos,
-            .context_decl   => self.cast(.context_decl).pos,
+            .const_decl     => self.cast(.const_decl).pos,
             .continueStmt   => self.cast(.continueStmt).pos,
-            .coresume       => self.cast(.coresume).pos,
-            .coyield        => self.cast(.coyield).pos,
             .cstruct_decl   => self.cast(.cstruct_decl).pos,
-            .ct_if_stmt     => self.cast(.ct_if_stmt).pos,
-            .ct_else_block  => self.cast(.ct_else_block).pos,
-            .custom_decl    => self.cast(.custom_decl).pos,
+            .ct_stmt        => self.cast(.ct_stmt).pos,
+            .cunion_decl    => self.cast(.cunion_decl).pos,
+            .custom_type_decl => self.cast(.custom_type_decl).pos,
             .decLit         => self.cast(.decLit).pos,
+            .dec_u          => self.cast(.dec_u).pos,
             .deref          => self.cast(.deref).left.pos(),
-            .distinct_decl  => self.cast(.distinct_decl).pos,
-            .dot_init_lit   => self.cast(.dot_init_lit).pos,
-            .dot_lit        => self.cast(.dot_lit).pos-1,
+            .dollar         => self.cast(.dollar).pos,
+            .dollar_lit     => self.cast(.dollar_lit).pos,
+            .dot            => self.cast(.dot).pos,
+            .dot_lit        => self.cast(.dot_lit).pos,
             .else_block     => self.cast(.else_block).pos,
+            .elseif_block   => self.cast(.elseif_block).pos,
             .enumDecl       => self.cast(.enumDecl).pos,
             .enumMember     => self.cast(.enumMember).name.pos(),
-            .error_lit      => self.cast(.error_lit).pos-6,
-            .expandOpt      => self.cast(.expandOpt).pos,
+            .error_lit      => self.cast(.error_lit).pos,
+            .ex_borrow      => self.cast(.ex_borrow).pos,
+            .expand_lit     => self.cast(.expand_lit).pos,
             .exprStmt       => self.cast(.exprStmt).child.pos(),
             .falseLit       => self.cast(.falseLit).pos,
             .floatLit       => self.cast(.floatLit).pos,
-            .forIterStmt    => self.cast(.forIterStmt).pos,
-            .forRangeStmt   => self.cast(.forRangeStmt).pos,
+            .for_iter_stmt  => self.cast(.for_iter_stmt).pos,
+            .for_range_stmt => self.cast(.for_range_stmt).pos,
             .funcDecl       => self.cast(.funcDecl).pos,
-            .func_param     => self.cast(.func_param).name_type.pos(),
-            .func_type      => self.cast(.func_type).pos,
+            .func_param     => self.cast(.func_param).pos,
+            .fn_type        => self.cast(.fn_type).pos,
+            .fnsym_type     => self.cast(.fnsym_type).pos,
+            .generic_expand => self.cast(.generic_expand).left.pos(),
+            .generic_vector_type => self.cast(.generic_vector_type).pos,
+            .global_decl    => self.cast(.global_decl).pos,
             .group          => self.cast(.group).pos,
             .hexLit         => self.cast(.hexLit).pos,
             .ident          => self.cast(.ident).pos,
             .if_expr        => self.cast(.if_expr).pos,
             .if_stmt        => self.cast(.if_stmt).pos,
             .if_unwrap_stmt => self.cast(.if_unwrap_stmt).pos,
-            .impl_with      => self.cast(.impl_with).pos,
-            .keyValue       => self.cast(.keyValue).key.pos(),
-            .import_stmt    => self.cast(.import_stmt).pos,
+            .index_expr     => self.cast(.index_expr).left.pos(),
             .init_expr      => self.cast(.init_expr).left.pos(),
             .init_lit       => self.cast(.init_lit).pos,
+            .keyValue       => self.cast(.keyValue).key.pos(),
+            .impl_decl      => self.cast(.impl_decl).pos,
+            .import_stmt    => self.cast(.import_stmt).pos,
+            .infer_param    => self.cast(.infer_param).pos,
             .label_decl     => cy.NullId,
+            .lambda_cont_expr => self.cast(.lambda_cont_expr).child.pos(),
+            .lambda_cont    => self.cast(.lambda_cont).pos,
             .lambda_expr    => self.cast(.lambda_expr).pos,
             .lambda_multi   => self.cast(.lambda_multi).pos,
-            .localDecl      => self.cast(.localDecl).pos,
-            .name_path      => self.cast(.name_path).path[0].pos(),
+            .move_expr      => self.cast(.move_expr).pos,
             .namedArg       => self.cast(.namedArg).name_pos,
             .noneLit        => self.cast(.noneLit).pos,
             .octLit         => self.cast(.octLit).pos,
-            .opAssignStmt   => self.cast(.opAssignStmt).left.pos(),
+            .op_assign_stmt => self.cast(.op_assign_stmt).left.pos(),
+            .option_type    => self.cast(.option_type).pos,
+            .partial_vector_type => self.cast(.partial_vector_type).pos,
             .passStmt       => self.cast(.passStmt).pos,
             .ptr            => self.cast(.ptr).pos,
-            .ptr_slice      => self.cast(.ptr_slice).pos,
             .range          => self.cast(.range).pos,
             .raw_string_lit => self.cast(.raw_string_lit).pos,
             .raw_string_multi_lit => self.cast(.raw_string_multi_lit).pos,
             .ref            => self.cast(.ref).pos,
-            .ref_slice      => self.cast(.ref_slice).pos,
             .returnExprStmt => self.cast(.returnExprStmt).pos,
             .returnStmt     => self.cast(.returnStmt).pos,
-            .root           => self.cast(.root).stmts[0].pos(),
-            .rune_lit       => self.cast(.rune_lit).pos,
+            .root           => 0,
             .seqDestructure => self.cast(.seqDestructure).pos,
-            .semaSym        => cy.NullId,
-            .staticDecl     => self.cast(.staticDecl).pos,
+            .slice_type     => self.cast(.slice_type).pos,
+            .span_type      => self.cast(.span_type).pos,
+            .special_string_lit => self.cast(.special_string_lit).pos,
+            .sq_string_lit => self.cast(.sq_string_lit).pos,
+            .sq_string_multi_lit => self.cast(.sq_string_multi_lit).pos,
             .string_lit     => self.cast(.string_lit).pos,
             .string_multi_lit => self.cast(.string_multi_lit).pos,
             .stringt        => self.cast(.stringt).pos,
@@ -853,133 +1321,380 @@ pub const Node = struct {
             .struct_decl    => self.cast(.struct_decl).pos,
             .struct_field   => self.cast(.struct_field).name.pos(),
             .switchExpr     => self.cast(.switchExpr).pos,
-            .switchStmt     => self.cast(.switchStmt).pos,
-            .symbol_lit     => self.cast(.symbol_lit).pos,
+            .switch_stmt    => self.cast(.switch_stmt).pos,
             .template       => self.cast(.template).child_decl.pos(),
-            .throwExpr      => self.cast(.throwExpr).pos,
             .trait_decl     => self.cast(.trait_decl).pos,
             .trueLit        => self.cast(.trueLit).pos,
-            .tryExpr        => self.cast(.tryExpr).pos,
             .tryStmt        => self.cast(.tryStmt).pos,
-            .typeAliasDecl  => self.cast(.typeAliasDecl).pos,
-            .unary_expr     => self.cast(.unary_expr).child.pos()-1,
+            .type_alias_decl => self.cast(.type_alias_decl).pos,
+            .type_const_decl => self.cast(.type_const_decl).pos,
+            .unary_expr     => self.cast(.unary_expr).pos,
+            .undef_lit      => self.cast(.undef_lit).pos,
+            .union_case     => self.cast(.union_case).pos,
             .unwrap         => self.cast(.unwrap).opt.pos(),
             .unwrap_choice  => self.cast(.unwrap_choice).left.pos(),
             .unwrap_or      => self.cast(.unwrap_or).opt.pos(),
+            .unwrap_or_block => self.cast(.unwrap_or_block).opt.pos(),
+            .unwrap_res     => self.cast(.unwrap_res).res.pos(),
+            .unwrap_res_or  => self.cast(.unwrap_res_or).res.pos(),
+            .unwrap_res_or_block => self.cast(.unwrap_res_or_block).res.pos(),
             .use_alias      => self.cast(.use_alias).pos,
+            .var_decl       => self.cast(.var_decl).pos,
+            .vector_type    => self.cast(.vector_type).pos,
             .void_lit       => self.cast(.void_lit).pos,
             .whileInfStmt   => self.cast(.whileInfStmt).pos,
             .whileCondStmt  => self.cast(.whileCondStmt).pos,
-            .whileOptStmt   => self.cast(.whileOptStmt).pos,
+            .while_unwrap_stmt => self.cast(.while_unwrap_stmt).pos,
+            .with           => self.cast(.with).pos,
+            .yield_stmt     => self.cast(.yield_stmt).pos,
         };
     }
 
     pub fn end(self: *Node) u32 {
         return switch (self.type()) {
             .null           => cy.NullId,
-            .all            => self.cast(.all).end,
+            .all            => self.cast(.all).pos + 1,
             .accessExpr     => self.cast(.accessExpr).right.end(),
-            .array_lit      => self.cast(.array_lit).end,
-            // .array_expr     => self.cast(.array_expr).left.pos(),
-            // .array_type     => self.cast(.array_type).pos,
-            // .assignStmt     => self.cast(.assignStmt).left.pos(),
-            // .attribute      => self.cast(.attribute).pos,
-            // .await_expr     => self.cast(.await_expr).pos,
-            // .binExpr        => self.cast(.binExpr).op_pos,
-            // .binLit         => self.cast(.binLit).pos,
-            // .breakStmt      => self.cast(.breakStmt).pos,
-            // .callExpr       => self.cast(.callExpr).callee.pos(),
-            // .caseBlock      => self.cast(.caseBlock).pos,
-            // .castExpr       => self.cast(.castExpr).expr.pos(),
-            // .catchStmt      => self.cast(.catchStmt).pos,
-            // .coinit         => self.cast(.coinit).pos,
-            // .comptimeExpr   => self.cast(.comptimeExpr).child.pos()-1,
-            // .comptimeStmt   => self.cast(.comptimeStmt).pos,
-            // .context_decl   => self.cast(.context_decl).pos,
-            // .continueStmt   => self.cast(.continueStmt).pos,
-            // .coresume       => self.cast(.coresume).pos,
-            // .coyield        => self.cast(.coyield).pos,
-            // .cstruct_decl   => self.cast(.cstruct_decl).pos,
-            // .ct_if_stmt     => self.cast(.ct_if_stmt).pos,
-            // .ct_else_block  => self.cast(.ct_else_block).pos,
-            // .custom_decl    => self.cast(.custom_decl).pos,
-            // .decLit         => self.cast(.decLit).pos,
-            // .deref          => self.cast(.deref).left.pos(),
-            // .distinct_decl  => self.cast(.distinct_decl).pos,
-            // .dot_init_lit   => self.cast(.dot_init_lit).pos,
-            // .dot_lit        => self.cast(.dot_lit).pos-1,
-            // .else_block     => self.cast(.else_block).pos,
-            // .enumDecl       => self.cast(.enumDecl).pos,
-            // .enumMember     => self.cast(.enumMember).name.pos(),
-            // .error_lit      => self.cast(.error_lit).pos-6,
-            // .expandOpt      => self.cast(.expandOpt).pos,
-            // .exprStmt       => self.cast(.exprStmt).child.pos(),
-            // .falseLit       => self.cast(.falseLit).pos,
-            // .floatLit       => self.cast(.floatLit).pos,
-            // .forIterStmt    => self.cast(.forIterStmt).pos,
-            // .forRangeStmt   => self.cast(.forRangeStmt).pos,
-            // .funcDecl       => self.cast(.funcDecl).pos,
-            // .func_param     => self.cast(.func_param).name_type.pos(),
-            // .func_type      => self.cast(.func_type).pos,
-            // .group          => self.cast(.group).pos,
-            // .hexLit         => self.cast(.hexLit).pos,
-            // .ident          => self.cast(.ident).pos,
-            // .if_expr        => self.cast(.if_expr).pos,
-            // .if_stmt        => self.cast(.if_stmt).pos,
-            // .if_unwrap_stmt => self.cast(.if_unwrap_stmt).pos,
+            .as_expr        => self.cast(.as_expr).expr.end(),
+            .assign_stmt    => self.cast(.assign_stmt).right.end(),
+            .at_lit         => self.cast(.at_lit).end(),
+            .attribute      => {
+                const attr = self.cast(.attribute);
+                if (attr.value) |value| {
+                    return value.end();
+                }
+                return attr.pos + 1;
+            },
+            .begin_stmt    => {
+                const stmts = self.cast(.begin_stmt).stmts;
+                return stmts[stmts.len-1].end();
+            },
+            .binExpr        => self.cast(.binExpr).right.end(),
+            .binLit         => self.cast(.binLit).end(),
+            .borrow         => self.cast(.borrow).child.end(),
+            .ex_borrow      => self.cast(.ex_borrow).child.end(),
+            .breakStmt      => self.cast(.breakStmt).pos + 5,
+            .callExpr       => self.cast(.callExpr).end,
+            .case_stmt      => {
+                const case = self.cast(.case_stmt);
+                switch (case.body_kind) {
+                    .expr => {
+                        return case.body_data.expr.end();
+                    },
+                    .block => {
+                        return case.body_data.block.ptr[case.body_data.block.len-1].end();
+                    },
+                    .fallthrough => {
+                        switch (case.kind) {
+                            else => { 
+                                return self.pos() + 4;
+                            }
+                        }
+                    },
+                }
+            },
+            .catchStmt      => {
+                const catch_stmt = self.cast(.catchStmt);
+                return catch_stmt.stmts[catch_stmt.stmts.len-1].end();
+            },
+            .const_decl     => {
+                const decl = self.cast(.const_decl);
+                if (decl.right) |right| {
+                    return right.end();
+                }
+                return decl.type.?.end();
+            },
+            .continueStmt   => self.cast(.continueStmt).pos + 8,
+            .cstruct_decl   => {
+                const decl = self.cast(.cstruct_decl);
+                const field: *Node = @ptrCast(decl.fields.ptr[decl.fields.len-1]);
+                return field.end();
+            },
+            .ct_stmt        => self.cast(.ct_stmt).child.end(),
+            .cunion_decl    => {
+                const decl = self.cast(.cunion_decl);
+                if (decl.cases.len > 0) {
+                    const case: *Node = @ptrCast(decl.cases.ptr[decl.cases.len-1]);
+                    return case.end();
+                } else {
+                    return decl.name.end();
+                }
+            },
+            .custom_type_decl => self.cast(.custom_type_decl).name.end(),
+            .decLit         => self.cast(.decLit).end(),
+            .dec_u          => self.cast(.dec_u).end(),
+            .deref          => self.cast(.deref).end,
+            // .dot_array_lit  => self.cast(.dot_array_lit).pos,
+            .dollar         => self.cast(.dollar).pos + 1,
+            .dollar_lit     => self.cast(.dollar_lit).name.end(),
+            .dot            => self.cast(.dot).pos + 1,
+            .dot_lit        => self.cast(.dot_lit).end(),
+            .else_block     => {
+                const block = self.cast(.else_block);
+                return block.stmts[block.stmts.len-1].end();
+            },
+            .elseif_block     => {
+                const block = self.cast(.elseif_block);
+                return block.stmts[block.stmts.len-1].end();
+            },
+            .enumDecl       => {
+                const decl = self.cast(.enumDecl);
+                const member: *Node = @ptrCast(decl.members.ptr[decl.members.len-1]);
+                return member.end();
+            },
+            .enumMember     => {
+                const member = self.cast(.enumMember);
+                if (member.typeSpec) |type_| {
+                    return type_.end();
+                }
+                return member.name.end();
+            },
+            .error_lit      => self.cast(.error_lit).name.end(),
+            .expand_lit     => self.cast(.expand_lit).end,
+            .exprStmt       => self.cast(.exprStmt).child.end(),
+            .falseLit       => self.cast(.falseLit).pos + 5,
+            .floatLit       => self.cast(.floatLit).end(),
+            .for_iter_stmt  => {
+                const stmt = self.cast(.for_iter_stmt);
+                return stmt.stmts[stmt.stmts.len-1].end();
+            },
+            .for_range_stmt => {
+                const stmt = self.cast(.for_range_stmt);
+                return stmt.stmts[stmt.stmts.len-1].end();
+            },
+            .funcDecl       => {
+                const decl = self.cast(.funcDecl);
+                if (decl.stmts.len > 0) {
+                    return decl.stmts.ptr[decl.stmts.len-1].end();
+                }
+                if (decl.ret) |ret| {
+                    return ret.end();
+                }
+                return decl.name.end();
+            },
+            .func_param     => {
+                const node = self.cast(.func_param);
+                if (node.type) |type_spec| {
+                    return type_spec.end();
+                }
+                return node.name_type.end();
+            },
+            .fn_type      => {
+                const node = self.cast(.fn_type);
+                if (node.ret) |ret| {
+                    return ret.end();
+                }
+                return node.pos;
+            },
+            .fnsym_type      => {
+                const node = self.cast(.fnsym_type);
+                if (node.ret) |ret| {
+                    return ret.end();
+                }
+                return node.pos;
+            },
+            .generic_vector_type => self.cast(.generic_vector_type).elem_t.end(),
+            .generic_expand => self.cast(.generic_expand).end,
+            .global_decl    => {
+                const decl = self.cast(.global_decl);
+                if (decl.right) |right| {
+                    return right.end();
+                }
+                return decl.typeSpec.end();
+            },
+            .group          => self.cast(.group).end,
+            .hexLit         => self.cast(.hexLit).end(),
+            .ident          => self.cast(.ident).end(),
+            .if_expr        => self.cast(.if_expr).else_expr.end(),
+            .if_stmt        => {
+                const stmt = self.cast(.if_stmt);
+                if (stmt.else_blocks.len > 0) {
+                    return stmt.else_blocks[stmt.else_blocks.len-1].end();
+                }
+                return stmt.stmts[stmt.stmts.len-1].end();
+            },
+            .if_unwrap_stmt => {
+                const stmt = self.cast(.if_unwrap_stmt);
+                if (stmt.else_blocks.len > 0) {
+                    return stmt.else_blocks[stmt.else_blocks.len-1].end();
+                }
+                return stmt.stmts[stmt.stmts.len-1].end();
+            },
             // .impl_with      => self.cast(.impl_with).pos,
-            // .keyValue       => self.cast(.keyValue).key.pos(),
-            // .import_stmt    => self.cast(.import_stmt).pos,
-            // .init_expr      => self.cast(.init_expr).left.pos(),
-            // .init_lit       => self.cast(.init_lit).pos,
-            // .label_decl     => cy.NullId,
-            // .lambda_expr    => self.cast(.lambda_expr).pos,
-            // .lambda_multi   => self.cast(.lambda_multi).pos,
-            // .localDecl      => self.cast(.localDecl).pos,
-            // .name_path      => self.cast(.name_path).path[0].pos(),
-            // .namedArg       => self.cast(.namedArg).name_pos,
-            // .noneLit        => self.cast(.noneLit).pos,
-            // .objectDecl     => self.cast(.objectDecl).pos,
-            // .objectField    => self.cast(.objectField).name.pos(),
-            // .octLit         => self.cast(.octLit).pos,
-            // .opAssignStmt   => self.cast(.opAssignStmt).left.pos(),
-            // .passStmt       => self.cast(.passStmt).pos,
-            // .ptr            => self.cast(.ptr).pos,
-            // .ptr_slice      => self.cast(.ptr_slice).pos,
-            // .range          => self.cast(.range).pos,
-            .raw_string_lit => self.cast(.raw_string_lit).end,
-            // .ref            => self.cast(.ref).pos,
-            // .ref_slice      => self.cast(.ref_slice).pos,
-            // .returnExprStmt => self.cast(.returnExprStmt).pos,
-            // .returnStmt     => self.cast(.returnStmt).pos,
-            // .root           => self.cast(.root).stmts[0].pos(),
-            // .runeLit        => self.cast(.runeLit).pos,
-            // .seqDestructure => self.cast(.seqDestructure).pos,
-            // .semaSym        => cy.NullId,
-            // .staticDecl     => self.cast(.staticDecl).pos,
-            .string_lit     => self.cast(.string_lit).end,
-            // .structDecl     => self.cast(.structDecl).pos,
-            // .switchExpr     => self.cast(.switchExpr).pos,
-            // .switchStmt     => self.cast(.switchStmt).pos,
-            // .symbol_lit     => self.cast(.symbol_lit).pos,
-            // .template       => self.cast(.template).child_decl.pos(),
-            // .throwExpr      => self.cast(.throwExpr).pos,
-            // .trait_decl     => self.cast(.trait_decl).pos,
-            // .trueLit        => self.cast(.trueLit).pos,
-            // .tryExpr        => self.cast(.tryExpr).pos,
-            // .tryStmt        => self.cast(.tryStmt).pos,
-            // .typeAliasDecl  => self.cast(.typeAliasDecl).pos,
-            // .unary_expr     => self.cast(.unary_expr).child.pos()-1,
-            // .unwrap         => self.cast(.unwrap).opt.pos(),
-            // .unwrap_choice  => self.cast(.unwrap_choice).left.pos(),
+            .impl_decl      => self.cast(.impl_decl).trait.end(),
+            .import_stmt    => {
+                const import_stmt = self.cast(.import_stmt);
+                if (import_stmt.spec) |spec| {
+                    return spec.end();
+                }
+                return import_stmt.name.end();
+            },
+            .infer_param    => self.cast(.infer_param).name.end(),
+            .index_expr     => self.cast(.index_expr).end,
+            .init_expr      => self.cast(.init_expr).lit.end,
+            .init_lit       => self.cast(.init_lit).end,
+            .keyValue       => self.cast(.keyValue).value.end(),
+            .label_decl     => @panic("unexpected"),
+            .lambda_cont_expr => {
+                const stmt = self.cast(.lambda_cont_expr);
+                return stmt.stmts[stmt.stmts.len-1].end();
+            },
+            .lambda_cont    => {
+                const lambda = self.cast(.lambda_cont);
+                return lambda.sig_end;
+            },
+            .lambda_expr    => self.cast(.lambda_expr).expr.end(),
+            .lambda_multi   => {
+                const lambda = self.cast(.lambda_multi);
+                return lambda.stmts[lambda.stmts.len-1].end();
+            },
+            .move_expr      => self.cast(.move_expr).expr.end(),
+            .namedArg       => self.cast(.namedArg).arg.end(),
+            .noneLit        => self.cast(.noneLit).pos + 4,
+            .octLit         => self.cast(.octLit).end(),
+            .op_assign_stmt => self.cast(.op_assign_stmt).right.end(),
+            .option_type    => self.cast(.option_type).child.end(),
+            .partial_vector_type => self.cast(.partial_vector_type).child.end(),
+            .passStmt       => self.cast(.passStmt).pos + 4,
+            .ptr            => self.cast(.ptr).child.end(),
+            .range          => {
+                const range = self.cast(.range);
+                if (range.end) |end_| {
+                    return end_.end();
+                }
+                return range.op_end;
+            },
+            .sq_string_lit => self.cast(.sq_string_lit).end(),
+            .sq_string_multi_lit => self.cast(.sq_string_multi_lit).end(),
+            .raw_string_lit => self.cast(.raw_string_lit).end(),
+            .raw_string_multi_lit => self.cast(.raw_string_multi_lit).end(),
+            .ref            => self.cast(.ref).child.end(),
+            .returnExprStmt => self.cast(.returnExprStmt).child.end(),
+            .returnStmt     => self.cast(.returnStmt).pos + 6,
+            .root           => {
+                const root = self.cast(.root);
+                if (root.stmts.len > 0) {
+                    return root.stmts.ptr[root.stmts.len-1].end();
+                } else {
+                    return 0;
+                }
+            },
+            .seqDestructure => self.cast(.seqDestructure).end,
+            .slice_type     => self.cast(.slice_type).child.end(),
+            .span_type      => self.cast(.span_type).child.end(),
+            .special_string_lit => self.cast(.special_string_lit).lit.end(),
+            .string_multi_lit => {
+                return self.cast(.string_multi_lit).end();
+            },
+            .stringt        => {
+                const str = self.cast(.stringt);
+                return str.parts[str.parts.len-1].end();
+            },
+            .stringt_multi  => {
+                const str = self.cast(.stringt_multi);
+                return str.parts[str.parts.len-1].end();
+            },
+            .stringt_part   => {
+                const part = self.cast(.stringt_part);
+                return part.end();
+            },
+            .stringt_expr   => self.cast(.stringt_expr).child.end(),
+            .string_lit     => self.cast(.string_lit).end(),
+            .struct_decl    => {
+                const decl = self.cast(.struct_decl);
+                if (decl.fields.len > 0) {
+                    const field: *Node = @ptrCast(decl.fields.ptr[decl.fields.len-1]);
+                    return field.end();
+                } else {
+                    return decl.name.end();
+                }
+            },
+            .struct_field   => {
+                const field = self.cast(.struct_field);
+                if (field.init) |init| {
+                    return init.end();
+                }
+                if (field.typeSpec) |type_| {
+                    return type_.end();
+                }
+                return field.name.end();
+            },
+            .switchExpr     => {
+                const block = self.cast(.switchExpr);
+                return block.cases.ptr[block.cases.len-1].end();
+            },
+            .switch_stmt    => {
+                const block = self.cast(.switch_stmt);
+                return block.cases.ptr[block.cases.len-1].end();
+            },
+            .template       => self.cast(.template).child_decl.end(),
+            .trait_decl     => {
+                const decl = self.cast(.trait_decl);
+                const func: *Node = @ptrCast(decl.funcs.ptr[decl.funcs.len-1]);
+                return func.end();
+            },
+            .trueLit        => self.cast(.trueLit).pos + 4,
+            .tryStmt        => {
+                const stmt = self.cast(.tryStmt);
+                const catch_: *Node = @ptrCast(stmt.catchStmt);
+                return catch_.end();
+            },
+            .type_alias_decl => self.cast(.type_alias_decl).target.end(),
+            .type_const_decl => {
+                const decl = self.cast(.type_const_decl);
+                return decl.stmts.ptr[decl.stmts.len-1].end();
+            },
+            .unary_expr     => self.cast(.unary_expr).child.end(),
+            .undef_lit      => self.cast(.undef_lit).pos + 5,
+            .union_case     => {
+                const case = self.cast(.union_case);
+                return case.payload_t.end();
+            },
+            .unwrap         => self.cast(.unwrap).end,
+            .unwrap_choice  => self.cast(.unwrap_choice).right.end(),
             // .unwrap_or      => self.cast(.unwrap_or).opt.pos(),
-            // .use_alias      => self.cast(.use_alias).pos,
-            // .void_lit       => self.cast(.void_lit).pos,
-            // .whileInfStmt   => self.cast(.whileInfStmt).pos,
-            // .whileCondStmt  => self.cast(.whileCondStmt).pos,
+            .unwrap_or      => self.cast(.unwrap_or).default.end(),
+            .unwrap_or_block => {
+                const unwrap = self.cast(.unwrap_or_block);
+                return unwrap.else_stmts[unwrap.else_stmts.len-1].end();
+            },
+            .unwrap_res     => self.cast(.unwrap_res).end,
+            .unwrap_res_or  => self.cast(.unwrap_res_or).default.end(),
+            .unwrap_res_or_block => {
+                const unwrap = self.cast(.unwrap_res_or_block);
+                return unwrap.else_stmts[unwrap.else_stmts.len-1].end();
+            },
+            .use_alias      => {
+                const node = self.cast(.use_alias);
+                return node.target.end();
+            },
+            .var_decl       => {
+                const decl = self.cast(.var_decl);
+                return decl.right.end();
+            },
+            .vector_type    => self.cast(.vector_type).child.end(),
+            .void_lit       => self.cast(.void_lit).pos + 1,
+            .whileInfStmt   => {
+                const stmt = self.cast(.whileInfStmt);
+                return stmt.stmts[stmt.stmts.len-1].end();
+            },
+            .whileCondStmt  => {
+                const while_stmt = self.cast(.whileCondStmt);
+                return while_stmt.stmts[while_stmt.stmts.len-1].end();
+            },
             // .whileOptStmt   => self.cast(.whileOptStmt).pos,
-            else => {
-                std.debug.panic("TODO: {}", .{self.type()});
+            .while_unwrap_stmt => {
+                const while_stmt = self.cast(.while_unwrap_stmt);
+                return while_stmt.stmts[while_stmt.stmts.len-1].end();
+            },
+            .with => self.cast(.with).end,
+            .yield_stmt     => {
+                const yield = self.cast(.yield_stmt);
+                if (yield.child) |child| {
+                    return child.end();
+                } else {
+                    return yield.pos + 5;
+                }
             },
         };
     }
@@ -990,7 +1705,7 @@ pub const BinaryExprOp = enum(u8) {
     plus,
     minus,
     star,
-    caret,
+    pow,
     slash,
     percent,
     bitwiseAnd,
@@ -1014,21 +1729,21 @@ pub const BinaryExprOp = enum(u8) {
     pub fn name(self: BinaryExprOp) []const u8 {
         return switch (self) {
             .index => "$index",
-            .less => "$infix<",
-            .greater => "$infix>",
-            .less_equal => "$infix<=",
-            .greater_equal => "$infix>=",
-            .minus => "$infix-",
-            .plus => "$infix+",
-            .star => "$infix*",
-            .slash => "$infix/",
-            .percent => "$infix%",
-            .caret => "$infix^",
-            .bitwiseAnd => "$infix&",
-            .bitwiseOr => "$infix|",
-            .bitwiseXor => "$infix||",
-            .bitwiseLeftShift => "$infix<<",
-            .bitwiseRightShift => "$infix>>",
+            .less => "<",
+            .greater => ">",
+            .less_equal => "<=",
+            .greater_equal => ">=",
+            .minus => "-",
+            .plus => "+",
+            .star => "*",
+            .slash => "/",
+            .percent => "%",
+            .pow => "**",
+            .bitwiseAnd => "&&",
+            .bitwiseOr => "||",
+            .bitwiseXor => "~",
+            .bitwiseLeftShift => "<<",
+            .bitwiseRightShift => ">>",
             else => "unknown",
         };
     }
@@ -1036,25 +1751,25 @@ pub const BinaryExprOp = enum(u8) {
 
 pub const UnaryOp = enum(u8) {
     minus,
-    not,
+    lnot,
     bitwiseNot,
     address_of,
     dummy,
 
     pub fn name(self: UnaryOp) []const u8 {
         return switch (self) {
-            .minus => "$prefix-",
-            .not => "$prefix!",
-            .bitwiseNot => "$prefix~",
-            .address_of => "$prefix&",
+            .minus => "-",
+            .lnot => "!",
+            .bitwiseNot => "~",
+            .address_of => "&",
             else => "unknown",
         };
     }
 };
 
 test "ast internals." {
-    try t.eq(std.enums.values(NodeType).len, 107);
-    try t.eq(@sizeOf(NodeHeader), 1);
+    try t.eq(122, std.enums.values(NodeType).len);
+    try t.eq(1, @sizeOf(NodeHeader));
 }
 
 pub const Ast = struct {
@@ -1063,6 +1778,7 @@ pub const Ast = struct {
     root: ?*Root,
     null_node: *Node,
     src: []const u8,
+    src_id: u32,
 
     /// Generated source literals from templates or CTE.
     srcGen: std.ArrayListUnmanaged(u8),
@@ -1076,13 +1792,14 @@ pub const Ast = struct {
     /// Optionally parsed by tokenizer.
     comments: std.ArrayListUnmanaged(cy.IndexSlice(u32)),
 
-    pub fn init(self: *Ast, alloc: std.mem.Allocator, src: []const u8) !void {
+    pub fn init(self: *Ast, alloc: std.mem.Allocator, src: []const u8, src_id: u32) !void {
         self.* = .{
             .node_alloc_handle = std.heap.ArenaAllocator.init(alloc),
             .node_alloc = undefined,
             .root = null,
             .null_node = undefined,
             .src = src,
+            .src_id = src_id,
             .srcGen = .{},
             .strs = .{},
             .comments = .{},
@@ -1120,10 +1837,9 @@ pub const Ast = struct {
     }
 
     pub fn newEmptyNode(self: *Ast, comptime node_t: NodeType) !*NodeData(node_t) {
-        const Align = @alignOf(NodeData(node_t));
-        const slice = try self.node_alloc.alignedAlloc(u8, Align, @sizeOf(NodeData(node_t)) + Align);
-        @as(*NodeType, @ptrFromInt(@intFromPtr(slice.ptr) + Align - 1)).* = node_t;
-        return @ptrFromInt(@intFromPtr(slice.ptr) + Align);
+        const slice = try self.node_alloc.alignedAlloc(u8, .@"8", @sizeOf(NodeData(node_t)) + 8);
+        @as(*NodeType, @ptrFromInt(@intFromPtr(slice.ptr) + 8 - 1)).* = node_t;
+        return @ptrFromInt(@intFromPtr(slice.ptr) + 8);
     }
 
     pub fn newNode(self: *Ast, comptime node_t: NodeType, data: NodeData(node_t)) !*NodeData(node_t) {
@@ -1138,31 +1854,30 @@ pub const Ast = struct {
         return @ptrCast(n);
     }
 
-    pub fn genSpanNode(self: *Ast, alloc: std.mem.Allocator, comptime node_t: NodeType, str: []const u8) !*Span {
-        const pos = self.srcGen.items.len;
-        try self.srcGen.appendSlice(alloc, str);
-        const span = try self.newSpanNode(node_t, pos, pos + str.len);
-        span.srcGen = true;
+    pub fn genIdentNode(self: *Ast, alloc: std.mem.Allocator, name: []const u8) !*Ident {
+        const dup = try alloc.dupe(u8, name);
+        try self.strs.append(alloc, dup);
+        const span = try self.newNode(.ident, .{
+            .src = self.src_id,
+            .pos = cy.NullId,
+            .name = .{ .ptr = dup.ptr, .len = dup.len },
+        });
         return span;
     }
 
-    pub fn newSpanNode(self: *Ast, comptime node_t: NodeType, src_pos: usize, src_end: usize) !*Span {
+    pub fn newLitNode(self: *Ast, comptime node_t: NodeType, src_pos: usize, str_end: usize) !*Literal {
         const span = try self.newEmptyNode(node_t);
+        const slice = self.src[src_pos..str_end];
         span.* = .{
+            .src = self.src_id,
             .pos = @intCast(src_pos),
-            .end = @intCast(src_end),
-            .srcGen = false,
+            .value = .{ .ptr = slice.ptr, .len = slice.len },
         };
         return span;
     }
 
-    pub fn nodeString(self: Ast, n: *Node) []const u8 {
-        const span: *Span = @ptrCast(@alignCast(n));
-        if (span.srcGen) {
-            return self.srcGen.items[span.pos..span.end];
-        } else {
-            return self.src[span.pos..span.end];
-        }
+    pub fn text(self: Ast, n: *Node) []const u8 {
+        return self.src[n.pos()..n.end()];
     }
 };
 
@@ -1193,93 +1908,34 @@ pub const AstView = struct {
     }
 
     pub fn declNamePath(self: AstView, n: *Node) ![]const u8 {
-        switch (n.type()) {
-            .cstruct_decl => {
-                const cstruct = n.cast(.cstruct_decl);
-                if (cstruct.name) |name| {
-                    return self.nodeString(name);
-                } else return "";
+        return switch (n.type()) {
+            .cstruct_decl => b: {
+                break :b n.cast(.cstruct_decl).name.declName();
             },
-            .struct_decl => {
-                const struct_decl = n.cast(.struct_decl);
-                if (struct_decl.name) |name| {
-                    return self.nodeString(name);
-                } else return "";
+            .struct_decl => b: {
+                break :b n.cast(.struct_decl).name.declName();
             },
-            .custom_decl => {
-                const custom_decl = n.cast(.custom_decl);
-                return self.nodeString(custom_decl.name);
-            },
-            .trait_decl => {
-                const trait_decl = n.cast(.trait_decl);
-                return self.nodeString(trait_decl.name);
-            },
-            .distinct_decl => {
-                const distinct_decl = n.cast(.distinct_decl);
-                return self.nodeString(distinct_decl.name);
-            },
-            .enumDecl => {
-                const enum_decl = n.cast(.enumDecl);
-                return self.nodeString(enum_decl.name);
-            },
-            .import_stmt => {
+            .custom_type_decl => n.cast(.custom_type_decl).name.declName(),
+            .trait_decl => n.cast(.trait_decl).name.declName(),
+            .enumDecl => n.cast(.enumDecl).name.declName(),
+            .import_stmt => b: {
                 const import_stmt = n.cast(.import_stmt);
                 if (import_stmt.name.type() == .all) {
-                    return "*";
+                    break :b "*";
                 }
-                return self.nodeString(import_stmt.name);
+                break :b import_stmt.name.declName();
             },
-            .use_alias => {
-                return self.nodeString(n.cast(.use_alias).name);
-            },
-            .template => {
-                return self.declNamePath(n.cast(.template).child_decl);
-            },
-            .staticDecl => {
-                return self.getNamePathInfo(n.cast(.staticDecl).name).name_path;
-            },
-            .context_decl => {
-                return self.nodeString(n.cast(.context_decl).name);
-            },
-            .typeAliasDecl => return self.nodeString(n.cast(.typeAliasDecl).name),
-            .funcDecl => {
-                return self.getNamePathInfo(n.cast(.funcDecl).name).name_path;
-            },
+            .use_alias => n.cast(.use_alias).name.declName(),
+            .type_alias_decl => n.cast(.type_alias_decl).name.declName(),
+            .template => try self.declNamePath(n.cast(.template).child_decl),
+            .global_decl => self.getNamePathBase(n.cast(.global_decl).name).name_path,
+            .const_decl => self.getNamePathBase(n.cast(.const_decl).name).name_path,
+            .funcDecl => self.getNamePathBase(n.cast(.funcDecl).name).name_path,
             else => {
                 log.tracev("{}", .{n.type()});
                 return error.Unsupported;
             }
-        }
-    }
-
-    pub fn asRuneLit(self: AstView, n: *Node) []const u8 {
-        const span = n.cast(.rune_lit);
-        return self.src[span.pos+1..span.end-1];
-    }
-
-    pub fn asStringLit(self: AstView, n: *Node) []const u8 {
-        const span = n.cast(.string_lit);
-        return self.src[span.pos+1..span.end-1];
-    }
-
-    pub fn asStringMultiLit(self: AstView, n: *Node) []const u8 {
-        const span = n.cast(.string_multi_lit);
-        return self.src[span.pos+3..span.end-3];
-    }
-
-    pub fn asStringTemplatePart(self: AstView, n: *Node) []const u8 {
-        const span = n.cast(.stringt_part);
-        return self.src[span.pos..span.end];
-    }
-
-    pub fn asRawStringLit(self: AstView, n: *Node) []const u8 {
-        const span = n.cast(.raw_string_lit);
-        return self.src[span.pos+1..span.end-1];
-    }
-
-    pub fn asRawStringMultiLit(self: AstView, n: *Node) []const u8 {
-        const span = n.cast(.raw_string_multi_lit);
-        return self.src[span.pos+3..span.end-3];
+        };
     }
 
     pub fn fieldNameString(self: AstView, n: *Node) []const u8 {
@@ -1288,7 +1944,8 @@ pub const AstView = struct {
 
     pub fn declNameString(self: AstView, n: *Node) []const u8 {
         switch (n.type()) {
-            .raw_string_lit => return self.asRawStringLit(n),
+            .ident => return n.cast(.ident).name,
+            .raw_string_lit => return n.cast(.raw_string_lit).value,
             else => {
                 return self.nodeString(n);
             }
@@ -1296,78 +1953,13 @@ pub const AstView = struct {
     }
 
     pub fn nodeString(self: AstView, n: *Node) []const u8 {
-        const span: *Span = @ptrCast(@alignCast(n));
-        if (span.srcGen) {
-            return self.srcGen[span.pos..span.end];
-        } else {
-            return self.src[span.pos..span.end];
-        }
-    }
-
-    pub fn isMethodDecl(self: AstView, decl: *FuncDecl) bool {
-        if (decl.params.len == 0) {
-            return false;
-        }
-        if (decl.params[0].name_type.type() != .ident) {
-            return false;
-        }
-        const param_name = self.nodeString(decl.params[0].name_type);
-        return std.mem.eql(u8, param_name, "self");
-    }
-
-    pub fn getNamePathInfo(self: AstView, name: *Node) NamePathInfo {
-        if (name.type() != .name_path) {
-            const base = self.declNameString(name);
-            return .{
-                .name_path = base,
-                .base_name = base,
-                .base = name,
-            };
-        } else {
-            const path = name.cast(.name_path).path;
-            const last = path[path.len-1];
-            const base = self.nodeString(last);
-
-            var end = last.pos() + base.len;
-            if (last.type() == .raw_string_lit) {
-                end += 1;
-            }
-            return .{
-                .name_path = self.src[name.pos()..end],
-                .base_name = base,
-                .base = last,
-            };
-        }
-    }
-
-    // Returns whether two lines are connected by a new line and optional indentation.
-    pub fn isAdjacentLine(self: AstView, aEnd: u32, bStart: u32) bool {
-        var i = aEnd;
-        if (self.src[i] == '\r') {
-            i += 1;
-            if (self.src[i] != '\n') {
-                return false;
-            }
-            i += 1;
-        } else if (self.src[i] == '\n') {
-            i += 1;
-        } else {
-            return false;
-        }
-        while (i < bStart) {
-            if (self.src[i] != ' ' and self.src[i] != '\t') {
-                return false;
-            }
-            i += 1;
-        }
-        return true;
+        return self.src[n.pos()..n.end()];
     }
 };
 
-pub const NamePathInfo = struct {
-    name_path: []const u8,
-    base_name: []const u8,
-    base: *Node,
+pub const NamePathBase = struct {
+    name: []const u8,
+    node: *Node,
 };
 
 const EncodeEvent = enum {
@@ -1375,323 +1967,30 @@ const EncodeEvent = enum {
     postNode,
 };
 
-fn getUnOpStr(op: UnaryOp) []const u8 {
-    return switch (op) {
-        .minus => "-",
-        .not => "!",
-        .bitwiseNot => "~",
-        .address_of => "&",
-        .dummy => cy.unexpected(),
-    };
-}
-
-fn getBinOpStr(op: BinaryExprOp) []const u8 {
-    return switch (op) {
-        .plus => "+",
-        .minus => "-",
-        .star => "*",
-        .caret => "^",
-        .slash => "/",
-        .percent => "%",
-        .bitwiseAnd => "&",
-        .bitwiseOr => "|",
-        .bitwiseXor => "||",
-        .bitwiseLeftShift => "<<",
-        .bitwiseRightShift => ">>",
-        .bang_equal => "!=",
-        .less => "<",
-        .less_equal => "<=",
-        .greater => ">",
-        .greater_equal => ">=",
-        .equal_equal => "==",
-        .and_op => " and ",
-        .or_op => " or ",
-        .cast => "as",
-        .range,
-        .reverse_range,
-        .index,
-        .dummy => cy.unexpected(),
-    };
-}
-
-/// The default encoder doesn't insert any formatting and is used to
-/// provide a quick context summary next to generated code.
+/// Simple encoder. Emits nodes from source pos.
+/// TODO: Remove and just use ast.nodeString().
 pub const Encoder = struct {
-    ast: AstView,
+    c: *cy.Compiler,
     eventHandler: ?*const fn (Encoder, EncodeEvent, *Node) void = null,
 
-    pub fn allocFmt(self: Encoder, alloc: std.mem.Allocator, node: ?*Node) ![]const u8 {
+    pub fn format(self: Encoder, node: ?*Node) []const u8 {
         if (node == null) {
             return "";
         }
-        var buf: std.ArrayListUnmanaged(u8) = .{};
-        try self.write(buf.writer(alloc), node.?);
-        return buf.toOwnedSlice(alloc);
-    }
-
-    pub fn format(self: Encoder, node: ?*Node, buf: []u8) ![]const u8 {
-        if (node == null) {
-            return "";
+        if (node.?.src() == cy.NullId or node.?.pos() == cy.NullId) {
+            // Generated node.
+            return "<generated>";
         }
-        var fbuf = std.io.fixedBufferStream(buf);
-        try self.write(fbuf.writer(), node.?);
-        return fbuf.getWritten();
+        const chunk = self.c.chunks.items[node.?.src()];
+        return chunk.ast.nodeString(node.?);
     }
 
-    pub fn formatTrunc(self: Encoder, node: ?*Node, buf: []u8) ![]const u8 {
-        return self.format(node, buf) catch |err| {
-            if (err != error.NoSpaceLeft) {
-                return err;
-            }
-            return buf;
-        };
-    }
-
-    pub fn write(self: Encoder, w: anytype, node: *Node) !void {
-        switch (node.type()) {
-            .funcDecl => {
-                const decl = node.cast(.funcDecl);
-                try w.writeAll("func ");
-                try self.write(w, decl.name);
-                try w.writeAll("(");
-                if (decl.params.len > 0) {
-                    try self.write(w, @ptrCast(decl.params[0]));
-                    for (decl.params[1..]) |param| {
-                        try w.writeAll(", ");
-                        try self.write(w, @ptrCast(param));
-                    }
-                }
-                try w.writeAll(")");
-                if (decl.ret) |ret| {
-                    try w.writeAll(" ");
-                    try self.write(w, ret);
-                }
-                // node.data.func.bodyHead
-            },
-            .func_param => {
-                const param = node.cast(.func_param);
-                try w.writeAll(self.ast.nodeString(param.name_type));
-                if (param.type) |type_spec| {
-                    try w.writeAll(" ");
-                    try self.write(w, type_spec);
-                }
-            },
-            .assignStmt => {
-                const stmt = node.cast(.assignStmt);
-                try self.write(w, stmt.left);
-                try w.writeByte('=');
-                try self.write(w, stmt.right);
-            },
-            .opAssignStmt => {
-                const stmt = node.cast(.opAssignStmt);
-                try self.write(w, stmt.left);
-                try w.writeAll(getBinOpStr(stmt.op));
-                try w.writeByte('=');
-                try self.write(w, stmt.right);
-            },
-            .unary_expr => {
-                const expr = node.cast(.unary_expr);
-                try w.writeAll(getUnOpStr(expr.op));
-                try self.write(w, expr.child);
-            },
-            .binExpr => {
-                const expr = node.cast(.binExpr);
-                try self.write(w, expr.left);
-                try w.writeAll(getBinOpStr(expr.op));
-                try self.write(w, expr.right);
-            },
-            .exprStmt => {
-                try self.write(w, node.cast(.exprStmt).child);
-            },
-            .if_expr => {
-                const expr = node.cast(.if_expr);
-                try self.write(w, expr.cond);
-                try w.writeAll("?");
-                try self.write(w, expr.body);
-                try w.writeAll(" else ");
-                try self.write(w, expr.else_expr);
-            },
-            .caseBlock => {
-                const block = node.cast(.caseBlock);
-                if (block.conds.len == 0) {
-                    try w.writeAll("else");
-                } else {
-                    try self.write(w, block.conds[0]);
-                    for (block.conds[1..]) |cond| {
-                        try w.writeByte(',');
-                        try self.write(w, cond);
-                    }
-                }
-                if (block.bodyIsExpr) {
-                    try w.writeAll("=>");
-                    try self.write(w, @ptrCast(@alignCast(block.stmts.ptr)));
-                } else {
-                    try w.writeAll(": ...");
-                }
-            },
-            .noneLit => {
-                try w.writeAll("none");
-            },
-            .falseLit => {
-                try w.writeAll("false");
-            },
-            .trueLit => {
-                try w.writeAll("true");
-            },
-            .dot_lit => {
-                try w.writeAll(".");
-                try w.writeAll(self.ast.nodeString(node));
-            },
-            .error_lit => {
-                try w.writeAll("error.");
-                try w.writeAll(self.ast.nodeString(node));
-            },
-            .symbol_lit => {
-                try w.writeAll("symbol.");
-                try w.writeAll(self.ast.nodeString(node));
-            },
-            .hexLit,
-            .binLit,
-            .octLit,
-            .decLit => {
-                try w.writeAll(self.ast.nodeString(node));
-            },
-            .ident => {
-                try w.writeAll(self.ast.nodeString(node));
-            },
-            .raw_string_lit => {
-                try w.writeAll(self.ast.nodeString(node));
-            },
-            .string_lit => {
-                try w.writeAll(self.ast.nodeString(node));
-            },
-            .accessExpr => {
-                const expr = node.cast(.accessExpr);
-                try self.write(w, expr.left);
-                try w.writeByte('.');
-                try self.write(w, expr.right);
-            },
-            .group => {
-                try w.writeByte('(');
-                try self.write(w, node.cast(.group).child);
-                try w.writeByte(')');
-            },
-            .range => {
-                const expr = node.cast(.range);
-                if (expr.start) |start| {
-                    try self.write(w, start);
-                }
-                try w.writeAll("..");
-                if (expr.end) |end| {
-                    try self.write(w, end);
-                }
-            },
-            .array_expr => {
-                const expr = node.cast(.array_expr);
-                try self.write(w, expr.left);
-                try w.writeByte('[');
-                if (expr.args.len > 0) {
-                    try self.write(w, expr.args[0]);
-                    for (expr.args[1..]) |arg| {
-                        try w.writeAll(", ");
-                        try self.write(w, arg);
-                    }
-                }
-                try w.writeByte(']');
-            },
-            .init_expr => {
-                const expr = node.cast(.init_expr);
-                try self.write(w, expr.left);
-                try self.write(w, @ptrCast(expr.init));
-            },
-            .throwExpr => {
-                try w.writeAll("throw ");
-                try self.write(w, node.cast(.throwExpr).child);
-            },
-            .callExpr => {
-                const expr = node.cast(.callExpr);
-                try self.write(w, expr.callee);
-
-                try w.writeByte('(');
-                if (expr.args.len > 0) {
-                    try self.write(w, expr.args[0]);
-                    for (expr.args[1..]) |arg| {
-                        try w.writeAll(", ");
-                        try self.write(w, arg);
-                    }
-                }
-                try w.writeByte(')');
-            },
-            .tryExpr => {
-                const expr = node.cast(.tryExpr);
-                try w.writeAll("try ");
-                try self.write(w, expr.expr);
-                if (expr.catchExpr) |catch_expr| {
-                    try w.writeAll(" catch ");
-                    try self.write(w, catch_expr);
-                }
-            },
-            .name_path => {
-                const path = node.cast(.name_path).path;
-                try self.write(w, path[0]);
-                for (path[1..]) |part| {
-                    try w.writeByte('.');
-                    try self.write(w, part);
-                }
-            },
-            .localDecl => {
-                const local_decl = node.cast(.localDecl);
-                if (local_decl.typed) {
-                    try w.writeAll("var ");
-                } else {
-                    try w.writeAll("let ");
-                }
-                try self.write(w, local_decl.name);
-                if (local_decl.typeSpec) |typeSpec| {
-                    try w.writeByte(' ');
-                    try self.write(w, typeSpec);
-                }
-                try w.writeByte('=');
-                try self.write(w, local_decl.right);
-            },
-            .array_lit => {
-                const expr = node.cast(.array_lit);
-                try w.writeByte('[');
-                if (expr.args.len > 0) {
-                    try self.write(w, expr.args[0]);
-                    for (expr.args[1..]) |arg| {
-                        try w.writeAll(", ");
-                        try self.write(w, arg);
-                    }
-                }
-                try w.writeByte(']');
-            },
-            .init_lit => {
-                try w.writeByte('{');
-                try w.writeAll("...");
-                try w.writeByte('}');
-            },
-            .ptr_slice => {
-                try w.writeAll("[*]");
-                try self.write(w, node.cast(.ptr_slice).elem);
-            },
-            .expandOpt => {
-                try w.writeByte('?');
-                try self.write(w, node.cast(.expandOpt).param);
-            },
-            .ptr => {
-                try w.writeAll("*");
-                try self.write(w, node.cast(.ptr).elem);
-            },
-            .comptimeExpr => {
-                try self.write(w, node.cast(.comptimeExpr).child);
-            },
-            else => {
-                try w.writeByte('<');
-                try w.writeAll(@tagName(node.type()));
-                try w.writeByte('>');
-            },
+    pub fn formatTrunc(self: Encoder, node: ?*Node) []const u8 {
+        const res = self.format(node);
+        if (res.len > 32) {
+            return res[0..32];
         }
+        return res;
     }
 };
 
@@ -1768,6 +2067,12 @@ pub const Encoder = struct {
 
 pub fn findAttr(attrs: []const *Attribute, attr_t: AttributeType) ?*Attribute {
     if (attrs.len == 0) {
+        return null;
+    }
+    if (attrs.len == 1) {
+        if (attrs[0].type == attr_t) {
+            return attrs[0];
+        }
         return null;
     }
     for (attrs) |attr| {

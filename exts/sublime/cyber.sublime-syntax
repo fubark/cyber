@@ -9,9 +9,8 @@
 file_extensions:
   - cy
   - cyber
-  - cyb
-  - cx
-  - cs
+  - cb
+  - cbr
 scope: source.cyber
 contexts:
   main:
@@ -27,35 +26,91 @@ contexts:
       scope: punctuation.definition.string.begin.cyber
       push: double_quoted_string
 
+    # @foo
+    # - match: (?<=@)\w+
+    - match: \@\w*
+      scope: string.quoted.other.cyber
+
+    - match: (?<![\w\]\)])\.\w+(?![\w(])
+      scope: string.quoted.other.cyber
+
+    - match: \$\w*
+      scope: variable.member.cyber
+
+    - match: '\b(if|else|switch|while|for|break|continue|pass|case|begin|with)\b'
+      scope: keyword.control.cyber
+
     - match: '--'
       scope: punctuation.definition.comment.cyber
       push: line_comment
 
-    - match: '\b(if|else|switch|while|for|break|continue|pass|case|await|with)\b'
-      scope: keyword.control.cyber
+    - match: '\#\[[\w]*\]'
+      scope: comment.line.cyber
 
-    - match: '\b(or|and|not)\b'
+    - match: '[-+*/=<>!?&\|%^~:]+|\.\.'
       scope: keyword.operator.cyber
 
-    - match: '\b(var|def|as|context|dyn)\b'
+    - match: '\b(not)\b'
+      scope: keyword.operator.cyber
+
+    - match: '\b(or|and)\b'
+      scope: keyword.control.cyber
+
+    - match: '\b(var|move|const|global)\b'
       scope: keyword.variable.cyber
 
-    - match: '\b(fn|return|self)\b'
+    - match: \b(fn).*::\s*(\w+)\s*\(.*\b
+      captures:
+        1: keyword.function.cyber
+        2: variable.decl.cyber
+
+    - match: \b(fn).*\(.*\)\s*(\w+)\s*\(.*\b
+      captures:
+        1: keyword.function.cyber
+        2: variable.decl.cyber
+
+    - match: \b(fn)\s+(\w+)\s*\(.*
+      captures:
+        1: keyword.function.cyber
+        2: variable.decl.cyber
+
+    # - match: \b\w+(?=[ ]+:=)
+    #   scope: variable.decl.cyber
+
+    - match: \b(?<=type )[\w.]+
+      scope: variable.decl.cyber
+
+    # - match: \b(?<=var )[\w.]+
+    #   scope: variable.decl.cyber
+
+    - match: \b(?<=const )[\w.]+
+      scope: variable.decl.cyber
+
+    - match: '\b(fn|fnsym|return)\b'
       scope: keyword.function.cyber
 
-    - match: '\b(coyield|coresume|coinit)\b'
+    - match: '\b(yield)\b'
       scope: keyword.coroutine.cyber
 
-    - match: '\b(type|object|struct|cstruct|enum|trait|true|false|none|symbol)\b'
+    - match: '\b(type|object|struct|cstruct|cunion|enum|trait|as)\b'
       scope: keyword.type.cyber
 
-    - match: '\b(try|catch|error|throw)\b'
+    - match: '\b(catch|error)\b'
       scope: keyword.error.cyber
 
-    - match: '\b(use|module)\b'
+    - match: '\b(use)\b'
       scope: keyword.module.cyber
 
-    - match: '\b(-)?[0-9.]+\b'
+    - match: '\b0x[0-9a-fA-F]+\b'
+      scope: constant.numeric.cyber
+
+    - match: '\b[0-9]+u\b'
+      scope: constant.numeric.cyber
+
+    - match: '\b(-)?[0-9]+(.[0-9]+)?\b'
+      scope: constant.numeric.cyber
+
+    - match: '\b(true|false|none|undef)\b'
       scope: constant.numeric.cyber
 
   single_quoted_string:
@@ -89,3 +144,8 @@ contexts:
     - meta_scope: comment.line.cyber
     - match: $
       pop: true
+
+  # symbol_literal:
+  #   - meta_scope: string.cyber
+  #   - match: "[^a-zA-Z0-9]"
+  #     pop: true

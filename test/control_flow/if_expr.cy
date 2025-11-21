@@ -1,16 +1,16 @@
 use test
 
-var foo = true
+foo := true
 test.eq(if (foo) 123 else 456, 123)
 foo = false
 test.eq(if (foo) 123 else 456, 456)
 
 -- Heap allocated values.
-var a = if (false) 'abc' else 'xyz'
+a := if (false) 'abc' else 'xyz'
 test.eq(a, 'xyz')
 
--- `any` infer type.
-var b any = if (false) 123 else '456'
-test.eq(b, '456')
+-- infer from target type.
+var b byte = if (false) 12 else 23
+test.eq(23, b)
 
 --cytest: pass

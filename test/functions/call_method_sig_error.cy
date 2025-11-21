@@ -1,18 +1,16 @@
 type S:
-    a any
+    a int
 
-    fn foo(self) int:
-        return 123
+fn (&S) foo() -> int:
+    return 123
 
-var o = S{}
+o := S{a=123}
 o.foo(234)
 
 --cytest: error
---CompileError: Can not find compatible function for call: `foo(_, _)`.
---Functions named `foo` in `S`:
---    fn foo(^S) int
+--CompileError: Expected `1` arguments, found `2`, when calling the function `fn foo(&S) -> int`.
 --
 --main:8:1:
 --o.foo(234)
---^
+--^~~~~~~~~~
 --

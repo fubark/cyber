@@ -1,7 +1,15 @@
 use t 'test'
+use meta
+
+-- @init()
+res := int('100')
+t.eqType(int, type.of(res))
+t.eq(0, int('100.1'))
+t.eq(100, res)
+t.eq(100, int(100.1))
 
 -- Once a numeric literal is assigned to untyped local, it becomes an integer.
-var a = 10
+a := 10
 t.eq(a, 10)
 
 -- Hex notation.
@@ -14,14 +22,14 @@ t.eq(0o77, 63)
 -- Binary notation.
 t.eq(0b11, 3)
 
--- UTF-8 Rune notation.
-t.eq(`a`, 97)
-t.eq(`A`, 65)
-t.eq(`'`, 39)    -- Escape single quote.
-t.eq(`\\`, 92)    -- Escape backslash.
-t.eq(`🐶`, 128054)
-t.eq(`🦊`, 129418)
-t.eq(`\n`, 10)
+-- Infer UTF-8 code point.
+t.eq(97, 'a')
+t.eq(65, 'A')
+t.eq(39, '\'')    -- Escape single quote.
+t.eq(92, '\\')    -- Escape backslash.
+t.eq(128054, '🐶')
+t.eq(129418, '🦊')
+t.eq(10, '\n')
 
 -- Equals.
 t.eq(3 == 2, false)
@@ -44,44 +52,55 @@ t.eq(2 >= 2, true)
 t.eq(3 >= 2, true)
 
 -- Bitwise and.
-t.eq(4 & 2, 0)
-t.eq(4 & 4, 4)
-t.eq(7 & 2, 2)
+t.eq(4 && 2, 0)
+t.eq(4 && 4, 4)
+t.eq(7 && 2, 2)
 
 -- Bitwise or.
-t.eq(4 | 2, 6)
-t.eq(4 | 4, 4)
+t.eq(4 || 2, 6)
+t.eq(4 || 4, 4)
 
 -- Bitwise xor.
-t.eq(4 || 2, 6)
-t.eq(4 || 4, 0)
+t.eq(4 ~ 2, 6)
+t.eq(4 ~ 4, 0)
 
 -- Bitwise not.
 t.eq(~0, -1)
 t.eq(~(-1), 0)
 t.eq(~1, -2)
 
--- Bitwise right shift.
-t.eq(16 >> 2, 4)
-t.eq(2 >> 2, 0)
-t.eq(-1 >> 1, -1)  -- Performs sign extension
-t.eq(-2147483648 >> 1, -1073741824)
-t.eq((-140737488355327 - 1) >> 48, -1)
+-- Bitwise right shift (logical).
+t.eq(4, 16 >> 2)
+t.eq(0, 2 >> 2)
+t.eq(1, -1 >> 63)
+t.eq(0x40000000, 0x80000000 >> 1)
+t.eq(1, 0x8000000000000000 >> 63)
 
--- Bitwise left shift.
-t.eq(2 << 4, 32)
-t.eq(1 << 63, (-9223372036854775807-1))
-t.eq((-9223372036854775807-1) << 1, 0)  
+use math
+
+-- Bitwise left shift (logical).
+t.eq(32, 2 << 4)
+t.eq(int.min, 1 << 63)
+t.eq(0, int.min << 1)  
 
 -- fmt()
-t.eq(122.fmt(.bin), '1111010')
-t.eq(122.fmt(.oct), '172')
 t.eq(122.fmt(.dec), '122')
-t.eq(122.fmt(.hex), '7a')
-t.eq(122.fmt(.asc), 'z')
-t.eq(2.fmt(.bin, {pad=`0`, width=8}), '00000010')
-t.eq(8.fmt(.oct, {pad=`0`, width=3}), '010')
-t.eq(10.fmt(.dec, {pad=`0`, width=4}), '0010')
-t.eq(16.fmt(.hex, {pad=`0`, width=4}), '0010')
+if meta.is_vm_target():
+    t.eq(122.fmt(.bin), '1111010')
+    t.eq(122.fmt(.oct), '172')
+    t.eq(122.fmt(.hex), '7a')
+    t.eq(122.fmt(.ch), 'z')
+    -- t.eq(2.fmt(.bin, {pad=`0`, width=8}), '00000010')
+    -- t.eq(8.fmt(.oct, {pad=`0`, width=3}), '010')
+    -- t.eq(10.fmt(.dec, {pad=`0`, width=4}), '0010')
+    -- t.eq(16.fmt(.hex, {pad=`0`, width=4}), '0010')
+
+-- -- Implicit widen.
+-- a_int := as[int] i32(-123)
+-- t.eq(-123, a_int)
+
+-- Truncate.
+a = 123
+t.eq(byte(123), byte(a))
 
 --cytest: pass

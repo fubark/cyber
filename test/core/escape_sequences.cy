@@ -1,12 +1,12 @@
 use t 'test'
 
 -- Double quote literal with escaped double quote.
-var str = "ab\"c"
+str := "ab\"c"
 t.eq(str.len(), 4)
-t.eq(str[0], `a`)
-t.eq(str[1], `b`)
-t.eq(str[2], `"`)
-t.eq(str[3], `c`)
+t.eq(str[0], 'a')
+t.eq(str[1], 'b')
+t.eq(str[2], '"')
+t.eq(str[3], 'c')
 
 -- Single quote literal with new line escape sequence.
 t.eq("ab\nc", """ab
@@ -33,9 +33,9 @@ t.eq("ab\tc"[2], 9)
 
 -- Escaped backslash.
 t.eq("ab\\nc"[2], 0x5c)
-t.eq("ab\\nc"[3], `n`)
+t.eq("ab\\nc"[3], 'n')
 
 -- Hex.
-t.eq("\x61"[0], `a`)
+t.eq("\x61"[0], 'a')
 
 --cytest: pass

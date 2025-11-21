@@ -1,4 +1,3 @@
-// Copyright (c) 2023 Cyber (See LICENSE)
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -11,15 +10,29 @@
 extern "C" {
 #endif
 typedef struct CLVM CLVM;
+typedef struct CLThread CLThread;
+typedef struct CLHeap CLHeap;
 
 typedef uint64_t CLValue;
+typedef uint8_t CLRet;
+
+enum {
+    CL_RET_OK = 0,
+    CL_RET_INTERRUPT = 1,
+};
+
 typedef struct CLValueSlice {
     const CLValue* ptr;
     size_t len;
 } CLValueSlice;
 
 typedef struct CLResolverParams CLResolverParams;
-typedef struct CLModule CLModule;
+typedef struct CLUnit CLUnit;
+typedef struct CLExprResult CLExprResult;
+typedef struct CLNode CLNode;
+typedef struct CLFuncSig CLFuncSig;
+typedef struct CLFunc CLFunc;
+typedef struct CLSym CLSym;
 
 #define CL_NULLID UINT32_MAX
 #define CL_VOID 0x7FFC000100000000
@@ -40,29 +53,29 @@ enum {
 enum {
     CL_TYPE_NULL = 0,
     CL_TYPE_VOID,
-    CL_TYPE_BOOLEAN,
+    CL_TYPE_BOOL,
     CL_TYPE_ERROR,
     CL_TYPE_BYTE,
     CL_TYPE_TAGLIT,
     CL_TYPE_SYMBOL,
-    CL_TYPE_INTEGER,
+    CL_TYPE_INT,
     CL_TYPE_FLOAT,
-    CL_TYPE_DYN,
+    CL_TYPE_PLACEHOLDER7,
     CL_TYPE_ANY,
     CL_TYPE_TYPE,
-    CL_TYPE_TUPLE,
-    CL_TYPE_LIST_DYN,
-    CL_TYPE_LISTITER_DYN,
-    CL_TYPE_MAP,
-    CL_TYPE_MAPITER,
+    CL_TYPE_PLACEHOLDER4,
+    CL_TYPE_PLACEHOLDER5,
+    CL_TYPE_PLACEHOLDER6,
+    CL_TYPE_GENERIC,
+    CL_TYPE_CODE,
     CL_TYPE_FUNC,
     CL_TYPE_FUNC_SIG,
     CL_TYPE_PLACEHOLDER2,
     CL_TYPE_EXTERN_FUNC,
-    CL_TYPE_STRING,
-    CL_TYPE_EXPRTYPE,
+    CL_TYPE_STR,
+    CL_TYPE_STRING_BUFFER,
     CL_TYPE_FIBER,
-    CL_TYPE_UPVALUE,
+    CL_TYPE_PLACEHOLDER1,
     CL_TYPE_TCCSTATE,
     CL_TYPE_PLACEHOLDER3,
     CL_TYPE_RANGE,
@@ -71,38 +84,46 @@ enum {
 };
 typedef uint32_t CLTypeId;
 typedef struct CLType CLType;
+typedef struct CLTypeValue {
+    CLType* type;
+    CLValue value;
+} CLTypeValue;
 
-typedef uint32_t CLFuncSig;
-
-// Cyber deals with string slices internally for efficiency.
-// Some API functions may require you to use slices rather than a null terminated string.
-// Creating a CLStr can be simplified with a macro:
-// #define str(x) ((CLStr){ x, strlen(x) })
-// NOTE: Returned `CLStr`s are not always null terminated.
-typedef struct CLStr {
+// Some API functions may require string slices rather than a null terminated string.
+// Creating a CLBytes can be simplified with a macro:
+// #define bytes(x) ((CLBytes){ x, strlen(x) })
+// NOTE: Returned `CLBytes`s are not always null terminated.
+typedef struct CLBytes {
     const char* ptr;
     size_t len;
-} CLStr;
+} CLBytes;
 
-typedef struct CLSlice {
-    void* ptr;
-    size_t len;
-} CLSlice;
+// Type layout of a Cyber `str` at runtime.
+typedef struct CL_str {
+    void* buf;
+    const char* ptr;
+    uint64_t header;
+} CL_str;
 
-typedef struct CLSym {
-    void* ptr;
-} CLSym;
+// A host function is bound to a runtime function symbol declared with `#[bind]`.
+typedef CLRet (*CLHostFn)(CLThread* t);
 
-typedef struct CLNode {
-    void* ptr;
-} CLNode;
+typedef struct CLSemaFuncContext {
+    CLFunc* func;
+    size_t expr_start;
+    CLNode* node;
+} CLSemaFuncContext;
 
-typedef struct CLModule {
-    void* ptr;
-} CLModule;
+typedef bool (*CLSemaFn)(CLUnit* unit, CLSemaFuncContext* ctx, CLExprResult* res);
 
-// @host func is binded to this function pointer signature.
-typedef CLValue (*CLFuncFn)(CLVM*, const CLValue*, uint8_t);
+typedef struct CLCtFuncContext {
+    CLFunc* func;
+    CLValue* args;
+    CLNode* node;
+} CLCtFuncContext;
+
+typedef bool (*CLCtFn)(CLUnit* unit, CLCtFuncContext* ctx, CLExprResult* res);
+typedef CLTypeValue (*CLCtEvalFn)(CLUnit* unit, CLCtFuncContext* ctx);
 
 typedef struct CLResolverParams {
     /// Chunk that invoked the resolver.
@@ -111,19 +132,15 @@ typedef struct CLResolverParams {
 
     /// The current URI.
     /// If it's the empty string, then the invoker did not originate from another chunk module.
-    CLStr curUri;
+    CLBytes curUri;
 
     /// The unresolved URI.
-    CLStr uri;
+    CLBytes uri;
 
     // Buffer to write a dynamic the result to.
     char* buf;
     size_t bufLen;
-
-    // Result.
-    const char** resUri;
-    size_t* resUriLen;
-} CLResolverParams;
+} LResolverParams;
 
 // Given the current module's resolved URI and the "to be" imported module specifier,
 // set `params.resUri`, `params.resUriLen`, and return true.
@@ -132,171 +149,94 @@ typedef struct CLResolverParams {
 // Return false if the uri can not be resolved.
 // Most embedders do not need a resolver and can rely on the default resolver which
 // simply returns `params.spec` without any adjustments.
-typedef bool (*CLResolverFn)(CLVM* vm, CLResolverParams params);
-
-// Callback invoked after all type symbols in the module's src are loaded.
-// This could be used to set up an array or hashmap for binding @host vars.
-typedef void (*CLModuleOnTypeLoadFn)(CLVM* vm, CLSym mod);
+typedef bool (*CLResolverFn)(CLVM* vm, CLResolverParams params, size_t* res_uri_len);
 
 // Callback invoked after all symbols in the module's src are loaded.
 // This could be used to inject symbols not declared in the module's src.
-typedef void (*CLModuleOnLoadFn)(CLVM* vm, CLSym mod);
+typedef void (*CLModuleOnLoadFn)(CLVM* vm, CLSym* mod);
 
 // Callback invoked just before the module is destroyed.
 // This could be used to cleanup (eg. release) injected symbols from `CLPostLoadModuleFn`,
-typedef void (*CLModuleOnDestroyFn)(CLVM* vm, CLSym mod);
-
-// Info about a @host func.
-typedef struct CLFuncInfo {
-    // The module it belongs to.
-    CLSym mod;
-    // The name of the func.
-    CLStr name;
-    // The function's signature.
-    uint32_t funcSigId;
-} CLFuncInfo;
-
-// A mapping from a matching symbol string to a CLFuncFn.
-typedef struct CLHostFuncEntry {
-    CLStr name;
-    CLFuncFn func;
-} CLHostFuncEntry;
-
-// Given info about a @host func, write it's function pointer to `out->ptr` and return true,
-// or return false.
-typedef bool (*CLFuncLoaderFn)(CLVM* vm, CLFuncInfo funcInfo, CLFuncFn* out);
-
-// Info about a @host var.
-typedef struct CLVarInfo {
-    // The module it belongs to.
-    CLSym mod;
-    // The name of the var.
-    CLStr name;
-    // A counter that tracks it's current position among all @host vars in the module.
-    // This is useful if you want to bind an array of `CLValue`s to @host vars.
-    uint32_t idx;
-} CLVarInfo;
-
-// Given info about a @host var, write a value to `out` and return true, or return false.
-// The value is consumed by the module. If the value should outlive the module,
-// call `clRetain` before handing it over.
-typedef bool (*CLVarLoaderFn)(CLVM* vm, CLVarInfo funcInfo, CLValue* out);
-
-// Info about a @host type.
-typedef struct CLTypeInfo {
-    // The module it belongs to.
-    CLSym mod;
-    // The name of the type.
-    CLStr name;
-} CLTypeInfo;
+typedef void (*CLModuleOnDestroyFn)(CLVM* vm, CLSym* mod);
 
 typedef enum {
-    // Create a new object type with it's own memory layout and finalizer.
-    CL_BIND_TYPE_HOSTOBJ,
+    CL_BIND_FUNC_VM,
+    CL_BIND_FUNC_CT,
+    CL_BIND_FUNC_SEMA,
 
+    // Compile the function with the declaration body.
+    CL_BIND_FUNC_DECL,
+} CLBindFuncKind;
+
+typedef struct CLBindFunc {
+    // CLHostFn or CLCtFn
+    void* ptr;
+    // CLCtEvalFn
+    void* ptr2;
+    CLBindFuncKind kind;
+} CLBindFunc;
+
+// Returns a compile-time value.
+// The value is consumed by the module. 
+typedef CLValue (*CLBindGlobal)(CLVM* vm);
+
+typedef enum {
     // Use the provided declaration with a predefined or generated type id.
     CL_BIND_TYPE_DECL,
 
     CL_BIND_TYPE_CREATE,
+    CL_BIND_TYPE_ALIAS,
 } CLBindTypeKind;
 
-typedef CLType* (*CLCreateTypeFn)(CLVM* vm, CLSym mod, CLNode decl);
+typedef CLType* (*CLCreateTypeFn)(CLVM* vm, CLSym* ctx_chunk, CLNode* decl);
+typedef CLSym* (*CLResolveAliasFn)(CLVM* vm, CLSym* sym);
 
-// Given an object, return the pointer of an array and the number of children.
-// If there are no children, return NULL and 0 for the length.
-typedef CLValueSlice (*CLGetChildrenFn)(CLVM* vm, void* obj);
-
-// Use the finalizer to perform cleanup tasks for the object (eg. free a resource handle)
-// before it is finally freed by the VM.
-//
-// Unlike finalizers declared in user scripts, this finalizer is guaranteed to be invoked.
-//
-// NOTE: Although the VM handle is provided, using the VM at this point to mutate object dependencies
-//       is undefined behavior because the VM may be running a GC task.
-//
-// NOTE: If the object retains child VM objects, accessing them is undefined behavior
-//       because they could have freed before the finalizer was invoked.
-typedef void (*CLFinalizerFn)(CLVM* vm, void* obj);
-
-// Result given to Cyber when binding a @host type.
-typedef struct CLHostType {
+// Result given to Cyber when binding a `#[bind]` type.
+typedef struct CLBindType {
     union {
         struct {
-            // If `CL_NULLID`, a new type id is generated and written to a non-null `out_type`.
+            // If `CL_NULLID`, a new type id is generated.
             CLTypeId type_id;
-
-            // If not `NULL`, the created runtime type id will be written to `out_type`.
-            // This type is then used to allocate a new instance of the object.
-            // Defaults to `NULL`.
-            CLType** out_type;
-
-            // If `true`, invokes finalizer before visiting children.
-            bool pre;
-
-            // Pointer to callback or null.
-            CLGetChildrenFn get_children;
-
-            // Pointer to callback or null.
-            CLFinalizerFn finalizer;
-        } hostobj;
-        struct {
-            // If `CL_NULLID`, a new type id is generated and written to a non-null `out_type`.
-            CLTypeId type_id;
-            CLType** out_type;
         } decl;
         struct {
             // Pointer to callback.
             CLCreateTypeFn create_fn;
         } create;     
+        struct {
+            // Pointer to callback.
+            CLResolveAliasFn resolve_fn;
+        } alias;     
     } data;
     // `CLBindTypeKind`.
     uint8_t type;
-} CLHostType;
+} CLBindType;
 
-#define CL_STR(str) ((CLStr){ .ptr = str, .len = strlen(str) })
-#define CL_FUNC(name, fn) ((CLHostFuncEntry){ CL_STR(name), fn })
+#define CL_BITCAST(type, x) (((union {typeof(x) src; type dst;})(x)).dst)
+#define CL_BYTES(str) ((CLBytes){ .ptr = str, .len = strlen(str) })
 // #define CL_CORE_TYPE(t) ((CLHostType){ .data = { .core_custom = { .type_id = t, .get_children = NULL, .finalizer = NULL }}, .type = CL_BIND_TYPE_CORE_CUSTOM })
 // #define CL_CORE_TYPE_EXT(t, gc, f) ((CLHostType){ .data = { .core_custom = { .type_id = t, .get_children = gc, .finalizer = f }}, .type = CL_BIND_TYPE_CORE_CUSTOM })
 // #define CL_CORE_TYPE_DECL(t) ((CLHostType){ .data = { .core_decl = { .type_id = t }}, .type = CL_BIND_TYPE_CORE_DECL })
-#define CL_CUSTOM_TYPE(name, ot, gc, f) ((CLHostTypeEntry){ CL_STR(name), (CLHostType){ .data = { .hostobj = { .out_type_id = ot, .pre = false, .get_children = gc, .finalizer = f }}, .type = CL_BIND_TYPE_HOSTOBJ }})
-#define CL_CUSTOM_PRE_TYPE(name, ot, gc, f) ((CLHostTypeEntry){ CL_STR(name), (CLHostType){ .data = { .hostobj = { .out_type_id = ot, .pre = true, .get_children = gc, .finalizer = f }}, .type = CL_BIND_TYPE_HOSTOBJ }})
+#define CL_CUSTOM_TYPE(name, ot, gc, f) ((CLBindTypeEntry){ CL_STR(name), (CLBindType){ .data = { .custom = { .out_type_id = ot, .get_children = gc, .finalizer = f, .pre = false }}, .type = CL_BIND_TYPE_CUSTOM }})
+#define CL_CUSTOM_PRE_TYPE(name, ot, gc, f) ((CLBindTypeEntry){ CL_STR(name), (CLBindType){ .data = { .custom = { .out_type_id = ot, .get_children = gc, .finalizer = f, .pre = true }}, .type = CL_BIND_TYPE_CUSTOM }})
+#define CL_CREATE_TYPE(name, fn) ((CLBindTypeEntry){ name, (CLBindType){ .data = { .create = { .create_fn = fn }}, .type = CL_BIND_TYPE_CREATE }})
+#define CL_BIND_FUNC(host_ptr) ((CLBindFunc){.kind = CL_BIND_FUNC_VM, .ptr = host_ptr})
 
-// A mapping from a matching symbol string to a CLHostType.
-typedef struct CLHostTypeEntry {
-    CLStr name;
-    CLHostType host_t;
-} CLHostTypeEntry;
+typedef void (*CLModuleBindFn)(CLVM* vm, CLSym* mod);
 
-// Optional callback if a host type could not be found in `CLModuleLoaderResult.types`.
-// Given info about a @host type, write the result to `out` and return true, or return false.
-typedef bool (*CLTypeLoaderFn)(CLVM* vm, CLTypeInfo typeInfo, CLHostType* out);
-
-// Given the resolved import specifier of the module, set the module's src in `res->src`,
-// set symbol loaders, and return true. Otherwise, return false.
-typedef bool (*CLModuleLoaderFn)(CLVM* vm, CLStr resolved_uri, CLModule* res);
-
-typedef struct CLModuleConfig {
-    CLSlice funcs;                   // `CLHostFuncEntry` slice.
-    CLFuncLoaderFn func_loader;      // Pointer to callback or null.
-    CLVarLoaderFn varLoader;         // Pointer to callback or null.
-    CLSlice types;                   // `CLHostTypeEntry` slice.
-    CLTypeLoaderFn type_loader;      // Pointer to callback or null.
-    CLModuleOnTypeLoadFn onTypeLoad; // Pointer to callback or null.
-    CLModuleOnLoadFn onLoad;         // Pointer to callback or null.
-    CLModuleOnDestroyFn onDestroy;   // Pointer to callback or null.
-} CLModuleConfig;
+// Given the resolved import specifier of the module, return the module source code.
+typedef bool (*CLModuleLoaderFn)(CLVM* vm, CLSym* mod, CLBytes resolved_uri, CLBytes* out_src);
 
 // Handler for printing. The builtin `print` would invoke this.
 // The default behavior is a no-op.
-typedef void (*CLPrintFn)(CLVM* vm, CLStr str);
+typedef void (*CLPrintFn)(CLThread* t, CLBytes str);
 
 // Handler for printing errors.
 // The default behavior is a no-op.
-typedef void (*CLPrintErrorFn)(CLVM* vm, CLStr str);
+typedef void (*CLPrintErrorFn)(CLThread* t, CLBytes str);
 
 // Handler for compiler and runtime logs.
 // The default behavior is a no-op.
-typedef void (*CLLogFn)(CLStr str);
+typedef void (*CLLogFn)(CLVM*, CLBytes str);
 
 typedef enum {
     CL_VM = 0,
@@ -318,7 +258,15 @@ typedef struct CLEvalConfig {
     bool reload;
 
     bool spawn_exe;
+    
+    /// Persist main locals into the VM env. For REPL-like behavior.
+    bool persist_main_locals;
 } CLEvalConfig;
+
+typedef struct CLEvalResult {
+    CLValue* res;
+    CLTypeId res_t;
+} CLEvalResult;
 
 typedef struct CLCompileConfig {
     /// Whether this process intends to perform eval once and exit.
@@ -336,7 +284,8 @@ typedef struct CLCompileConfig {
 
     bool emit_source_map;
 
-    bool gen_debug_func_markers;
+    /// Persist main locals into the VM env. For REPL-like behavior.
+    bool persist_main_locals;
 } CLCompileConfig;
 
 typedef struct CLValidateConfig {
@@ -350,96 +299,92 @@ typedef struct CLAllocator {
 } CLAllocator;
 
 typedef struct CLFieldInit {
-    CLStr name;
+    CLBytes name;
     CLValue value;
 } CLFieldInit;
 
 // -----------------------------------
 // [ Top level ]
 // -----------------------------------
-CLStr clGetFullVersion(void);
-CLStr clGetVersion(void);
-CLStr clGetBuild(void);
-CLStr clGetCommit(void);
-CLStr clResultName(CLResultCode code);
-extern CLLogFn clLog;
+CLBytes clGetFullVersion(void);
+CLBytes clGetVersion(void);
+CLBytes clGetBuild(void);
+CLBytes clGetCommit(void);
+CLBytes clResultName(CLResultCode code);
 
 // -----------------------------------
 // [ VM ]
 // -----------------------------------
 
-CLVM* clCreate(void);
-
-// Deinitialize static objects, compile-time objects, and lingering objects,
-// so that reference counts can be verified.
-// Afterwards, call `clDestroy` or perform a check on `clCountObjects`.
-// When `gc` is true, the cycle detector will run at the end to free leaked cycles
-// (only relevant when using the VM `gc` flag).
-void clDeinitObjects(CLVM* vm, bool gc);
+// Create a new VM.
+CLVM* cl_vm_init(void);
 
 // Deinitializes the VM and frees all memory associated with it. Any operation on `vm` afterwards is undefined.
-void clDestroy(CLVM* vm);
+void cl_vm_deinit(CLVM* vm);
 
-CLResolverFn clGetResolver(CLVM* vm);
-void clSetResolver(CLVM* vm, CLResolverFn resolver);
-CLStr clResolve(CLVM* vm, CLStr uri);
+CLThread* cl_vm_main_thread(CLVM* vm);
+
+CLResolverFn cl_get_resolver(CLVM* vm);
+void cl_set_resolver(CLVM* vm, CLResolverFn resolver);
+CLBytes cl_resolve(CLVM* vm, CLBytes uri);
 
 // The default module resolver. It returns `spec`.
-bool clDefaultResolver(CLVM* vm, CLResolverParams params);
+bool cl_default_resolver(CLVM* vm, CLResolverParams params, size_t* res_uri_len);
 
-CLModuleLoaderFn clGetModuleLoader(CLVM* vm);
-void clSetModuleLoader(CLVM* vm, CLModuleLoaderFn loader);
+CLModuleLoaderFn cl_vm_get_loader(CLVM* vm);
+void cl_vm_set_loader(CLVM* vm, CLModuleLoaderFn loader);
 
 // The default module loader. It knows how to load the `builtins` module.
-bool clDefaultModuleLoader(CLVM* vm, CLStr resolved_uri, CLModule* res);
+bool cl_default_loader(CLVM* vm, CLSym* mod, CLBytes resolved_uri, CLBytes* out);
 
-CLPrintFn clGetPrinter(CLVM* vm);
-void clSetPrinter(CLVM* vm, CLPrintFn print);
-CLPrintErrorFn clGetErrorPrinter(CLVM* vm);
-void clSetErrorPrinter(CLVM* vm, CLPrintErrorFn print);
+CLPrintFn cl_vm_printer(CLVM* vm);
+void cl_vm_set_printer(CLVM* vm, CLPrintFn print);
+CLPrintErrorFn cl_vm_eprinter(CLVM* vm);
+void cl_vm_set_eprinter(CLVM* vm, CLPrintErrorFn print);
+void cl_vm_set_logger(CLVM* vm, CLLogFn log);
 
 CLEvalConfig clDefaultEvalConfig(void);
 CLCompileConfig clDefaultCompileConfig(void);
 
 // Resets the compiler and runtime state.
-void clReset(CLVM* vm);
+void cl_vm_reset(CLVM* vm);
 
 // Evalutes the source code and returns the result code.
 // Subsequent evals will reuse the same compiler and runtime state.
 // If the last statement of the script is an expression, `outVal` will contain the value.
-CLResultCode clEval(CLVM* vm, CLStr src, CLValue* outVal);
+CLResultCode cl_vm_eval(CLVM* vm, CLBytes src, CLEvalResult* res);
 
 // Accepts an eval config. Unlike `clEvalPath`, `uri` does not get resolved and only serves to identify `src` origin.
-CLResultCode clEvalExt(CLVM* vm, CLStr uri, CLStr src, CLEvalConfig config, CLValue* outVal);
+CLResultCode cl_vm_evalx(CLVM* vm, CLBytes uri, CLBytes src, CLEvalConfig config, CLEvalResult* res);
 
 // Resolves `uri` and evaluates the module.
-CLResultCode clEvalPath(CLVM* vm, CLStr uri, CLEvalConfig config, CLValue* outVal);
+CLResultCode cl_vm_eval_path(CLVM* vm, CLBytes uri, CLEvalConfig config, CLEvalResult* res);
 
 // Consumes and evaluates all ready tasks. Returns `CL_SUCCESS` if succesfully emptied the ready queue.
-CLResultCode clRunReadyTasks(CLVM* vm);
+// CLResultCode cl_run_ready_tasks(CLThread* t);
 
-CLResultCode clCompile(CLVM* vm, CLStr uri, CLStr src, CLCompileConfig config);
-CLResultCode clValidate(CLVM* vm, CLStr src);
+CLResultCode clCompile(CLVM* vm, CLBytes uri, CLBytes src, CLCompileConfig config);
+CLResultCode clValidate(CLVM* vm, CLBytes src);
 
-/// Get call arguments.
-int64_t clGetInt(CLVM* vm, uint32_t idx);
-double clGetFloat(CLVM* vm, uint32_t idx);
-CLValue clGetValue(CLVM* vm, uint32_t idx);
+/// Get function parameters.
+int64_t cl_param_int(CLThread* t, size_t idx);
+double cl_param_float(CLThread* t, size_t idx);
+CLValue cl_param_value(CLThread* t, size_t idx);
 
 /// Convenience function to return the last error summary.
-/// Returns clNewErrorReportSummary if the last result was a CL_ERROR_COMPILE,
-/// or clNewPanicSummary if the last result was a CL_ERROR_PANIC,
+/// Returns `cl_new_compile_error_summary` if the last result was a CL_ERROR_COMPILE,
+/// or `cl_thread_panic_summary` if the last result was a CL_ERROR_PANIC,
 /// or the null string.
-CLStr clNewLastErrorSummary(CLVM* vm);
+CLBytes cl_vm_error_summary(CLVM* vm);
 
-/// Returns first compile-time report summary. Must be freed with `clFree`.
-CLStr clNewErrorReportSummary(CLVM* vm);
+/// Returns first compile-time error summary. Must be freed with `cl_free`.
+CLBytes cl_vm_compile_error_summary(CLVM* vm);
 
-/// Returns runtime panic summary. Must be freed with `clFree`.
-CLStr clNewPanicSummary(CLVM* vm);
+/// Returns runtime panic summary. Must be freed with `cl_free`.
+CLBytes cl_thread_panic_summary(CLThread* t);
 
 /// Some API callbacks use this to report errors.
-void clReportApiError(CLVM* vm, CLStr msg);
+void clReportApiError(CLVM* vm, CLBytes msg);
 
 // Attach a userdata pointer inside the VM.
 void* clGetUserData(CLVM* vm);
@@ -457,38 +402,50 @@ extern bool clSilent;
 // [ Modules ]
 // -----------------------------------
 
-CLModule clCreateModule(CLVM* vm, CLStr resolved_uri, CLStr src);
-void clSetModuleConfig(CLVM* vm, CLModule mod, CLModuleConfig* config);
+void cl_mod_set_data(CLSym* mod, void* data);
+void* cl_mod_get_data(CLSym* mod);
+void cl_mod_add_func(CLSym* mod, CLBytes name, CLBindFunc binding);
+void cl_mod_add_type(CLSym* mod, CLBytes name, CLBindType binding);
+void cl_mod_add_global(CLSym* mod, CLBytes name, CLBindGlobal binding);
+void cl_mod_on_destroy(CLSym* mod, CLModuleOnDestroyFn on_destroy);
+void cl_mod_on_load(CLSym* mod, CLModuleOnLoadFn on_load);
+
+void cl_mod_core(CLVM* vm, CLSym* mod);
+void cl_mod_cy(CLVM* vm, CLSym* mod);
+void cl_mod_c(CLVM* vm, CLSym* mod);
+void cl_mod_meta(CLVM* vm, CLSym* mod);
+void cl_mod_math(CLVM* vm, CLSym* mod);
 
 // -----------------------------------
 // [ Symbols ]
 // -----------------------------------
 
-// Declares a function in a module.
-void clDeclareFuncDyn(CLSym mod, const char* name, uint32_t numParams, CLFuncFn fn);
-void clDeclareFunc(CLSym mod, const char* name, const CLType** params, size_t numParams, CLType* retType, CLFuncFn fn);
-
-// Declares a variable in a module.
-void clDeclareVar(CLSym mod, const char* name, CLType* type, CLValue val);
-
 // Expand type template for given arguments.
-CLType* clExpandTemplateType(CLVM* vm, CLSym type_t, const CLValue* args, size_t nargs);
+CLType* clExpandTypeTemplate(CLVM* vm, CLSym* type_t, const CLType* param_types, const CLValue* args, size_t nargs);
 
 // Find and return the type from a given type specifier.
 // Returns `NULL` if the symbol could not be found or the symbol is not a type.
 // Returns `NULL` if trying to resolve a template expansion that doesn't already exist.
 // NOTE: Currently this behaves like `clResolveType`.
 // If a type is returned, the type specifier is memoized to return the same result.
-CLType* clFindType(CLVM* vm, CLStr spec);
+CLType* cl_find_type(CLVM* vm, CLBytes spec);
 
 // Similar to `clFindType` and also resolves any missing template expansions.
-CLType* clResolveType(CLVM* vm, CLStr spec);
+CLType* clResolveType(CLVM* vm, CLBytes spec);
 
 // -----------------------------------
 // [ Memory ]
 // -----------------------------------
-void clRelease(CLVM* vm, CLValue val);
-void clRetain(CLVM* vm, CLValue val);
+void cl_thread_release(CLThread* t, CLValue val);
+void cl_thread_retain(CLThread* t, CLValue val);
+
+// -----------------------------------
+// [ Host function. ]
+// -----------------------------------
+void* cl_thread_ret(CLThread* t, size_t size);
+void* cl_thread_param(CLThread* t, size_t size);
+void* cl_thread_ptr(CLThread* t);
+double cl_thread_float(CLThread* t);
 
 // Stats of a GC run.
 typedef struct CLGCResult {
@@ -497,31 +454,32 @@ typedef struct CLGCResult {
 } CLGCResult;
 
 // Run the reference cycle detector once and return statistics.
-CLGCResult clCollectCycles(CLVM* vm);
+CLGCResult cl_thread_detect_cycles(CLThread* t);
 
 // Get's the current global reference count.
 // NOTE: This will panic if the lib was not built with `TrackGlobalRC`.
-// RELATED: `clCountObjects()`
-size_t clGetGlobalRC(CLVM* vm);
+// RELATED: `cl_thread_count_objects()`
+size_t cl_thread_rc(CLThread* t);
 
 // Returns the number of live objects.
 // This can be used to check if all objects were cleaned up after `clDeinit`.
-size_t clCountObjects(CLVM* vm);
+size_t cl_thread_count_objects(CLThread* t);
 
 // TRACE mode: Dump live objects recorded in global object map.
-void clTraceDumpLiveObjects(CLVM* vm);
+void cl_thread_dump_live_objects(CLThread* t);
 
 // For embedded, Cyber by default uses malloc (it can be configured to use the high-perf mimalloc).
 // If the host uses a different allocator than Cyber, use `clAlloc` to allocate memory
 // that is handed over to Cyber so it knows how to free it.
 // This is also used to manage accessible buffers when embedding WASM.
 // Only pointer is returned so wasm callsite can just receive the return value.
-void* clAlloc(CLVM* vm, size_t size);
+void* cl_alloc(CLVM* vm, size_t size);
+CLBytes cl_new_bytes(CLVM* vm, size_t size);
 
 // When using the Zig allocator, you'll need to pass the original memory size.
 // For all other allocators, use 1 for `len`.
-void clFree(CLVM* vm, CLStr bytes);
-void clFreeZ(CLVM* vm, const char* str);
+void cl_vm_free(CLVM* vm, CLBytes bytes);
+void cl_vm_freez(CLVM* vm, const char* str);
 
 CLAllocator clGetAllocator(CLVM* vm);
 
@@ -532,107 +490,82 @@ CLAllocator clGetAllocator(CLVM* vm);
 // automatically retain +1 refcount.
 // -----------------------------------
 
-CLStr clNewValueDump(CLVM* vm, CLValue val);
+// Returns a short description about a value given their type id.
+// Specializes for common types. Other types will only output the type id and the address.
+// This is very basic compared to the core API's `to_print_string` and `dump`.
+CLBytes cl_value_desc(CLVM* vm, CLTypeId val_t, CLValue* val);
+
+// void.
+CLValue cl_void();
 
 // Booleans.
 CLValue clBool(bool b);
 bool clAsBool(CLValue val);    // Assumes boolean.
-bool clAsBoxBool(CLValue val); // Assumes boxed boolean.
+bool clAsRefBool(CLValue val); // Assumes ref boolean.
 bool clToBool(CLValue val); // Performs a naive conversion.
 
 // 64-bit integer.
-CLValue clInt(int64_t n);               // Unboxed.
-CLValue clNewInt(CLVM* vm, int64_t n);  // Boxed.
-int64_t clAsBoxInt(CLValue val);        // From boxed.
+CLValue cl_int(int64_t n);
 
 // CLValue clInt32(int32_t n); // Unboxed.
 
 // 64-bit float.
-CLValue clFloat(double f);
-double clAsFloat(CLValue val);
+CLValue cl_float(double f);
+double cl_as_float(CLValue val);
+
+// Pointer.
+CLValue clPtr(void* ptr);
 
 // Symbols.
-CLValue clSymbol(CLVM* vm, CLStr str);
-uint32_t clAsSymbolId(CLValue val);
+CLValue clSymbol(CLVM* vm, CLBytes str);
+uint64_t clAsSymbol(CLValue val);
 
-// `clNewString` is the recommended way to create a new string.
-// Use `Astring` or `Ustring` if you know it will be ASCII or UTF-8 respectively.
-CLValue clNewString(CLVM* vm, CLStr str);
-CLValue clNewAstring(CLVM* vm, CLStr str);
-CLValue clNewUstring(CLVM* vm, CLStr str, uint32_t charLen);
-CLStr clAsString(CLValue val);
-CLStr clToTempString(CLVM* vm, CLValue val);  // Conversion from value to a basic string description.
+// `cl_str` is the recommended way to initialize a new string.
+// `cl_astr` or `cl_ustr` asserts an ASCII or UTF-8 string respectively.
+CL_str cl_str_init(CLThread* t, CLBytes str);
+CL_str cl_astr_init(CLThread* t, CLBytes str);
+CL_str cl_ustr_init(CLThread* t, CLBytes str);
+void cl_str_deinit(CLThread* t, CL_str* str);
+CLBytes clAsString(CLValue val);
+CLBytes cl_object_string(CLThread* t, CLValue val);  // Conversion from value to a basic string description.
 
 // Functions.
 CLFuncSig clGetFuncSig(CLVM* vm, const CLType* params, size_t nparams, CLType ret_t);
-CLFuncSig clGetFuncSigDyn(CLVM* vm, size_t nparams);
-CLValue clNewFuncUnion(CLVM* vm, CLType* union_t, CLFuncFn func);
-
-// Pointers.
-CLValue clNewPointerVoid(CLVM* vm, void* ptr);
+CLValue cl_new_func_union(CLThread* t, CLType* union_t, CLHostFn func);
 
 // Types.
-CLValue clNewType(CLVM* vm, CLType* type);
-CLValue clNewTypeById(CLVM* vm, CLTypeId type_id);
 CLType* clGetType(CLValue val);
 CLTypeId clTypeId(CLType* type);
 
-// Instantiating a `@host type` requires the `typeId` obtained from `CLTypeLoader` and
-// the number of bytes the object will occupy. Objects of the same type can have different sizes.
-// A `CLValue` which contains the object pointer is returned. Call `clAsHostObject` to obtain the pointer
-// or use `clNewHostObjectPtr` to instantiate instead.
-CLValue clNewHostObject(CLVM* vm, CLTypeId typeId, size_t n);
-void* clAsHostObject(CLValue val);
-
-// Like `clNewHostObject` but returns the object's pointer. Wrap it into a value with `clHostObject`.
-void* clNewHostObjectPtr(CLVM* vm, CLTypeId typeId, size_t n);
-
-// Returns a new instance of `type` with a list of field initializers.
-CLValue clNewInstance(CLVM* vm, CLType* type, const CLFieldInit* fields, size_t nfields);
+// Consumes and lifts a value (given as a pointer to the value) to the heap.
+CLValue cl_lift(CLThread* t, CLType* type, void* value);
 
 // Returns the field value of the receiver object `rec`.
-CLValue clGetField(CLVM* vm, CLValue rec, CLStr name);
-
-// Re-encode pointer into a boxed heap object.
-CLValue clHostObject(void* ptr);
-CLValue clVmObject(void* ptr);
+CLValue clGetField(CLVM* vm, CLValue rec, CLBytes name);
 
 // Returns a new option with the some case.
-CLValue clNewSome(CLVM* vm, CLType* option_t, CLValue val);
+CLValue cl_option(CLThread* t, CLType* option_t, CLValue val);
 
 // Returns a new option with the none case.
-CLValue clNewNone(CLVM* vm, CLType* option_t);
+CLValue cl_option_none(CLThread* t, CLType* option_t);
+
+// Returns a new result with a resolved value.
+CLValue cl_result(CLThread* t, CLType* res_t, CLValue val);
+
+// Returns a new result with an error.
+CLValue cl_result_error(CLThread* t, CLType* res_t, CLValue err);
 
 // Returns a new choice of a given case name and value.
-CLValue clNewChoice(CLVM* vm, CLType* choice_t, CLStr name, CLValue val);
+CLValue cl_choice(CLThread* t, CLType* choice_t, CLBytes name, CLValue val);
 
 // Returns the unwrapped value of a choice.
-CLValue clUnwrapChoice(CLVM* vm, CLValue choice, CLStr name);
+CLValue cl_choice_unwrap(CLThread* t, CLType* choice_t, CLValue choice, CLBytes name);
 
-bool clIsFuture(CLVM* vm, CLValue val);
+// Creates an empty array value.
+// Expects an array type `[]T` as `array_t` which can be obtained from `clExpandTypeTemplate` or `clResolveType`.
+CLValue cl_array_empty_new(CLVM* vm, CLType* array_t);
 
-// List[T], `list_t` should be obtained from `clExpandTemplateType`.
-// TODO: It should also be possible to obtain `list_t` from `clResolveType("List[T]")`.
-CLValue clNewList(CLVM* vm, CLType* list_t, const CLValue* vals, size_t len);
-
-// List ops.
-size_t clListLen(CLValue list);
-size_t clListCap(CLValue list);
-CLValue clListGet(CLVM* vm, CLValue list, size_t idx);
-void clListSet(CLVM* vm, CLValue list, size_t idx, CLValue val);
-void clListAppend(CLVM* vm, CLValue list, CLValue val);
-void clListInsert(CLVM* vm, CLValue list, size_t idx, CLValue val);
-
-CLValue clNewEmptyMap(CLVM* vm);
-
-// Map ops.
-// size_t clMapSize(CLValue map);
-// bool clMapContains(CLValue map, CLValue key);
-// bool clMapContainsStringKey(CLValue map, CLStr key);
-// CLValue clMapGet(CLVM* vm, CLValue map, CLValue key);
-// CLValue clMapGetStringKey(CLVM* vm, CLValue map, CLStr key);
-// void clMapSet(CLVM* vm, CLValue map, CLValue key, CLValue val);
-// void clMapSetStringKey(CLVM* vm, CLValue map, CLStr key, CLValue val);
+CLValue cl_map_empty_new(CLThread* t, CLType* map_t);
 
 #ifdef __cplusplus
 } // extern "C"

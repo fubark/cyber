@@ -18,34 +18,34 @@ t.eq(2 + ((3 + 4) / 7), 3)
 --|
 
 -- Bitwise shift before bitwise and.
-t.eq(2 & 1 << 1, 2)
+t.eq(2 && 1 << 1, 2)
 
 -- Bitwise shift before bitwise or.
-t.eq(1 | 1 << 1, 3)
+t.eq(1 || 1 << 1, 3)
 
 --|
 --| Precedence=8, Bitwise and
 --|
 
 -- Bitwise and before bitwise or.
-t.eq(8 | 1 & 1, 9)
+t.eq(8 || 1 && 1, 9)
 
 --|
 --| Precedence=7, Bitwise or, xor
 --|
 
 -- Bitwise or before power.
-t.eq(3 ^ 2 | 1, 27)
+t.eq(3 ** 2 || 1, 27)
 
 --|
 --| Precedence=6, Power
 --|
 
 -- Power before multiplication.
-t.eq(2 * 3 ^ 2, 18)
+t.eq(2 * 3 ** 2, 18)
 
 -- Power before addition.
-t.eq(2 + 3 ^ 2, 11)
+t.eq(2 + 3 ** 2, 11)
 
 --|
 --| Precedence=5, Divide, Modulus, Multiply
@@ -82,9 +82,9 @@ t.eq(true or true and false, true)
 --|
 
 -- Variables and parenthesis.
-var time = 50
-var minTime = 50
-var timeRange = 100
+time := 50
+minTime := 50
+timeRange := 100
 t.eq(5 + 90 * (time - minTime) / timeRange, 5)
 
 -- Left recursion with different operators.

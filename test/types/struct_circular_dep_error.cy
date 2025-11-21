@@ -1,7 +1,7 @@
 type S struct:
     a S
 
-var o = S{}
+o := S{}
 
 --cytest: error
 --CompileError: Structs can not contain a circular dependency.
@@ -9,4 +9,7 @@ var o = S{}
 --main:2:7:
 --    a S
 --      ^
+--main:1:1:
+--type S struct:
+--^~~~~~~~~~~~~~
 --

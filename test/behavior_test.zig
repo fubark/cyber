@@ -22,6 +22,7 @@ const EvalResult = setup.EvalResult;
 const Case = struct {
     config: ?Config,
     path: []const u8,
+    skip: bool = false,
 };
 
 const Runner = struct {
@@ -34,9 +35,18 @@ const Runner = struct {
     fn case2(s: *Runner, config: ?Config, path: []const u8) void {
         s.cases.append(t.alloc, Case{ .config = config, .path = path }) catch @panic("error");
     }
+
+    fn caseSkip(s: *Runner, path: []const u8) void {
+        s.cases.append(t.alloc, Case{ .config = null, .path = path, .skip = true }) catch @panic("error");
+    }
+
+    fn caseDebug(s: *Runner, path: []const u8) void {
+        s.cases.append(t.alloc, Case{ .config = .{ .debug = true }, .path = path }) catch @panic("error");
+    }
 };
 
 const caseFilter: ?[]const u8 = null;
+// const caseFilter: ?[]const u8 = "func_union_type.cy";
 const failFast: bool = true;
 
 // TODO: This could be split into compiler only tests and backend tests.
@@ -49,7 +59,6 @@ test "Tests." {
     const backend = cy.fromTestBackend(build_options.testBackend);
     const aot = cy.isAot(backend);
 
-    run.case("syntax/adjacent_stmt_error.cy");
     run.case("syntax/block_no_child_error.cy");
     run.case("syntax/change_to_spaces_error.cy");
     run.case("syntax/change_to_tabs_error.cy");
@@ -59,71 +68,47 @@ test "Tests." {
     run.case("syntax/compact_block_error.cy");
     run.case("syntax/func_missing_param_type_error.cy");
     run.case("syntax/func_param_group.cy");
-if (!aot) {
     run.case("syntax/indentation.cy");
-}
     run.case("syntax/last_line_empty_indent.cy");
     run.case("syntax/no_stmts.cy");
-    run.case("syntax/object_decl_eof.cy");
-    run.case("syntax/object_decl_typespec_eof.cy");
-    run.case("syntax/object_missing_semicolon_error.cy");
     run.case("syntax/parse_end_error.cy");
     run.case("syntax/parse_middle_error.cy");
     run.case("syntax/parse_skip_shebang_error.cy");
-if (!aot) {
     run.case("syntax/parse_skip_shebang_panic.cy");
     run.case("syntax/parse_start_error.cy");
     run.case("syntax/skip_utf8_bom.cy");
     run.case("syntax/stmt_end_error.cy");
     run.case("syntax/tabs_spaces_error.cy");
     run.case("syntax/tuple_field_group.cy");
+    run.case("syntax/type_decl_eof.cy");
+    run.case("syntax/type_missing_colon_error.cy");
     run.case("syntax/visibility.cy");
     run.case("syntax/wrap_stmts.cy");
-
     run.case("functions/assign_capture_local_error.cy");
     run.case("functions/assign_error.cy");
     run.case("functions/call_at_ct.cy");
     run.case("functions/call_at_ct_error.cy");
     run.case("functions/call_block.cy");
-}
-    run.case("functions/call_bool_param_error.cy");
-if (!aot) {
+    run.case("functions/call_incompat_param_error.cy");
     run.case("functions/call_closure.cy");
     run.case("functions/call_closure_param_error.cy");
-}
-
-    run.case("functions/call_dyn_object_member.cy");
     run.case("functions/call_excess_args_error.cy");
     run.case("functions/call_excess_args_overloaded_error.cy");
-if (!aot) {
-    run.case("functions/call_fiber_param.cy");
-}
+    run.case("functions/call_overload_incompat_arg_error.cy");
     run.case("functions/call_float_param_error.cy");
     run.case("functions/call_method_missing_error.cy");
     run.case("functions/call_method_sig_error.cy");
-if (!aot) {
     run.case("functions/call_host.cy");
     run.case("functions/call_host_param_error.cy");
-}
-if (!aot) {
-    run.case("functions/call_object_param.cy");
-}
-    run.case("functions/call_object_param_error.cy");
-if (!aot) {
     run.case("functions/call_op.cy");
-    run.case("functions/call_overloaded_dyn_arg_panic.cy");
-    run.case("functions/call_param_panic.cy");
-}
-    run.case("functions/call_pointer_param_error.cy");
     run.case("functions/call_recursive.cy");
-if (!aot) {
-    run.case("functions/call_shorthand.cy");
     run.case("functions/call_static_lambda_incompat_arg_error.cy");
-    run.case("functions/call_string_param_error.cy");
-    run.case("functions/call_symbol_param_error.cy");
-    run.case("functions/call_type_param.cy");
+    run.case("functions/call_struct_param.cy");
+    run.case("functions/call_struct_param_error.cy");
+    run.case("functions/call_template_method_error.cy");
     run.case("functions/call_typed_param.cy");
     run.case("functions/call_undeclared_error.cy");   
+    run.case("functions/call_missing_assignment_error.cy");
     run.case("functions/decl_over_builtin.cy");
     run.case("functions/funcsym_type.cy");
     run.case("functions/func_type.cy");
@@ -133,32 +118,55 @@ if (!aot) {
     run.case("functions/func_union_type_error.cy");
     run.case("functions/lambda.cy");
     run.case("functions/lambda_incompat_arg_error.cy");
-    run.case("functions/namespace_call.cy");
+    run.case("functions/main_func_overload_error.cy");
+    run.case("functions/main_func_panic.cy");
+    run.case("functions/main_func_sig_error.cy");
+    run.case("functions/main_func_top_stmt_error.cy");
+    run.case("functions/@init.cy");
     run.case("functions/overload.cy");
     run.case("functions/read_capture_local_error.cy");
+    run.case("functions/capture_non_ref_error.cy");
     run.case("functions/static.cy");
     run.case("functions/struct_funcs.cy");
     run.case("functions/template_functions.cy");
-    run.case("functions/template_value.cy");
-    run.case("functions/template_value_host_error.cy");
-    run.case("functions/template_value_throw_error.cy");
+    run.case("functions/template_method_error.cy");
     // run.case("functions/void_param_error.cy");
-
     run.case("memory/arc_cases.cy");
+    run.case("memory/borrow.cy");
+    run.case("memory/borrow_index_addr_error.cy");
+    run.case("memory/call_with_ref_local.cy");
+    run.case("memory/call_with_ref_rvalue.cy");
+    run.case("memory/custom_deinit.cy");
 if (!cy.isWasm) {
-    run.case("memory/default_memory.cy");
+    // run.case("memory/default_memory.cy");
 }
-    run.case("memory/gc_reference_cycle_unreachable.cy");
-    run.case2(.{ .cleanupGC = true }, "memory/gc_reference_cycle_reachable.cy");
+    // run.case("memory/gc_reference_cycle_unreachable.cy");
+    // run.case2(.{ .cleanupGC = true }, "memory/gc_reference_cycle_reachable.cy");
     run.case("memory/release_expr_stmt_return.cy");
     run.case("memory/release_scope_end.cy");
-
-    run.case("types/any.cy");
+    run.case("memory/lift_borrow_error.cy");
+    run.case("memory/lift_borrow_container_error.cy");
+    run.case("memory/lift_moves_rvalue.cy");
+    run.case("memory/move_local_to_return.cy");
+    run.case("memory/move_use_after_error.cy");
+    run.case("memory/override_copy.cy");
+    run.case("memory/partial_move.cy");
+    run.case("memory/partial_move_use_after_error.cy");
+    run.case("memory/partial_move_ref_child_error.cy");
+    run.case("memory/return_moves_rvalue.cy");
+    run.case("memory/return_borrow_scope_missing_error.cy");
+    run.case("memory/return_borrow_container_scope_missing_error.cy");
+    run.case("memory/scope_param_missing_error.cy");
+    run.case("memory/scope_too_many_params_error.cy");
+    run.case("memory/scope_return_error.cy");
+    run.case("memory/scope_return.cy");
+    run.case("memory/scope_assign_shorter_span_lifetime_error.cy");
+    run.case("memory/scope_assign_shorter_borrow_lifetime_error.cy");
+    run.case("memory/sink_use_rec_after_error.cy");
+    run.case("memory/sink_use_arg_after_error.cy");
+    run.case("types/bitcast.cy");
     run.case("types/cast.cy");
     run.case("types/cast_error.cy");
-    run.case("types/cast_narrow_panic.cy");
-    run.case("types/cast_panic.cy");
-    // try case("types/cast_union_panic.cy")
     // // Failed to cast to abstract type at runtime.
     // try eval(.{ .silent = true },
     //     \\let a = 123
@@ -174,40 +182,30 @@ if (!cy.isWasm) {
     //     );
     // }}.func);
     run.case("types/choice_access_error.cy");
-    run.case("types/choice_access_panic.cy");
     run.case("types/choice_type.cy");
     run.case("types/choice_unwrap_panic.cy");
     run.case("types/cstructs.cy");
-    run.case("types/distinct.cy");
-}
-if (!aot) {
     run.case("types/enums.cy");
-}
     run.case("types/func_return_type_error.cy");
     run.case("types/func_param_type_undeclared_error.cy");
-if (!aot) {
-    run.case("types/object_init_dyn_field.cy");
+    run.case("types/objects.cy");
+    run.case("types/object_downcast_panic.cy");
+    run.case("types/object_init_object_field.cy");
     run.case("types/object_init_field.cy");
     run.case("types/object_init_field_error.cy");
-    run.case("types/object_init_field_panic.cy");
-    run.case("types/object_init_undeclared_field_error.cy");
     run.case("types/object_set_field.cy");
-    run.case("types/object_set_field_dyn_recv_panic.cy");
     run.case("types/object_set_field_error.cy");
-    run.case("types/object_set_field_panic.cy");
-    run.case("types/object_set_undeclared_field_error.cy");
-    run.case("types/object_zero_init.cy");
-    run.case("types/optionals_incompat_value_error.cy");
-    run.case("types/optionals_unwrap_panic.cy");
-    run.case("types/optionals.cy");
     run.case("types/pointers.cy");
-    run.case("types/refs.cy");
-    run.case("types/self_type.cy");
-    run.case("types/slices.cy");
+    run.case("types/PtrSpan.cy");
+    run.case("types/Self.cy");
     run.case("types/struct_circular_dep_error.cy");
     run.case("types/structs.cy");
-    run.case("types/struct_unnamed.cy");
-    run.case("types/struct_zero_init_error.cy");
+    run.case("types/struct_default_initializer.cy");
+    run.case("types/struct_default_initializer_error.cy");
+    run.case("types/struct_init_undeclared_field_error.cy");
+    run.case("types/struct_set_undeclared_field_error.cy");
+    run.case("types/struct_require_field_error.cy");
+    run.case("types/struct_nested.cy");
     run.case("types/template_choices.cy");
     run.case("types/template_dep_param_type.cy");
     run.case("types/template_dep_param_type_error.cy");
@@ -215,11 +213,11 @@ if (!aot) {
     run.case("types/template_object_spec_noexpand_error.cy");
     run.case("types/template_object_expand_error.cy");
     run.case("types/template_structs.cy");
-    run.case("types/template_builtin_ints.cy");
     run.case("types/trait_error.cy");
     run.case("types/trait.cy");
     run.case("types/tuple.cy");
     run.case("types/type_alias.cy");
+    run.case("types/type_alias_path_decl_error.cy");
     run.case("types/type_spec.cy");
     run.case("types/void.cy");
 
@@ -243,13 +241,19 @@ if (!aot) {
         run.case2(Config.initFileModules("./test/modules/import_sym_alias.cy"), "modules/import_sym_alias.cy");
     }
     run.case("modules/core.cy");
+if (!aot) {
     run.case("modules/cy.cy");
+}
+
     run.case("modules/math.cy");
+    run.case("modules/meta.cy");
     run.case("modules/test_eq_panic.cy");
     run.case("modules/test.cy");
     if (!cy.isWasm and !build_options.link_test) {
         // Disabled when linking with lib because os.args().len check fails.
+        run.case("modules/libc.cy");
         run.case("modules/os.cy");
+        // run.case("modules/io.cy");
     }
 
     // Disabled test: printing to stdout hangs test runner.
@@ -257,101 +261,94 @@ if (!aot) {
     run.case("meta/ct_if.cy");
     run.case("meta/get_panic.cy"); 
     run.case("meta/get_set.cy"); 
-    run.case("meta/init_pair.cy"); 
-    run.case("meta/init_pair_error.cy"); 
+    run.case("meta/init_record.cy"); 
+    run.case("meta/init_record_error.cy"); 
     run.case("meta/set_panic.cy"); 
     run.case("meta/type.cy");
 
-    run.case("concurrency/fibers.cy");
+if (!aot) {
     run.case("concurrency/await.cy");
+    run.case("concurrency/generator.cy");
+    run.case("concurrency/spawn.cy");
+}
 
-    run.case("errors/error_values.cy");
-    run.case("errors/throw.cy");
-    run.case("errors/throw_func_panic.cy");
-    run.case("errors/throw_main_panic.cy");
-    run.case("errors/throw_nested_func_panic.cy");
-    run.case("errors/try_catch.cy");
-    run.case("errors/try_catch_expr.cy");
-    run.case("errors/try_expr.cy");
-
+    run.case("core/Array.cy");
+    run.case("core/Array_oob_panic.cy");
+    run.case("core/Array_neg_oob_panic.cy");
     run.case("core/arithmetic_ops.cy");
-    run.case("core/arithmetic_unsupported_panic.cy");
-    run.case("core/arrays.cy");
+    run.case("core/arithmetic_unsupported_error.cy");
     run.case("core/bool.cy");
     run.case("core/byte.cy");
     run.case("core/compare_eq.cy");
     run.case("core/compare_neq.cy");
+    run.case("core/error_values.cy");
     run.case("core/escape_sequences.cy");
     run.case("core/floats.cy");
     run.case("core/ints.cy");
     run.case("core/int_unsupported_notation_error.cy");
-    run.case("core/list_neg_index_oob_panic.cy");
-    run.case("core/lists.cy");
     run.case("core/logic_ops.cy");
     run.case("core/map_index_panic.cy");
-    run.case("core/maps.cy");
-    run.case("core/must.cy");
-    run.case("core/must_panic.cy");
+    run.case("core/Map.cy");
     run.case("core/op_precedence.cy");
+    run.case("core/optionals_incompat_value_error.cy");
+    run.case("core/optionals_unwrap_panic.cy");
+    run.case("core/Option.cy");
+    run.case("core/option_unwrap_block_reachable_error.cy");
     run.case("core/panic_panic.cy");
+    run.case("core/PartialVector.cy");
     run.case("core/raw_string_single_quote_error.cy");
     run.case("core/raw_string_new_line_error.cy");
+    run.case("core/Result.cy");
+    run.case("core/result_unwrap_block_reachable_error.cy");
+    run.case("core/result_infer_return.cy");
     run.case("core/rune_empty_lit_error.cy");
     run.case("core/rune_multiple_lit_error.cy");
     run.case("core/rune_grapheme_cluster_lit_error.cy");
     run.case("core/set_index_unsupported_error.cy");
-    run.case("core/string_new_line_error.cy");
-    run.case("core/string_interpolation.cy");
-}
+    run.case("core/Slice.cy");
+    run.case("core/Slice_oob_panic.cy");
+    run.case("core/Slice_neg_oob_panic.cy");
+    run.case("core/str_new_line_error.cy");
+    run.case("core/str_interpolation.cy");
+    run.case("core/str_runeAt_neg_oob_panic.cy");
+    run.case("core/str_runeAt_oob_panic.cy");
+    run.case("core/str_index_neg_oob_panic.cy");
+    run.case("core/str_index_oob_panic.cy");
     run.case("core/strings.cy");
     run.case("core/strings_ascii.cy");
     run.case("core/strings_utf8.cy");
-    run.case("core/string_slices_ascii.cy");
-    run.case("core/string_slices_utf8.cy");
-if (!aot) {
     run.case("core/symbols.cy");
-    run.case("core/table.cy");
-    run.case("core/table_access_panic.cy"); 
-    run.case("core/tag_lit.cy");
-}
+    // run.case("core/table.cy");
+    // run.case("core/table_access_panic.cy"); 
+    run.case("core/Vector.cy");
+    run.case("core/Vector_neg_oob_panic.cy");
+    run.case("core/Vector_oob_panic.cy");
+    run.case("core/wyhash.cy");
 
-    run.case("vars/context_var_redeclare_error.cy");
-    run.case("vars/context_var.cy");
-    run.case("vars/local_assign_dyn_panic.cy");
+    run.case("vars/const.cy");
+    run.case("vars/const_init_rtval_error.cy");
+    run.case("vars/const_init_ctval_error.cy");
+    run.case("vars/const_write_error.cy");
     run.case("vars/local_assign_error.cy");
-if (!aot) {
     run.case("vars/local_assign.cy");
-}
     run.case("vars/local_attr_error.cy");
-    run.case("vars/local_decl_infers_dyn.cy");
-
     run.case("vars/local_dup_error.cy");
-    run.case("vars/local_init_dyn_panic.cy");
-    run.case("vars/local_init_error.cy");
-if (!aot) {
     run.case("vars/local_init.cy");
-    run.case("vars/local_shadow_after_ref.cy");
+    run.case("vars/local_shadow.cy");
+    run.case("vars/local_no_shadow_for_capture.cy");
     run.case("vars/op_assign.cy");
-}
-    run.case("vars/read_undeclared_error.cy");
     run.case("vars/read_undeclared_error.cy");
     run.case("vars/read_undeclared_diff_scope_error.cy");
     run.case("vars/read_outside_if_var_error.cy");
     run.case("vars/read_outside_for_iter_error.cy");
     run.case("vars/read_outside_for_var_error.cy");
     run.case("vars/set_undeclared_error.cy");
-if (!aot) {
-    run.case("vars/static_assign.cy");
-    run.case("vars/static_init.cy");
-}
-    run.case("vars/static_init_capture_error.cy");
-    run.case("vars/static_init_circular_ref_error.cy");
-if (!aot) {
-    run.case("vars/static_init_dependencies.cy");
-    run.case("vars/static_init_error.cy");
-    run.case("vars/static_init_read_self_error.cy");
-    run.case("vars/use_global.cy");
-    run.case("vars/use_global_panic.cy");
+    run.case("vars/global_assign.cy");
+    run.case("vars/global_init.cy");
+    // run.case("vars/global_init_call_error.cy");
+    run.case("vars/global_init_capture_error.cy");
+    run.case("vars/global_init_ref_error.cy");
+    run.case("vars/global_init_type_error.cy");
 
     run.case("control_flow/for_iter.cy");
     run.case("control_flow/for_iter_unsupported_error.cy");
@@ -360,15 +357,26 @@ if (!aot) {
     run.case("control_flow/if_expr_error.cy");
     run.case("control_flow/if_stmt.cy");
     run.case("control_flow/if_unwrap.cy");
+    run.case("control_flow/return.cy");
     run.case("control_flow/switch.cy");
     run.case("control_flow/switch_error.cy");
-    run.case("control_flow/return.cy");
+    run.case("control_flow/switch_choice_else_error.cy");
+    run.case("control_flow/switch_choice_dup_case_error.cy");
+    run.case("control_flow/switch_choice_unhandled_error.cy");
+    run.case("control_flow/try_error.cy");
+    run.case("control_flow/try.cy");
+    run.case("control_flow/try_panic.cy");
+    run.case("control_flow/unreachable.cy");
+    // run.case("control_flow/unreachable_error.cy");
     run.case("control_flow/while_cond.cy");
     run.case("control_flow/while_inf.cy");
     run.case("control_flow/while_unwrap.cy");
-}
+
+    run.case("../src/tokenizer.cy");
 
     var numPassed: u32 = 0;
+    var skipped: u32 = 0;
+    defer std.debug.print("Tests passed: {}/{}, skipped: {}\n", .{numPassed, run.cases.items.len, skipped});
     for (run.cases.items) |run_case| {
         if (caseFilter) |filter| {
             if (std.mem.indexOf(u8, run_case.path, filter) == null) {
@@ -376,6 +384,13 @@ if (!aot) {
             }
         }
         std.debug.print("test: {s}\n", .{run_case.path});
+
+        if (run_case.skip) {
+            skipped += 1;
+            continue;
+        }
+
+        errdefer std.debug.print("failed test: {s}\n", .{run_case.path});
         case2(run_case.config, run_case.path) catch |err| {
             std.debug.print("Failed: {}\n", .{err});
             if (failFast) {
@@ -386,7 +401,6 @@ if (!aot) {
         };
         numPassed += 1;
     }
-    std.debug.print("Tests: {}/{}\n", .{numPassed, run.cases.items.len});
     if (numPassed < run.cases.items.len) {
         return error.Failed;
     }
@@ -422,7 +436,7 @@ test "Compile." {
 }
 
 fn compileCase(config: Config, path: []const u8) !void {
-    const fpath = try std.mem.concat(t.alloc, u8, &.{ thisDir(), "/", path });
+    const fpath = try std.mem.concat(t.alloc, u8, &.{ "test/", path });
     defer t.alloc.free(fpath);
     const contents = try std.fs.cwd().readFileAlloc(t.alloc, fpath, 1e9);
     defer t.alloc.free(contents);
@@ -612,22 +626,35 @@ test "windows new lines" {
 //     }
 // }
 
-inline fn thisDir() []const u8 {
-    return comptime std.fs.path.dirname(@src().file) orelse "test";
-}
-
 fn case(path: []const u8) !void {
     try case2(null, path);
 }
 
+fn seekCommentEnd(str: []const u8, start: usize) usize {
+    var idx = start;
+    while (true) {
+        if (str[idx..].len >= 3 and str[idx] == '\n' and str[idx+1] == '-' and str[idx+2] == '-') {
+            idx += 1;
+            if (std.mem.indexOfScalarPos(u8, str, idx, '\n')) |nl| {
+                idx = nl;
+            } else {
+                idx = str.len;
+            }
+        } else {
+            break;
+        }
+    }
+    return idx;
+}
+
 fn case2(config: ?Config, path: []const u8) !void {
-    const fpath = try std.mem.concat(t.alloc, u8, &.{ thisDir(), "/", path });
+    const fpath = try std.mem.concat(t.alloc, u8, &.{ "test/", path });
     defer t.alloc.free(fpath);
-    const contents = try std.fs.cwd().readFileAllocOptions(t.alloc, fpath, 1e9, null, @alignOf(u8), 0);
+    const contents = try std.fs.cwd().readFileAllocOptions(t.alloc, fpath, 1e9, null, .@"1", 0);
     defer t.alloc.free(contents);
 
     var idx = std.mem.indexOf(u8, contents, "cytest:") orelse {
-        return error.MissingCyTest;
+        return error.MissingTestDefinition;
     };
 
     var rest = contents[idx+7..];
@@ -635,22 +662,9 @@ fn case2(config: ?Config, path: []const u8) !void {
     const test_t = std.mem.trim(u8, rest[0..idx], " ");
 
     if (std.mem.eql(u8, test_t, "error")) {
-        // Find end of last comment.
         const start = idx+1;
-        while (true) {
-            if (rest[idx..].len >= 3 and rest[idx] == '\n' and rest[idx+1] == '-' and rest[idx+2] == '-') {
-                idx += 1;
-                if (std.mem.indexOfScalarPos(u8, rest, idx, '\n')) |nl| {
-                    idx = nl;
-                } else {
-                    idx = rest.len;
-                }
-            } else {
-                break;
-            }
-        }
-
-        const exp = rest[start..idx];
+        const end = seekCommentEnd(rest, idx);
+        const exp = rest[start..end];
 
         var buf: [1024]u8 = undefined;
         const len = std.mem.replacementSize(u8, exp, "--", "");
@@ -665,7 +679,55 @@ fn case2(config: ?Config, path: []const u8) !void {
         try eval(fconfig, contents
         , struct { fn func(run: *VMrunner, res: EvalResult) !void {
             const ctx_: *Context = @ptrCast(@alignCast(run.ctx));
-            try run.expectErrorReport2(res, ctx_.exp);
+            try run.expectErrorReport2(res, ctx_.exp, false);
+        }}.func);
+    } else if (std.mem.eql(u8, test_t, "panic")) {
+        const start = idx;
+        var buf: [1024]u8 = undefined;
+        const len = std.mem.replacementSize(u8, rest[start..], "\n--", "\n");
+        _ = std.mem.replace(u8, rest[start..], "\n--", "\n", &buf);
+        const cur = buf[0..len];
+        _ = cur;
+
+        var exp_str: []const u8 = undefined;
+        const backend = cy.fromTestBackend(build_options.testBackend);
+        const aot = cy.isAot(backend);
+
+        const trace_idx = std.mem.indexOf(u8, buf[0..len], "[trace]") orelse {
+            return error.MissingExpectedTrace;
+        };
+        if (!aot) {
+            const starts_with = buf[1..trace_idx];
+            const ends_with = buf[trace_idx+8..len];
+            const Context2 = struct {
+                exp_start: []const u8,
+                exp_end: []const u8,
+            };
+            var ctx = Context2{ .exp_start = starts_with, .exp_end = ends_with };
+            var fconfig: Config = config orelse .{ .silent = true };
+            fconfig.ctx = &ctx;
+            try eval(fconfig, contents
+            , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+                const ctx_: *Context2 = @ptrCast(@alignCast(run.ctx));
+                try run.expectErrorReport3(res, ctx_.exp_start, ctx_.exp_end);
+            }}.func);
+            return;
+        } else {
+            exp_str = buf[1..trace_idx-1];
+        }
+
+        const Context = struct {
+            exp: []const u8,
+        };
+        var ctx = Context{ .exp = exp_str };
+        var fconfig: Config = config orelse .{ .silent = true };
+        fconfig.ctx = &ctx;
+        try eval(fconfig, contents
+        , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+            const ctx_: *Context = @ptrCast(@alignCast(run.ctx));
+            const backend_ = cy.fromTestBackend(build_options.testBackend);
+            const aot_ = cy.isAot(backend_);
+            try run.expectErrorReport2(res, ctx_.exp, aot_);
         }}.func);
     } else if (std.mem.eql(u8, test_t, "pass")) {
         const fconfig: Config = config orelse .{};

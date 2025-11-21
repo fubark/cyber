@@ -6,11 +6,13 @@
 /docs-todo.md
 /docs/docs-modules.md
 /docs/docs.html
+/docs/api.html
 /temp.cy
 /test.txt
 /test/assets/write.txt
 /exts/vscode/cyber-0.0.1.vsix
 /examples/libfoo.so
+/examples/libfoo.dylib
 /examples/foo.o
 /examples/web-playground/cyber.wasm
 /cyber.s

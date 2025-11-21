@@ -5,8 +5,6 @@ const c = @cImport({
     @cInclude("mimalloc.h");
 });
 
-pub usingnamespace c;
-
 pub fn collect(force: bool) void {
     c.mi_collect(force);
 }
@@ -19,6 +17,7 @@ pub const Allocator = struct {
         .resize = resize,
         .remap = remap,
         .free = free,
+        .remap = remap,
     };
 
     pub fn init(self: *Allocator) void {
@@ -49,7 +48,8 @@ pub const Allocator = struct {
     ) ?[*]u8 {
         _ = ptr;
         _ = ret_addr;
-        return @ptrCast(c.mi_malloc_aligned(len, alignment.toByteUnits()));
+        const byte_alignment = alignment.toByteUnits();
+        return @ptrCast(c.mi_malloc_aligned(len, byte_alignment));
     }
 
     fn resize(
@@ -72,16 +72,13 @@ pub const Allocator = struct {
         }
     }
 
-    fn remap(
-        ptr: *anyopaque,
-        buf: []u8,
-        alignment: std.mem.Alignment,
-        new_len: usize,
-        ret_addr: usize
-    ) ?[*]u8 {
+    fn remap(ptr: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {
         _ = ptr;
+        _ = memory;
+        _ = alignment;
+        _ = new_len;
         _ = ret_addr;
-        return @ptrCast(c.mi_realloc_aligned(buf.ptr, new_len, alignment.toByteUnits()));
+        return null;
     }
 
     fn free(

@@ -1,5 +1,5 @@
 if true:
-    var a = 1
+    a := 1
 a
 
 --cytest: error

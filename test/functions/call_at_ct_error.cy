@@ -1,16 +1,17 @@
-fn GetType(a int) type:
+#[consteval]
+fn GetType(a int) -> type:
     if a == 0:
         return bool
     else:
         return string
 
-var i = 0
-GetType#(i)
+i := 0
+GetType(i)
 
 --cytest: error
---CompileError: Expected compile-time argument.
+--CompileError: Could not find the symbol `i`.
 --
---main:8:10:
---GetType#(i)
---         ^
+--main:9:9:
+--GetType(i)
+--        ^
 --

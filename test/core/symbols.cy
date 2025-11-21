@@ -1,6 +1,6 @@
 use test
 
-var n = symbol.Tiger
-test.eq(int(n), 49)
+n := @Tiger
+test.eq(50, as n)
 
 --cytest: pass

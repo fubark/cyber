@@ -1,10 +1,11 @@
 #!cyber
-throw error.Boom
+panic('Boom')
 
---cytest: error
---panic: error.Boom
+--cytest: panic
+--panic: Boom
 --
+--[trace]
 --main:2:1 main:
---throw error.Boom
+--panic('Boom')
 --^
 --

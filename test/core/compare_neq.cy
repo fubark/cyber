@@ -1,23 +1,23 @@
-use t 'test'
+use test
 
 -- Strings.
-t.eq('foo' != 'foo', false)
-t.eq('foo' != 'bar', true)
+test.eq(false, 'foo' != 'foo')
+test.eq(true, 'foo' != 'bar')
 
 -- Comparing objects.
 type S:
-    value any
-var o = ^S{value=3}
-t.eq(o != ^S{value=3}, true)
-var o2 = o
-t.eq(o != o2, false)
+    value int
+o := ^S{value=3}
+test.eq(true, o != ^S{value=3})
+o2 := o
+test.eq(false, o != o2)
 
 -- Compare symbols.
-t.eq(symbol.abc != .xyz, true) 
-t.eq(symbol.abc != .abc, false)
+test.eq(true, @abc != @xyz) 
+test.eq(false, @abc != @abc)
 
 -- Compare errors.
-t.eq(error.SomeError != error.OtherError, true)
-t.eq(error.SomeError != error.SomeError, false)
+test.eq(true, error.SomeError != error.OtherError)
+test.eq(false, error.SomeError != error.SomeError)
 
 --cytest: pass

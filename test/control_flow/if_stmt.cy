@@ -1,7 +1,7 @@
 use t 'test'
 
 -- if branch.
-var foo = 0
+foo := 0
 if true:
     foo = 123
 else:

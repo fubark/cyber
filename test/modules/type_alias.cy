@@ -2,13 +2,13 @@ use a './test_mods/a.cy'
 use t 'test'
 
 -- Type alias of imported type.
-type Vec2 -> a.Vec2
+type Vec2 = a.Vec2
 
 -- Using alias as type spec.
 type Parent:
     v Vec2
 
-var v = Vec2{x=1, y=2}
+v := Vec2{x=1, y=2}
 t.eq(v.x, 1.0)
 t.eq(v.y, 2.0)
 

@@ -1,7 +1,7 @@
 use t 'test'
 
 -- Infinite loop clause.
-var i = 0
+i := 0
 while:
     i += 1
     if i == 10:
@@ -17,7 +17,7 @@ while:
 
 -- Continue.
 i = 0
-var count = 0
+count := 0
 while:
     i += 1
     if i == 4:
@@ -29,10 +29,11 @@ t.eq(count, 9)
 
 -- Single line block.
 i = 0
-var inc = fn() int:
-    i += 1
-    return i
+j := ^0
+inc := fn() -> int:
+    j.* += 1
+    return j.*
 while: if inc() == 10: break
-t.eq(i, 10)
+t.eq(j.*, 10)
 
 --cytest: pass

@@ -1,12 +1,12 @@
 use test
 
-type Foo[T type, Value T] struct:
+type Foo[T Any, const Value T]:
     a T
 
-    fn get(self) T:
-        return self.a + Value
+fn (&Foo[]) get() -> T:
+    return $a + #{Value}
 
-var f = Foo[int, 10]{a=123}
+f := Foo[int, 10]{a=123}
 test.eq(f.get(), 133)
 
 --cytest: pass

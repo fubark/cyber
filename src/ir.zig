@@ -6,15 +6,16 @@ const log = cy.log.scoped(.ir);
 const ast = cy.ast;
 
 /// An IR is useful because the AST isn't suited to represent the result of sema.
+/// The goal for the IR is to handle most of the heavy lifting such as type checking, lifetimes, arc, and  destructors.
+/// This should allow codegen to perform a simple translation from the IR.
 /// The IR is generated during the sema pass and thrown away after it is consumed by codegen.
+///
 /// A couple of reasons for an IR:
-/// 1. Since there is static symbol resolution, some statements and expressions become irrelevant.
-/// 2. Type inference, an operation's invocation may be patched:
-///    Bin-exprs could be inlined rather than invoking an operator function.
-/// 3. Lifted vars/param copies can be patched as sema discovers them.
-/// 4. Additional IR can be added that have no source attribution such as
-///    static variable initializers and zero values.
-/// 5. Makes bc codegen simpler, creating additional backends should also be simpler.
+/// 1. Since there are static types and symbols, some statements and expressions become irrelevant.
+/// 2. Backpatching for param copies and capturing variables.
+/// 3. Additional IR can be added such as extracting managed temps into locals, perform value copying,
+///    ARC retain/release, static variable initializers, and zero values.
+/// 4. Should make bytecode and C backends simpler. Creating additional backends should also be simpler.
 ///
 /// The IR is a tree structure but all the nodes are packed into a linear array.
 /// IR nodes are indexed by their position in the array.
@@ -32,265 +33,369 @@ pub const StmtCode = enum(u8) {
     /// will be written to at some point in the function.
     funcBlock,
 
-    declareLocal,
-    declareLocalInit,
+    declare_local,
+    discard,
 
+    // For recovering local lifetimes and break control flow.
     block,
 
-    exprStmt,
-    ifStmt,
-    switchStmt,
-    tryStmt,
-    loopStmt,
-    forRangeStmt,
-    retStmt,
-    retExprStmt,
-    breakStmt,
-    contStmt,
+    // For recovering local lifetimes.
+    pop_locals,
 
-    /// precedes a set* stmt.
-    opSet,
+    if_block,
+    switch_stmt,
+    tryStmt,
+    loop_block,
+    forRangeStmt,
+    yield,
+    await_,
+    ret,
+    ret_expr,
+    ret_gen,
+    break_,
+    continue_,
+    trap,
 
     set,
-    setLocal,
+    set_local,
+    set_ret,
     setCaptured,
-    set_field_dyn,
     set_field,
-    setIndex,
-    set_var_sym,
+    set_global,
     set_deref,
 
-    /// Like `set_var_sym` but allows referencing IR from a different chunk.
-    init_var_sym,
+    release,
 
-    pushDebugLabel,
+    /// Nop with a label.
+    /// This can be useful for debugging without introducing any value management. e.g. In $destruct.
+    nop_label,
+
     dumpBytecode,
     verbose,
 };
 
+pub const Continue = struct {
+    base: Stmt = undefined,
+
+    // Offset from the function's block.
+    block_offset: u32,
+};
+
+pub const Break = struct {
+    base: Stmt = undefined,
+
+    // Offset from the function's block.
+    block_offset: u32,
+};
+
+pub const SimpleStmt = struct {
+    base: Stmt = undefined,
+};
+
+pub const Stmt = extern struct {
+    code: StmtCode,
+    node: *ast.Node,
+    next: ?*Stmt,
+
+    pub fn cast(self: *Stmt, comptime code: StmtCode) *StmtImpl(code) {
+        if (cy.Trace) {
+            if (self.code != code) {
+                std.debug.panic("Expected {}, found {}.", .{code, self.code});
+            }
+        }
+        return @ptrCast(@alignCast(self));
+    }
+};
+
 pub const ExprCode = enum(u8) {
-    cast,
-
-    coinitCall,
-    coyield,
-    coresume,
-
-    await_expr,
-
-    local,
-    object_init,
-
-    fieldDyn,
-    field,
-
-    array,
-    list,
-    map,
-
-    voidv,
-    truev,
-    falsev,
-    errorv,
-    symbol,
-    tag_lit,
-    float,
-    int,
-    byte,
-    none,
-    unOpEnd,
-    func_ptr,
-    func_union,
-    varSym,
-    context,
-    type,
-    enumMemberSym,
-    string,
-    lambda,
-    closure,
-    if_expr,
+    and_op,
+    bitcast,
     captured,
-    throw,
-    switchExpr,
-    switchCase,
-
-    /// Placeholder that is patched later to be `preCall`, `preBinOp`, `preUnOp`, etc.
-    pre,
-    preBinOp,
-    preUnOp,
-    call_value,
-    call_dyn,
-    call_sym,
+    case_cond,
+    cast,
+    closure,
+    const8,
+    const16,
+    const32,
+    const64,
+    falsev,
+    field,
+    func,
+    func_ptr,
+    init,
+    init_case,
+    init_zero,
+    is_zero,
+    lambda,
+    lift,
+    local,
+    spawn,
+    global,
+    string,
+    truev,
+    undef,
+    voidv,
+    switch_case,
+    or_op,
+    neg,
+    not,
+    xor,
+    lsl,
+    asr,
+    lsr,
+    add,
+    sub,
+    imul,
+    mul,
+    idiv,
+    div,
+    mod,
+    imod,
+    fadd,
+    fsub,
+    fmod,
+    fmul,
+    fneg,
+    fdiv,
+    fabs,
+    cmp,
+    f2i,
+    i2f,
+    zext,
+    sext,
+    binary_op,
+    unary_op,
+    call_ptr,
+    call_union,
+    call,
     call_trait,
+    retain,
 
-    andOp,
-    orOp,
+    gen_next,
+    gen_end,
 
-    tryExpr,
-    type_check,
-    typeCheckOption,
-
-    blockExpr,
     mainEnd,
-    else_block,
-    unwrapChoice,
-    unwrap_or,
-    box,
-    unbox,
+    unwrap_addr,
+    unwrap_nz,
     trait,
     address_of,
     deref,
+    trunc,
+    case,
+    vector,
+    partial_vector,
 };
 
-pub const ExprType = packed struct {
-    type: u63,
-    throws: bool,
+pub const SimpleExpr = struct {
+    base: Expr = undefined,
+};
 
-    pub fn init(type_: *cy.Type) ExprType {
-        return .{ .type = @truncate(@intFromPtr(type_)), .throws = false };
-    }
+pub const Expr = extern struct {
+    code: ExprCode,
+    node: *ast.Node,
+    type: *cy.Type,
 
-    pub fn initThrows(type_: *cy.Type) ExprType {
-        return .{ .type = @truncate(@intFromPtr(type_)), .throws = true };
+    pub fn cast(self: *Expr, comptime code: ExprCode) *ExprImpl(code) {
+        if (cy.Trace) {
+            if (self.code != code) {
+                std.debug.panic("Expected {}, found {}.", .{code, self.code});
+            }
+        }
+        return @ptrCast(@alignCast(self));
     }
+};
+
+pub const Condition = enum {
+    eq,
+    ne,
+    gt,
+    ge,
+    lt,
+    le,
+    ult,
+    ule,
+    ugt,
+    uge,
+
+    pub fn isUnsigned(self: *Condition) bool {
+        switch (self.*) {
+            .ult, .ule, .ugt, .uge => return true,
+            else => return false,
+        }
+    }
+};
+
+pub const GenNext = struct {
+    base: Expr = undefined,
+    gen: *Expr,
+};
+
+pub const GenEnd = struct {
+    base: Expr = undefined,
+    gen: *Expr,
+};
+
+pub const Compare = struct {
+    base: Expr = undefined,
+    left: *Expr,
+    right: *Expr,
+    cond: Condition,
+};
+
+pub const Case = struct {
+    base: Expr = undefined,
+    child: *Expr,
+    union_t: *cy.Type,
+    case: u32,
+};
+
+pub const Yield = struct {
+    base: Stmt = undefined,
+    deinit_head: ?*Stmt,
+    ret_opt_t: *cy.Type,
+    end: bool,
+};
+
+pub const ReturnExpr = struct {
+    base: Stmt = undefined,
+    expr: *Expr,
+};
+
+pub const ReturnGen = struct {
+    base: Stmt = undefined,
+    deinit_head: ?*Stmt,
+    gen_t: *cy.Type,
+    next_t: *cy.Type,
+};
+
+pub const Return = struct {
+    base: Stmt = undefined,
+    return_value: bool,
+};
+
+pub const Release = struct {
+    base: Stmt = undefined,
+    reg: u32,
+    optional: bool,
+    deinit_obj: *cy.Func,
+};
+
+pub const Retain = struct {
+    base: Expr = undefined,
+    expr: *Expr,
+};
+
+pub const Lift = struct {
+    base: Expr = undefined,
+    child: *Expr,
+};
+
+pub const Trunc = struct {
+    base: Expr = undefined,
+    expr: *Expr,
+    from_bits: u8,
+    to_bits: u8,
 };
 
 pub const Await = struct {
-    expr: Loc,
+    base: Stmt = undefined,
+    expr: *Expr,
 };
 
 pub const AddressOf = struct {
-    expr: Loc,
-
-    /// Whether to obtain a reference or pointer.
-    ref: bool,
+    base: Expr = undefined,
+    expr: *Expr,
 };
 
 pub const Deref = struct {
-    expr: Loc,
+    base: Expr = undefined,
+    expr: *Expr,
 };
 
 pub const Trait = struct {
-    expr: Loc,
-    expr_t: *cy.Type,
+    base: Expr = undefined,
+    ref: *Expr,
+    impl_t: *cy.Type,
+    generic_t: *cy.types.GenericTrait,
     trait_t: *cy.Type,
 };
 
-pub const Box = struct {
-    expr: Loc,
-};
-
-pub const Unbox = struct {
-    expr: Loc,
-};
-
-pub const TypeCheck = struct {
-    expr: Loc,
-    exp_type: *cy.Type,
-};
-
-pub const TypeCheckOption = struct {
-    expr: Loc,
-};
-
-pub const UnwrapChoice = struct {
-    choice: Loc,
+pub const UnwrapAddr = struct {
+    base: Expr = undefined,
+    choice: *Expr,
     tag: u8,
-    fieldIdx: u8,
 };
 
-pub const UnwrapOr = struct {
-    opt: Loc,
-    default: Loc,
+pub const UnwrapNZ = struct {
+    base: Expr = undefined,
+    option: *Expr,
 };
 
-pub const Coresume = struct {
-    expr: Loc,
+pub const PopLocals = struct {
+    base: Stmt = undefined,
+    local_end: usize,
 };
 
 pub const Block = struct {
-    bodyHead: Loc,
+    base: Stmt = undefined,
+    bodyHead: ?*Stmt,
 };
 
-pub const BlockExpr = struct {
-    bodyHead: Loc,
-};
-
-pub const Switch = struct {
-    expr: Loc,
+pub const SwitchStmt = struct {
+    base: Stmt = undefined,
+    cases: [*]*Expr,
     numCases: u8,
-    is_expr: bool,
 };
 
 const Loc = u32;
+const Reg = packed struct {
+    id: u31,
+    temp: bool,
+};
 
 pub const SwitchCase = struct {
+    base: Expr = undefined,
     // else case if `numConds` == 0.
     numConds: u8,
-    bodyIsExpr: bool,
-    bodyHead: Loc,
+    body_head: ?*Stmt,
+    conds: [*]*Expr,
+    fallthrough: bool,
 };
 
-pub const LoopStmt = struct {
-    body_head: Loc,
+pub const CaseCond = struct {
+    base: Expr = undefined,
+    body_head: ?*Stmt,
+    expr: *Expr,
 };
 
-pub const PushDebugLabel = struct {
-    name: []const u8,
+pub const LoopBlock = struct {
+    base: Stmt = undefined,
+    body_head: ?*Stmt,
 };
 
 pub const Captured = struct {
+    base: Expr = undefined,
     idx: u8,
 };
 
-pub const IfExpr = struct {
-    cond: Loc,
-    body: u32,
-    elseBody: u32,
-};
-
-pub const ThrowExpr = struct {
-    expr: Loc,
-};
-
-pub const TryExpr = struct {
-    expr: Loc,
-    catchBody: u32,
-};
-
-pub const TagLit = struct {
-    name: []const u8,
-};
-
-pub const Symbol = struct {
-    name: []const u8,
-};
-
-pub const Error = struct {
-    name: []const u8,
+pub const Bitcast = struct {
+    base: Expr = undefined,
+    expr: *Expr,
 };
 
 pub const Cast = struct {
-    expr: Loc,
+    base: Expr = undefined,
+    expr: *Expr,
     type: *cy.Type,
     isRtCast: bool,
-};
-
-pub const FieldDyn = struct {
-    name: []const u8,
-    rec: Loc,
-};
-
-pub const SetFieldDyn = struct {
-    name: []const u8,
-    rec: Loc,
-    right: Loc,
 };
 
 /// Can have a chain of nested struct field indexes.
 /// The array of nested indexes are located after this struct.
 pub const Field = struct {
+    base: Expr = undefined,
     /// Receiver.
-    rec: Loc,
+    rec: *Expr,
 
     /// Field index of receiver.
     idx: u8,
@@ -300,56 +405,76 @@ pub const Field = struct {
 };
 
 pub const SetField = struct {
-    field: Loc,
-    right: Loc,
+    base: Stmt = undefined,
+    field: *Expr,
+    right: *Expr,
 };
 
-pub const ObjectInit = struct {
-    shape_t: *cy.Type,
-    args: Loc,
-    numArgs: u8,
-    ref: bool,
+pub const Spawn = struct {
+    base: Expr = undefined,
+    callee: *Expr,
+    args: [*]*Expr,
+    nargs: u8,
+};
+
+pub const Init = struct {
+    base: Expr = undefined,
+    args: [*]*Expr,
+    nargs: u8,
+};
+
+pub const InitZero = struct {
+    base: Expr = undefined,
+    size: usize,
+};
+
+pub const InitCase = struct {
+    base: Expr = undefined,
+    child: *Expr,
+    case: u32,
 };
 
 pub const ForRangeStmt = struct {
-    start: Loc,
-    end: Loc,
+    base: Stmt = undefined,
+    start: *Expr,
+    end: *Expr,
     eachLocal: ?u8,
     increment: bool,
-    declHead: u32,
-    bodyHead: u32,
+    end_inclusive: bool,
+    declHead: ?*Stmt,
+    bodyHead: ?*Stmt,
 };
 
 pub const TryStmt = struct {
+    base: Stmt = undefined,
     hasErrLocal: bool,
     errLocal: u8,
-    bodyHead: u32,
-    catchBodyHead: u32,
+    bodyHead: ?*Stmt,
+    catchBodyHead: *Stmt,
 };
 
 pub const Local = struct {
+    base: Expr = undefined,
     id: u8,
 };
 
 pub const Lambda = struct {
+    base: Expr = undefined,
     func: *cy.Func,
-    maxLocals: u8,
 
     // If `numCaptures` > 0, this is a closure.
     numCaptures: u8,
-    numParamCopies: u8,
-    bodyHead: u32,
-    params: Loc,
-    captures: u32,
-    ct: bool,
+    captures: [*]u8,
+
+    // Captures locals and must be pinned. (Initialized as an `OpaqueFunc`)
+    pinned_closure: bool,
 };
 
 pub const FuncBlock = struct {
+    base: Stmt = undefined,
     func: *cy.Func,
-    maxLocals: u8,
-    numParamCopies: u8,
-    bodyHead: u32,
-    params: Loc,
+    bodyHead: ?*Stmt,
+    params: [*]FuncParam,
 
     // For methods only.
     parentType: ?*cy.Type,
@@ -364,427 +489,352 @@ pub const PushBlock = struct {
 };
 
 pub const MainBlock = struct {
-    maxLocals: u8,
-    bodyHead: u32,
+    base: Stmt = undefined,
+    bodyHead: ?*Stmt,
 };
 
 pub const FuncParam = struct {
+    reg: u8,
     namePtr: [*]const u8,
     nameLen: u16,
     declType: *cy.Type,
-    isCopy: bool,
-    lifted: bool,
 
     pub fn name(self: FuncParam) []const u8 {
         return self.namePtr[0..self.nameLen];
     }
 };
 
-pub const DeclareLocalInit = struct {
-    namePtr: [*]const u8,
-    nameLen: u16,
-    declType: *cy.Type,
-    id: u8,
-    lifted: bool,
-
-    /// If the local depends on a child local (declared in a block expr),
-    /// the memory must be zeroed so unwinding doesn't end up using an undefined value.
-    zeroMem: bool,
-    init: Loc,
-    initType: *cy.Type,
-
-    pub fn name(self: DeclareLocalInit) []const u8 {
-        return self.namePtr[0..self.nameLen];
-    }
+pub const Discard = struct {
+    base: Stmt = undefined,
+    expr: *Expr,
 };
 
 pub const DeclareLocal = struct {
-    namePtr: [*]const u8,
-    nameLen: u16,
-    declType: *cy.Type,
+    base: Stmt = undefined,
+    name_ptr: [*]const u8,
+    name_len: u16,
+    decl_t: *cy.Type,
     id: u8,
-    lifted: bool,
+
+    // If null, only reserve the local.
+    init: ?*Expr,
 
     pub fn name(self: DeclareLocal) []const u8 {
-        return self.namePtr[0..self.nameLen];
-    }
-};
-
-/// Several pre codes share a union so that sema
-/// can generate the IR in one pass by back-patching.
-pub const Prepare = union {
-    binOp: BinOp,
-    slice: Slice,
-    unOp: UnOp,
-
-    pub fn initCall(numArgs: u8) Prepare {
-        return .{
-            .call = .{
-                .numArgs = numArgs,
-            }
-        };
+        return self.name_ptr[0..self.name_len];
     }
 };
 
 pub const Slice = struct {
+    base: Expr = undefined,
     recvT: *cy.Type,
-    rec: Loc,
-    left: Loc,
-    right: Loc,
+    rec: *Expr,
+    left: *Expr,
+    right: *Expr,
+};
+
+pub const BinOp2 = struct {
+    base: Expr = undefined,
+    left: *Expr,
+    right: *Expr,
 };
 
 pub const BinOp = struct {
+    base: Expr = undefined,
     leftT: *cy.Type,
     rightT: *cy.Type,
     op: cy.BinaryExprOp,
-    left: Loc,
-    right: Loc,
-};
-
-pub const Set = union {
-    local: SetLocal,
-    index: SetIndex,
-    generic: SetGeneric,
-    callObjSymTern: SetCallObjSymTern,
-    set_field_dyn: SetFieldDyn,
-    set_field: SetField,
+    left: *Expr,
+    right: *Expr,
 };
 
 pub const SetDeref = struct {
-    ptr: Loc,
-    right: Loc,
-};
-
-pub const SetCallObjSymTern = struct {
-    name: []const u8,
-    rec: Loc,
-    index: Loc,
-    right: Loc,
+    base: Stmt = undefined,
+    ptr: *Expr,
+    right: *Expr,
 };
 
 pub const SetGeneric = struct {
+    base: Stmt = undefined,
     left_t: *cy.Type,
     right_t: *cy.Type,
-    left: Loc,
-    right: Loc,
+    left: *Expr,
+    right: *Expr,
+};
+
+pub const SetReturn = struct {
+    base: Stmt = undefined,
+    right: *Expr,
 };
 
 pub const SetLocal = struct {
+    base: Stmt = undefined,
     id: u8,
-    right: Loc,
+    right: *Expr,
 };
 
-pub const SetIndex = struct {
-    recvT: *cy.Type,
-    rec: Loc,
-    index: Loc,
-    right: Loc,
-};
-
-pub const Context = struct {
-    sym: *cy.sym.ContextVar,
-};
-
-pub const InitVarSym = struct {
-    src_ir: *cy.ir.Buffer,
+pub const SetGlobal = struct {
+    base: Stmt = undefined,
     sym: *cy.Sym,
-    expr: Loc,
+    expr: *Expr,
 };
 
-pub const SetVarSym = struct {
+pub const Global = struct {
+    base: Expr = undefined,
     sym: *cy.Sym,
-    expr: Loc,
-};
-
-pub const VarSym = struct {
-    sym: *cy.Sym,
-};
-
-pub const EnumMemberSym = struct {
-    type: *cy.Type,
-    val: u8,
 };
 
 pub const FuncPtr = struct {
+    base: Expr = undefined,
     func: *cy.Func,
 };
 
-pub const FuncUnion = struct {
-    expr: Loc,
+pub const Func = struct {
+    base: Expr = undefined,
+    expr: *Expr,
 };
 
-pub const Type = struct {
-    type: *cy.Type,
-    expr_type: bool = false,
-};
-
-pub const CoinitCall = struct {
-    call: Loc,
-};
-
-pub const CallFuncSym = struct {
+pub const Call = struct {
+    base: Expr = undefined,
     func: *cy.Func,
     numArgs: u8,
-    args: Loc,
+    args: [*]*Expr,
 };
 
 pub const CallTrait = struct {
-    trait: Loc,
-    args: Loc,
+    base: Expr = undefined,
+    trait: *Expr,
+    args: [*]*Expr,
     nargs: u8,
     vtable_idx: u8,
 };
 
-pub const CallValue = struct {
-    callee: Loc,
-    args: Loc,
+pub const CallPtr = struct {
+    base: Expr = undefined,
+    callee: *Expr,
+    args: [*]*Expr,
     nargs: u8,
 };
 
-pub const CallDyn = struct {
-    callee: Loc,
-    args: Loc,
-    numArgs: u8,
-};
-
-pub const RetExprStmt = struct {
-    expr: Loc,
-};
-
-pub const ExprStmt = struct {
-    expr: Loc,
-    /// If in a block expression, returns as the result of the expression.
-    /// If in the main block, can be used to return from an `eval`.
-    isBlockResult: bool,
-};
-
-pub const Map = struct {
-    placeholder: u8,
-};
-
-pub const Array = struct {
-    args: Loc,
+pub const CallUnion = struct {
+    base: Expr = undefined,
+    callee: *Expr,
+    args: [*]*Expr,
     nargs: u8,
 };
 
-pub const List = struct {
-    args: Loc,
-    nargs: u8,
+pub const Const64 = struct {
+    base: Expr = undefined,
+    val: u64,
 };
 
-pub const Float = struct {
-    val: f64,
+pub const Const16 = struct {
+    base: Expr = undefined,
+    val: u16,
 };
 
-pub const Int = struct {
-    val: i64,
+pub const Const32 = struct {
+    base: Expr = undefined,
+    val: u32,
 };
 
-pub const Byte = struct {
+pub const Const8 = struct {
+    base: Expr = undefined,
     val: u8,
 };
 
-pub const None = struct {
-    child: Loc,
+pub const IsZero = struct {
+    base: Expr = undefined,
+    child: *Expr,
+};
+
+pub const NopLabel = struct {
+    base: Stmt = undefined,
+    label_idx: usize,
+    label_len: usize,
 };
 
 pub const String = struct {
+    base: Expr = undefined,
     raw: []const u8,
 };
 
 pub const UnOp = struct {
-    expr: Loc,
+    base: Expr = undefined,
+    expr: *Expr,
     childT: *cy.Type,
     op: cy.UnaryOp,
 };
 
+pub const Widen = struct {
+    base: Expr = undefined,
+    expr: *Expr,
+    src_bits: u32,
+};
+
+pub const UnOp2 = struct {
+    base: Expr = undefined,
+    expr: *Expr,
+};
+
 pub const StmtBlock = struct {
-    first: u32,
-    last: u32,
+    first: ?*Stmt,
+    last: ?*Stmt,
 };
 
-pub const ElseBlock = struct {
-    cond: cy.Nullable(Loc),
-    body_head: Loc,
-    else_block: cy.Nullable(Loc),
-};
-
-pub const IfStmt = struct {
-    cond: Loc,
-    body_head: Loc,
-    else_block: cy.Nullable(Loc),
+pub const IfBlock = struct {
+    base: Stmt = undefined,
+    cond_expr: *Expr,
+    body_head: ?*Stmt,
 };
 
 pub const Verbose = struct {
     verbose: bool,
 };
 
-pub const OpSet = struct {
-    op: cy.BinaryExprOp,
-    set_stmt: Loc,
-};
-
-pub fn StmtData(comptime code: StmtCode) type {
+pub fn StmtImpl(comptime code: StmtCode) type {
     return comptime switch (code) {
         .mainBlock => MainBlock,
         .funcBlock => FuncBlock,
-        .declareLocal => DeclareLocal,
-        .declareLocalInit => DeclareLocalInit,
-        .ifStmt => IfStmt,
+        .declare_local => DeclareLocal,
+        .discard => Discard,
+        .if_block => IfBlock,
         .tryStmt => TryStmt,
         .forRangeStmt => ForRangeStmt,
-        .setIndex,
-        .setLocal,
-        .set_field_dyn,
-        .setCaptured,
-        .set_field,
-        .set => Set,
-        .set_var_sym => SetVarSym,
-        .init_var_sym => InitVarSym,
+        .set_local => SetLocal,
+        .set_ret => SetReturn,
+        .setCaptured => SetGeneric,
+        .set_field => SetField,
+        .set_global => SetGlobal,
         .set_deref => SetDeref,
-        .opSet => OpSet,
-        .pushDebugLabel => PushDebugLabel,
         .verbose => Verbose,
-        .exprStmt => ExprStmt,
         .block => Block,
-        .retExprStmt => RetExprStmt,
-        .loopStmt => LoopStmt,
-        else => void,
+        .pop_locals => PopLocals,
+        .loop_block => LoopBlock,
+        .switch_stmt => SwitchStmt,
+        .release => Release,
+        .nop_label => NopLabel,
+        .yield => Yield,
+        .await_ => Await,
+        .ret_expr => ReturnExpr,
+        .ret_gen => ReturnGen,
+        .ret => Return,
+        .break_ => Break,
+        .continue_ => Continue,
+        else => SimpleStmt,
     };
 }
 
-pub fn ExprData(comptime code: ExprCode) type {
+pub fn ExprImpl(comptime code: ExprCode) type {
     return switch (code) {
         .lambda => Lambda,
-        .switchExpr => Switch,
-        .switchCase => SwitchCase,
-        .else_block => ElseBlock,
-        .call_value => CallValue,
-        .call_dyn => CallDyn,
-        .call_sym => CallFuncSym,
+        .switch_case => SwitchCase,
+        .case_cond => CaseCond,
+        .call_ptr => CallPtr,
+        .call_union => CallUnion,
+        .call => Call,
         .call_trait => CallTrait,
-        .coinitCall => CoinitCall,
-        .preBinOp,
-        .preUnOp,
-        .pre => Prepare,
-        .varSym => VarSym,
-        .context => Context,
-        .enumMemberSym => EnumMemberSym,
+        .sext,
+        .zext => Widen,
+        .f2i,
+        .i2f,
+        .fabs,
+        .fneg,
+        .neg,
+        .not => UnOp2,
+        .unary_op => UnOp,
+        .binary_op => BinOp,
+        .cmp => Compare,
+        .fadd,
+        .fsub,
+        .fmod,
+        .fmul,
+        .fdiv,
+        .asr,
+        .lsr,
+        .lsl,
+        .xor,
+        .or_op,
+        .and_op,
+        .add,
+        .sub,
+        .imul,
+        .mul,
+        .idiv,
+        .div,
+        .imod,
+        .mod => BinOp2,
+        .global => Global,
         .func_ptr => FuncPtr,
-        .func_union => FuncUnion,
-        .type => Type,
-        .float => Float,
-        .int => Int,
-        .byte => Byte,
-        .none => None,
+        .func => Func,
+        .const64 => Const64,
+        .const32 => Const32,
+        .const16 => Const16,
+        .const8 => Const8,
+        .is_zero => IsZero,
         .local => Local,
-        .if_expr => IfExpr,
-        .tryExpr => TryExpr,
-        .throw => ThrowExpr,
-        .list => List,
-        .map => Map,
-        .array => Array,
         .string => String,
-        .object_init => ObjectInit,
-        .fieldDyn => FieldDyn,
+        .init => Init,
+        .init_case => InitCase,
+        .init_zero => InitZero,
+        .lift => Lift,
+        .retain => Retain,
+        .spawn => Spawn,
         .field => Field,
         .cast => Cast,
-        .errorv => Error,
+        .bitcast => Bitcast,
         .captured => Captured,
-        .symbol => Symbol,
-        .tag_lit => TagLit,
-        .blockExpr => BlockExpr,
-        .coresume => Coresume,
-        .unwrapChoice => UnwrapChoice,
-        .unwrap_or => UnwrapOr,
-        .type_check => TypeCheck,
-        .typeCheckOption => TypeCheckOption,
-        .box => Box,
-        .unbox => Unbox,
-        .await_expr => Await,
+        .unwrap_addr => UnwrapAddr,
+        .unwrap_nz => UnwrapNZ,
+        .case => Case,
         .trait => Trait,
         .address_of => AddressOf,
         .deref => Deref,
-        else => void,
+        .trunc => Trunc,
+        .gen_next => GenNext,
+        .gen_end => GenEnd,
+        else => SimpleExpr,
     };
 }
 
 /// IR ops use an explicit index since the underlying buffer can grow.
 pub const Buffer = struct {
+    arena: std.heap.ArenaAllocator,
+    alloc: std.mem.Allocator,
+
+    /// Used to store strings.
     buf: std.ArrayListUnmanaged(u8),
+
     stmtBlockStack: std.ArrayListUnmanaged(StmtBlock),
 
     /// Main and func blocks.
-    func_blocks: std.ArrayListUnmanaged(Loc),
+    func_blocks: std.ArrayListUnmanaged(*Stmt),
 
-    pub fn init() Buffer {
-        return .{
-            .buf = .{},
+    pub fn init(self: *Buffer, alloc: std.mem.Allocator) void {
+        self.* = .{
+            .arena = .{ .child_allocator = alloc, .state = .{} },
+            .alloc = undefined,
             .stmtBlockStack = .{},
             .func_blocks = .{},
+            .buf = .{},
         };
+        self.alloc = self.arena.allocator();
     }
 
     pub fn deinit(self: *Buffer, alloc: std.mem.Allocator) void {
-        self.buf.deinit(alloc);
         self.stmtBlockStack.deinit(alloc);
         self.func_blocks.deinit(alloc);
+        self.buf.deinit(alloc);
+        self.arena.deinit();
     }
 
-    pub fn setExprCode(self: *Buffer, idx: usize, comptime code: ExprCode) void {
-        self.buf.items[idx] = @intFromEnum(code);
-    }
-
-    pub fn setExprData(self: *Buffer, idx: usize, comptime code: ExprCode, data: ExprData(code)) void {
-        const bytes = std.mem.toBytes(data);
-        @memcpy(self.buf.items[idx+1+8+8..idx+1+8+8+bytes.len], &bytes);
-    }
-
-    pub fn getExprData(self: *Buffer, idx: usize, comptime code: ExprCode) ExprData(code) {
-        const data = self.buf.items[idx+1+8+8..][0..@sizeOf(ExprData(code))];
-        return std.mem.bytesToValue(ExprData(code), data);
-    }
-
-    pub fn getExprDataPtr(self: *Buffer, idx: usize, comptime code: ExprCode) *align(1) ExprData(code) {
-        const data = self.buf.items[idx+1+8+8..][0..@sizeOf(ExprData(code))];
-        return std.mem.bytesAsValue(ExprData(code), data);
-    }
-
-    pub fn setStmtCode(self: *Buffer, idx: usize, comptime code: StmtCode) void {
-        self.buf.items[idx] = @intFromEnum(code);
-    }
-
-    pub fn setStmtData(self: *Buffer, idx: usize, comptime code: StmtCode, data: StmtData(code)) void {
-        const bytes = std.mem.toBytes(data);
-        @memcpy(self.buf.items[idx+1+8+4..idx+1+8+4+bytes.len], &bytes);
-    }
-
-    pub fn getStmtData(self: *Buffer, idx: usize, comptime code: StmtCode) StmtData(code) {
-        const data = self.buf.items[idx+1+8+4..][0..@sizeOf(StmtData(code))];
-        return std.mem.bytesToValue(StmtData(code), data);
-    }
-
-    pub fn getStmtDataPtr(self: *Buffer, idx: usize, comptime code: StmtCode) *align(1) StmtData(code) {
-        const data = self.buf.items[idx+1+8+4..][0..@sizeOf(StmtData(code))];
-        return std.mem.bytesAsValue(StmtData(code), data);
-    }
-
-    pub fn advanceArray(_: *Buffer, idx: usize, comptime T: type, arr: []align(1) const T) usize {
-        return idx + arr.len * @sizeOf(T);
-    }
-
-    pub fn advanceExpr(_: *Buffer, idx: usize, comptime code: ExprCode) usize {
-        return idx + 1 + 8 + 8 + @sizeOf(ExprData(code));
-    }
-
-    pub fn advanceStmt(_: *Buffer, idx: usize, comptime code: StmtCode) usize {
-        return idx + 1 + 8 + 4 + @sizeOf(StmtData(code));
+    pub fn curBlock(self: *Buffer) *StmtBlock {
+        return &self.stmtBlockStack.items[self.stmtBlockStack.items.len-1];
     }
 
     pub fn pushStmtBlock(self: *Buffer, alloc: std.mem.Allocator) !void {
         try self.stmtBlockStack.append(alloc, .{
-            .first = cy.NullId,
-            .last = cy.NullId,
+            .first = null,
+            .last = null,
         });
     }
 
@@ -796,293 +846,292 @@ pub const Buffer = struct {
         return self.stmtBlockStack.pop().?;
     }
 
-    pub fn pushEmptyExpr(self: *Buffer, comptime code: ExprCode, alloc: std.mem.Allocator, expr_t: ExprType, node_id: *ast.Node) !u32 {
-        log.tracev("irPushExpr: {} at {}", .{code, self.buf.items.len});
-        const start = self.buf.items.len;
-        try self.buf.resize(alloc, self.buf.items.len + 1 + 8 + 8 + @sizeOf(ExprData(code)));
-        self.buf.items[start] = @intFromEnum(code);
-        self.setNode(start, node_id);
-        self.setExprType2(start, expr_t);
-        return @intCast(start);
+    pub fn newData(self: *Buffer, comptime T: type) !*T {
+        return self.alloc.new(T);
     }
 
-    pub fn reserveData(self: *Buffer, alloc: std.mem.Allocator, comptime T: type) !*align(1) T {
-        const start = self.buf.items.len;
-        try self.buf.resize(alloc, self.buf.items.len + @sizeOf(T));
-        return @ptrCast(&self.buf.items[start]);
+    pub fn allocArray(self: *Buffer, comptime T: type, len: usize) ![]T {
+        return self.alloc.alloc(T, len);
     }
 
-    pub fn pushEmptyArray(self: *Buffer, alloc: std.mem.Allocator, comptime T: type, len: usize) !u32 {
-        const start = self.buf.items.len;
-        try self.buf.resize(alloc, self.buf.items.len + @sizeOf(T) * len);
-        return @intCast(start);
+    pub fn newExpr(self: *Buffer, comptime code: ExprCode, type_: *cy.Type, node: *ast.Node, data: ExprImpl(code)) !*Expr {
+        log.tracev("ir expr: {} {s}", .{code, type_.name()});
+        const new = try self.alloc.create(ExprImpl(code));
+        new.* = data;
+        new.base = .{
+            .code = code,
+            .type = type_,
+            .node = node,
+        };
+        return @ptrCast(new);
     }
 
-    pub fn setArrayItem(self: *Buffer, idx: usize, comptime T: type, elemIdx: usize, elem: T) void {
-        @as(*align(1) T, @ptrCast(&self.buf.items[idx+@sizeOf(T)*elemIdx])).* = elem;
+    pub fn newStmt(self: *Buffer, comptime code: StmtCode, node: *ast.Node, data: StmtImpl(code)) !*Stmt {
+        const new = try self.alloc.create(StmtImpl(code));
+        log.tracev("ir stmt: {} {*}", .{code, new});
+        new.* = data;
+        new.base = .{
+            .code = code,
+            .node = node,
+            .next = null,
+        };
+        return @ptrCast(new);
     }
 
-    pub fn getArray(self: *Buffer, idx: usize, comptime T: type, len: usize) []align(1) T {
-        const data = self.buf.items[idx..idx + @sizeOf(T) * len];
-        return std.mem.bytesAsSlice(T, data);
+    pub fn pushStmt(self: *Buffer, comptime code: StmtCode, node: *ast.Node, data: StmtImpl(code)) !*Stmt {
+        const stmt = try self.newStmt(code, node, data);
+        self.appendStmt(stmt);
+        return stmt;
     }
 
-    pub fn pushExpr(self: *Buffer, comptime code: ExprCode, alloc: std.mem.Allocator, type_: *cy.Type, node: *ast.Node, data: ExprData(code)) !u32 {
-        const expr_t = ExprType.init(type_);
-        const loc = try self.pushEmptyExpr(code, alloc, expr_t, node);
-        self.setExprData(loc, code, data);
-        return loc;
-    }
-
-    pub fn pushExprThrows(self: *Buffer, comptime code: ExprCode, alloc: std.mem.Allocator, type_id: cy.TypeId, node_id: *ast.Node, data: ExprData(code)) !u32 {
-        const expr_t = ExprType.initThrows(type_id);
-        const loc = try self.pushEmptyExpr(code, alloc, expr_t, node_id);
-        self.setExprData(loc, code, data);
-        return loc;
-    }
-
-    pub fn getExprCode(self: *Buffer, idx: usize) ExprCode {
-        return @enumFromInt(self.buf.items[idx]);
-    }
-
-    pub fn getStmtCode(self: *Buffer, idx: usize) StmtCode {
-        return @enumFromInt(self.buf.items[idx]);
-    }
-
-    pub fn getNode(self: *Buffer, idx: usize) *ast.Node {
-        return @as(*align(1) *ast.Node, @ptrCast(self.buf.items.ptr + idx + 1)).*;
-    }
-
-    pub fn setNode(self: *Buffer, idx: usize, nodeId: *ast.Node) void {
-        @as(*align(1) *ast.Node, @ptrCast(self.buf.items.ptr + idx + 1)).* = nodeId;
-    }
-
-    pub fn setExprType2(self: *Buffer, loc: usize, expr_t: ExprType) void {
-        @as(*align(1) ExprType, @ptrCast(self.buf.items.ptr + loc + 1 + 8)).* = expr_t;
-    }
-
-    pub fn setExprType(self: *Buffer, loc: usize, type_: *cy.Type) void {
-        const expr_t = ExprType.init(type_);
-        @as(*align(1) ExprType, @ptrCast(self.buf.items.ptr + loc + 1 + 8)).* = expr_t;
-    }
-
-    pub fn setExprTypeThrows(self: *Buffer, loc: usize, type_id: cy.TypeId) void {
-        const expr_t = ExprType.initThrows(type_id);
-        @as(*align(1) ExprType, @ptrCast(self.buf.items.ptr + loc + 1 + 8)).* = expr_t;
-    }
-
-    pub fn getExprType(self: *Buffer, loc: usize) *cy.Type {
-        return @as(*align(1) *cy.Type, @ptrCast(self.buf.items.ptr + loc + 1 + 8)).*;
-    }
-
-    pub fn setStmtNext(self: *Buffer, idx: usize, nextIdx: u32) void {
-        @as(*align(1) u32, @ptrCast(self.buf.items.ptr + idx + 1 + 8)).* = nextIdx;
-    }
-
-    pub fn getStmtNext(self: *Buffer, idx: usize) u32 {
-        return @as(*align(1) u32, @ptrCast(self.buf.items.ptr + idx + 1 + 8)).*;
-    }
-
-    pub fn pushEmptyStmt(self: *Buffer, alloc: std.mem.Allocator, comptime code: StmtCode, node: *ast.Node) !u32 {
-        return self.pushEmptyStmt2(alloc, code, node, true);
-    }
-
-    pub fn getAndClearStmtBlock(self: *Buffer) u32 {
+    pub fn getAndClearStmtBlock(self: *Buffer) ?*Stmt {
         const b = &self.stmtBlockStack.items[self.stmtBlockStack.items.len-1];
         defer {
-            b.first = cy.NullId;
-            b.last = cy.NullId;
+            b.first = null;
+            b.last = null;
         }
         return b.first;
     }
 
-    pub fn appendToParent(self: *Buffer, idx: u32) void {
+    pub fn appendStmt(self: *Buffer, stmt: *Stmt) void {
         const list = &self.stmtBlockStack.items[self.stmtBlockStack.items.len-1];
-        if (list.last == cy.NullId) {
+        if (list.last == null) {
             // Set head stmt.
-            list.first = idx;
-            list.last = idx;
+            list.first = stmt;
+            list.last = stmt;
         } else {
             // Attach to last.
-            self.setStmtNext(list.last, idx);
-            list.last = idx;
+            list.last.?.next = stmt;
+            list.last = stmt;
         }
-    }
-
-    pub fn pushEmptyStmt2(self: *Buffer, alloc: std.mem.Allocator, comptime code: StmtCode, node: *ast.Node, comptime appendToParent_: bool) !u32 {
-        log.tracev("irPushStmt: {} at {}", .{code, self.buf.items.len});
-        const start: u32 = @intCast(self.buf.items.len);
-        try self.buf.resize(alloc, self.buf.items.len + 1 + 8 + 4 + @sizeOf(StmtData(code)));
-        self.buf.items[start] = @intFromEnum(code);
-        self.setNode(start, node);
-        self.setStmtNext(start, cy.NullId);
-
-        if (appendToParent_) {
-            self.appendToParent(start);
-        }
-        return @intCast(start);
-    }
-
-    pub fn pushStmt(self: *Buffer, alloc: std.mem.Allocator, comptime code: StmtCode, nodeId: *ast.Node, data: StmtData(code)) !u32 {
-        const idx = try self.pushEmptyStmt(alloc, code, nodeId);
-        self.setStmtData(idx, code, data);
-        return idx;
-    }
-
-    pub fn visitStmt(self: *Buffer, alloc: std.mem.Allocator, loc: u32) !Visitor {
-        var new = Visitor{
-            .alloc = alloc,
-            .buf = self,
-            .node_queue = std.fifo.LinearFifo(u32, .Dynamic).init(alloc),
-            .state_queue = std.fifo.LinearFifo(VisitState, .Dynamic).init(alloc),
-        };
-        try new.node_queue.writeItem(loc);
-        try new.state_queue.writeItem(.{ .is_stmt = true });
-        return new;
     }
 };
 
-const VisitEntry = struct {
-    loc: u32,
-    is_stmt: bool,
+pub const VisitStmtFn = *const fn(ctx: *VisitContext, stmt: *Stmt) anyerror!bool;
+pub const VisitExprFn = *const fn(ctx: *VisitContext, expr: *Expr) anyerror!bool;
+
+pub const VisitContext = struct {
+    ctx: ?*anyopaque,
+    visit_stmt: VisitStmtFn,
+    visit_expr: VisitExprFn,
 };
 
-const VisitState = struct {
-    is_stmt: bool,
-};
+pub fn visitStmts(ctx: *VisitContext, head: ?*Stmt) !bool {
+    var stmt_opt = head;
+    while (stmt_opt) |stmt| {
+        if (!try ctx.visit_stmt(ctx, stmt)) return false;
+        switch (stmt.code) {
+            .mainBlock => {
+                const data = stmt.cast(.mainBlock);
+                if (!try visitStmts(ctx, data.bodyHead)) return false;
+            },
+            .funcBlock => {
+                const data = stmt.cast(.funcBlock);
+                if (!try visitStmts(ctx, data.bodyHead)) return false;
+            },
+            .declare_local => {
+                const data = stmt.cast(.declare_local);
+                if (data.init) |init| {
+                    if (!try visitExpr(ctx, init)) return false;
+                }
+            },
+            .set_ret => {
+                const data = stmt.cast(.set_ret);
+                if (!try visitExpr(ctx, data.right)) return false;
+            },
+            .block => {
+                const data = stmt.cast(.block);
+                if (!try visitStmts(ctx, data.bodyHead)) return false;
+            },
+            .if_block => {
+                const data = stmt.cast(.if_block);
 
-const Visitor = struct {
-    alloc: std.mem.Allocator,
-    buf: *Buffer,
-    temp_nodes: std.ArrayListUnmanaged(u32) = .{},
-    temp_states: std.ArrayListUnmanaged(VisitState) = .{},
-    node_queue: std.fifo.LinearFifo(u32, .Dynamic),
-    state_queue: std.fifo.LinearFifo(VisitState, .Dynamic),
-
-    pub fn next(self: *Visitor) !?VisitEntry {
-        if (self.node_queue.count == 0) {
-            return null;
-        }
-        const loc = self.node_queue.readItem().?;
-        const state = self.state_queue.readItem().?;
-        if (state.is_stmt) {
-            const code = self.buf.getStmtCode(loc);
-            switch (code) {
-                .funcBlock => {
-                    const data = self.buf.getStmtData(loc, .funcBlock);
-                    self.clearTemps();
-                    try self.pushStmts(data.bodyHead);
-                    try self.prependTemps();
-                },
-                .retExprStmt => {
-                    const data = self.buf.getStmtData(loc, .retExprStmt);
-                    try self.prependExpr(data.expr);
-                },
-                .exprStmt => {
-                    const data = self.buf.getStmtData(loc, .exprStmt);
-                    try self.prependExpr(data.expr);
-                },
-                .ifStmt => {
-                    const data = self.buf.getStmtData(loc, .ifStmt);
-
-                    self.clearTemps();
-                    try self.pushExpr(data.cond);
-                    try self.pushStmts(data.body_head);
-
-                    if (data.else_block != cy.NullId) {
-                        var else_loc = data.else_block;
-                        while (else_loc != cy.NullId) {
-                            const else_b = self.buf.getExprData(else_loc, .else_block);
-                            if (else_b.cond != cy.NullId) {
-                                try self.pushExpr(else_b.cond);
-                                try self.pushStmts(else_b.body_head);
-                            } else {
-                                try self.pushStmts(else_b.body_head);
-                            }
-                            else_loc = else_b.else_block;
-                        }
+                if (!try visitExpr(ctx, data.cond_expr)) return false;
+                if (!try visitStmts(ctx, data.body_head)) return false;
+            },
+            .loop_block => {
+                const data = stmt.cast(.loop_block);
+                if (!try visitStmts(ctx, data.body_head)) return false;
+            },
+            .set_local => {
+                const data = stmt.cast(.set_local);
+                if (!try visitExpr(ctx, data.right)) return false;
+            },
+            .set_field => {
+                const data = stmt.cast(.set_field);
+                if (!try visitExpr(ctx, data.right)) return false;
+                if (!try visitExpr(ctx, data.field)) return false;
+            },
+            .forRangeStmt => {
+                const data = stmt.cast(.forRangeStmt);
+                if (!try visitExpr(ctx, data.start)) return false;
+                if (!try visitExpr(ctx, data.end)) return false;
+                if (!try visitStmts(ctx, data.bodyHead)) return false;
+            },
+            .switch_stmt => {
+                const data = stmt.cast(.switch_stmt);
+                const cases = data.cases[0..data.numCases];
+                for (cases) |case| {
+                    const case_data = case.cast(.switch_case);
+                    if (!try visitExpr(ctx, case)) return false;
+                    for (case_data.conds[0..case_data.numConds]) |cond| {
+                        if (!try visitExpr(ctx, cond)) return false;
                     }
-                    try self.prependTemps();
-                },
-                else => {
-                    std.debug.panic("TODO: {}", .{code});
+                    if (!try visitStmts(ctx, case_data.body_head)) return false;
                 }
-            }
-        } else {
-            const code = self.buf.getExprCode(loc);
-            switch (code) {
-                .call_sym => {
-                    const data = self.buf.getExprData(loc, .call_sym);
-                    const args = self.buf.getArray(data.args, u32, data.numArgs);
-                    try self.prependExprs(args);
-                },
-                .preBinOp => {
-                    const data = self.buf.getExprData(loc, .preBinOp).binOp;
-                    try self.prependExprs(&.{data.left, data.right});
-                },
-                .throw => {
-                    const data = self.buf.getExprData(loc, .throw);
-                    try self.prependExpr(data.expr);
-                },
-                .local,
-                .truev,
-                .falsev,
-                .float,
-                .int,
-                .errorv,
-                .string,
-                .type => {},
-                else => {
-                    std.debug.panic("TODO: {}", .{code});
-                }
+            },
+            .set_deref => {
+                const data = stmt.cast(.set_deref);
+                if (!try visitExpr(ctx, data.right)) return false;
+                if (!try visitExpr(ctx, data.ptr)) return false;
+            },
+            .set_global => {
+                const data = stmt.cast(.set_global);
+                if (!try visitExpr(ctx, data.expr)) return false;
+            },
+            .ret,
+            .release,
+            .break_,
+            .continue_,
+            .nop_label => {},
+            else => {
+                std.debug.panic("TODO: {}", .{stmt.code});
             }
         }
-        return .{
-            .loc = loc,
-            .is_stmt = state.is_stmt,
-        };
+        stmt_opt = stmt.next;
     }
+    return true;
+}
 
-    fn prependExprs(self: *Visitor, locs: []align(1) const u32) !void {
-        for (0..locs.len) |i| {
-            try self.node_queue.unget(&.{locs[locs.len-i-1]});
-            try self.state_queue.unget(&.{.{ .is_stmt = false }});
+fn visitExpr(ctx: *VisitContext, expr: *Expr) !bool {
+    switch (expr.code) {
+        .vector => {
+            const data = expr.cast(.vector);
+            for (data.args[0..data.nargs]) |arg| {
+                if (!try visitExpr(ctx, arg)) return false;
+            }
+        },
+        .call => {
+            const data = expr.cast(.call);
+            for (data.args[0..data.numArgs]) |arg| {
+                if (!try visitExpr(ctx, arg)) return false;
+            }
+        },
+        .call_ptr => {
+            const data = expr.cast(.call_ptr);
+            if (!try visitExpr(ctx, data.callee)) return false;
+            for (data.args[0..data.nargs]) |arg| {
+                if (!try visitExpr(ctx, arg)) return false;
+            }
+        },
+        .func => {
+            const data = expr.cast(.func);
+            if (!try visitExpr(ctx, data.expr)) return false;
+        },
+        .field => {
+            const data = expr.cast(.field);
+            if (!try visitExpr(ctx, data.rec)) return false;
+        },
+        .binary_op => {
+            const data = expr.cast(.binary_op);
+            if (!try visitExpr(ctx, data.left)) return false;
+            if (!try visitExpr(ctx, data.right)) return false;
+        },
+        // .switch_case => {
+        //     const data = expr.cast(.switch_case);
+        //     self.clearTemps();
+        //     try self.pushStmts(data.body_head);
+        //     try self.prependTemps();
+        // },
+        .bitcast => {
+            const data = expr.cast(.bitcast);
+            if (!try visitExpr(ctx, data.expr)) return false;
+        },
+        .address_of => {
+            const data = expr.cast(.address_of);
+            if (!try visitExpr(ctx, data.expr)) return false;
+        },
+        .deref => {
+            const data = expr.cast(.deref);
+            if (!try visitExpr(ctx, data.expr)) return false;
+        },
+        .init => {
+            const data = expr.cast(.init);
+            for (data.args[0..data.numArgs]) |arg| {
+                if (!try visitExpr(ctx, arg)) return false;
+            }
+        },
+        .cmp => {
+            const data = expr.cast(.cmp);
+            if (!try visitExpr(ctx, data.left)) return false;
+            if (!try visitExpr(ctx, data.right)) return false;
+        },
+        .and_op => {
+            const data = expr.cast(.and_op);
+            if (!try visitExpr(ctx, data.left)) return false;
+            if (!try visitExpr(ctx, data.right)) return false;
+        },
+        .or_op => {
+            const data = expr.cast(.or_op);
+            if (!try visitExpr(ctx, data.left)) return false;
+            if (!try visitExpr(ctx, data.right)) return false;
+        },
+        .lsr => {
+            const data = expr.cast(.lsr);
+            if (!try visitExpr(ctx, data.left)) return false;
+            if (!try visitExpr(ctx, data.right)) return false;
+        },
+        .lsl => {
+            const data = expr.cast(.lsl);
+            if (!try visitExpr(ctx, data.left)) return false;
+            if (!try visitExpr(ctx, data.right)) return false;
+        },
+        .add => {
+            const data = expr.cast(.add);
+            if (!try visitExpr(ctx, data.left)) return false;
+            if (!try visitExpr(ctx, data.right)) return false;
+        },
+        .mul => {
+            const data = expr.cast(.mul);
+            if (!try visitExpr(ctx, data.left)) return false;
+            if (!try visitExpr(ctx, data.right)) return false;
+        },
+        .unary_op => {
+            const data = expr.cast(.unary_op);
+            if (!try visitExpr(ctx, data.expr)) return false;
+        },
+        .is_zero => {
+            const data = expr.cast(.is_zero);
+            if (!try visitExpr(ctx, data.child)) return false;
+        },
+        .case => {
+            const data = expr.cast(.case);
+            if (!try visitExpr(ctx, data.child)) return false;
+        },
+        .retain => {
+            const data = expr.cast(.retain);
+            if (!try visitExpr(ctx, data.expr)) return false;
+        },
+        .lift => {
+            const data = expr.cast(.lift);
+            if (!try visitExpr(ctx, data.src_ptr)) return false;
+        },
+        .global,
+        .byte,
+        .undef,
+        .voidv,
+        .func_ptr,
+        .lambda,
+        .local,
+        .truev,
+        .falsev,
+        .float,
+        .int,
+        .string => {},
+        else => {
+            // std.debug.panic("TODO: {}", .{expr.code});
         }
     }
-
-    fn prependExpr(self: *Visitor, loc: u32) !void {
-        try self.node_queue.unget(&.{ loc });
-        try self.state_queue.unget(&.{.{ .is_stmt = false }});
-    }
-
-    fn clearTemps(self: *Visitor) void {
-        self.temp_nodes.clearRetainingCapacity();
-        self.temp_states.clearRetainingCapacity();
-    }
-
-    fn prependTemps(self: *Visitor) !void {
-        try self.node_queue.unget(self.temp_nodes.items);
-        try self.state_queue.unget(self.temp_states.items);
-    }
-
-    fn pushExpr(self: *Visitor, loc: u32) !void {
-        try self.temp_nodes.append(self.alloc, loc);
-        try self.temp_states.append(self.alloc, .{ .is_stmt = false });
-    }
-
-    fn pushStmts(self: *Visitor, head: u32) !void {
-        var stmt = head;
-        while (stmt != cy.NullId) {
-            try self.temp_nodes.append(self.alloc, stmt);
-            try self.temp_states.append(self.alloc, .{ .is_stmt = true });
-            stmt = self.buf.getStmtNext(stmt);
-        }
-    }
-
-    pub fn deinit(self: *Visitor) void {
-        self.node_queue.deinit();
-        self.state_queue.deinit();
-        self.temp_nodes.deinit(self.alloc);
-        self.temp_states.deinit(self.alloc);
-    }
-};
+    if (!try ctx.visit_expr(ctx, expr)) return false;
+    return true;
+}

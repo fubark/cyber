@@ -1,23 +1,28 @@
 use t 'test'
+use meta
 
 -- TODO: All string tests will be separated to strings_ascii and strings_utf8.
 
-var escaped = 'Return the underlying `symbol`.'.replace('`', '\\`')
-t.eq(escaped, 'Return the underlying \\`symbol\\`.')
+escaped := 'Return the underlying `symbol`.'.replace('`', `\\`)
+t.eq(escaped, `Return the underlying \\symbol\\.`)
 
--- Single quotes does not interpret escape characters.
-var a = '\n'
-t.eq(a.len(), 2)
-a[0] == `\\`
-a[1] == `n`
+-- Raw string does not interpret escape characters.
+a := `\n`
+t.eq(2, a.len())
+t.assert(a[0] == '\\')
+t.assert(a[1] == 'n')
 
--- Indexing an invalid utf8.
-var invalid = "\xc3\x28"
-t.eq(invalid.len(), 2)
-t.eq(invalid.count(), 1)
-t.eq(invalid[0], 0xFFFD)
--- var iter = invalid.iterator()
--- t.eq(iter.next(), 0xFFFD)
+-- Indexing.
+s := 'abc🦊xyz🐶'
+t.eq(s[0], 97)
+t.eq(s[3], 240)
+t.eq(s[4], 159)
+t.eq(s[10], 240)
+t.eq(s[13], 182)
+
+-- iterator.
+iter := s.iterator()
+t.eq(s.next(&iter), byte(97))
 
 -- -- decode()
 -- t.eq(arr.decode(), 'abc🦊xyz🐶')
@@ -26,55 +31,81 @@ t.eq(invalid[0], 0xFFFD)
 -- t.eq(Array('abc').decode().isAscii(), true)
 -- t.eq(try Array('').insertByte(0, 255).decode(), error.Unicode)
 
--- fmt()
-t.eq('@'.fmt(.{1}), '1')
-t.eq('@, @'.fmt(.{1, 2}), '1, 2')
-t.eq('$PH'.fmt('$PH', .{1}), '1')
-t.eq('$PH, $PH'.fmt('$PH', .{1, 2}), '1, 2')
+-- -- fmt()
+-- t.eq('{}'.fmt({^1}), '1')
+-- t.eq('{}, {}'.fmt({^1, ^2}), '1, 2')
+-- t.eq('$PH'.fmt('$PH', {^1}), '1')
+-- t.eq('$PH, $PH'.fmt('$PH', {^1, ^2}), '1, 2')
 
 -- fmtBytes()
-t.eq('z'.fmtBytes(.bin), '01111010')
-t.eq('z'.fmtBytes(.oct), '172')
-t.eq('z'.fmtBytes(.dec), '122')
-t.eq('z'.fmtBytes(.hex), '7a')
-var str = 'abc🦊xyz🐶'
-t.eq(str.fmtBytes(.bin), '0110000101100010011000111111000010011111101001101000101001111000011110010111101011110000100111111001000010110110')
-t.eq(str.fmtBytes(.oct), '141142143360237246212170171172360237220266')
-t.eq(str.fmtBytes(.dec), '097098099240159166138120121122240159144182')
-t.eq(str.fmtBytes(.hex), '616263f09fa68a78797af09f90b6')
+t.eq('172', 'z'.fmtBytes(.oct))
+t.eq('122', 'z'.fmtBytes(.dec))
+t.eq('7a', 'z'.fmtBytes(.hex))
+if meta.is_vm_target():
+    t.eq('01111010', 'z'.fmtBytes(.bin))
+    t.eq('0110000101100010011000111111000010011111101001101000101001111000011110010111101011110000100111111001000010110110', s.fmtBytes(.bin))
+    t.eq('141142143360237246212170171172360237220266', s.fmtBytes(.oct))
+    t.eq('097098099240159166138120121122240159144182', s.fmtBytes(.dec))
+    t.eq('616263f09fa68a78797af09f90b6', s.fmtBytes(.hex))
 
--- getByte()
-t.eq(str.getByte(0), 97)
-t.eq(str.getByte(3), 240)
-t.eq(str.getByte(4), 159)
-t.eq(str.getByte(10), 240)
-t.eq(str.getByte(13), 182)
-t.eq(try str.getByte(-1), error.OutOfBounds)
-t.eq(try str.getByte(14), error.OutOfBounds)
+-- rune_at()
+invalid := "\xc3\x28"
+t.eq(2, invalid.len())
+t.eq(1, invalid.count())
+t.eq(0xFFFD, invalid.rune_at(0))
 
--- getInt()
-var iarr = ''
-iarr = iarr.insertByte(0, 0x5a)
-iarr = iarr.insertByte(1, 0xf1)
-iarr = iarr.insertByte(2, 0x06)
-iarr = iarr.insertByte(3, 0x04)
-iarr = iarr.insertByte(4, 0x5e)
-iarr = iarr.insertByte(5, 0x23)
-iarr = iarr.insertByte(6, 0x8d)
-iarr = iarr.insertByte(7, 0xd2)
-t.eq(iarr.getInt(0, .big), 6553025548629806546)
-t.eq(iarr.getInt(0, .little), -3274922467327020710)
+-- intAt()
+iarr := ''
+iarr = iarr.insert(0, 0x5a)
+iarr = iarr.insert(1, 0xf1)
+iarr = iarr.insert(2, 0x06)
+iarr = iarr.insert(3, 0x04)
+iarr = iarr.insert(4, 0x5e)
+iarr = iarr.insert(5, 0x23)
+iarr = iarr.insert(6, 0x8d)
+iarr = iarr.insert(7, 0xd2)
+t.eq(0x5AF106045E238DD2, iarr.intAt(0, .big))
+t.eq(0xD28D235E0406F15A, iarr.intAt(0, .little))
 
--- getInt32()
+-- i32At()
 iarr = ''
-iarr = iarr.insertByte(0, 0x49)
-iarr = iarr.insertByte(1, 0x96)
-iarr = iarr.insertByte(2, 0x02)
-iarr = iarr.insertByte(3, 0xD2)
-t.eq(iarr.getInt32(0, .big), 1234567890)
-t.eq(iarr.getInt32(0, .little), 3523384905)
+iarr = iarr.insert(0, 0x49)
+iarr = iarr.insert(1, 0x96)
+iarr = iarr.insert(2, 0x02)
+iarr = iarr.insert(3, 0xD2)
+t.eq(i32(0x499602D2), iarr.i32At(0, .big))
+t.eq(i32(0xD2029649), iarr.i32At(0, .little))
 
--- insertByte()
-t.eq(str.insertByte(2, 97), 'abac🦊xyz🐶')
+-- insert(byte)
+t.eq('abac🦊xyz🐶', s.insert(2, 97))
+
+-- $init()
+s2 := 'abcd'
+t.eq(str(s2), 'abcd')
+t.eq(str(s2[0..2]), 'ab')
+t.eq(str(123), '123')
+t.eq(str(123.4), '123.4')
+t.eq(str(123.456), '123.456')
+t.eq(str(123.00000123), '123.00000123')
+t.eq(str(int(123)), '123')
+t.eq(str(error.foo), 'error.foo')
+t.eq(str(@foo), '@foo')
+
+-- initRune(int)
+if meta.is_vm_target():
+    t.eq(str.initRune('a'), 'a')
+    t.eq(str.initRune('🦊'), '🦊')
+    -- t.eq(try runestr(2 ^ 22), error.InvalidRune)
+    -- t.eq(try runestr(-1), error.InvalidRune)
+
+-- str.is_ascii_alpha()
+t.eq(false, str.is_ascii_alpha('3'))
+t.eq(true, str.is_ascii_alpha('a'))
+t.eq(true, str.is_ascii_alpha('A'))
+
+-- str.is_ascii_digit()
+t.eq(true, str.is_ascii_digit('3'))
+t.eq(false, str.is_ascii_digit('a'))
+t.eq(false, str.is_ascii_digit('A'))
 
 --cytest: pass

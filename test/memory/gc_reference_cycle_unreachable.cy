@@ -2,10 +2,10 @@ use t 'test'
 
 -- GC is able to detect reference cycle.
 fn foo():
-    var a = List[dyn]{}
-    var b = List[dyn]{}
-    a.append(b as any)
-    b.append(a as any)
+    var a = []Object{}
+    var b = []Object{}
+    a.append(b as Object)
+    b.append(a as Object)
     var res = collectCycles()
     -- Cycle still alive in the current stack so no gc.
     t.eq(res['num_obj_freed'], 0)
@@ -15,10 +15,10 @@ t.eq(res['num_obj_freed'], 2)
 
 -- Reference cycle with child non cyclable.
 fn foo2():
-    var a = List[dyn]{}
-    var b = List[dyn]{}
-    a.append(b as any)
-    b.append(a as any)
+    var a = []Object{}
+    var b = []Object{}
+    a.append(b as Object)
+    b.append(a as Object)
     a.append(pointer.fromAddr(void, 1))
 foo2()
 res = collectCycles()
@@ -26,11 +26,11 @@ t.eq(res['num_obj_freed'], 3)
 
 -- Reference cycle with non pool objects.
 type T:
-    a any
-    b any
-    c any
-    d any
-    e any
+    a Object
+    b Object
+    c Object
+    d Object
+    e Object
 fn foo3():
     var a = ^T{}
     var b = ^T{}

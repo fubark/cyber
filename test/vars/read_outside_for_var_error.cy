@@ -1,5 +1,5 @@
 for 0..10:
-    var i = 0
+    i := 0
 i
 
 --cytest: error

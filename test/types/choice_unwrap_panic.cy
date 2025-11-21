@@ -2,15 +2,16 @@ use test
 
 type Choice enum:
     case a int
-    case b string
+    case b str
 
-var c = Choice.a(123)
-c.!b
+c := Choice.a(123)
+_ = c.!b
 
---cytest: error
+--cytest: panic
 --panic: Expected active choice tag `1`, found `0`.
 --
---main:8:1 main:
---c.!b
---^
+--[trace]
+--main:8:5 main:
+--_ = c.!b
+--    ^
 --

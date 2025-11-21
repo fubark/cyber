@@ -1,47 +1,45 @@
 use test
 
 -- Without `struct`.
-type Foo2[T type]:
+type Foo2[T Any]:
     a T
-var o = Foo2[int]{a=123}
+o := Foo2[int]{a=123}
 
-type Foo[T type] struct:
+type Foo[T Any] struct:
     a T
 
-    fn foo(a T) T:
-        var rt_type = T
-        var ret T = a
-        return ret
+fn Foo[] :: foo(a T) -> T:
+    ret := as[T] a
+    return ret
 
-    fn get(self) T:
-        var rt_type = T
-        var ret T = self.a
-        return ret
+fn (&Foo[]) get() -> T:
+    ret := as[T] $a
+    return ret
 
-    fn set(self, a T):
-        self.a = a
+fn (&Foo[]) set(a T):
+    $a = a
 
 -- Static function.
 test.eq(Foo[int].foo(123), 123)
 
 -- Infer decl type.
-var f = Foo[string]{a='abc'}
+f := Foo[str]{a='abc'}
 test.eq(f.a, 'abc')
 
 -- Reassign with infer record syntax.
-f = .{a='xyz'}
+f = {a='xyz'}
 test.eq(f.a, 'xyz')
 
--- Declare with type spec.
-var f2 Foo[string] = .{a='abc'}
+-- Infer initialize with type spec.
+f2 := as[Foo[str]] {a='abc'}
 test.eq(f2.a, 'abc')
 
 -- Different variant.
-var f3 = Foo[int]{a=123}
+f3 := Foo[int]{a=123}
 test.eq(f3.a, 123)
 
 -- Method return type replaced with template param.
-var a = f3.get()
+a := f3.get()
 test.eq(a, 123)
 -- Can be reassigned, indicates `a` is of `int` type.
 a = 234    

@@ -1,7 +1,3 @@
-/**
- * Copyright (c) 2023 Cyber (See LICENSE)
- */
-
 // Build: clang -shared -o macos_lib.dylib macos_lib.c -arch arm64 -arch x86_64
 //        zig cc macos_lib.c -target x86_64-windows-gnu -shared -o win_lib.dll
 

@@ -20,7 +20,6 @@ var link_test: bool = undefined;
 var optFFI: ?bool = undefined;
 var optStatic: ?bool = undefined;
 var optJIT: ?bool = undefined;
-var optRT: ?config.Runtime = undefined;
 
 var rtarget: std.Build.ResolvedTarget = undefined;
 var target: std.Target = undefined;
@@ -33,7 +32,7 @@ pub fn build(b: *std.Build) !void {
     target = rtarget.result;
     optimize = b.standardOptimizeOption(.{});
 
-    selinux = b.option(bool, "selinux", "Whether you are building on linux distro with selinux. eg. Fedora.") orelse false;
+    selinux = b.option(bool, "selinux", "Whether you are building on linux distro with selinux. e.g. Fedora.") orelse false;
     testFilter = b.option([]const u8, "test-filter", "Test filter.");
     test_backend = b.option(config.TestBackend, "test-backend", "Test compiler backend.") orelse .vm;
     vmEngine = b.option(config.Engine, "vm", "Build with `zig` or `c` VM.") orelse .c;
@@ -42,7 +41,6 @@ pub fn build(b: *std.Build) !void {
     optStatic = b.option(bool, "static", "Override default lib build type: true=static, false=dynamic");
     trace = b.option(bool, "trace", "Enable tracing features.") orelse (optimize == .Debug);
     optJIT = b.option(bool, "jit", "Build with JIT.");
-    optRT = b.option(config.Runtime, "rt", "Runtime.");
     link_test = b.option(bool, "link-test", "Build test by linking lib. Disable for better stack traces.") orelse true;
     log_mem = b.option(bool, "log-mem", "Log memory traces.") orelse false;
     no_cache = b.option(bool, "no-cache", "Disable caching when running tests.") orelse false;
@@ -55,11 +53,16 @@ pub fn build(b: *std.Build) !void {
         var opts = getDefaultOptions();
         opts.applyOverrides();
 
-        const exe = b.addExecutable(.{
-            .name = "cyber",
+        const main = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
+            // .root_source_file = b.path("main.zig"),
             .target = rtarget,
             .optimize = optimize,
+        });
+
+        const exe = b.addExecutable(.{
+            .name = "cyber",
+            .root_module = main,
         });
         if (optimize != .Debug) {
             // Sometimes there are issues with strip for ReleaseFast + wasi.
@@ -71,12 +74,12 @@ pub fn build(b: *std.Build) !void {
 
         // Allow dynamic libraries to be loaded by filename in the cwd.
         if (target.os.tag == .linux) {
-            exe.addRPath(b.path(":$ORIGIN"));
+            exe.addRPath(.{ .cwd_relative = ":$ORIGIN" });
             if (target.cpu.arch == .x86_64) {
-                exe.addRPath(Build.LazyPath{ .cwd_relative = "/usr/lib/x86_64-linux-gnu" });
+                exe.addRPath(.{ .cwd_relative = "/usr/lib/x86_64-linux-gnu" });
             }
         } else if (target.os.tag == .macos) {
-            exe.addRPath(b.path("@loader_path"));
+            exe.addRPath(.{ .cwd_relative = "@loader_path" });
         }
 
         // Allow exported symbols in exe to be visible to dlopen.
@@ -90,8 +93,19 @@ pub fn build(b: *std.Build) !void {
         const stdx = b.createModule(.{
             .root_source_file = b.path("src/stdx/stdx.zig"),
         });
-        try buildAndLinkDeps(exe.root_module, build_options, stdx, opts);
+        try buildAndLinkDeps(exe.root_module, build_options, stdx, opts);  
         step.dependOn(&b.addInstallArtifact(exe, .{}).step);
+        // step.dependOn(&b.addInstallFile(b.path("src/builtins/builtins.cy"), "bin/src/builtins/builtins.cy").step);
+        // step.dependOn(&b.addInstallFile(b.path("src/builtins/cy.cy"), "bin/src/builtins/cy.cy").step);
+        // step.dependOn(&b.addInstallFile(b.path("src/builtins/math.cy"), "bin/src/builtins/math.cy").step);
+        // step.dependOn(&b.addInstallFile(b.path("src/builtins/meta.cy"), "bin/src/builtins/meta.cy").step);
+        // step.dependOn(&b.addInstallFile(b.path("src/builtins/c.cy"), "bin/src/builtins/c.cy").step);
+        // step.dependOn(&b.addInstallFile(b.path("src/std/math.cy"), "bin/src/std/math.cy").step);
+        // step.dependOn(&b.addInstallFile(b.path("src/std/os.cy"), "bin/src/std/os.cy").step);
+        // step.dependOn(&b.addInstallFile(b.path("src/std/io.cy"), "bin/src/std/io.cy").step);
+        // step.dependOn(&b.addInstallFile(b.path("src/std/os.macos.cy"), "bin/src/std/os.macos.cy").step);
+        // step.dependOn(&b.addInstallFile(b.path("src/std/libc.cy"), "bin/src/std/libc.cy").step);
+        // step.dependOn(&b.addInstallFile(b.path("src/std/libc.macos.cy"), "bin/src/std/libc.macos.cy").step);
     }
 
     {
@@ -100,10 +114,14 @@ pub fn build(b: *std.Build) !void {
         const opts = getDefaultOptions();
         const obj = try buildCVM(b, opts);
 
-        const lib = b.addStaticLibrary(.{
-            .name = "vm",
+        const root = b.createModule(.{
             .target = rtarget,
             .optimize = optimize,
+        });
+        const lib = b.addLibrary(.{
+            .linkage = .static,
+            .name = "vm",
+            .root_module = root,
         });
         lib.addObject(obj);
 
@@ -123,16 +141,21 @@ pub fn build(b: *std.Build) !void {
 
     //     const lib = b.addStaticLibrary(.{
     //         .name = "rt",
-    //         .root_source_file = .{ .path = "src/runtime_static.zig" },
+    //         .root_source_file = .{ .cwd_relative = "src/runtime_static.zig" },
     //         .target = rtarget,
     //         .optimize = optimize,
     //     });
     //     if (optimize != .Debug) {
     //         lib.root_module.strip = true;
     //     }
-    //     lib.addIncludePath(.{. path = thisDir() ++ "/src" });
+    //     lib.addIncludePath(b.path("src"));
 
-    //     try buildAndLinkDeps(&lib.root_module, opts);
+    //     const build_options = try createBuildOptions(b, opts);
+    //     const stdx = b.createModule(.{
+    //         .root_source_file = b.path("src/stdx/stdx.zig"),
+    //     });
+
+    //     try buildAndLinkDeps(lib.root_module, build_options, stdx, opts);
     //     step.dependOn(&lib.step);
     //     step.dependOn(&b.addInstallArtifact(lib, .{}).step);
     // }
@@ -148,7 +171,7 @@ pub fn build(b: *std.Build) !void {
 
         const lib = try buildLib(b, opts);
         for (isystem) |path| {
-            lib.addSystemIncludePath(b.path(path));
+            lib.addSystemIncludePath(.{ .cwd_relative = path });
         }
         step.dependOn(&b.addInstallArtifact(lib, .{}).step);
     }
@@ -162,11 +185,14 @@ pub fn build(b: *std.Build) !void {
         opts.cli = false;
         opts.applyOverrides();
 
-        const lib = b.addExecutable(.{
-            .name = "cyber-web",
+        const root = b.createModule(.{
             .root_source_file = b.path("src/web.zig"),
             .target = rtarget,
             .optimize = optimize,
+        });
+        const lib = b.addExecutable(.{
+            .name = "cyber-web",
+            .root_module = root,
         });
         lib.entry = .disabled;
         if (optimize != .Debug) {
@@ -216,6 +242,7 @@ pub fn build(b: *std.Build) !void {
         opts.applyOverrides();
 
         const step = try addBehaviorTest(b, opts);
+        main_step.dependOn(&b.addInstallArtifact(step, .{}).step);
         const run = b.addRunArtifact(step);
         run.has_side_effects = no_cache;
         main_step.dependOn(&run.step);
@@ -292,12 +319,29 @@ pub fn buildAndLinkDeps(mod: *std.Build.Module, build_options: *std.Build.Module
     mod.addImport("build_options", build_options);
     mod.addImport("stdx", stdx);
 
+    const vmc = b.addTranslateC(.{
+        .root_source_file = b.path("src/vm.h"),
+        .target = rtarget,
+        .optimize = optimize,
+    });
+    const rt_safety = optimize == .Debug or optimize == .ReleaseSafe;
+    vmc.defineCMacro("RT_SAFETY", if (rt_safety) "1" else "0");
+    vmc.defineCMacro("DEBUG", if (optimize == .Debug) "1" else "0");
+    vmc.defineCMacro("TRACK_GLOBAL_RC", if (opts.trackGlobalRc) "1" else "0");
+    vmc.defineCMacro("TRACE", if (opts.trace) "1" else "0");
+    vmc.defineCMacro("IS_32BIT", if (is32Bit(opts.target)) "1" else "0");
+    vmc.defineCMacro("HAS_CYC", if (opts.cyc) "1" else "0");
+    const vmc_mod = b.createModule(.{
+        .root_source_file = vmc.getOutput(),
+    });
+    mod.addImport("vmc", vmc_mod);
+
     mod.link_libc = true;
 
     if (opts.malloc == .mimalloc) {
         const mimalloc = mimalloc_lib.createModule(b);
         mod.addImport("mimalloc", mimalloc);
-        mimalloc_lib.buildAndLink(b, mod, .{
+        try mimalloc_lib.buildAndLink(b, mod, .{
             .target = rtarget,
             .optimize = optimize,
         });
@@ -312,9 +356,9 @@ pub fn buildAndLinkDeps(mod: *std.Build.Module, build_options: *std.Build.Module
     }
 
     if (opts.ffi) {
-        const tcc = tcc_lib.createModule(b);
-        tcc_lib.addImport(mod, b, "tcc", tcc);
-        tcc_lib.buildAndLink(b, mod, .{
+        const tcc = tcc_lib.createModule(b, rtarget, optimize);
+        tcc_lib.addImport(mod, "tcc", tcc);
+        try tcc_lib.buildAndLink(b, mod, .{
             .selinux = selinux,
             .target = rtarget,
             .optimize = optimize,
@@ -330,7 +374,7 @@ pub fn buildAndLinkDeps(mod: *std.Build.Module, build_options: *std.Build.Module
     if (opts.cli and target.os.tag != .windows and target.os.tag != .wasi) {
         const linenoise = createLinenoiseModule(b);
         mod.addImport("linenoise", linenoise);
-        buildAndLinkLinenoise(b, mod);
+        try buildAndLinkLinenoise(b, mod);
     } else {
         mod.addAnonymousImport("linenoise", .{
             .root_source_file = b.path("src/ln_stub.zig"),
@@ -353,11 +397,10 @@ pub const Options = struct {
     optimize: std.builtin.OptimizeMode,
     malloc: config.Allocator,
     static: bool,
-    gc: bool,
+    cyc: bool,
     ffi: bool,
     cli: bool,
     jit: bool,
-    rt: config.Runtime,
 
     /// Link with the lib when building test root.
     /// Disable to see better Zig stack traces.
@@ -400,13 +443,12 @@ fn getDefaultOptions() Options {
         .log_mem = log_mem,
         .target = target,
         .optimize = optimize,
-        .gc = true,
+        .cyc = true,
         .malloc = malloc,
         .static = true,
         .ffi = !target.cpu.arch.isWasm(),
         .cli = !target.cpu.arch.isWasm(),
         .jit = false,
-        .rt = .vm,
         .link_test = link_test,
         .export_vmz = true,
     };
@@ -444,24 +486,26 @@ fn createBuildOptions(b: *std.Build, opts: Options) !*std.Build.Module {
     options.addOption(bool, "log_mem", opts.log_mem);
     options.addOption(bool, "trackGlobalRC", opts.trackGlobalRc);
     options.addOption(bool, "is32Bit", is32Bit(opts.target));
-    options.addOption(bool, "gc", opts.gc);
+    options.addOption(bool, "cyc", opts.cyc);
     options.addOption(bool, "ffi", opts.ffi);
     options.addOption(bool, "cli", opts.cli);
     options.addOption(bool, "jit", opts.jit);
     options.addOption(config.TestBackend, "testBackend", test_backend);
-    options.addOption(config.Runtime, "rt", opts.rt);
     options.addOption(bool, "link_test", opts.link_test);
     options.addOption(bool, "export_vmz", opts.export_vmz);
     return options.createModule();
 }
 
 fn addUnitTest(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
-    const step = b.addTest(.{
-        .name = "unit_test",
-        .root_source_file = b.path("./src/unit_test.zig"),
+    const root = b.createModule(.{
+        .root_source_file = b.path("src/unit_test.zig"),
         .target = rtarget,
         .optimize = optimize,
-        .filter = testFilter,
+    });
+    const step = b.addTest(.{
+        .name = "unit_test",
+        .root_module = root,
+        .filters = &.{testFilter orelse ""},
     });
     const build_options = try createBuildOptions(b, opts);
     const stdx = b.createModule(.{
@@ -472,12 +516,19 @@ fn addUnitTest(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
 }
 
 fn addBehaviorTest(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
-    const step = b.addTest(.{
-        .name = "test",
-        .root_source_file = b.path("./test/main_test.zig"),
+    const root = b.createModule(.{
+        .root_source_file = b.path("test/main_test.zig"),
         .target = rtarget,
         .optimize = optimize,
-        .filter = testFilter,
+    });
+    const step = b.addTest(.{
+        .name = "test",
+        .root_module = root,
+        .filters = &.{testFilter orelse ""},
+        .test_runner = .{
+            .path = b.path("test/test_runner.zig"),
+            .mode = .simple,
+        },
     });
 
     // For linux FFI test.
@@ -502,12 +553,15 @@ fn addBehaviorTest(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
 }
 
 fn addTraceTest(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
+    const root = b.createModule(.{
+        .root_source_file = b.path("test/trace_test.zig"),
+        .target = rtarget,
+        .optimize = optimize,
+    });
     const step = b.addTest(.{
         .name = "trace_test",
-        .root_source_file = b.path("./test/trace_test.zig"),
-        .optimize = optimize,
-        .target = rtarget,
-        .filter = testFilter,
+        .root_module = root,
+        .filters = &.{testFilter orelse ""},
     });
     step.addIncludePath(b.path("src"));
 
@@ -562,87 +616,87 @@ pub const PrintStep = struct {
 
     fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
         const self: *PrintStep = @fieldParentPtr("step", step);
-        std.io.getStdOut().writer().writeAll(self.str) catch unreachable;
+        std.fs.File.stdout().writeAll(self.str) catch unreachable;
     }
 };
 
 pub fn buildCVM(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
-    const lib = b.addObject(.{
-        .name = "vm",
+    const module = b.createModule(.{
         .target = rtarget,
         .optimize = optimize,
+    });
+    const lib = b.addObject(.{
+        .name = "vm",
+        .root_module = module,
     });
     lib.linkLibC();
     if (optimize != .Debug) {
         lib.root_module.strip = true;
     }
 
-    var cflags = std.ArrayList([]const u8).init(b.allocator);
+    var cflags = try std.ArrayList([]const u8).initCapacity(b.allocator, 0);
     const rt_safety = optimize == .Debug or optimize == .ReleaseSafe;
     if (rt_safety) {
-        try cflags.append("-DRT_SAFETY=1");
+        try cflags.append(b.allocator, "-DRT_SAFETY=1");
     } else {
-        try cflags.append("-DRT_SAFETY=0");
+        try cflags.append(b.allocator, "-DRT_SAFETY=0");
     }
     if (optimize == .Debug) {
-        try cflags.append("-DDEBUG=1");
+        try cflags.append(b.allocator, "-DDEBUG=1");
     } else {
-        try cflags.append("-DDEBUG=0");
+        try cflags.append(b.allocator, "-DDEBUG=0");
     }
-    try cflags.append("-DCGOTO=1");
+    try cflags.append(b.allocator, "-DCGOTO=1");
     if (opts.trackGlobalRc) {
-        try cflags.append("-DTRACK_GLOBAL_RC=1");
+        try cflags.append(b.allocator, "-DTRACK_GLOBAL_RC=1");
     }
     if (opts.trace) {
-        try cflags.append("-DTRACE=1");
+        try cflags.append(b.allocator, "-DTRACE=1");
     } else {
-        try cflags.append("-DTRACE=0");
+        try cflags.append(b.allocator, "-DTRACE=0");
     }
     if (opts.log_mem) {
-        try cflags.append("-DLOG_MEM=1");
+        try cflags.append(b.allocator, "-DLOG_MEM=1");
     } else {
-        try cflags.append("-DLOG_MEM=0");
+        try cflags.append(b.allocator, "-DLOG_MEM=0");
     }
     if (is32Bit(opts.target)) {
-        try cflags.append("-DIS_32BIT=1");
+        try cflags.append(b.allocator, "-DIS_32BIT=1");
     } else {
-        try cflags.append("-DIS_32BIT=0");
+        try cflags.append(b.allocator, "-DIS_32BIT=0");
     }
-    if (opts.gc) {
-        try cflags.append("-DHAS_GC=1");
+    if (opts.cyc) {
+        try cflags.append(b.allocator, "-DHAS_CYC=1");
     } else {
-        try cflags.append("-DHAS_GC=0");
+        try cflags.append(b.allocator, "-DHAS_CYC=0");
     }
 
     // Disable traps for arithmetic/bitshift overflows.
     // Note that changing this alone doesn't clear the build cache.
-    lib.root_module.sanitize_c = false;
+    lib.root_module.sanitize_c = .off;
 
     lib.addIncludePath(b.path("src"));
-    lib.addCSourceFile(.{ .file = b.path("src/vm.c"), .flags = cflags.items });
+    lib.addCSourceFile(.{
+        .file = b.path("src/vm.c"),
+        .flags = cflags.items
+    });
     for (isystem) |path| {
-        lib.addSystemIncludePath(b.path(path));
+        lib.addSystemIncludePath(.{ .cwd_relative = path });
     }
     return lib;
 }
 
 fn buildLib(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
-    var lib: *std.Build.Step.Compile = undefined;
-    if (opts.static) {
-        lib = b.addStaticLibrary(.{
-            .name = "cyber",
-            .root_source_file = b.path("src/lib.zig"),
-            .target = rtarget,
-            .optimize = optimize,
-        });
-    } else {
-        lib = b.addSharedLibrary(.{
-            .name = "cyber",
-            .root_source_file = b.path("src/lib.zig"),
-            .target = rtarget,
-            .optimize = optimize,
-        });
-    }
+    const root = b.createModule(.{
+        .root_source_file = b.path("src/lib.zig"),
+        .target = rtarget,
+        .optimize = optimize,
+    });
+    const lib = b.addLibrary(.{
+        .linkage = if (opts.static) .static else .dynamic,
+        .name = "cyber",
+        .root_module = root,
+    });
 
     if (optimize != .Debug) {
         lib.root_module.strip = true;
@@ -680,26 +734,35 @@ fn buildLib(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
 }
 
 pub fn createLinenoiseModule(b: *std.Build) *std.Build.Module {
+    const linenoise_ = b.addTranslateC(.{
+        .root_source_file = b.path("lib/linenoise/linenoise.h"),
+        .target = rtarget,
+        .optimize = optimize,
+    });
     const mod = b.createModule(.{
-        .root_source_file = b.path("lib/linenoise/linenoise.zig"),
+        .root_source_file = linenoise_.getOutput(),
     });
     mod.addIncludePath(b.path("lib/linenoise"));
     return mod;
 }
 
-pub fn buildAndLinkLinenoise(b: *std.Build, mod: *std.Build.Module) void {
-    const lib = b.addStaticLibrary(.{
-        .name = "linenoise",
+pub fn buildAndLinkLinenoise(b: *std.Build, mod: *std.Build.Module) !void {
+    const root = b.createModule(.{
         .target = rtarget,
         .optimize = optimize,
+    });
+    const lib = b.addLibrary(.{
+        .linkage = .static,
+        .name = "linenoise",
+        .root_module = root,
     });
     lib.linkLibC();
     // lib.disable_sanitize_c = true;
 
-    const c_flags = std.ArrayList([]const u8).init(b.allocator);
+    const c_flags = try std.ArrayList([]const u8).initCapacity(b.allocator, 0);
 
-    var sources = std.ArrayList([]const u8).init(b.allocator);
-    sources.appendSlice(&.{
+    var sources = try std.ArrayList([]const u8).initCapacity(b.allocator, 0);
+    sources.appendSlice(b.allocator, &.{
         "lib/linenoise/linenoise.c",
     }) catch @panic("error");
     for (sources.items) |src| {

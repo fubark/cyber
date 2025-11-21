@@ -93,9 +93,9 @@ pub fn saveNewSpecFile(alloc: std.mem.Allocator, specGroup: SpecHashGroup, spec:
 /// @lib.com/mylib.cy
 /// cacheDate=1679911482
 fn writeSpecEntry(file: std.fs.File, entry: SpecEntry) !void {
-    const w = file.writer();
-    try std.fmt.format(w, "@{s}\n", .{entry.spec});
-    try std.fmt.format(w, "cacheDate={}\n", .{entry.cacheDate});
+    var w = file.writer(&.{});
+    try w.interface.print("@{s}\n", .{entry.spec});
+    try w.interface.print("cacheDate={}\n", .{entry.cacheDate});
 }
 
 /// Given absolute specifier, return the cached spec entries.
@@ -175,7 +175,7 @@ pub fn allocSpecFileContents(alloc: std.mem.Allocator, entry: SpecEntry) ![]cons
 fn computeSpecHashStr(spec: []const u8) [16]u8 {
     var res: [16]u8 = undefined;
     const hash = std.hash.Wyhash.hash(0, spec);
-    _ = std.fmt.formatIntBuf(&res, hash, 16, .lower, .{ .width = 16, .fill = '0'});
+    _ = std.fmt.printInt(&res, hash, 16, .lower, .{ .width = 16, .fill = '0'});
     return res;
 }
 

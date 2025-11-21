@@ -1,7 +1,5 @@
 use test
 
-context mem Memory
-
 type Foo cstruct:
     a int
     b float

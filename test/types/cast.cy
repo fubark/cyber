@@ -1,37 +1,20 @@
 use t 'test'
 
--- Cast to exact primitive type.
-dyn a = 1
-t.eq(foo1(a as int), true)
-fn foo1(a int) bool:
-    return true
+-- int to float
+var i int = 123
+t.eq(123.0, as i)
 
--- Cast to exact object type.
-a = Foo{a=123}
-t.eq(foo2(a as Foo), true)
-type Foo:
-    a int
-fn foo2(a Foo) bool:
-    return true
+-- float to int
+var f float = 123
+t.eq(123, as f)
 
--- Cast to exact string type.
-a = 'abc'
-t.eq(foo3(a as string), true)
-fn foo3(a string) bool:
-    return true
+-- Infer as[T] from ?T target.
+i = 123
+var opt ?i32 = as i
+t.eq(i32(123), opt.?)
 
--- Cast to abstract any type.
-a = 'abc'
-t.eq(foo5(a as any), true)
-fn foo5(a any) bool:
-    return true
-
--- Cast for interim dst to local.
-dyn b = 1
-a = b as int
-
--- Cast for interim dst to static var.
-var .sa any = 'abc'
-sa = b as int
+-- Infer as[T] from !T target.
+var res !i32 = as i
+t.eq(i32(123), res!)
 
 --cytest: pass

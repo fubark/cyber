@@ -6,13 +6,13 @@ t.eq(false or true, true)
 t.eq('cyber' == 'cyber' or false, true)
 t.eq(false or 'cyber' == 'cyber', true)
 -- or assigned to local.
-var res = false or 'cyber' == 'cyber'
+res := false or 'cyber' == 'cyber'
 t.eq(res, true)
 -- or with retained local.
 t.eq(res or 'cyber' == 'cyber', true)
 
-var .called = false
-fn foo() bool:
+global called bool = false
+fn foo() -> bool:
     called = true
     return true
 

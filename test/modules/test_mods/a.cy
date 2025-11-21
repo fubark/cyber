@@ -1,56 +1,52 @@
-var .varInt = 123
-var .varTypedInt int = 123
-var .varAny any = {1, 2, 3}
-var .varList List[int] = .{1, 2, 3}
-var .varMap Map = Map{a=1, b=2, c=3}
-var .varFunc = fn() int:
+global g_int int = 123
+global g_obj Object = Object(^Vec2{x=1, y=2})
+global g_arr Array[int] = {1, 2, 3}
+global g_slice []int = {1, 2, 3}
+global g_map Map[str, int] = {a=1, b=2, c=3}
+
+type Fn1 = fn() -> int
+global varFunc Fn1 = |_|:
     return 345
-var .varFunc1 = fn(a int) int:
+
+type Fn2 = fn(int) -> int
+global varFunc1 Fn2 = |a|:
     return a + 1
-var .varFunc2 = fn(a int, b int) int:
+
+type Fn3 = fn(int, int) -> int
+global varFunc2 Fn3 = |a, b|:
     return a + b
 
-var .varNoExport = 123
+global varNoExport int = 123
 
-fn func() int:
+fn func() -> int:
     return 234
-fn func1(a int) int:
+fn func1(a int) -> int:
     return a + 1
-fn func2(a int, b int) int:
+fn func2(a int, b int) -> int:
     return a + b
 
-fn barNoExport() int:
+fn barNoExport() -> int:
     return 234
 
-fn toInt(val any) int:
+fn toInt(val float) -> int:
     return int(val)
 
-var .initOnce = incInitOnce(initOnceCount)
-var .initOnceCount = 0
-fn incInitOnce(cur int) int:
-    initOnceCount = cur + 1
-    return initOnceCount
-
--- Tests dependency generation, so set resulting symbol's natural order before the dependency.
-var .varDepRes = varDep
-var .varDep = 123
-
-fn sameFuncName() int:
+fn sameFuncName() -> int:
     return 123
 
-fn useInt(a any) int:
+fn useInt(a float) -> int:
     return toInt(a)
 
 type Vec2:
     x float
     y float
 
-fn Vec2.new(x float, y float) Vec2:
+fn Vec2 :: new(x float, y float) -> Vec2:
     return Vec2{x=x, y=y}
-type Vec2Alias -> Vec2
+type Vec2Alias = Vec2
 
 type Bar:
     a float
 
-type TFoo[T type]:
+type TFoo[T Any]:
     a T

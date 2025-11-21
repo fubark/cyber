@@ -623,7 +623,7 @@ fn postExpr(c: *cy.Chunk, nodeId: cy.NodeId) !Value {
             } else {
                 const fval = try std.fmt.parseFloat(f64, literal);
                 const val = llvm.ConstReal(llvm.DoubleType(), fval);
-                return Value.init(bt.Float, val);
+                return Value.init(bt.F64, val);
             }
         },
     //     .float => {
@@ -1052,8 +1052,8 @@ fn genBinExpr2(c: *cy.Chunk, opts: GenBinExprOptions) !Value {
                     const rightv = c.exprResStack.items[c.exprResStack.items.len-1];
                     c.exprResStack.items.len -= 2;
 
-                    if (leftT == bt.Float) {
-                        if (rightv.typeId != bt.Float) {
+                    if (leftT == bt.F64) {
+                        if (rightv.typeId != bt.F64) {
                             return error.Unsupported;
                         }
                         return error.Unsupported;
@@ -1095,8 +1095,8 @@ fn genBinExpr2(c: *cy.Chunk, opts: GenBinExprOptions) !Value {
                     const rightv = c.exprResStack.items[c.exprResStack.items.len-1];
                     c.exprResStack.items.len -= 2;
 
-                    if (leftT == bt.Float) {
-                        if (rightv.typeId != bt.Float) {
+                    if (leftT == bt.F64) {
+                        if (rightv.typeId != bt.F64) {
                             return error.Unsupported;
                         }
                         const val = llvm.BuildFCmp(c.builder, toRealPredicate(opts.op), leftv.val, rightv.val, "fcmp");

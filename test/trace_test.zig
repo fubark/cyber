@@ -418,8 +418,8 @@ test "Multiple evals persisting state." {
     defer run.vm.release(global);
     c.setUserData(@ptrCast(run.vm), &global);
 
-    c.setResolver(@ptrCast(run.vm), cy.compiler.defaultModuleResolver);
-    c.setModuleLoader(@ptrCast(run.vm), struct {
+    c.set_resolver(@ptrCast(run.vm), cy.compiler.defaultModuleResolver);
+    c.vm_set_loader(@ptrCast(run.vm), struct {
         fn onLoad(vm_: ?*c.VM, mod: c.Sym) callconv(.C) void {
             const vm: *cy.VM = @ptrCast(@alignCast(vm_));
             const g = cy.ptrAlignCast(*cy.Value, vm.userData).*;
@@ -641,7 +641,7 @@ test "Custom modules." {
     var count: usize = 0;
     c.setUserData(@ptrCast(run.vm), &count);
 
-    c.setResolver(@ptrCast(run.vm), c.defaultResolver);
+    c.set_resolver(@ptrCast(run.vm), c.defaultResolver);
     const S = struct {
         fn test1(vm: *c.VM) cy.Value {
             const count_: *usize = @ptrCast(@alignCast(c.getUserData(vm)));
@@ -677,7 +677,7 @@ test "Custom modules." {
         fn loader(vm_: ?*c.VM, spec: c.Str, res: ?*c.Module) callconv(.C) bool {
             const name = c.fromStr(spec);
             if (std.mem.eql(u8, name, "core")) {
-                const defaultLoader = c.defaultModuleLoader;
+                const defaultLoader = c.default_module_loader;
                 return defaultLoader(vm_, spec, res);
             }
             if (std.mem.eql(u8, name, "mod1")) {
@@ -700,7 +700,7 @@ test "Custom modules." {
             return false;
         }
     };
-    c.setModuleLoader(@ptrCast(run.vm), @ptrCast(&S.loader));
+    c.vm_set_loader(@ptrCast(run.vm), @ptrCast(&S.loader));
 
     const src1 = try t.alloc.dupe(u8, 
         \\use m 'mod1'

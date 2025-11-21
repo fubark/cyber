@@ -1,7 +1,7 @@
 use t 'test'
 
 -- Basic.
-var i = 0
+i := 0
 while i != 10:
     i += 1
 t.eq(i, 10)
@@ -15,7 +15,7 @@ t.eq(i, 1)
 
 -- continue
 i = 0
-var count = 0
+count := 0
 while i != 10:
     i += 1
     if i == 2:
@@ -26,7 +26,7 @@ t.eq(count, 9)
 -- continue releases locals.
 i = 0
 while i != 10:
-    var a = 'abc'
+    a := 'abc'
     i += 1
     if i == 2:
         continue

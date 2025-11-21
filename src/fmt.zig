@@ -20,6 +20,7 @@ const FmtValueType = enum(u8) {
     i32,
     i48,
     u64,
+    u64_hex,
     i64,
     f64,
     bool,
@@ -82,7 +83,7 @@ fn toFmtValueType(comptime T: type) FmtValueType {
             } else if (@typeInfo(T) == .error_set) {
                 return .err;
             } else if (@typeInfo(T) == .optional) {
-                if (@typeInfo(@typeInfo(T).optional.child) == .pointer) {
+                if (@typeInfo(@typeInfo(T).Optional.child) == .Pointer) {
                     return .ptr;
                 } else {
                     @compileError(std.fmt.comptimePrint("Unexpected type: {}", .{T}));
@@ -168,10 +169,15 @@ pub inline fn v(val: anytype) FmtValue {
         },
         .enumt => return enumv(val),
         .err => return str(@errorName(val)),
-        .ptr => return .{ .type = .ptr, .data = .{
-            .ptr = @ptrFromInt(@intFromPtr(val)),
-        } },
-        .sliceU8, .repeat => {
+        .ptr =>  return .{
+            .type = .ptr,
+            .data = .{
+                .ptr = @ptrFromInt(@intFromPtr(val)),
+            }
+        },
+        .u64_hex,
+        .sliceU8,
+        .repeat => {
             cy.unexpected();
         },
     }
@@ -194,6 +200,15 @@ pub fn sliceU8(slice: []const u8) FmtValue {
         },
         .data2 = .{
             .slice = @intCast(slice.len),
+        },
+    };
+}
+
+pub fn u64Hex(n: u64) FmtValue {
+    return .{
+        .type = .u64_hex,
+        .data = .{
+            .u64 = n,
         },
     };
 }
@@ -241,7 +256,7 @@ pub fn str(s: []const u8) FmtValue {
     };
 }
 
-fn formatValue(writer: anytype, val: FmtValue) !void {
+fn formatValue(writer: *std.io.Writer, val: FmtValue) !void {
     switch (val.type) {
         .bool => {
             if (val.data.bool) {
@@ -254,34 +269,34 @@ fn formatValue(writer: anytype, val: FmtValue) !void {
             try writer.writeByte(val.data.char);
         },
         .i8 => {
-            try std.fmt.formatInt(@as(i8, @bitCast(val.data.u8)), 10, .lower, .{}, writer);
+            try writer.printInt(@as(i8, @bitCast(val.data.u8)), 10, .lower, .{});
         },
         .u8 => {
-            try std.fmt.formatInt(val.data.u8, 10, .lower, .{}, writer);
+            try writer.printInt(val.data.u8, 10, .lower, .{});
         },
         .i16 => {
-            try std.fmt.formatInt(@as(i16, @bitCast(val.data.u16)), 10, .lower, .{}, writer);
+            try writer.printInt(@as(i16, @bitCast(val.data.u16)), 10, .lower, .{});
         },
         .u16 => {
-            try std.fmt.formatInt(val.data.u16, 10, .lower, .{}, writer);
-        },
-        .u32 => {
-            try std.fmt.formatInt(val.data.u32, 10, .lower, .{}, writer);
+            try writer.printInt(val.data.u16, 10, .lower, .{});
         },
         .i32 => {
-            try std.fmt.formatInt(@as(i32, @bitCast(val.data.u32)), 10, .lower, .{}, writer);
+            try writer.printInt(@as(i32, @bitCast(val.data.u32)), 10, .lower, .{});
         },
-        .i48 => {
-            try std.fmt.formatInt(@as(i48, @bitCast(@as(u48, @intCast(val.data.u64)))), 10, .lower, .{}, writer);
+        .u32 => {
+            try writer.printInt(val.data.u32, 10, .lower, .{});
         },
         .i64 => {
-            try std.fmt.formatInt(@as(i64, @bitCast(val.data.u64)), 10, .lower, .{}, writer);
+            try writer.printInt(@as(i64, @bitCast(val.data.u64)), 10, .lower, .{});
         },
         .u64 => {
-            try std.fmt.formatInt(val.data.u64, 10, .lower, .{}, writer);
+            try writer.printInt(val.data.u64, 10, .lower, .{});
+        },
+        .u64_hex => {
+            try writer.printInt(val.data.u64, 16, .lower, .{});
         },
         .f64 => {
-            try formatFloatValue(val.data.f64, "d", .{}, writer);
+            try writer.printFloat(val.data.f64, .{});
         },
         .err, .enumt, .string => {
             try writer.writeAll(val.data.string[0..val.data2.string]);
@@ -292,24 +307,23 @@ fn formatValue(writer: anytype, val: FmtValue) !void {
         },
         .ptr => {
             try writer.writeByte('@');
-            try std.fmt.formatInt(@intFromPtr(val.data.ptr), 16, .lower, .{}, writer);
+            try writer.printInt(@intFromPtr(val.data.ptr), 16, .lower, .{});
         },
         .sliceU8 => {
             try writer.writeByte('{');
             if (val.data2.slice > 0) {
-                try std.fmt.formatInt(val.data.slice[0], 10, .lower, .{}, writer);
-
+                try writer.printInt(val.data.slice[0], 10, .lower, .{});
                 for (val.data.slice[1..val.data2.slice]) |it| {
                     try writer.writeAll(", ");
-                    try std.fmt.formatInt(it, 10, .lower, .{}, writer);
+                    try writer.printInt(it, 10, .lower, .{});
                 }
             }
             try writer.writeByte('}');
         },
         .repeat => {
-            try writer.writeByteNTimes(val.data.repeat.char, val.data.repeat.n);
+            _ = try writer.splatByte(val.data.repeat.char, val.data.repeat.n);
         },
-        // else => cy.panicFmt("unsupported {}", .{val.type}),
+        else => cy.panicFmt("unsupported {}", .{val.type}),
     }
 }
 
@@ -343,7 +357,7 @@ fn formatFloatValue(
     }
 }
 
-pub fn format(writer: anytype, fmt: []const u8, vals: []const FmtValue) !void {
+pub fn format(writer: *std.Io.Writer, fmt: []const u8, vals: []const FmtValue) !void {
     var valIdx: u32 = 0;
     var i: u32 = 0;
     while (i < fmt.len) {
@@ -376,8 +390,8 @@ pub fn allocFormat(alloc: std.mem.Allocator, fmt: []const u8, vals: []const FmtV
     @branchHint(.cold);
     var buf: std.ArrayListUnmanaged(u8) = .{};
     defer buf.deinit(alloc);
-    const w = buf.writer(alloc);
-    try format(w, fmt, vals);
+    var adapter = buf.writer(alloc).adaptToNewApi(&.{});
+    try format(&adapter.new_interface, fmt, vals);
     return buf.toOwnedSlice(alloc);
 }
 
@@ -410,7 +424,7 @@ pub fn printDeprecated(name: []const u8, sinceVersion: []const u8, fmt: []const 
     printStderr("\n", &.{});
 }
 
-pub fn print(w: anytype, fmt: []const u8, vals: []const FmtValue) void {
+pub fn print(w: *std.Io.Writer, fmt: []const u8, vals: []const FmtValue) void {
     format(w, fmt, vals) catch |err| {
         log.tracev("{}", .{err});
         cy.fatal();
@@ -424,19 +438,12 @@ pub fn printStderr(fmt: []const u8, vals: []const FmtValue) void {
     };
 }
 
-pub fn printCount(w: anytype, fmt: []const u8, vals: []const FmtValue) !u64 {
-    var numBytesWritten: u64 = undefined;
-    const cw = countingWriter(&numBytesWritten, w);
-    try format(cw, fmt, vals);
-    return numBytesWritten;
-}
-
 pub const StderrWriter = if (!cy.isWasmFreestanding) std.fs.File.Writer else HostFileWriter;
 
 pub fn lockStderrWriter() StderrWriter {
     if (!cy.isWasmFreestanding) {
         printMutex.lock();
-        return std.io.getStdErr().writer();
+        return std.fs.File.stderr().writer(&.{});
     } else {
         return HostFileWriter{ .fid = 2 };
     }
@@ -450,9 +457,9 @@ pub fn unlockPrint() void {
 
 pub fn printStderrOrErr(fmt: []const u8, vals: []const FmtValue) !void {
     @branchHint(.cold);
-    const w = lockStderrWriter();
+    var w = lockStderrWriter();
     defer unlockPrint();
-    try format(w, fmt, vals);
+    try format(&w.interface, fmt, vals);
 }
 
 const HostFileWriter = struct {
@@ -493,63 +500,16 @@ const HostFileWriter = struct {
     }
 };
 
-pub fn CountingWriter(comptime ChildWriter: type) type {
-    return struct {
-        numBytesWritten: *u64,
-        child: ChildWriter,
+pub const Repeat = struct {
+    s: []const u8,
+    count: usize,
 
-        // pub const Error = WriterType.Error;
-        // pub const Writer = io.Writer(*Self, Error, write);
-        // pub const Error = error{};
-
-        const Self = @This();
-
-        pub fn writeByte(self: Self, byte: u8) !void {
-            try self.child.writeByte(byte);
-            self.numBytesWritten.* += 1;
+    pub fn format(
+        self: Repeat,
+        writer: *std.Io.Writer,
+    ) !void {
+        for (0..self.count) |_| {
+            try writer.writeAll(self.s);
         }
-
-        pub fn writeAll(self: Self, bytes: []const u8) !void {
-            const n = try self.child.write(bytes);
-            self.numBytesWritten.* += n;
-        }
-
-        pub fn writeByteNTimes(self: Self, byte: u8, n: usize) !void {
-            var bytes: [256]u8 = undefined;
-            @memset(bytes[0..], byte);
-
-            var remaining = n;
-            while (remaining > 0) {
-                const to_write = @min(remaining, bytes.len);
-                try self.writeAll(bytes[0..to_write]);
-                remaining -= to_write;
-            }
-            self.numBytesWritten.* += n;
-        }
-
-        pub fn writeBytesNTimes(self: Self, bytes: []const u8, n: usize) anyerror!void {
-            var i: usize = 0;
-            while (i < n) : (i += 1) {
-                try self.writeAll(bytes);
-            }
-        }
-
-        // pub fn writer(self: *Self) Writer {
-        //     return .{ .context = self };
-        // }
-    };
-}
-
-fn countingWriter(numBytesWritten: *u64, child: anytype) CountingWriter(@TypeOf(child)) {
-    numBytesWritten.* = 0;
-    return .{
-        .numBytesWritten = numBytesWritten,
-        .child = child,
-    };
-}
-
-pub fn panic(fmt: []const u8, vals: []const FmtValue) noreturn {
-    @branchHint(.cold);
-    cy.log.fmt(fmt, vals);
-    @panic("");
-}
+    }
+};

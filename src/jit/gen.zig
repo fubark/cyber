@@ -58,7 +58,7 @@ pub const Reloc = struct {
 };
 
 pub const CodeBuffer = struct {
-    buf: std.ArrayListAlignedUnmanaged(u8, std.heap.page_size_min),
+    buf: std.ArrayListAligned(u8, std.mem.Alignment.fromByteUnits(std.heap.page_size_min)),
 
     /// Where main begins. Currently only jit code uses this.
     mainPc: u32,
@@ -246,10 +246,10 @@ fn exprStmt(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
     const expr = c.ir.advanceStmt(idx, .exprStmt);
 
     if (data.isBlockResult) {
-        const inMain = c.curBlock.block_depth == 0;
+        const inMain = c.cur_proc.block_depth == 0;
         if (inMain) {
-            const exprv = try genExpr(c, expr, Cstr.simpleRetain);
-            c.curBlock.endLocal = exprv.reg;
+            const exprv = try genExpr(c, expr, Cstr.simpleOwn);
+            c.cur_proc.endLocal = exprv.reg;
             try bc.popTempAndUnwind(c, exprv);
         } else {
             // Return from block expression.
@@ -596,7 +596,7 @@ fn genFloat(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: *ast.Node) !GenValue {
         // try pushRelease(c, inst.dst, nodeId);
     }
 
-    const val = cy.Value.initF64(data.val);
+    const val = cy.Value.initFloat64(data.val);
     try assm.genStoreSlotValue(c, inst.dst, val);
 
     const value = regValue(c, inst.dst, false);
@@ -658,7 +658,7 @@ fn genToExact(c: *cy.Chunk, val: GenValue, dst: Cstr, desc: ?u32) !GenValue {
                 try assm.genStoreSlot(c, reg.dst, .temp);
             }
             // Parent only cares about the retained property.
-            return GenValue.initRetained(val.tracked);
+            return GenValue.initOwned(val.tracked);
         },
         // .boxedLocal => {
         //     const boxed = dst.data.boxedLocal;
@@ -699,8 +699,7 @@ fn genCallFuncSym(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: *ast.Node) !GenV
     const ret_t = c.ir.getExprType(idx).id;
     const inst = try bc.beginCall(c, cstr, ret_t, false, nodeId);
 
-    const argsIdx = c.ir.advanceExpr(idx, .preCallFuncSym);
-    const args = c.ir.getArray(argsIdx, u32, data.numArgs);
+    const args = c.ir.getArray(data.args, u32, data.numArgs);
 
     const argStart = bc.numSlots(c);
     for (args, 0..) |argIdx, i| {
@@ -826,7 +825,6 @@ fn genExpr(c: *cy.Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         // .preCallObjSymUnOp  => genCallObjSymUnOp(c, idx, cstr, nodeId),
         // .preUnOp            => genUnOp(c, idx, cstr, nodeId),
         // .string             => genString(c, idx, cstr, nodeId),
-        .stringTemplate     => genStringTemplate(c, idx, cstr, nodeId),
         // .switchBlock        => genSwitchBlock(c, idx, cstr, nodeId),
         // .symbol             => genSymbol(c, idx, cstr, nodeId),
         // .throw              => genThrow(c, idx, nodeId),
@@ -883,8 +881,8 @@ fn mainBlock(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
     if (bc.shouldGenMainScopeReleaseOps(c.compiler)) {
         // try genBlockReleaseLocals(c);
     }
-    if (c.curBlock.endLocal != cy.NullU8) {
-        try mainEnd(c, c.curBlock.endLocal);
+    if (c.cur_proc.endLocal != cy.NullU8) {
+        try mainEnd(c, c.cur_proc.endLocal);
     } else {
         try mainEnd(c, null);
     }
@@ -902,66 +900,6 @@ fn mainEnd(c: *cy.Chunk, optReg: ?u8) !void {
     try assm.genMovImm(c, .arg0, retSlot);
     try c.jitPush(&stencils.end);
     try assm.genMainReturn(c);
-}
-
-fn genStringTemplate(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: *ast.Node) !GenValue {
-    const data = c.ir.getExprData(idx, .stringTemplate);
-    const strsIdx = c.ir.advanceExpr(idx, .stringTemplate);
-    const strs = c.ir.getArray(strsIdx, []const u8, data.numExprs+1);
-    const args = c.ir.getArray(data.args, u32, data.numExprs);
-
-    const inst = try bc.selectForDstInst(c, cstr, bt.String, true, nodeId); 
-    const argStart = bc.numSlots(c);
-
-    for (args, 0..) |argIdx, i| {
-        const temp = try bc.reserveTemp(c, bt.Any);
-        if (cy.Trace and temp != argStart + i) return error.Unexpected;
-        _ = try genExpr(c, argIdx, Cstr.toTemp(temp));
-    }
-    if (cy.Trace and bc.numSlots(c) != argStart + data.numExprs) return error.Unexpected;
-
-    // Inline const strings.
-    const skipPc = c.jitGetPos();
-    try assm.genPatchableJumpRel(c);
-
-    // Forward align.
-    const advanceLen = std.mem.alignForward(usize, c.jitGetPos(), 8) - c.jitGetPos();
-    _ = try c.jitEnsureUnusedCap(advanceLen);
-    c.jitBuf.buf.items.len += advanceLen;
-
-    const strsPc = c.jitGetPos();
-    for (strs) |str| {
-        const ustr = try c.unescapeString(str);
-        const constIdx = try c.buf.getOrPushStaticStringConst(ustr);
-        const constStr = c.buf.consts.items[constIdx];
-        try c.jitPushU64(@bitCast(constStr));
-    }
-
-    assm.patchJumpRel(c, skipPc, c.jitGetPos());
-
-    // try c.pushOptionalDebugSym(nodeId);
-    // try c.buf.pushOp3(.stringTemplate, argStart, data.numExprs, inst.dst);
-
-    // Load strs.
-    try assm.genMovPcRel(c, .arg0, strsPc);
-
-    // Load exprs.
-    try assm.genAddImm(c, .arg1, .fp, 8 * argStart);
-
-    // Load expr count.
-    try assm.genMovImm(c, .arg2, data.numExprs);
-
-    try c.jitPush(stencils.stringTemplate[0..stencils.stringTemplate_zAllocStringTemplate2]);
-    try assm.genCallFuncPtr(c, &cy.vm.zAllocStringTemplate2);
-    try c.jitPush(stencils.stringTemplate[stencils.stringTemplate_zAllocStringTemplate2+CallHoleLen..]);
-
-    // Save result.
-    try assm.genStoreSlot(c, inst.dst, .arg0);
-
-    try bc.popTemps(c, data.numExprs, nodeId);
-
-    const val = regValue(c, inst.dst, true);
-    return finishInst(c, val, inst.finalDst);
 }
 
 fn pushReleaseVals(c: *cy.Chunk, vals: []const GenValue, debugNodeId: *ast.Node) !void {
@@ -1002,14 +940,14 @@ fn declareLocalInit(c: *cy.Chunk, idx: u32, nodeId: *ast.Node) !void {
     local.some.rcCandidate = val.tracked;
 
     // rhs has generated, increase `nextLocalReg`.
-    c.curBlock.nextLocalReg += 1;
+    c.cur_proc.nextLocalReg += 1;
     log.tracev("declare {}, rced: {} ", .{val.local, local.some.rcCandidate});
 }
 
 fn declareLocal(c: *cy.Chunk, idx: u32, node: *ast.Node) !void {
     const data = c.ir.getStmtData(idx, .declareLocal);
     const slot = try bc.reserveLocal(c, data.declType, data.lifted, node);
-    c.genIrLocalMapStack.items[c.curBlock.irLocalMapStart + data.id] = slot;
+    c.genIrLocalMapStack.items[c.cur_proc.irLocalMapStart + data.id] = slot;
 }
 
 fn funcBlock(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
@@ -1108,8 +1046,6 @@ fn genChunk(c: *cy.Chunk) !void {
 }
 
 fn genChunkInner(c: *cy.Chunk) !void {
-    c.dataStack.clearRetainingCapacity();
-    c.dataU8Stack.clearRetainingCapacity();
     c.listDataStack.clearRetainingCapacity();
 
     const code = c.ir.getStmtCode(0);
@@ -1153,11 +1089,11 @@ fn genLocalReg(c: *cy.Chunk, reg: SlotId, cstr: Cstr, nodeId: *ast.Node) !GenVal
         switch (cstr.type) {
             .preferVolatile => {
                 exact_cstr = Cstr.toLocal(reg, false);
-                exact_cstr.data.slot.retain = false;
+                exact_cstr.data.slot.own = false;
             },
             .simple => {
                 exact_cstr = Cstr.toLocal(reg, false);
-                exact_cstr.data.slot.retain = local.isBoxed() and cstr.data.simple.retain;
+                exact_cstr.data.slot.own = local.isBoxed() and cstr.data.simple.own;
             },
             else => {},
         }
@@ -1191,9 +1127,9 @@ fn retExprStmt(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
 
     // TODO: If the returned expr is a local, consume the local after copying to reg 0.
     var childv: GenValue = undefined;
-    if (c.curBlock.type == .main) {
+    if (c.cur_proc.type == .main) {
         // Main block.
-        childv = try genExpr(c, childIdx, Cstr.simpleRetain);
+        childv = try genExpr(c, childIdx, Cstr.simpleOwn);
     } else {
         childv = try genExpr(c, childIdx, Cstr.ret);
     }
@@ -1201,7 +1137,7 @@ fn retExprStmt(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
     try bc.popTempAndUnwind(c, childv);
 
     // try genBlockReleaseLocals(c);
-    if (c.curBlock.type == .main) {
+    if (c.cur_proc.type == .main) {
         // try c.buf.pushOp1(.end, @intCast(childv.local));
         return error.TODO;
     } else {

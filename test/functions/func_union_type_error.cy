@@ -1,12 +1,13 @@
-fn foo(a int) int:
+fn foo(a int) -> int:
     return a
 
-var func Fn(int) float = foo
+type Fn1 = fn(int) -> float
+func := as[Func[Fn1]] foo
 
 --cytest: error
---CompileError: Expected type `Fn(int) float`, got `fn(int) int`.
+--CompileError: Cannot cast `fn(int) -> int` to `Func[fn(int) -> float]`.
 --
---main:4:26:
---var func Fn(int) float = foo
---                         ^
+--main:5:23:
+--func := as[Func[Fn1]] foo
+--                      ^~~
 --

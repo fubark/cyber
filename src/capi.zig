@@ -34,48 +34,54 @@ pub const setNewMockHttp = c.clSetNewMockHttp;
 pub const getAllocator = c.clGetAllocator;
 pub const reportApiError = c.clReportApiError;
 pub const defaultResolver = c.clDefaultResolver;
-pub const defaultModuleLoader = c.clDefaultModuleLoader;
+pub const default_module_loader = c.cl_default_module_loader;
+pub const mod_core = c.cl_mod_core;
+pub const mod_cy = c.cl_mod_cy;
+pub const mod_c = c.cl_mod_c;
+pub const mod_meta = c.cl_mod_meta;
+pub const mod_math = c.cl_mod_math;
+pub fn mod_add_func(mod: *Sym, name: []const u8, binding: BindFunc) void {
+    c.cl_mod_add_func(mod, to_bytes(name), binding);
+}
+pub fn mod_add_type(mod: *Sym, name: []const u8, binding: BindType) void {
+    c.cl_mod_add_type(mod, to_bytes(name), binding);
+}
+pub fn mod_add_global(mod: *Sym, name: []const u8, binding: BindGlobal) void {
+    c.cl_mod_add_global(mod, to_bytes(name), binding);
+}
+pub const mod_on_destroy = c.cl_mod_on_destroy;
+pub const mod_on_load = c.cl_mod_on_load;
 pub const getVersion = c.clGetVersion;
 pub const getFullVersion = c.clGetFullVersion;
 pub const getCommit = c.clGetCommit;
 pub const getBuild = c.clGetBuild;
-pub fn create() *ZVM {
-    return @ptrCast(c.clCreate());
-}
 pub const defaultEvalConfig = c.clDefaultEvalConfig;
 pub const reset = c.clReset;
-pub const eval = c.clEval;
-pub const evalExt = c.clEvalExt;
 pub const runReadyTasks = c.clRunReadyTasks;
 pub const defaultCompileConfig = c.clDefaultCompileConfig;
 pub const listLen = c.clListLen;
 pub const listCap = c.clListCap;
-pub fn listAppend(vm: *ZVM, list: Value, val: Value) void {
-    c.clListAppend(@ptrCast(vm), list, val);
-}
-pub fn listInsert(vm: *ZVM, list: Value, idx: usize, val: Value) void {
-    c.clListInsert(@ptrCast(vm), list, idx, val);
-}
-pub fn listGet(vm: *ZVM, list: Value, idx: usize) Value {
+pub fn listGet(vm: *VM, list: Value, idx: usize) Value {
     return c.clListGet(@ptrCast(vm), list, idx);
 }
-pub fn listSet(vm: *ZVM, list: Value, idx: usize, val: Value) void {
+pub fn listSet(vm: *VM, list: Value, idx: usize, val: Value) void {
     c.clListSet(@ptrCast(vm), list, idx, val);
 }
 pub const asFloat = c.clAsFloat;
 pub const float = c.clFloat;
-pub const getType = c.clGetType;
-pub const isFuture = c.clIsFuture;
+pub fn getType(val: Value) *ZType {
+    return @ptrCast(c.clGetType(val));
+}
 pub const newValueDump = c.clNewValueDump;
 pub const newFunc = c.clNewFunc;
 pub const newType = c.clNewType;
 pub const newEmptyMap = c.clNewEmptyMap;
-pub fn symbol(vm: *ZVM, str: []const u8) Value {
-    return c.clSymbol(@ptrCast(vm), toStr(str));
+pub fn symbol(vm: *VM, s: []const u8) Value {
+    return c.cl_symbol(vm, to_bytes(s));
 }
-pub const asSymbolId = c.clAsSymbolId;
+pub const asSymbol = c.clAsSymbol;
 pub fn asString(val: Value) []const u8 {
-    return fromStr(c.clAsString(val));
+    return from_bytes(c.clAsString(val));
 }
 pub const Void = c.CL_VOID;
 pub const True = c.CL_TRUE;
@@ -86,94 +92,61 @@ pub const int = c.clInt;
 pub const asBool = c.clAsBool;
 pub const asBoxBool = c.clAsBoxBool;
 pub const toBool = c.clToBool;
-pub const declareFuncDyn = c.clDeclareFuncDyn;
-pub const declareFunc = c.clDeclareFunc;
 pub const declareDynVar = c.clDeclareDynVar;
 pub const declareVar = c.clDeclareVar;
+pub const ModuleBindFn = c.CLModuleBindFn;
 pub const CreateTypeFn = c.CLCreateTypeFn;
-pub const setResolver = c.clSetResolver;
-pub const setModuleLoader = c.clSetModuleLoader;
-pub const setModuleConfig = c.clSetModuleConfig;
+pub const CreatedTypeFn = c.CLCreatedTypeFn;
+pub const ResolveAliasFn = c.CLResolveAliasFn;
+pub const set_resolver = c.cl_set_resolver;
+pub const vm_set_loader = c.cl_vm_set_loader;
+pub const set_module_config = c.cl_set_module_config;
+pub const mod_set_data = c.cl_mod_set_data;
+pub const mod_get_data = c.cl_mod_get_data;
 pub const createModule = c.clCreateModule;
-pub const getPrinter = c.clGetPrinter;
-pub const setPrinter = c.clSetPrinter;
-pub const getErrorPrinter = c.clGetErrorPrinter;
-pub const setErrorPrinter = c.clSetErrorPrinter;
+pub const vm_printer = c.cl_vm_printer;
+pub const vm_set_printer = c.cl_vm_set_printer;
+pub const vm_eprinter = c.cl_vm_eprinter;
+pub const vm_set_eprinter = c.cl_vm_set_eprinter;
+pub const vm_set_logger = c.cl_vm_set_logger;
 pub const setUserData = c.clSetUserData;
 pub const getUserData = c.clGetUserData;
+
+pub fn vm_main_thread(vm: *VM) *Thread {
+    return c.cl_vm_main_thread(vm).?;
+}
+
 pub const resultName = c.clResultName;
 pub const STR = c.CL_STR;
-pub inline fn RESERVE_DECL_TYPE(type_id: TypeId, out_type: ?**ZType) HostType {
-    return HostType{
+pub inline fn TYPE_RESERVE_DECL(type_id: TypeId) BindType {
+    return BindType{
         .type = c.CL_BIND_TYPE_DECL,
         .data = .{ .decl = .{
             .type_id = type_id,
-            .out_type = @ptrCast(out_type),
         }},
     };
 }
-pub inline fn DECL_TYPE(out_type: **ZType) HostType {
-    return HostType{
+pub inline fn TYPE_DECL() BindType {
+    return BindType{
         .type = c.CL_BIND_TYPE_DECL,
         .data = .{ .decl = .{
             .type_id = NullId,
-            .out_type = @ptrCast(out_type),
         }},
     };
 }
-pub inline fn CREATE_TYPE(create_fn: CreateTypeFn) HostType {
-    return HostType{
+pub inline fn TYPE_CREATE(create_fn: CreateTypeFn) BindType {
+    return BindType{
         .type = c.CL_BIND_TYPE_CREATE,
         .data = .{ .create = .{
             .create_fn = create_fn,
         }},
     };
 }
-pub inline fn RESERVE_HOBJ_TYPE(id: TypeId, out_type: ?**ZType) HostType {
-    return HostType{
-        .type = c.CL_BIND_TYPE_HOSTOBJ,
-        .data = .{ .hostobj = .{
-            .type_id = id,
-            .out_type = @ptrCast(out_type),
-            .get_children = null,
-            .finalizer = null,
-            .pre = false,
-        }},
-    };
-}
-pub inline fn RESERVE_HOBJ_TYPE2(id: TypeId, out_type: ?**ZType, get_children: GetChildrenFn, finalizer: FinalizerFn) HostType {
-    return HostType{
-        .type = c.CL_BIND_TYPE_HOSTOBJ,
-        .data = .{ .hostobj = .{
-            .type_id = id,
-            .out_type = @ptrCast(out_type),
-            .get_children = get_children,
-            .finalizer = finalizer,
-            .pre = false,
-        }},
-    };
-}
-pub inline fn HOBJ_TYPE(out_type: ?**ZType, get_children: GetChildrenFn, finalizer: FinalizerFn) HostType {
-    return HostType{
-        .type = c.CL_BIND_TYPE_HOSTOBJ,
-        .data = .{ .hostobj = .{
-            .type_id = NullId,
-            .out_type = @ptrCast(out_type),
-            .get_children = get_children,
-            .finalizer = finalizer,
-            .pre = false,
-        }},
-    };
-}
-pub inline fn HOBJ_TYPE_PRE(out_type: ?**ZType, get_children: GetChildrenFn, finalizer: FinalizerFn) HostType {
-    return HostType{
-        .type = c.CL_BIND_TYPE_HOSTOBJ,
-        .data = .{ .hostobj = .{
-            .type_id = NullId,
-            .out_type = @ptrCast(out_type),
-            .get_children = get_children,
-            .finalizer = finalizer,
-            .pre = true,
+pub inline fn TYPE_ALIAS(resolve_fn: ResolveAliasFn) BindType {
+    return BindType{
+        .type = c.CL_BIND_TYPE_ALIAS,
+        .data = .{ .alias = .{
+            .resolve_fn = resolve_fn,
         }},
     };
 }
@@ -191,246 +164,204 @@ pub fn toSlice(comptime T: type, s: []const T) Slice {
         .len = s.len,
     };
 }
-pub const Str = c.CLStr;
-pub fn fromStr(str: Str) []const u8 {
-    if (str.len == 0) {
+pub const Bytes = c.CLBytes;
+pub fn from_bytes(s: Bytes) []const u8 {
+    if (s.len == 0) {
         return "";
     }
-    return str.ptr[0..str.len];
+    return s.ptr[0..s.len];
 }
-pub fn toStr(s: []const u8) Str {
+pub fn to_bytes(s: []const u8) Bytes {
     return .{
         .ptr = s.ptr,
         .len = s.len,
     };
 }
-pub const NullStr = Str{ .ptr = null, .len = 0 };
+pub const NullStr = Bytes{ .ptr = null, .len = 0 };
 pub const NullSlice = Slice{ .ptr = null, .len = 0};
 pub const NullId = std.math.maxInt(u32);
 
 pub const Node = c.CLNode;
-pub fn fromNode(node: Node) *cy.ast.Node {
-    return @ptrCast(@alignCast(node.ptr));
+pub fn fromNode(node: *Node) *cy.ast.Node {
+    return @ptrCast(node);
 }
-pub fn toNode(node: *cy.ast.Node) Node {
-    return Node{ .ptr = node };
+pub fn toNode(node: *cy.ast.Node) *Node {
+    return @ptrCast(node);
 }
 
 pub const ValueSlice = c.CLValueSlice;
-pub const FuncFn = c.CLFuncFn;
+pub const HostFn = c.CLHostFn;
+pub const SemaFn = c.CLSemaFn;
+pub const BindGlobal = c.CLBindGlobal;
+pub const BindFunc = c.CLBindFunc;
 pub const PrintFn = c.CLPrintFn;
 pub const PrintErrorFn = c.CLPrintErrorFn;
 pub const LogFn = c.CLLogFn;
 pub const ValidateConfig = c.CLValidateConfig;
 pub const CompileConfig = c.CLCompileConfig;
 pub const EvalConfig = c.CLEvalConfig;
-pub const FuncInfo = c.CLFuncInfo;
 pub const ModuleLoaderFn = c.CLModuleLoaderFn;
 pub const ResolverFn = c.CLResolverFn;
 pub const ResolverParams = c.CLResolverParams;
-pub const FuncLoaderFn = c.CLFuncLoaderFn;
-pub const VarLoaderFn = c.CLVarLoaderFn;
-pub const TypeLoaderFn = c.CLTypeLoaderFn;
 pub const ModuleOnDeinitRtFn = c.CLModuleOnDeinitRtFn;
-pub const Module = c.CLModule;
-pub const ModuleConfig = c.CLModuleConfig;
 pub const ModuleOnTypeLoadFn = c.CLModuleOnTypeLoadFn;
 pub const ModuleOnLoadFn = c.CLModuleOnLoadFn;
 pub const ModuleOnDestroyFn = c.CLModuleOnDestroyFn;
-pub const TypeInfo = c.CLTypeInfo;
-pub const HostType = c.CLHostType;
-pub const HostTypeEntry = c.CLHostTypeEntry;
-pub fn hostTypeEntry(name: []const u8, host_t: HostType) HostTypeEntry {
-    return .{
-        .name = toStr(name),
-        .host_t = host_t,
-    };
-}
-pub const HostFuncEntry = c.CLHostFuncEntry;
+pub const BindType = c.CLBindType;
 pub const FuncType = c.CLFuncType;
 pub const FuncTypeStandard = c.CL_FUNC_STANDARD;
 pub const FuncTypeInline = c.CL_FUNC_INLINE;
-pub const VarInfo = c.CLVarInfo;
-pub const VarResult = c.CLVarResult;
 pub const Value = c.CLValue;
+pub const Ret = c.CLRet;
+pub const RetOk: Ret = c.CL_RET_OK;
+pub const RetInterrupt: Ret = c.CL_RET_INTERRUPT;
 pub const VM = c.CLVM;
-pub const ZVM = struct {
+pub const Thread = c.CLThread;
+pub const Heap = c.CLHeap;
 
-    pub fn deinitObjects(self: *ZVM, gc: bool) void {
-        c.clDeinitObjects(@ptrCast(self), gc);
-    }
+pub fn resolve(vm: *VM, uri: []const u8) []const u8 {
+    return from_bytes(c.cl_resolve(vm, to_bytes(uri)));
+}
 
-    pub fn destroy(self: *ZVM) void {
-        c.clDestroy(@ptrCast(self));
-    }
+pub const vm_init = c.cl_vm_init;
+pub const vm_reset = c.cl_vm_reset;
+pub const vm_deinit = c.cl_vm_deinit;
 
-    pub fn reset(self: *ZVM) void {
-        c.clReset(@ptrCast(self));
-    }
+pub fn vm_evalx(vm: *VM, uri: []const u8, src: []const u8, config: EvalConfig, out: *EvalResult) ResultCode {
+    return c.cl_vm_evalx(vm, to_bytes(uri), to_bytes(src), config, out);
+}
 
-    pub fn evalMust(self: *ZVM, src: []const u8, out: *Value) void {
-        const res = self.eval(src, out);
-        if (res != Success) {
-            const summary = self.newLastErrorSummary();
-            std.debug.panic("{s}", .{summary});
-        }
-    }
+pub fn vm_error_summary(vm: *VM) []const u8 {
+    return from_bytes(c.cl_vm_error_summary(vm));
+}
 
-    pub fn eval(self: *ZVM, src: []const u8, out: *Value) ResultCode {
-        return c.clEval(@ptrCast(self), toStr(src), out);
-    }
+pub fn vm_compile_error_summary(vm: *VM) []const u8 {
+    return from_bytes(c.cl_vm_compile_error_summary(vm));
+}
 
-    pub fn evalExt(self: *ZVM, uri: []const u8, src: []const u8, config: EvalConfig, out: *Value) ResultCode {
-        return c.clEvalExt(@ptrCast(self), toStr(uri), toStr(src), config, out);
-    }
+pub fn thread_panic_summary(t: *Thread) []const u8 {
+    return from_bytes(c.cl_thread_panic_summary(t));
+}
 
-    pub fn compile(self: *ZVM, uri: []const u8, src: []const u8, config: CompileConfig) ResultCode {
-        return c.clCompile(@ptrCast(self), toStr(uri), toStr(src), config);
-    }
+pub fn vm_free(vm: *VM, bytes: []const u8) void {
+    c.cl_vm_free(vm, to_bytes(bytes));
+}
 
-    pub fn validate(self: *ZVM, src: []const u8) ResultCode {
-        return c.clValidate(@ptrCast(self), toStr(src));
-    }
+pub fn value_desc(vm: *VM, val_t: TypeId, val: ?*Value) []const u8 {
+    return from_bytes(c.cl_value_desc(vm, val_t, val));
+}
 
-    pub fn runReadyTasks(self: *ZVM) ResultCode {
-        return c.clRunReadyTasks(@ptrCast(self));
-    }
+pub const thread_dump_live_objects = c.cl_thread_dump_live_objects;
 
-    pub fn traceDumpLiveObjects(self: *ZVM) void {
-        c.clTraceDumpLiveObjects(@ptrCast(self));
-    }
+// pub fn runReadyTasks(self: *ZVM) ResultCode {
+//     return c.clRunReadyTasks(@ptrCast(self));
+// }
 
-    pub fn collectCycles(self: *ZVM) GCResult {
-        return c.clCollectCycles(@ptrCast(self));
-    }
+pub const thread_rc = c.cl_thread_rc;
+pub const thread_release = c.cl_thread_release;
+pub const thread_retain = c.cl_thread_retain;
+pub const thread_count_objects = c.cl_thread_count_objects;
+pub const str_deinit = c.cl_str_deinit;
 
-    pub fn countObjects(self: *ZVM) usize {
-        return c.clCountObjects(@ptrCast(self));
-    }
+pub fn str_init(t: *Thread, s: []const u8) Value {
+    return c.cl_str_init(@ptrCast(t), to_bytes(s));
+}
 
-    pub fn getGlobalRC(self: *ZVM) usize {
-        return c.clGetGlobalRC(@ptrCast(self));
-    }
+// pub const ZVM = struct {
+//     pub fn evalMust(self: *ZVM, src: []const u8, out: *Value) void {
+//         const res = self.eval(src, out);
+//         if (res != Success) {
+//             const summary = self.new_error_summary();
+//             std.debug.panic("{s}", .{summary});
+//         }
+//     }
 
-    pub fn newLastErrorSummary(self: *ZVM) []const u8 {
-        return fromStr(c.clNewLastErrorSummary(@ptrCast(self)));
-    }
+//     pub fn eval(self: *ZVM, src: []const u8, out: *EvalResult) ResultCode {
+//         return c.clEval(@ptrCast(self), toStr(src), out);
+//     }
 
-    pub fn newErrorReportSummary(self: *ZVM) []const u8 {
-        return fromStr(c.clNewErrorReportSummary(@ptrCast(self)));
-    }
+//     pub fn compile(self: *ZVM, uri: []const u8, src: []const u8, config: CompileConfig) ResultCode {
+//         return c.clCompile(@ptrCast(self), toStr(uri), toStr(src), config);
+//     }
 
-    pub fn newPanicSummary(self: *ZVM) []const u8 {
-        return fromStr(c.clNewPanicSummary(@ptrCast(self)));
-    }
+//     pub fn validate(self: *ZVM, src: []const u8) ResultCode {
+//         return c.clValidate(@ptrCast(self), toStr(src));
+//     }
 
-    pub fn resolve(self: *ZVM, uri: []const u8) []const u8 {
-        return fromStr(c.clResolve(@ptrCast(self), toStr(uri)));
-    }
+//     pub fn collectCycles(self: *ZVM) GCResult {
+//         return c.clCollectCycles(@ptrCast(self));
+//     }
 
-    pub fn release(self: *ZVM, val: Value) void {
-        c.clRelease(@ptrCast(self), val);
-    }
+//     pub fn newInt(self: *ZVM, n: i64) Value {
+//         return c.clNewInt(@ptrCast(self), n);
+//     }
 
-    pub fn retain(self: *ZVM, val: Value) void {
-        c.clRetain(@ptrCast(self), val);
-    }
+//     pub fn newPointerVoid(self: *ZVM, ptr: *anyopaque) Value {
+//         return c.clNewPointerVoid(@ptrCast(self), ptr);
+//     }
 
-    pub fn newInt(self: *ZVM, n: i64) Value {
-        return c.clNewInt(@ptrCast(self), n);
-    }
+//     pub fn newEmptyMap(self: *ZVM) Value {
+//         return c.clNewEmptyMap(@ptrCast(self));
+//     }
 
-    pub fn newString(self: *ZVM, str: []const u8) Value {
-        return c.clNewString(@ptrCast(self), toStr(str));
-    }
+//     pub fn newFuncUnion(self: *ZVM, union_t: *cy.Type, ptr: HostFn) Value {
+//         return c.clNewFuncUnion(@ptrCast(self), @ptrCast(union_t), ptr);
+//     }
 
-    pub fn newPointerVoid(self: *ZVM, ptr: *anyopaque) Value {
-        return c.clNewPointerVoid(@ptrCast(self), ptr);
-    }
+//     pub fn newInstance(self: *ZVM, type_: *ZType, fields: []const FieldInit) Value {
+//         return c.clNewInstance(@ptrCast(self), @ptrCast(type_), fields.ptr, fields.len);
+//     }
 
-    pub fn newEmptyMap(self: *ZVM) Value {
-        return c.clNewEmptyMap(@ptrCast(self));
-    }
+//     pub fn newNone(self: *ZVM, option_t: *ZType) Value {
+//         return @bitCast(c.clNewNone(@ptrCast(self), @ptrCast(option_t)));
+//     }
 
-    pub fn newFuncUnion(self: *ZVM, union_t: *cy.Type, ptr: FuncFn) Value {
-        return c.clNewFuncUnion(@ptrCast(self), @ptrCast(union_t), ptr);
-    }
+//     pub fn newSome(self: *ZVM, option_t: *ZType, val: Value) !Value {
+//         return @bitCast(c.clNewSome(@ptrCast(self), @ptrCast(option_t), @bitCast(val)));
+//     }
 
-    pub fn newTypeById(self: *ZVM, type_id: TypeId) Value {
-        return c.clNewTypeById(@ptrCast(self), type_id);
-    }
+//     pub fn newChoice(self: *ZVM, choice_t: *ZType, name: []const u8, val: Value) Value {
+//         return c.clNewChoice(@ptrCast(self), @ptrCast(choice_t), toStr(name), val);
+//     }
 
-    pub fn newType(self: *ZVM, type_: *ZType) Value {
-        return c.clNewType(@ptrCast(self), @ptrCast(type_));
-    }
+//     pub fn findType(self: *ZVM, spec: []const u8) ?*ZType {
+//         return @ptrCast(@alignCast(c.clFindType(@ptrCast(self), toStr(spec))));
+//     }
 
-    pub fn newValueDump(self: *ZVM, val: Value) []const u8 {
-        return fromStr(c.clNewValueDump(@ptrCast(self), val));
-    }
+//     pub fn getField(self: *ZVM, rec: Value, name: []const u8) Value {
+//         return c.clGetField(@ptrCast(self), rec, toStr(name));
+//     }
 
-    pub fn newInstance(self: *ZVM, type_: *ZType, fields: []const FieldInit) Value {
-        return c.clNewInstance(@ptrCast(self), @ptrCast(type_), fields.ptr, fields.len);
-    }
+//     pub fn unwrapChoice(self: *ZVM, choice_t: *ZType, choice: Value, name: []const u8) Value {
+//         return c.clUnwrapChoice(@ptrCast(self), @ptrCast(choice_t), choice, toStr(name));
+//     }
 
-    pub fn newNone(self: *ZVM, option_t: *ZType) Value {
-        return @bitCast(c.clNewNone(@ptrCast(self), @ptrCast(option_t)));
-    }
+//     pub fn expandTemplateType(self: *ZVM, template: Sym, args: []const Value) ?*ZType {
+//         return @ptrCast(@alignCast(c.clExpandTemplateType(@ptrCast(self), template, args.ptr, args.len)));
+//     }
+// };
 
-    pub fn newSome(self: *ZVM, option_t: *ZType, val: Value) !Value {
-        return @bitCast(c.clNewSome(@ptrCast(self), @ptrCast(option_t), @bitCast(val)));
-    }
-
-    pub fn newChoice(self: *ZVM, choice_t: *ZType, name: []const u8, val: Value) Value {
-        return c.clNewChoice(@ptrCast(self), @ptrCast(choice_t), toStr(name), val);
-    }
-
-    pub fn newList(self: *ZVM, list_t: *ZType, vals: []const Value) Value {
-        return c.clNewList(@ptrCast(self), @ptrCast(list_t), vals.ptr, vals.len);
-    }
-
-    pub fn listAppend(self: *ZVM, list: Value, val: Value) void {
-        c.clListAppend(@ptrCast(self), list, val);
-    }
-
-    pub fn findType(self: *ZVM, spec: []const u8) ?*ZType {
-        return @ptrCast(@alignCast(c.clFindType(@ptrCast(self), toStr(spec))));
-    }
-
-    pub fn getField(self: *ZVM, rec: Value, name: []const u8) Value {
-        return c.clGetField(@ptrCast(self), rec, toStr(name));
-    }
-
-    pub fn unwrapChoice(self: *ZVM, choice: Value, name: []const u8) Value {
-        return c.clUnwrapChoice(@ptrCast(self), choice, toStr(name));
-    }
-
-    pub fn expandTemplateType(self: *ZVM, template: Sym, args: []const Value) ?*ZType {
-        return @ptrCast(@alignCast(c.clExpandTemplateType(@ptrCast(self), template, args.ptr, args.len)));
-    }
-
-    pub fn free(self: *ZVM, bytes: []const u8) void {
-        c.clFree(@ptrCast(self), toStr(bytes));
-    }
-};
-
+pub const Unit = c.CLUnit;
 pub const Sym = c.CLSym;
 pub const GCResult = c.CLGCResult;
 pub const FieldInit = c.CLFieldInit;
 pub fn toFieldInit(name: []const u8, val: Value) FieldInit {
-    return .{ .name = toStr(name), .value = val };
+    return .{ .name = to_bytes(name), .value = val };
 }
-
-pub const GetChildrenFn = c.CLGetChildrenFn;
-pub const FinalizerFn = c.CLFinalizerFn;
 
 pub const FuncEnumType = enum(u8) {
     standard = c.CL_FUNC_STANDARD,
     inlinec = c.CL_FUNC_INLINE,
 };
 
-pub const BindTypeHostObj = c.CL_BIND_TYPE_HOSTOBJ;
 pub const BindTypeDecl = c.CL_BIND_TYPE_DECL;
 pub const BindTypeCreate = c.CL_BIND_TYPE_CREATE;
+pub const BindTypeAlias = c.CL_BIND_TYPE_ALIAS;
+
+pub const BindFuncVm = c.CL_BIND_FUNC_VM;
+pub const BindFuncCt = c.CL_BIND_FUNC_CT;
+pub const BindFuncSema = c.CL_BIND_FUNC_SEMA;
+pub const BindFuncDecl = c.CL_BIND_FUNC_DECL;
 
 pub const Backend = c.CLBackend;
 pub const BackendVM = c.CL_VM;
@@ -445,6 +376,8 @@ pub const ZType = struct {
     }
 };
 
+pub const str = c.CL_str;
+
 pub const Type = c.CLType;
 pub const TypeId = c.CLTypeId;
 pub const TypeNull = c.CL_TYPE_NULL;
@@ -452,25 +385,26 @@ pub const TypeVoid = c.CL_TYPE_VOID;
 pub const TypeBoolean = c.CL_TYPE_BOOLEAN;
 pub const TypeError = c.CL_TYPE_ERROR;
 pub const TypeSymbol = c.CL_TYPE_SYMBOL;
-pub const TypeInteger = c.CL_TYPE_INTEGER;
+pub const TypeInt = c.CL_TYPE_INT;
 pub const TypeFloat = c.CL_TYPE_FLOAT;
-pub const TypeListDyn = c.CL_TYPE_LIST_DYN;
-pub const TypeListIterDyn = c.CL_TYPE_LISTITER_DYN;
-pub const TypeMap = c.CL_TYPE_MAP;
-pub const TypeMapIter = c.CL_TYPE_MAPITER;
 pub const TypeFunc = c.CL_TYPE_FUNC;
-pub const TypeString = c.CL_TYPE_STRING;
+pub const TypeStr = c.CL_TYPE_STR;
 pub const TypeFiber = c.CL_TYPE_FIBER;
 pub const TypeExternFunc = c.CL_TYPE_EXTERN_FUNC;
 pub const TypeTccState = c.CL_TYPE_TCCSTATE;
 pub const TypeTuple = c.CL_TYPE_TUPLE;
 pub const TypeType = c.CL_TYPE_TYPE;
 pub const TypeFuncSig = c.CL_TYPE_FUNC_SIG;
-pub const TypeExprType = c.CL_TYPE_EXPRTYPE;
+pub const TypeCode = c.CL_TYPE_CODE;
 
+pub const EvalResult = c.CLEvalResult;
 pub const ResultCode = c.CLResultCode;
 pub const Success = c.CL_SUCCESS;
 pub const Await = c.CL_AWAIT;
 pub const ErrorCompile = c.CL_ERROR_COMPILE;
 pub const ErrorPanic = c.CL_ERROR_PANIC;
 pub const ErrorUnknown = c.CL_ERROR_UNKNOWN;
+
+pub fn field_init(name: []const u8, val: cy.Value) FieldInit {
+    return .{ .name = to_bytes(name), .value = @bitCast(val) };
+}

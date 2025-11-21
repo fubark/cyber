@@ -1,6 +1,6 @@
 use t 'test'
 
-var .a = 123
+global a int = 123
 
 fn print(v int):
     a = v

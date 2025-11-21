@@ -4,6 +4,6 @@ use a './test_mods/stmt_error.cy'
 --CompileError: Top level statement is not allowed from imported module.
 --
 --@AbsPath(test/modules/test_mods/stmt_error.cy):1:1:
---print 123
---^
+--print(123)
+--^~~~~~~~~~
 --

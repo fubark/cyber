@@ -69,12 +69,15 @@ pub const Config = struct {
 extern fn clInitCLI(vm: *c.VM) void;
 extern fn clDeinitCLI(vm: *c.VM) void;
 
+export var test_vm: ?*c.VM = null;
+
 pub const VMrunner = struct {
-    vm: *c.ZVM,
+    vm: *c.VM,
     ctx: ?*anyopaque = null,
 
     pub fn init() VMrunner {
-        const vm = c.create();
+        const vm = c.vm_init();
+        test_vm = vm;
         clInitCLI(@ptrCast(vm));
         return .{
             .vm = @ptrCast(vm),
@@ -83,8 +86,9 @@ pub const VMrunner = struct {
 
     pub fn deinit(self: *VMrunner) void {
         clDeinitCLI(@ptrCast(self.vm));
-        self.vm.deinitObjects(false);
-        self.vm.destroy();
+        std.debug.print("total ops: {}\n", .{self.main_trace().totalOpCounts});
+        c.vm_deinit(self.vm);
+        test_vm = null;
     }
 
     pub fn internal(self: *VMrunner) *cy.VM {
@@ -103,22 +107,22 @@ pub const VMrunner = struct {
         return self.internal().getStackTrace();
     }
 
-    pub fn getTrace(self: *VMrunner) *vmc.TraceInfo {
-        return self.internal().c.trace;
+    pub fn main_trace(self: *VMrunner) *vmc.TraceInfo {
+        return self.internal().main_thread.c.trace;
     }
 
     pub fn expectErrorReport(self: *VMrunner, res: EvalResult, expErr: c.ResultCode, expReport: []const u8) !void {
         var errorMismatch = false;
         if (res.code == c.Success) {
-            const val_dump = self.vm.newValueDump(res.value);
+            const val_dump = self.vm.newValueDump(@ptrCast(res.val_t), res.value);
             defer self.vm.free(val_dump);
             std.debug.print("expected error.{s}, found: {s}\n", .{
-                c.fromStr(c.resultName(expErr)), val_dump,
+                c.from_bytes(c.resultName(expErr)), val_dump,
             });
             return error.TestUnexpectedError;
         } else {
             if (res.code != expErr) {
-                std.debug.print("expected error.{s}, found error.{s}\n", .{ c.fromStr(c.resultName(expErr)), c.fromStr(c.resultName(res.code)) });
+                std.debug.print("expected error.{s}, found error.{s}\n", .{ c.from_bytes(c.resultName(expErr)), c.from_bytes(c.resultName(res.code)) });
                 errorMismatch = true;
                 // Continue to compare report.
             }
@@ -132,18 +136,41 @@ pub const VMrunner = struct {
         }
     }
 
-    pub fn expectErrorReport2(self: *VMrunner, res: EvalResult, expReport: []const u8) !void {
+    pub fn expectErrorReport2(self: *VMrunner, res: EvalResult, expReport: []const u8, starts_with: bool) !void {
         const errorMismatch = false;
         if (res.code == c.Success) {
-            const val_dump = self.vm.newValueDump(res.value);
-            defer self.vm.free(val_dump);
+            const val_dump = c.value_desc(self.vm, res.val_t, res.value);
+            defer c.vm_free(self.vm, val_dump);
             std.debug.print("expected error, found: {s}\n", .{ val_dump });
             return error.TestUnexpectedError;
         }
         // Continue to compare report.
         const report = try self.getErrorSummary(res.code);
-        defer self.vm.free(report);
-        try eqUserError(t.alloc, report, expReport);
+        defer c.vm_free(self.vm, report);
+        if (starts_with) {
+            try std.testing.expectStringStartsWith(report, expReport);
+        } else {
+            try eqUserError(t.alloc, report, expReport);
+        }
+
+        if (errorMismatch) {
+            return error.TestUnexpectedError;
+        }
+    }
+
+    pub fn expectErrorReport3(self: *VMrunner, res: EvalResult, exp_start: []const u8, exp_end: []const u8) !void {
+        const errorMismatch = false;
+        if (res.code == c.Success) {
+            const val_dump = c.value_desc(self.vm, res.val_t, res.value);
+            defer c.vm_free(self.vm, val_dump);
+            std.debug.print("expected error, found: {s}\n", .{ val_dump });
+            return error.TestUnexpectedError;
+        }
+        // Continue to compare report.
+        const report = try self.getErrorSummary(res.code);
+        defer c.vm_free(self.vm, report);
+        try std.testing.expectStringStartsWith(report, exp_start);
+        try std.testing.expectStringEndsWith(report, exp_end);
 
         if (errorMismatch) {
             return error.TestUnexpectedError;
@@ -152,9 +179,10 @@ pub const VMrunner = struct {
 
     fn getErrorSummary(self: *VMrunner, code: c.ResultCode) ![]const u8 {
         if (code == c.ErrorCompile) {
-            return self.vm.newErrorReportSummary();
+            return c.vm_compile_error_summary(self.vm);
         } else if (code == c.ErrorPanic) {
-            return self.vm.newPanicSummary();
+            const main_thread = c.vm_main_thread(self.vm);
+            return c.thread_panic_summary(main_thread);
         }
         return error.Unsupported;
     }
@@ -201,13 +229,13 @@ pub const VMrunner = struct {
 
         var r_uri = config.uri;
         if (config.enableFileModules) {
-            r_uri = vm.resolve(config.uri);
+            r_uri = c.resolve(vm, config.uri);
         }
         defer if (config.enableFileModules) {
-            vm.free(r_uri);
+            c.vm_free(vm, r_uri);
         };
 
-        var resv: c.Value = undefined;
+        var res: c.EvalResult = undefined;
         const c_config = c.EvalConfig{
             .single_run = false,
             .file_modules = config.enableFileModules,
@@ -216,56 +244,64 @@ pub const VMrunner = struct {
             .spawn_exe = false,
             .reload = config.reload,
         };
-        vm.reset();
-        const res_code = vm.evalExt(r_uri, src, c_config, @ptrCast(&resv));
+        c.vm_reset(vm);
+        const res_code = c.vm_evalx(vm, r_uri, src, c_config, &res);
+
+        defer {
+            const main_thread = c.vm_main_thread(vm);
+            if (config.checkGlobalRc) {
+                const grc = c.thread_rc(main_thread);
+                if (grc != 0) {
+                    c.thread_dump_live_objects(main_thread);
+                    cy.panicFmt("unreleased refcount: {}", .{grc});
+                }
+            }
+
+            if (config.check_object_count) {
+                const count = c.thread_count_objects(main_thread);
+                if (count != 0) {
+                    c.thread_dump_live_objects(main_thread);
+                    cy.panicFmt("unfreed objects: {}", .{count});
+                }
+            }
+        }
 
         if (optCb) |cb| {
-            const res = EvalResult{
+            const res_ = EvalResult{
                 .code = res_code,
-                .value = resv,
+                .value = @ptrCast(res.res),
+                .val_t = res.res_t,
             };
-            cb(run, res) catch |err| {
+            cb(run, res_) catch |err| {
                 if (err == error.EvalError) {
                     errReport(vm, res_code);
                 }
                 return err;
             };
         } else {
-            vm.release(resv);
+            if (res_code == c.Success) {
+                const val_t = run.internal().sema.getType(res.res_t);
+                if (val_t.isVmManagedRef()) {
+                    const main_thread = c.vm_main_thread(vm);
+                    c.thread_release(main_thread, res.res.*);
+                }
+            }
             if (res_code == c.Await) {
-                // Consume all ready tasks.
-                var cont_code = res_code;
-                while (cont_code == c.Await) {
-                    cont_code = vm.runReadyTasks();
-                }
-                if (cont_code != c.Success) {
-                    errReport(vm, cont_code);
-                    return error.EvalError;
-                }
+                // // Consume all ready tasks.
+                // var cont_code = res_code;
+                // while (cont_code == c.Await) {
+                //     cont_code = vm.runReadyTasks();
+                // }
+                // if (cont_code != c.Success) {
+                //     errReport(vm, cont_code);
+                //     return error.EvalError;
+                // }
+                return error.EvalError;
             } else {
                 if (res_code != c.Success) {
                     errReport(vm, res_code);
                     return error.EvalError;
                 }
-            }
-        }
-
-        // Deinit, so global objects from builtins are released.
-        vm.deinitObjects(config.cleanupGC);
-
-        if (config.checkGlobalRc) {
-            const grc = vm.getGlobalRC();
-            if (grc != 0) {
-                vm.traceDumpLiveObjects();
-                cy.panicFmt("unreleased refcount: {}", .{grc});
-            }
-        }
-
-        if (config.check_object_count) {
-            const count = vm.countObjects();
-            if (count != 0) {
-                vm.traceDumpLiveObjects();
-                cy.panicFmt("unfreed objects: {}", .{count});
             }
         }
     }
@@ -356,7 +392,8 @@ pub fn compile(config: Config, src: []const u8) !void {
 
 pub const EvalResult = struct {
     code: c.ResultCode,
-    value: c.Value,
+    value: ?*c.Value,
+    val_t: c.TypeId,
 
     pub fn getValueC(self: EvalResult) !c.Value {
         if (self.code != c.Success) {
@@ -375,23 +412,34 @@ pub const EvalResult = struct {
 
 pub fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, EvalResult) anyerror!void) !void {
     var run = VMrunner.init();
-    defer run.deinit();
+    defer {
+        if (config.debug) {
+            c.setVerbose(true);
+        }
+        defer {
+            if (config.debug) {
+                c.setVerbose(false);
+            }
+        }
+        run.deinit();
+    }
     try run.eval(config, src, optCb);
 }
 
-pub fn errReport(vm: *c.ZVM, code: c.ResultCode) void {
+pub fn errReport(vm: *c.VM, code: c.ResultCode) void {
     if (c.silent()) {
         return;
     }
     switch (code) {
         c.ErrorPanic => {
-            const summary = vm.newPanicSummary();
-            defer vm.free(summary);
+            const main_thread = c.vm_main_thread(vm);
+            const summary = c.thread_panic_summary(main_thread);
+            defer c.vm_free(vm, summary);
             std.debug.print("{s}", .{summary});
         },
         c.ErrorCompile => {
-            const summary = vm.newErrorReportSummary();
-            defer vm.free(summary);
+            const summary = c.vm_compile_error_summary(vm);
+            defer c.vm_free(vm, summary);
             std.debug.print("{s}", .{summary});
         },
         c.ErrorUnknown => {

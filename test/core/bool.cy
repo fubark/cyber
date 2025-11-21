@@ -1,35 +1,25 @@
-use t 'test'
+use test
 
-var a = true
-t.eq(a, true)
+a := true
+test.eq(true, a)
 
 a = false
-t.eq(a, false)
+test.eq(false, a)
 
-t.assert(true != false)
-
-t.eq(bool(true), true)
-t.eq(bool(false), false)
+test.assert(true != false)
 
 -- Integers evaluate to true except 0.
-t.eq(bool(123), true)
-t.eq(bool(-123), true)
-t.eq(bool(0), false)
+test.eq(true, bool(123))
+test.eq(true, bool(-123))
+test.eq(false, bool(0))
 
 -- Floats evaluate to true except 0.
-t.eq(bool(123.0), true)
-t.eq(bool(-123.0), true)
-t.eq(bool(0.0), false)
+test.eq(true, bool(123.0))
+test.eq(true, bool(-123.0))
+test.eq(false, bool(0.0))
 
 -- Strings evaluate to true except the empty string.
-t.eq(bool('cyber'), true)
-t.eq(bool(''), false)
-
--- Heap objects evaluate to true.
-t.eq(bool({}), true)
-t.eq(bool('abc'), true)
-type S:
-    a any
-t.eq(bool(S{a=0}), true)
+test.eq(true, bool('true'))
+test.eq(false, bool(''))
 
 --cytest: pass

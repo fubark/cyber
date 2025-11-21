@@ -4,7 +4,7 @@ use t 'test'
 --| float
 --|
 
-fn staticPrim(a float) bool:
+fn staticPrim(a float) -> bool:
 	return a == 123.0
 
 type PrimType:
@@ -17,129 +17,97 @@ t.eq(staticPrim(123.0), true)
 t.eq(staticPrim(123), true)
 
 -- Call static function with var.
-var n = 123.0
+n := 123.0
 t.eq(staticPrim(n), true)
 
--- Call static function from dyn.
-dyn n_dyn = 123.0
-t.eq(staticPrim(n_dyn), true)
-
 -- Call static function with object access.
-var o = PrimType{a=123.0}
+o := PrimType{a=123.0}
 t.eq(staticPrim(o.a), true)
 
 --|
 --| int
 --|
-fn fooInt(a int) bool:
+fn fooInt(a int) -> bool:
     return a == 123
 
 -- Literal.
 t.eq(fooInt(123), true)
         
 -- From var.
-var i = 123
-t.eq(fooInt(i), true)
-
--- Cast erased type.
-dyn i_dyn = 123
+i := 123
 t.eq(fooInt(i), true)
 
 --|
---| pointer.
+--| Ptr.
 --|
-fn fooPointer(a *void) bool:
-    return a.addr() == 123
+fn fooPointer(a Ptr[void]) -> bool:
+    return as[int] a == 123
 
 -- From var.
-var ptr = pointer.fromAddr(void, 123)
+ptr := as[Ptr[void]] 123
 t.eq(fooPointer(ptr), true)
 
--- Cast erased type.
-dyn ptr_dyn = pointer.fromAddr(void, 123)
-t.eq(fooPointer(ptr_dyn), true)
-
 --|
---| string.
+--| str.
 --|
-fn fooString(a string) bool:
+fn fooString(a str) -> bool:
     return a == 'true'
 
 -- Literal.
 t.eq(fooString('true'), true)
 
 -- From var.
-var str = 'true'
-t.eq(fooString(str), true)
-
--- Cast erased type.
-dyn str_dyn = 'true'
-t.eq(fooString(string(str_dyn)), true)
+s := 'true'
+t.eq(fooString(s), true)
 
 -- bool.
-fn fooBool(a bool) bool:
+fn fooBool(a bool) -> bool:
     return a
 
 -- Literal.
 t.eq(fooBool(true), true)
 
 -- From var.
-var b = true
+b := true
 t.eq(fooBool(b), true)
-
--- Cast erased type.
-dyn b_dyn = true
-t.eq(fooBool(bool(b_dyn)), true)
 
 --|
 --| Map
 --|
-fn fooMap(a Map) bool:
+fn fooMap(a Map[str, int]) -> bool:
     return a['a'] == 123
 
 -- Literal.
-t.eq(fooMap(Map{a=123}), true)
+t.eq(fooMap({a=123}), true)
 
 -- From var.
-var map = Map{a=123}
-t.eq(fooMap(map), true)
-
--- Cast erased type.
-dyn map_dyn = Map{a=123}
-t.eq(fooMap(map_dyn), true)
+m := Map[str, int]{a=123}
+t.eq(fooMap(move m), true)
 
 --|
---| List
+--| Slice
 --|
-fn fooList(a List[dyn]) bool:
+fn foo_slice(a []int) -> bool:
     return a[0] == 123
 
 -- Literal.
-t.eq(fooList(.{123}), true)
+t.eq(true, foo_slice({123}))
 
 -- From var.
-var list = List[dyn]{123}
-t.eq(fooList(list), true)
-
--- Cast erased type.
-dyn list_dyn = List[dyn]{123}
-t.eq(fooList(list_dyn), true)
+arr := []int{123}
+t.eq(true, foo_slice(arr))
 
 --|
 --| symbol
 --|
-fn fooSymbol(a symbol) bool:
-    return a == .sometag
+fn fooSymbol(a symbol) -> bool:
+    return a == @sometag
 
 -- Literal.
-t.eq(fooSymbol(.sometag), true)
+t.eq(fooSymbol(@sometag), true)
 
 -- From var.
-var tag = symbol.sometag
+tag := @sometag
 t.eq(fooSymbol(tag), true)
-
--- Cast erased type.
-dyn tag_dyn = symbol.sometag
-t.eq(fooSymbol(tag_dyn), true)
 
 --cytest: pass

@@ -1,8 +1,8 @@
 type Choice enum:
     case A int
-    case B string
+    case B str
 
-var c = Choice.A(123)
+c := Choice.A(123)
 c.A
 
 --cytest: error

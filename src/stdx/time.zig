@@ -4,11 +4,7 @@ const builtin = @import("builtin");
 const time_wasm = @import("time_wasm.zig");
 const IsWasm = builtin.target.cpu.arch.isWasm() and builtin.os.tag != .wasi;
 
-pub usingnamespace if (IsWasm) struct {
-    pub const Timer = time_wasm.Timer;
-} else struct {
-    pub const Timer = std.time.Timer;
-};
+pub const Timer = if (IsWasm) time_wasm.Timer else std.time.Timer;
 
 pub const Duration = struct {
     const Self = @This();

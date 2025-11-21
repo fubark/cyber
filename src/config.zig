@@ -12,11 +12,6 @@ pub const TestBackend = enum {
     cc,
 };
 
-pub const Runtime = enum {
-    vm,
-    pm,
-};
-
 pub const Allocator = enum {
     zig,
     malloc,

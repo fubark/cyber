@@ -1,220 +1,274 @@
 const std = @import("std");
 const cy = @import("../cyber.zig");
 const C = @import("../capi.zig");
-const CS = @import("../capi_shim.zig");
 const bt = cy.types.BuiltinTypes;
 const build_options = @import("build_options");
 const rt = cy.rt;
 const log = cy.log.scoped(.cy);
 const ast = cy.ast;
 
-const Src = @embedFile("cy.cy");
-const zErrFunc = cy.builtins.zErrFunc;
+pub const Src = @embedFile("cy.cy");
+const zErrFunc = cy.core.zErrFunc;
 
-pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
-    const core_data = vm.getData(*cy.builtins.CoreData, "core");
-    const mod = C.createModule(@ptrCast(vm), C.toStr(r_uri), C.toStr(Src));
+fn create_vm_type(vm: ?*C.VM, c_mod: ?*C.Sym, decl: ?*C.Node) callconv(.c) *C.Type {
+    _ = vm;
+    _ = decl;
+    const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
+    const c = chunk_sym.chunk;
 
-    const htype = C.hostTypeEntry;
-    const types = [_]C.HostTypeEntry{
-        htype("EvalConfig", CS.DECL_TYPE(&core_data.EvalConfigT)),
-        htype("EvalResult", CS.DECL_TYPE(&core_data.EvalResultT)),
-        htype("Value",      CS.HOBJ_TYPE_PRE(&core_data.ValueT, UserValue_getChildren, UserValue_finalizer)),
-        htype("VM",         CS.HOBJ_TYPE(&core_data.VMT,    null, UserVM_finalizer)),
-    };
-
-    var config = C.ModuleConfig{
-        .funcs = C.toSlice(C.HostFuncEntry, &funcs),
-        .types = C.toSlice(C.HostTypeEntry, &types),
-    };
-    C.setModuleConfig(@ptrCast(vm), mod, &config);
-    return mod;
+    const new_t = c.sema.createType(.pointer, .{ .ref = false, .child_t = c.sema.void_t }) catch @panic("error");
+    return @ptrCast(new_t);
 }
 
-const func = cy.hostFuncEntry;
-const funcs = [_]C.HostFuncEntry{
-    func("parse",              zErrFunc(parse)),
+comptime {
+    @export(&bind, .{ .name = "cl_mod_cy", .linkage = .strong });
+}
 
-    func("Value.dump",         zErrFunc(UserValue_dump)), 
-    func("Value.getTypeId",    zErrFunc(UserValue_getTypeId)), 
-    func("Value.toHost",       zErrFunc(UserValue_toHost)), 
+pub fn bind(_: *cy.VM, mod: *C.Sym) callconv(.c) void {
+    for (funcs) |e| {
+        C.mod_add_func(mod, e.@"0", e.@"1");
+    }
 
-    func("VM.eval",            zErrFunc(UserVM_eval)),
-    func("VM.eval2",           zErrFunc(UserVM_evalExt)),
-    func("VM.getErrorSummary", zErrFunc(UserVM_getErrorSummary)),
-    func("VM.getPanicSummary", zErrFunc(UserVM_getPanicSummary)),
-    func("VM.new",             zErrFunc(UserVM_new)),
+    for (types) |e| {
+        C.mod_add_type(mod, e.@"0", e.@"1");
+    }
+}
+
+const types = [_]struct{[]const u8, C.BindType}{
+    // .{"VM",         C.TYPE_CREATE(create_vm_type)},
 };
+
+const funcs = [_]struct{[]const u8, C.BindFunc}{
+    .{"parse_",             zErrFunc(parse)},
+    .{"_parser_comments",   zErrFunc(_parser_comments)},
+    .{"_new_parser",        zErrFunc(_new_parser)},
+    .{"destroy_parser",     zErrFunc(destroy_parser)},
+
+    .{"Value.object_type",  zErrFunc(UserValue_object_type)}, 
+
+    .{"VM.@init",           zErrFunc(UserVM_init)},
+    .{"VM.@deinit",         zErrFunc(UserVM_deinit)},
+    .{"VM.eval",            zErrFunc(UserVM_eval)},
+    .{"VM.compile_error_summary", zErrFunc(UserVM_compile_error_summary)},
+    .{"VM.panic_summary",   zErrFunc(UserVM_panic_summary)},
+    .{"VM.value_desc",      zErrFunc(UserVM_value_desc)}, 
+    .{"VM.main_thread",     zErrFunc(UserVM_main_thread)}, 
+    .{"Thread.deinit_str",  zErrFunc(UserThread_deinit_str)}, 
+};
+
+const UserThread = struct {
+    t: *C.Thread,
+};
+
+pub fn UserThread_deinit_str(t: *cy.Thread) anyerror!C.Ret {
+    _ = t.ret(void);
+    const ut = t.param(*UserThread).t;
+    const str: *C.str = @ptrCast(t.param(UserValue).val);
+    C.str_deinit(ut, str);
+    return C.RetOk;
+}
 
 const UserVM = struct {
     vm: *cy.VM,
 };
 
-pub fn UserVM_new(vm: *cy.VM) anyerror!cy.Value {
-    const core_data = vm.getData(*cy.builtins.CoreData, "core");
-
+pub fn UserVM_init(t: *cy.Thread) anyerror!C.Ret {
     // Create an isolated VM.
-    const new: *cy.VM = @ptrCast(@alignCast(C.create()));
+    const new = C.vm_init();
 
     // Use the same printers as the parent VM.
-    C.setPrinter(@ptrCast(new), C.getPrinter(@ptrCast(vm)));
-    C.setErrorPrinter(@ptrCast(new), C.getErrorPrinter(@ptrCast(vm)));
+    C.vm_set_printer(new, C.vm_printer(@ptrCast(t.c.vm)));
+    C.vm_set_eprinter(new, C.vm_eprinter(@ptrCast(t.c.vm)));
 
-    const uvm: *UserVM = @ptrCast(@alignCast(try cy.heap.allocHostObject(vm, core_data.VMT.id(), @sizeOf(UserVM))));
-    uvm.* = .{
-        .vm = new,
-    };
-    return cy.Value.initHostPtr(uvm);
+    const ret = t.ret(UserVM);
+    ret.* = .{ .vm = @ptrCast(@alignCast(new)) };
+    return C.RetOk;
 }
 
-pub fn UserVM_getErrorSummary(vm: *cy.VM) anyerror!cy.Value {
-    const uvm = vm.getValue(0).castHostObject(*UserVM);
-    const cvm: *C.ZVM = @ptrCast(uvm.vm);
-    const summary = cvm.newErrorReportSummary();
-    defer cvm.free(summary);
-    return vm.allocString(summary);
+pub fn UserVM_compile_error_summary(t: *cy.Thread) anyerror!C.Ret {
+    const ret = t.ret(cy.heap.Str);
+
+    const uvm = t.param(*UserVM);
+    const cvm: *C.VM = @ptrCast(uvm.vm);
+    const summary = C.vm_compile_error_summary(cvm);
+    defer C.vm_free(cvm, summary);
+    ret.* = try t.heap.init_str(summary);
+    return C.RetOk;
 }
 
-pub fn UserVM_getPanicSummary(vm: *cy.VM) anyerror!cy.Value {
-    const uvm = vm.getValue(0).castHostObject(*UserVM);
-    const cvm: *C.ZVM = @ptrCast(uvm.vm);
-    const summary = cvm.newPanicSummary();
-    defer cvm.free(summary);
-    return vm.allocString(summary);
+pub fn UserVM_panic_summary(t: *cy.Thread) anyerror!C.Ret {
+    const ret = t.ret(cy.heap.Str);
+    const uvm = t.param(*UserVM);
+    const summary = C.thread_panic_summary(@ptrCast(uvm.vm.main_thread));
+    defer C.vm_free(@ptrCast(uvm.vm), summary);
+    ret.* = try t.heap.init_str(summary);
+    return C.RetOk;
 }
 
-pub fn UserValue_dump(vm: *cy.VM) anyerror!cy.Value {
-    const uval = vm.getValue(0).castHostObject(*UserValue);
-    const uvm = uval.vm.castHostObject(*UserVM);
-    const cvm: *C.ZVM = @ptrCast(uvm.vm);
-
-    const str = cvm.newValueDump(uval.val);
-    defer cvm.free(str);
-    return vm.allocString(str);
+pub fn UserVM_main_thread(t: *cy.Thread) anyerror!C.Ret {
+    const ret = t.ret(UserThread);
+    const uvm: *C.VM = @ptrCast(t.param(*UserVM).vm);
+    const ut = C.vm_main_thread(uvm);
+    ret.* = .{ .t = @ptrCast(ut) };
+    return C.RetOk;
 }
 
-pub fn UserValue_getTypeId(vm: *cy.VM) anyerror!cy.Value {
-    const uval = vm.getValue(0).castHostObject(*UserValue);
-    const val: cy.Value = @bitCast(uval.val);
-    return cy.Value.initInt(@intCast(val.getTypeId()));
+pub fn UserVM_value_desc(t: *cy.Thread) anyerror!C.Ret {
+    const ret = t.ret(cy.heap.Str);
+    const uvm = t.param(*UserVM);
+    const cvm: *C.VM = @ptrCast(uvm.vm);
+    const val_t: cy.TypeId = @intCast(t.param(i64));
+    const uval = t.param(UserValue);
+
+    const str = C.value_desc(cvm, val_t, @ptrCast(uval.val));
+    defer C.vm_free(cvm, str);
+    ret.* = try t.heap.init_str(str);
+    return C.RetOk;
 }
 
-pub fn UserValue_toHost(vm: *cy.VM) anyerror!cy.Value {
-    const uval = vm.getValue(0).castHostObject(*UserValue);
-    const val: cy.Value = @bitCast(uval.val);
-    switch (val.getTypeId()) {
-        bt.Void => return cy.Value.False,
-        bt.Integer => {
-            return vm.allocInt(val.asBoxInt());
-        },
-        bt.Float,
-        bt.Boolean => {
-            return val;
-        },
-        bt.String => {
-            return vm.allocString(val.asString());
-        },
-        else => {
-            return error.InvalidResult;
-        }
-    }
+pub fn UserValue_object_type(t: *cy.Thread) anyerror!C.Ret {
+    const ret = t.ret(i64);
+    const uval = t.param(*UserValue);
+    ret.* = @intCast(uval.val.asHeapObject().getTypeId());
+    return C.RetOk;
 }
 
-pub fn UserVM_eval(vm: *cy.VM) anyerror!cy.Value {
-    const core_data = vm.getData(*cy.builtins.CoreData, "core");
-    const uvm = vm.getValue(0).castHostObject(*UserVM);
-    const src = vm.getString(1);
+const UserEvalConfig = extern struct {
+    single_run: bool,
+    file_modules: bool,
+    gen_all_debug_syms: bool, 
+    backend: u64,
+    reload: bool,
+    spawn_exe: bool,
+    persist_main_locals: bool,
+};
 
-    var res: C.Value = @bitCast(cy.Value.Void);
-    const code = C.eval(@ptrCast(uvm.vm), C.toStr(src), &res);
+pub fn UserVM_eval(t: *cy.Thread) !C.Ret {
+    const ret = t.ret(EvalResult);
 
-    const value: *UserValue = @ptrCast(@alignCast(try cy.heap.allocHostObject(vm, core_data.ValueT.id(), @sizeOf(UserValue))));
-    vm.retain(vm.getValue(0));
-    value.vm = vm.getValue(0);
-    if (code == C.Success) {
-        value.val = @bitCast(res);
-    } else {
-        value.val = @bitCast(cy.Value.Void);
-    }
-
-    const eval_res: *EvalResult = @ptrCast(@alignCast(try cy.heap.allocHostObject(vm, core_data.EvalResultT.id(), @sizeOf(EvalResult))));
-    eval_res.* = .{
-        .code = cy.Value.initInt(@intCast(code)),
-        .value = cy.Value.initHostPtr(value),
-    };
-    return cy.Value.initHostPtr(eval_res);
-}
-
-pub fn UserVM_evalExt(vm: *cy.VM) anyerror!cy.Value {
-    const core_data = vm.getData(*cy.builtins.CoreData, "core");
-    const uvm = vm.getValue(0).castHostObject(*UserVM);
-    const uri = vm.getString(1);
-    const src = vm.getString(2);
-    const config = vm.getValue(3);
+    const uvm = t.param(*UserVM);
+    const uri = t.param(cy.heap.Str).slice();
+    const src = t.param(cy.heap.Str).slice();
+    const config = t.param(UserEvalConfig);
 
     const config_c = C.EvalConfig{
-        .single_run = (try vm.getFieldName(config, "single_run")).asBool(),
-        .file_modules = (try vm.getFieldName(config, "file_modules")).asBool(),
-        .gen_all_debug_syms = (try vm.getFieldName(config, "gen_all_debug_syms")).asBool(),
-        .backend = @intCast((try vm.getFieldName(config, "backend")).asBoxInt()),
-        .reload = (try vm.getFieldName(config, "reload")).asBool(),
-        .spawn_exe = (try vm.getFieldName(config, "spawn_exe")).asBool(),
+        .single_run = config.single_run,
+        .file_modules = config.file_modules,
+        .gen_all_debug_syms = config.gen_all_debug_syms,
+        .backend = @intCast(config.backend),
+        .reload = config.reload,
+        .spawn_exe = config.spawn_exe,
+        .persist_main_locals = config.persist_main_locals,
     };
 
-    var res: C.Value = @bitCast(cy.Value.Void);
-    const code = C.evalExt(@ptrCast(uvm.vm), C.toStr(uri), C.toStr(src), config_c, &res);
+    var res: C.EvalResult = undefined;
+    const zvm: *C.VM = @ptrCast(uvm.vm);
+    const code = C.vm_evalx(zvm, uri, src, config_c, &res);
 
-    const value: *UserValue = @ptrCast(@alignCast(try cy.heap.allocHostObject(vm, core_data.ValueT.id(), @sizeOf(UserValue))));
-    vm.retain(vm.getValue(0));
-    value.vm = vm.getValue(0);
-    value.val = @bitCast(res);
-
-    const eval_res: *EvalResult = @ptrCast(@alignCast(try cy.heap.allocHostObject(vm, core_data.EvalResultT.id(), @sizeOf(EvalResult))));
-    eval_res.* = .{
-        .code = cy.Value.initInt(@intCast(code)),
-        .value = cy.Value.initHostPtr(value),
-    };
-    return cy.Value.initHostPtr(eval_res);
+    if (code == C.Success) {
+        ret.* = .{
+            .code = cy.Value.initInt(@intCast(code)),
+            .val_t = res.res_t,
+            .value = .{
+                .val = @ptrCast(res.res),
+            },
+        };
+    } else {
+        ret.* = .{
+            .code = cy.Value.initInt(@intCast(code)),
+            .val_t = res.res_t,
+            .value = .{
+                .val = undefined,
+            },
+        };
+    }
+    return C.RetOk;
 }
 
-pub fn UserVM_finalizer(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) void {
-    const uvm: *UserVM = @ptrCast(@alignCast(obj));
-    @as(*C.ZVM, @ptrCast(uvm.vm)).destroy();
+pub fn UserVM_deinit(t: *cy.Thread) !C.Ret {
+    _ = t.ret(void);
+    const uvm = t.param(*UserVM);
+    // if (fatal) {
+    //     _ = try cy.thread.freeHeapPages(uvm.vm);
+    // }
+    C.vm_deinit(@ptrCast(uvm.vm));
+    return C.RetOk;
 }
 
 const UserValue = extern struct {
-    vm: cy.Value,
-    val: u64, 
+    val: *cy.Value, 
 };
 
 const EvalResult = extern struct {
     code: cy.Value,
-    value: cy.Value,
+    val_t: u64,
+    value: UserValue,
 };
 
-pub fn UserValue_getChildren(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) C.ValueSlice {
-    const value: *UserValue = @ptrCast(@alignCast(obj));
-    return .{
-        .ptr = @ptrCast(&value.vm),
-        .len = 1,
-    };
+pub fn _new_parser(t: *cy.Thread) anyerror!C.Ret {
+    var parser = try t.alloc.create(cy.Parser);
+    try parser.init(t.alloc);
+
+    const ret = t.ret(*cy.Parser);
+    ret.* = parser;
+    return C.RetOk;
 }
 
-pub fn UserValue_finalizer(_: ?*C.VM, obj: ?*anyopaque) callconv(.C) void {
-    const value: *UserValue = @ptrCast(@alignCast(obj));
-    const ivm = value.vm.castHostObject(*UserVM);
-    ivm.vm.release(@bitCast(value.val));
+pub fn destroy_parser(t: *cy.Thread) anyerror!C.Ret {
+    _ = t.ret(void);
+    const parser = t.param(*cy.Parser);
+    parser.deinit();
+    t.alloc.destroy(parser);
+    return C.RetOk;
 }
 
-pub fn parse(vm: *cy.VM) anyerror!cy.Value {
-    const src = vm.getString(0);
+const Comment = extern struct {
+    pos: i64,
+    end: i64,
+};
 
-    var parser: cy.Parser = undefined;
-    try parser.init(vm.alloc);
-    defer parser.deinit();
-    _ = try parser.parse(src, .{ .parseComments = true });
+pub fn _parser_comments(t: *cy.Thread) anyerror!C.Ret {
+    const ret = t.ret(cy.heap.Slice);
+    const parser = t.param(*cy.Parser);
 
-    return parseCyberGenResult(vm, &parser);
+    const buffer_t: cy.TypeId = @intCast(t.param(i64));
+
+    var args: std.ArrayListUnmanaged(Comment) = .{};
+    defer args.deinit(t.alloc);
+
+    for (parser.ast.comments.items) |comment| {
+        try args.append(t.alloc, .{ .pos = comment.start, .end = comment.end });
+    }
+
+    const slice = try t.heap.init_slice_undef(buffer_t, args.items.len, @sizeOf(Comment));
+    @memcpy(slice.items(Comment), args.items);
+    ret.* = slice;
+    return C.RetOk;
+}
+
+fn parserReportFn(cx: *anyopaque, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror {
+    _ = pos;
+    const vm: *cy.VM = @ptrCast(@alignCast(cx));
+    const msg = try cy.fmt.allocFormat(vm.alloc, format, args);
+    defer vm.alloc.free(msg);
+    std.debug.print("{s}\n", .{msg});
+    return error.ParseError;
+}
+
+pub fn parse(t: *cy.Thread) anyerror!C.Ret {
+    const ret = t.ret(*anyopaque);
+    const parser = t.param(*cy.Parser);
+    const src = t.param(cy.heap.Str);
+    defer t.heap.destructStr(&src);
+
+    parser.reportFn = parserReportFn;
+    parser.ctx = t;
+    const res = try parser.parse(src.slice(), 0, .{ .parseComments = true });
+    if (res.has_error) {
+        return error.ParseError;
+    }
+    ret.* = res.ast.root.?;
+    return C.RetOk;
 }
 
 const ParseCyberState = struct {
@@ -240,13 +294,14 @@ fn genTypeSpecString(vm: *cy.VM, view: ast.AstView, opt_expr: ?*ast.Node) !cy.Va
 }
 
 fn genNodeValue(vm: *cy.VM, view: ast.AstView, node: *ast.Node) !cy.Value {
-    const res = try vm.allocEmptyMap();
+    const map_t = (try vm.findType("MapValue{string, any}")).?;
+    const res = try vm.allocEmptyMap(map_t.id());
     const map = res.castHeapObject(*cy.heap.Map);
     switch (node.type()) {
         .func_param => {
             const param = node.cast(.func_param);
             const name = view.nodeString(param.name_type);
-            try vm.mapSet(map, try vm.retainOrAllocAstring("name"), try vm.allocString(name));
+            try vm.mapSet(map, try vm.retainOrAllocAstring("name"), try vm.heap.newStr(name));
 
             const typeSpec = try genTypeSpecString(vm, view, param.type);
             try vm.mapSet(map, try vm.retainOrAllocAstring("typeSpec"), typeSpec);
@@ -254,233 +309,6 @@ fn genNodeValue(vm: *cy.VM, view: ast.AstView, node: *ast.Node) !cy.Value {
         else => {},
     }
     return res;
-}
-
-fn genImplicitFuncDeclEntry(vm: *cy.VM, view: ast.AstView, node: *ast.FuncDecl, state: *ParseCyberState) !cy.Value {
-    const entryv = try vm.allocEmptyMap();
-    const entry = entryv.castHeapObject(*cy.heap.Map);
-    const name = view.getNamePathInfo(node.name).name_path;
-    
-    const list_t = (try vm.findType("List[Map]")).?;
-    const params = try vm.allocEmptyList(list_t.id());
-    for (node.params) |param| {
-        const param_v = try genNodeValue(vm, view, @ptrCast(param));
-        try params.asHeapObject().list.append(vm.alloc, param_v);
-    }
-    try vm.mapSet(entry, try vm.retainOrAllocAstring("params"), params);
-
-    const ret = try genTypeSpecString(vm, view, node.ret);
-    try vm.mapSet(entry, try vm.retainOrAllocAstring("ret"), ret);
-
-    const hidden = cy.Value.initBoxBool(node.hidden);
-    try vm.mapSet(entry, try vm.retainOrAllocAstring("hidden"), hidden);
-
-    state.pos = node.pos;
-    state.node = @ptrCast(node);
-
-    // Find doc comments.
-    if (try genDocComment(vm, view, .funcDecl, state)) |docStr| {
-        try vm.mapSet(entry, try vm.retainOrAllocAstring("docs"), docStr);
-    }
-
-    try vm.mapSet(entry, try vm.retainOrAllocAstring("name"), try vm.retainOrAllocAstring(name));
-    try vm.mapSet(entry, try vm.retainOrAllocAstring("pos"), try vm.allocInt(@intCast(node.pos)));
-    return entryv;
-}
-
-fn genDeclEntry(vm: *cy.VM, view: ast.AstView, decl: *ast.Node, state: *ParseCyberState) !cy.Value {
-    const entryv = try vm.allocEmptyMap();
-    const entry = entryv.castHeapObject(*cy.heap.Map);
-    const name = try view.declNamePath(decl);
-    try vm.mapSet(entry, try vm.retainOrAllocAstring("type"), try vm.retainOrAllocAstring(@tagName(decl.type())));
-
-    switch (decl.type()) {
-        .staticDecl => {
-            const static_decl = decl.cast(.staticDecl);
-            const typeSpec = try genTypeSpecString(vm, view, static_decl.typeSpec);
-            try vm.mapSet(entry, try vm.retainOrAllocAstring("typeSpec"), typeSpec);
-        },
-        .enumDecl,
-        .use_alias,
-        .import_stmt,
-        .typeAliasDecl => {},
-        .template => {
-            const template = decl.cast(.template);
-            const child = try genDeclEntry(vm, view, template.child_decl, state);
-            try vm.mapSet(entry, try vm.retainOrAllocAstring("child"), child);
-        },
-        .funcDecl => {
-            const func_decl = decl.cast(.funcDecl);
-
-            const list_t = (try vm.findType("List[Map]")).?;
-            const params = try vm.allocEmptyList(list_t.id());
-            for (func_decl.params) |param| {
-                const param_v = try genNodeValue(vm, view, @ptrCast(param));
-                try params.asHeapObject().list.append(vm.alloc, param_v);
-            }
-            try vm.mapSet(entry, try vm.retainOrAllocAstring("params"), params);
-
-            const hidden = cy.Value.initBoxBool(func_decl.hidden);
-            try vm.mapSet(entry, try vm.retainOrAllocAstring("hidden"), hidden);
-
-            const ret = try genTypeSpecString(vm, view, func_decl.ret);
-            try vm.mapSet(entry, try vm.retainOrAllocAstring("ret"), ret);
-        },
-        .struct_decl => {
-            const struct_decl = decl.cast(.struct_decl);
-
-            const list_t = (try vm.findType("List[Map]")).?;
-            const funcs_ = try vm.allocEmptyList(list_t.id());
-            for (struct_decl.funcs) |func_decl| {
-                const f = try genImplicitFuncDeclEntry(vm, view, func_decl, state);
-                try funcs_.asHeapObject().list.append(vm.alloc, f);
-            }
-            try vm.mapSet(entry, try vm.retainOrAllocAstring("funcs"), funcs_);
-        },
-        .custom_decl => {
-            const custom_decl = decl.cast(.custom_decl);
-
-            const list_t = (try vm.findType("List[Map]")).?;
-            const funcs_ = try vm.allocEmptyList(list_t.id());
-            for (custom_decl.funcs) |func_decl| {
-                const f = try genImplicitFuncDeclEntry(vm, view, func_decl, state);
-                try funcs_.asHeapObject().list.append(vm.alloc, f);
-            }
-            try vm.mapSet(entry, try vm.retainOrAllocAstring("funcs"), funcs_);
-        },
-        .distinct_decl => {
-            const distinct_decl = decl.cast(.distinct_decl);
-
-            const list_t = (try vm.findType("List[Map]")).?;
-            const funcs_ = try vm.allocEmptyList(list_t.id());
-            for (distinct_decl.funcs) |func_decl| {
-                const f = try genImplicitFuncDeclEntry(vm, view, func_decl, state);
-                try funcs_.asHeapObject().list.append(vm.alloc, f);
-            }
-            try vm.mapSet(entry, try vm.retainOrAllocAstring("funcs"), funcs_);
-        },
-        .trait_decl => {
-            const trait_decl = decl.cast(.trait_decl);
-
-            const list_t = (try vm.findType("List[Map]")).?;
-            const funcs_ = try vm.allocEmptyList(list_t.id());
-            for (trait_decl.funcs) |func_decl| {
-                const f = try genImplicitFuncDeclEntry(vm, view, func_decl, state);
-                try funcs_.asHeapObject().list.append(vm.alloc, f);
-            }
-            try vm.mapSet(entry, try vm.retainOrAllocAstring("funcs"), funcs_);
-        },
-        else => {
-            log.tracev("{}", .{decl.type()});
-            return error.Unsupported;
-        },
-    }
-    state.pos = decl.pos();
-    state.node = decl;
-
-    // Find doc comments.
-    if (try genDocComment(vm, view, decl.type(), state)) |docStr| {
-        try vm.mapSet(entry, try vm.retainOrAllocAstring("docs"), docStr);
-    }
-
-    try vm.mapSet(entry, try vm.retainOrAllocAstring("name"), try vm.retainOrAllocAstring(name));
-    try vm.mapSet(entry, try vm.retainOrAllocAstring("pos"), try vm.allocInt(@intCast(decl.pos())));
-    return entryv;
-}
-
-fn genDocComment(vm: *cy.VM, view: ast.AstView, decl_type: ast.NodeType, state: *ParseCyberState) !?cy.Value {
-    const comments = state.comments;
-    if (state.commentIdx < comments.len) {
-        var docStartIdx = state.commentIdx;
-        var docEndIdx = state.commentIdx;
-        while (state.commentIdx < comments.len) {
-            var commentPos = comments[state.commentIdx];
-            if (commentPos.start > state.pos) {
-                break;
-            }
-            state.commentIdx += 1;
-            docEndIdx = state.commentIdx;
-            if (commentPos.len() < 3 or !std.mem.eql(u8, "--|", view.src[commentPos.start..commentPos.start+3])) {
-                // Not a doc comment, reset.
-                docStartIdx = state.commentIdx;
-                continue;
-            }
-            // Check it is connected to last comment.
-            if (docEndIdx > docStartIdx + 1) {
-                const last = comments[docEndIdx - 2];
-                if (!view.isAdjacentLine(last.end, commentPos.start)) {
-                    // Reset.
-                    docStartIdx = state.commentIdx;
-                    continue;
-                }
-            }
-        }
-        if (docEndIdx > docStartIdx) {
-            // Check it is connected to last comment.
-            const last = comments[docEndIdx - 1];
-
-            var posWithModifiers = state.pos;
-            switch (decl_type) {
-                .staticDecl => {
-                    const decl = state.node.cast(.staticDecl);
-                    if (decl.attrs.len > 0) {
-                        posWithModifiers = decl.attrs[0].pos - 1;
-                    }
-                },
-                .funcDecl => {
-                    const decl = state.node.cast(.funcDecl);
-                    if (decl.attrs.len > 0) {
-                        posWithModifiers = decl.attrs[0].pos - 1;
-                    }
-                },
-                .struct_decl => {
-                    const decl = state.node.cast(.struct_decl);
-                    if (decl.attrs.len > 0) {
-                        posWithModifiers = decl.attrs[0].pos - 1;
-                    }
-                },
-                else => {},
-            }
-
-            if (view.isAdjacentLine(last.end, posWithModifiers)) {
-                for (comments[docStartIdx..docEndIdx]) |docPos| {
-                    try state.sb.appendSlice(vm.alloc, view.src[docPos.start+3..docPos.end]);
-                    try state.sb.append(vm.alloc, ' ');
-                }
-                const finalStr = std.mem.trim(u8, state.sb.items, " ");
-                defer state.sb.clearRetainingCapacity();
-                return try vm.allocString(finalStr);
-            }
-        }
-    }
-    return null;
-}
-
-fn parseCyberGenResult(vm: *cy.VM, parser: *const cy.Parser) !cy.Value {
-    const list_t = (try vm.findType("List[Map]")).?;
-    const decls = try vm.allocEmptyList(list_t.id());
-    errdefer vm.release(decls);
-
-    const declsList = decls.asHeapObject().list.getList();
-
-    var state = ParseCyberState{
-        .comments = parser.ast.comments.items,
-        .commentIdx = 0,
-        .sb = .{},
-        .pos = undefined,
-        .node = undefined,
-    };
-    defer state.sb.deinit(vm.alloc);
-
-    const view = parser.ast.view();
-
-    for (parser.staticDecls.items) |decl| {
-        const entry = try genDeclEntry(vm, view, decl, &state);
-        try declsList.append(vm.alloc, entry);
-    }
-
-    const res_t = (try vm.findType("cy.ParseResult")).?;
-    return vm.allocObject2(res_t.id(), 1, &.{ decls });
 }
 
 pub const IReplReadLine = struct {
@@ -495,7 +323,7 @@ const VmReadLine = struct {
 
     fn read(ptr: *anyopaque, prefix: [:0]const u8) anyerror![]const u8 {
         const self: *@This() = @ptrCast(@alignCast(ptr));
-        const vm_prefix = try self.vm.allocString(prefix);
+        const vm_prefix = try self.vm.heap.newStr(prefix);
         defer self.vm.release(vm_prefix);
         const line = try self.vm.callFunc(self.read_line, &.{ vm_prefix }, .{ .from_external = false });
         if (line.isInterrupt()) {

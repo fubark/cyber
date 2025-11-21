@@ -8,19 +8,19 @@ type Foo struct:
     val int
 
 -- Initialize value.
-var a = Foo{val=123}
+a := Foo{val=123}
 test.eq(a.val, 123)
 
--- Initalize with inferred type.
-var a2 Foo = .{val=123}
-test.eq(a2.val, 123)
+-- Initialize with inferred type.
+var a2 Foo = {val=234}
+test.eq(a2.val, 234)
 
 -- Set field.
 a.val = 234
 test.eq(a.val, 234)
 
 -- Assignment copies value.
-var b = a
+b := a
 a.val = 123
 test.eq(b.val, 234)
 test.eq(a.val, 123)
@@ -38,11 +38,11 @@ test.eq(a.val, 123)
 type Bar struct:
     a int
     b Foo
-var c = Bar{a=123, b=.{val=234}}
+c := Bar{a=123, b={val=234}}
 test.eq(c.a, 123)
 test.eq(c.b.val, 234)
-var c2 = c
-var cb = c.b
+c2 := c
+cb := c.b
 c.a = 1234
 c.b.val = 2345
 test.eq(c.a, 1234)
@@ -53,13 +53,13 @@ test.eq(cb.val, 234)
 
 -- Multiple structs with the same field names but different offsets.
 type Node1:
-    a any
-    b any
+    a int
+    b int
 type Node2:
-    b any
-    a any
-var na = Node1{a=1, b=2}
-var nb = Node2{a=3, b=4}
+    b int
+    a int
+na := Node1{a=1, b=2}
+nb := Node2{a=3, b=4}
 test.eq(na.a, 1)
 test.eq(na.b, 2)
 test.eq(nb.a, 3)

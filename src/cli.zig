@@ -3,50 +3,32 @@ const builtin = @import("builtin");
 const build_options = @import("build_options");
 const cy = @import("cyber.zig");
 const os_mod = @import("std/os.zig");
+const io_mod = @import("std/io.zig");
 const test_mod = @import("std/test.zig");
 const cache = @import("cache.zig");
 const C = @import("capi.zig");
-const zErrFunc = cy.builtins.zErrFunc;
+const zErrFunc = cy.core.zErrFunc;
 const v = cy.fmt.v;
 const log = cy.log.scoped(.cli);
-const rt = cy.rt;
 
-const builtins = std.StaticStringMap(void).initComptime(.{
-    .{"core"},
-    .{"math"},
-    .{"cy"},
-});
+pub const Src = @embedFile("std/cli.cy");
 
-const Src = @embedFile("std/cli.cy");
-
-const func = cy.hostFuncEntry;
-const funcs = [_]C.HostFuncEntry{
-    func("replReadLine", zErrFunc(replReadLine)),
+const funcs = [_]struct{[]const u8, C.BindFunc}{
+    .{"replReadLine", zErrFunc(replReadLine)},
 };
 
-pub fn create(vm: *cy.VM, r_uri: []const u8) C.Module {
-    const mod = C.createModule(@ptrCast(vm), C.toStr(r_uri), C.toStr(Src));
-    var config = C.ModuleConfig{
-        .funcs = C.toSlice(C.HostFuncEntry, &funcs),
-    };
-    C.setModuleConfig(@ptrCast(vm), mod, &config);
-    return mod;
+pub fn bind(_: *cy.VM, mod: *cy.sym.Chunk) callconv(.c) void {
+    for (funcs) |e| {
+        C.mod_add_func(@ptrCast(mod), e.@"0", e.@"1");
+    }
 }
 
-const stdMods = std.StaticStringMap(*const fn (*cy.VM, r_uri: []const u8) C.Module).initComptime(.{
-    .{ "cli", create },
-    .{ "os", os_mod.create },
-    .{ "test", test_mod.create },
-});
-
-pub const CliData = struct {
-    FileT: *cy.Type,
-    DirT: *cy.Type,
-    DirIterT: *cy.Type,
-    CArrayT: *cy.Type,
-    CDimArrayT: *cy.Type,
-    FFIT: *cy.Type,
+const ModuleInfo = struct {
+    uri: []const u8,
+    bind_fn: C.ModuleBindFn,
 };
+
+var mods: std.StringHashMapUnmanaged(ModuleInfo) = undefined;
 
 comptime {
     if (!builtin.is_test or !build_options.link_test) {
@@ -55,72 +37,78 @@ comptime {
     }
 }
 
-pub fn clInitCLI(vm: *cy.VM) callconv(.C) void {
-    C.setResolver(@ptrCast(vm), resolve);
-    C.setModuleLoader(@ptrCast(vm), loader);
-    C.setPrinter(@ptrCast(vm), print);
-    C.setErrorPrinter(@ptrCast(vm), err);
-    C.setLog(logFn);
+pub fn clInitCLI(vm: *cy.VM) callconv(.c) void {
+    mods = .{};
+    mods.putNoClobber(vm.alloc, "core", .{ .uri = "src/builtins/core.cy", .bind_fn = C.mod_core }) catch @panic("error");
+    mods.putNoClobber(vm.alloc, "meta", .{ .uri = "src/builtins/meta.cy", .bind_fn = C.mod_meta }) catch @panic("error");
+    mods.putNoClobber(vm.alloc, "math", .{ .uri = "src/std/math.cy", .bind_fn = C.mod_math }) catch @panic("error");
+    mods.putNoClobber(vm.alloc, "cy", .{ .uri = "src/builtins/cy.cy", .bind_fn = C.mod_cy }) catch @panic("error");
+    mods.putNoClobber(vm.alloc, "c", .{ .uri = "src/builtins/c.cy", .bind_fn = C.mod_c }) catch @panic("error");
+    mods.putNoClobber(vm.alloc, "os", .{ .uri = "src/std/os.cy", .bind_fn = @ptrCast(&os_mod.bind) }) catch @panic("error");
+    mods.putNoClobber(vm.alloc, "io", .{ .uri = "src/std/io.cy", .bind_fn = @ptrCast(&io_mod.bind) }) catch @panic("error");
+    mods.putNoClobber(vm.alloc, "cli", .{ .uri = "src/std/cli.cy", .bind_fn = @ptrCast(&bind) }) catch @panic("error");
+    mods.putNoClobber(vm.alloc, "test", .{ .uri = "src/std/test.cy", .bind_fn = @ptrCast(&test_mod.bind) }) catch @panic("error");
 
-    const cli_data = vm.alloc.create(CliData) catch @panic("error");
-    vm.data.put(vm.alloc, "cli", cli_data) catch @panic("error");
+    C.set_resolver(@ptrCast(vm), resolve);
+    C.vm_set_loader(@ptrCast(vm), loader);
+    C.vm_set_printer(@ptrCast(vm), print);
+    C.vm_set_eprinter(@ptrCast(vm), err);
+    C.vm_set_logger(@ptrCast(vm), logFn);
 }
 
-pub fn clDeinitCLI(vm: *cy.VM) callconv(.C) void {
-    const cli_data = vm.getData(*CliData, "cli");
-    vm.alloc.destroy(cli_data);
+pub fn clDeinitCLI(vm: *cy.VM) callconv(.c) void {
+    mods.deinit(vm.alloc);
 }
 
-fn logFn(str: C.Str) callconv(.C) void {
+// Thread-safe.
+fn logFn(_: ?*C.VM, str: C.Bytes) callconv(.c) void {
     if (cy.isWasmFreestanding) {
         os_mod.hostFileWrite(2, str.buf, str.len);
         os_mod.hostFileWrite(2, "\n", 1);
     } else {
-        const w = std.io.getStdErr().writer();
-        w.writeAll(C.fromStr(str)) catch cy.fatal();
-        w.writeByte('\n') catch cy.fatal();
+        cy.debug.logs(C.from_bytes(str));
     }
 }
 
-fn err(_: ?*C.VM, str: C.Str) callconv(.C) void {
+// Not thread-safe.
+fn err(_: ?*C.Thread, str: C.Bytes) callconv(.c) void {
     if (C.silent()) {
         return;
     }
     if (cy.isWasmFreestanding) {
         os_mod.hostFileWrite(2, str.buf, str.len);
     } else {
-        const w = std.io.getStdErr().writer();
-        w.writeAll(C.fromStr(str)) catch cy.fatal();
+        std.fs.File.stderr().writeAll(C.from_bytes(str)) catch cy.fatal();
     }
 }
 
-fn print(_: ?*C.VM, str: C.Str) callconv(.C) void {
+// Not thread-safe.
+fn print(_: ?*C.Thread, str: C.Bytes) callconv(.c) void {
     if (cy.isWasmFreestanding) {
         os_mod.hostFileWrite(1, str.buf, str.len);
     } else {
         // Temporarily redirect to error for tests to avoid hanging the Zig runner.
         if (builtin.is_test) {
-            const w = std.io.getStdErr().writer();
-            const slice = C.fromStr(str);
-            w.writeAll(slice) catch cy.fatal();
+            const slice = C.from_bytes(str);
+            std.fs.File.stderr().writeAll(slice) catch cy.fatal();
             return;
         }
 
-        const w = std.io.getStdOut().writer();
-        const slice = C.fromStr(str);
-        w.writeAll(slice) catch cy.fatal();
+        const slice = C.from_bytes(str);
+        std.fs.File.stdout().writeAll(slice) catch cy.fatal();
     }
 }
 
-pub fn loader(vm_: ?*C.VM, spec_: C.Str, res: ?*C.Module) callconv(.C) bool {
+pub fn loader(vm_: ?*C.VM, mod_: ?*C.Sym, spec_: C.Bytes, out: ?*C.Bytes) callconv(.c) bool {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-    const spec = C.fromStr(spec_);
-    if (builtins.get(spec) != null) {
-        return C.defaultModuleLoader(vm_, spec_, res);
+    const spec = C.from_bytes(spec_);
+
+    var basename = std.fs.path.basename(spec);
+    if (std.mem.lastIndexOfScalar(u8, basename, '.')) |idx| {
+        basename = basename[0..idx];
     }
-    if (stdMods.get(spec)) |create_fn| {
-        res.?.* = create_fn(vm, spec);
-        return true;
+    if (mods.get(basename)) |info| {
+        info.bind_fn.?(vm_, mod_);
     }
 
     if (cy.isWasm) {
@@ -138,7 +126,7 @@ pub fn loader(vm_: ?*C.VM, spec_: C.Str, res: ?*C.Module) callconv(.C) bool {
             } else {
                 const msg = cy.fmt.allocFormat(alloc, "Can not load `{}`. {}", &.{ v(spec), v(e) }) catch return false;
                 defer alloc.free(msg);
-                C.reportApiError(@ptrCast(vm), C.toStr(msg));
+                C.reportApiError(@ptrCast(vm), C.to_bytes(msg));
                 return false;
             }
         };
@@ -146,58 +134,61 @@ pub fn loader(vm_: ?*C.VM, spec_: C.Str, res: ?*C.Module) callconv(.C) bool {
         src = std.fs.cwd().readFileAlloc(alloc, spec, 1e10) catch |e| {
             const msg = cy.fmt.allocFormat(alloc, "Can not load `{}`. {}", &.{ v(spec), v(e) }) catch return false;
             defer alloc.free(msg);
-            C.reportApiError(@ptrCast(vm), C.toStr(msg));
+            C.reportApiError(@ptrCast(vm), C.to_bytes(msg));
             return false;
         };
     }
 
-    const mod = C.createModule(vm_, C.toStr(spec), C.toStr(src));
-    alloc.free(src);
-    res.?.* = mod;
+    out.?.* = C.to_bytes(src);
     return true;
 }
 
-fn resolve(vm_: ?*C.VM, params: C.ResolverParams) callconv(.C) bool {
+fn resolve(vm_: ?*C.VM, params: C.ResolverParams, res_uri_len: ?*usize) callconv(.c) bool {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-    const uri = C.fromStr(params.uri);
-    if (builtins.get(uri) != null) {
-        params.resUri.* = uri.ptr;
-        params.resUriLen.* = uri.len;
-        return true;
-    }
-    if (stdMods.get(uri) != null) {
-        params.resUri.* = uri.ptr;
-        params.resUriLen.* = uri.len;
-        return true;
-    }
+    var uri = C.from_bytes(params.uri);
 
     if (cy.isWasm) {
         return false;
     }
 
-    var cur_uri: ?[]const u8 = null;
-    if (params.chunkId != cy.NullId) {
-        cur_uri = C.fromStr(params.curUri);
+    var cur_uri: []const u8 = "";
+    var buf: [1024]u8 = undefined;
+    if (mods.get(uri)) |info| {
+        uri = info.uri;
+        if (builtin.is_test) {
+            var path = std.fs.selfExeDirPath(&buf) catch @panic("error");
+            // Append dummy file to path since zResolve will use the parent directory.
+            path.len += (std.fmt.bufPrint(buf[path.len..], "/../../../x", .{}) catch @panic("error")).len;
+            cur_uri = path;
+        } else {
+            var path = std.fs.selfExeDirPath(&buf) catch @panic("error");
+            buf[path.len] = '/';
+            buf[path.len+1] = 'x';
+            path.len += 2;
+            cur_uri = path;
+        }
+    } else {
+        if (params.chunkId != cy.NullId) {
+            cur_uri = C.from_bytes(params.curUri);
+        }
     }
 
-    const alloc = vm.alloc;
-    const r_uri = zResolve(vm, alloc, params.chunkId, params.buf[0..params.bufLen], cur_uri, uri) catch |e| {
+    const r_uri = zResolve(vm, vm.alloc, params.chunkId, params.buf[0..params.bufLen], cur_uri, uri) catch |e| {
         if (e == error.HandledError) {
             return false;
         } else {
-            const msg = cy.fmt.allocFormat(alloc, "Resolve module `{}`, error: `{}`", &.{ v(uri), v(e) }) catch return false;
-            defer alloc.free(msg);
-            C.reportApiError(@ptrCast(vm), C.toStr(msg));
+            const msg = cy.fmt.allocFormat(vm.alloc, "Resolve module `{}`, error: `{}`", &.{v(uri), v(e)}) catch return false;
+            defer vm.alloc.free(msg);
+            C.reportApiError(@ptrCast(vm), C.to_bytes(msg));
             return false;
         }
     };
 
-    params.resUri.* = r_uri.ptr;
-    params.resUriLen.* = r_uri.len;
+    res_uri_len.?.* = r_uri.len;
     return true;
 }
 
-fn zResolve(vm: *cy.VM, alloc: std.mem.Allocator, chunkId: cy.ChunkId, buf: []u8, cur_uri_opt: ?[]const u8, spec: []const u8) ![]const u8 {
+fn zResolve(vm: *cy.VM, alloc: std.mem.Allocator, chunkId: cy.ChunkId, buf: []u8, cur_uri: []const u8, spec: []const u8) ![]const u8 {
     _ = chunkId;
     if (std.mem.startsWith(u8, spec, "http://") or std.mem.startsWith(u8, spec, "https://")) {
         const uri = try std.Uri.parse(spec);
@@ -219,7 +210,7 @@ fn zResolve(vm: *cy.VM, alloc: std.mem.Allocator, chunkId: cy.ChunkId, buf: []u8
 
     var pathBuf: [4096]u8 = undefined;
     var fbuf = std.io.fixedBufferStream(&pathBuf);
-    if (cur_uri_opt) |cur_uri| b: {
+    if (cur_uri.len > 0) b: {
         // Create path from the current script.
         // There should always be a parent directory since `curUri` should be absolute when dealing with file modules.
         const dir = std.fs.path.dirname(cur_uri) orelse {
@@ -241,7 +232,7 @@ fn zResolve(vm: *cy.VM, alloc: std.mem.Allocator, chunkId: cy.ChunkId, buf: []u8
                 _ = std.mem.replaceScalar(u8, msg, '/', '\\');
             }
             defer alloc.free(msg);
-            C.reportApiError(@ptrCast(vm), C.toStr(msg));
+            C.reportApiError(@ptrCast(vm), C.to_bytes(msg));
             return error.HandledError;
         } else {
             return e;
@@ -274,7 +265,7 @@ fn loadUrl(vm: *cy.VM, alloc: std.mem.Allocator, url: []const u8) ![]const u8 {
                 if (C.verbose()) {
                     const cachePath = try cache.allocSpecFilePath(alloc, entry);
                     defer alloc.free(cachePath);
-                    rt.logZFmt("Using cached `{s}` at `{s}`", .{ url, cachePath });
+                    cy.debug.print("Using cached `{s}` at `{s}`.\n", .{url, cachePath});
                 }
                 return src;
             }
@@ -284,7 +275,7 @@ fn loadUrl(vm: *cy.VM, alloc: std.mem.Allocator, url: []const u8) ![]const u8 {
     const client = vm.httpClient;
 
     if (C.verbose()) {
-        rt.logZFmt("Fetching `{s}`.", .{url});
+        cy.debug.print("Fetching `{s}`.\n", .{url});
     }
 
     const uri = try std.Uri.parse(url);
@@ -292,7 +283,7 @@ fn loadUrl(vm: *cy.VM, alloc: std.mem.Allocator, url: []const u8) ![]const u8 {
         if (e == error.UnknownHostName) {
             const msg = try cy.fmt.allocFormat(alloc, "Can not connect to `{}`.", &.{v(uri.host.?.percent_encoded)});
             defer alloc.free(msg);
-            C.reportApiError(@ptrCast(vm), C.toStr(msg));
+            C.reportApiError(@ptrCast(vm), C.to_bytes(msg));
             return error.HandledError;
         } else {
             return e;
@@ -304,7 +295,7 @@ fn loadUrl(vm: *cy.VM, alloc: std.mem.Allocator, url: []const u8) ![]const u8 {
         // Stop immediately.
         const e = try cy.fmt.allocFormat(alloc, "Can not load `{}`. Response code: {}", &.{ v(url), v(res.status) });
         defer alloc.free(e);
-        C.reportApiError(@ptrCast(vm), C.toStr(e));
+        C.reportApiError(@ptrCast(vm), C.to_bytes(e));
         return error.HandledError;
     }
 
@@ -318,21 +309,24 @@ fn loadUrl(vm: *cy.VM, alloc: std.mem.Allocator, url: []const u8) ![]const u8 {
 pub const use_ln = builtin.os.tag != .windows and builtin.os.tag != .wasi;
 const ln = @import("linenoise");
 
-pub fn replReadLine(vm: *cy.VM) anyerror!cy.Value {
-    const prefix = try vm.alloc.dupeZ(u8, vm.getString(0));
-    defer vm.alloc.free(prefix);
+pub fn replReadLine(t: *cy.Thread) anyerror!C.Ret {
+    const ret = t.ret(cy.heap.Str);
+
+    const prefix = try t.alloc.dupeZ(u8, t.param(cy.heap.Str).slice());
+    defer t.alloc.free(prefix);
     if (use_ln) {
         const line = try LnReadLine.read(undefined, prefix);
         defer LnReadLine.free(undefined, line);
-        return vm.allocString(line);
+        ret.* = try t.heap.init_str(line);
     } else {
         var read_line = FallbackReadLine{
-            .alloc = vm.alloc,
+            .alloc = t.alloc,
         };
         const line = try FallbackReadLine.read(&read_line, prefix);
         defer FallbackReadLine.free(&read_line, line);
-        return vm.allocString(line);
+        ret.* = try t.heap.init_str(line);
     }
+    return C.RetOk;
 }
 
 pub const LnReadLine = struct {

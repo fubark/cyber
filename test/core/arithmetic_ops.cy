@@ -1,36 +1,35 @@
-use t 'test'
-use m 'math'
+use test
 
 -- Addition.
-t.eq(1 + 2, 3)
-t.eq(1 + 2 + 3, 6)
+test.eq(3, 1 + 2)
+test.eq(6, 1 + 2 + 3)
 
 -- Subtract.
-t.eq(3 - 1, 2)
+test.eq(2, 3 - 1)
 
 -- Multiply.
-t.eq(3 * 4, 12)
+test.eq(12, 3 * 4)
 
 -- Divide.
-t.eq(20 / 5, 4)
+test.eq(4, 20 / 5)
 
 -- Power.
-t.eq(2 ^ 5, 32)
+test.eq(32, 2 ** 5)
 
 -- Modulus.
-t.eq(3 % 2, 1)
+test.eq(1, 3 % 2)
 
 -- Assign to same var.
-var a = 0
+a := 0
 a = a + 1
-t.eq(a, 1)
+test.eq(a, 1)
 a = 0
 a = 1 + a
-t.eq(a, 1)
+test.eq(a, 1)
 
 -- Right function call.
-fn foo() int:
+fn foo() -> int:
     return 123
-t.eq(1 + foo(), 124)
+test.eq(1 + foo(), 124)
 
 --cytest: pass

@@ -1,190 +1,164 @@
 use os
+use meta
 use t 'test'
 
-if os.system != 'windows':
-    os.setEnv('testfoo', 'testbar')
-    t.eq(os.getEnv('testfoo').?, 'testbar')
-    os.unsetEnv('testfoo')
-    t.assert(os.getEnv('testfoo') == none)
+if meta.system() != .windows:
+    os.set_env('testfoo', 'testbar')!
+    t.eq(os.get_env('testfoo').?, 'testbar')
+    os.unset_env('testfoo')!
+    t.assert(os.get_env('testfoo') == none)
 
--- access()
-try:
-    os.access('test/assets/missing.txt', .read)
-catch err:
-    t.eq(err, error.FileNotFound)
-os.access('test/assets/file.txt', .read)
+-- accessFile()
+t.eq(error.FileNotFound, os.accessFile('test/assets/missing.txt', os.AccessExists).unwrapError())
+os.accessFile('test/assets/file.txt', os.AccessExists)!
 
 -- args()
 -- Not available from static linking.
-var res = os.args()
+res := os.args()
 t.eq(res.len() > 0, true)
 
 -- createDir()
-try:
-    os.removeDir('test/assets/tempdir')
-catch:
-    pass
-os.createDir('test/assets/tempdir')
-var dir = os.openDir('test/assets/tempdir')
-t.eq(dir.stat()['type'], symbol.dir)
+if os.fileExists('test/assets/tempdir'):
+    os.removeDir('test/assets/tempdir')!
+os.createDir('test/assets/tempdir')!
+
+dir := os.open_dir('test/assets/tempdir')!
+t.eq(os.FileKind.directory, dir.info()!.kind)
 
 -- createFile() new file.
-try:
-    os.removeFile('test/assets/write.txt')
-catch:
-    pass
-var file = os.createFile('test/assets/write.txt', false)
-file.write('foobar')
-t.eq(os.readFile('test/assets/write.txt'), 'foobar')
+rm_res := os.removeFile('test/assets/write.txt')
+file := os.createFile('test/assets/write.txt')!
+_ = file.write('foobar')!
+t.eq('foobar', str(os.read_file('test/assets/write.txt')!))
 
 -- createFile() no truncate.
-file = os.createFile('test/assets/write.txt', false)
-t.eq(os.readFile('test/assets/write.txt'), 'foobar')
+file = os.createFile('test/assets/write.txt', false)!
+t.eq('foobar', str(os.read_file('test/assets/write.txt')!))
 
 -- createFile() truncate.
-file = os.createFile('test/assets/write.txt', true)
-t.eq(os.readFile('test/assets/write.txt'), '')
+file = os.createFile('test/assets/write.txt', true)!
+t.eq('', str(os.read_file('test/assets/write.txt')!))
 
--- dirName()
-t.assert(os.dirName('.') == none)
-t.eq(os.dirName('./foo').?, '.')
-t.eq(os.dirName('./foo/bar.txt').?, './foo')
-t.eq(os.dirName('./foo/bar').?, './foo')
-t.eq(os.dirName('/root').?, '/')
-t.eq(os.dirName('/root/bar').?, '/root')
-t.eq(os.dirName('/root/bar.txt').?, '/root')
+-- dirname()
+t.eq(?str(none), os.dirname('.'))
+t.eq('.', os.dirname('./foo').?)
+t.eq('./foo', os.dirname('./foo/bar.txt').?)
+t.eq('./foo', os.dirname('./foo/bar').?)
+t.eq('/', os.dirname('/root').?)
+t.eq('/root', os.dirname('/root/bar').?)
+t.eq('/root', os.dirname('/root/bar.txt').?)
 
--- openDir()
-dir = os.openDir('test')
-var stat_res = dir.stat()
-t.eq(stat_res['type'], symbol.dir)
+t.eq('/a/b', os.dirname('/a/b/c').?)
+t.eq('/a/b', os.dirname('/a/b/c///').?)
+t.eq('/', os.dirname('/a').?)
+t.eq(?str(none), os.dirname('/'))
+t.eq(?str(none), os.dirname('//'))
+t.eq(?str(none), os.dirname('///'))
+t.eq(?str(none), os.dirname('////'))
+t.eq(?str(none), os.dirname(''))
+t.eq(?str(none), os.dirname('a'))
+t.eq(?str(none), os.dirname('a/'))
+t.eq(?str(none), os.dirname('a//'))
 
--- openFile()
-file = os.openFile('test/assets/file.txt', .read)
-stat_res = file.stat()
-t.eq(stat_res['type'], symbol.file)
+-- open_dir()
+dir = os.open_dir('test')!
+t.eq(os.FileKind.directory, dir.info()!.kind)
+
+-- open_file()
+file = os.open_file('test/assets/file.txt', .read)!
+t.eq(os.FileKind.file, file.info()!.kind)
 
 -- free() / malloc()
-var ptr = os.malloc(16)
-t.eq(type(ptr), *void)
+ptr := os.malloc(16)!
+t.eqType(Ptr[void], type.of(ptr))
 os.free(ptr)
 
--- File.read()
-file = os.openFile('test/assets/file.txt', .read)
-t.eq(file.read(3), 'foo')
-t.eq(file.read(10), 'bar')
-t.eq(file.read(10), '')
-t.eq(file.read(10), '')
-t.eq(try file.read(-1), error.InvalidArgument)
-t.eq(try file.read(0), error.InvalidArgument)
+-- File.read(bytes)
+file = os.open_file('test/assets/file.txt', .read)!
+t.eq('foo', str(file.read(3)!))
+t.eq('bar', str(file.read(10)!))
+t.eq('', str(file.read(10)!))
+-- t.eq(error.InvalidArgument, file.read(-1).unwrapError())
+t.eq('', str(file.read(0)!))
 
--- File.readAll()
-file = os.openFile('test/assets/file.txt', .read)
-t.eq(file.readAll(), 'foobar')
-t.eq(file.readAll(), '')
+-- File.read_all()
+file = os.open_file('test/assets/file.txt', .read)!
+t.eq('foobar', str(file.read_all()!))
+t.eq('', str(file.read_all()!))
 
 -- File.close()
-file = os.openFile('test/assets/file.txt', .read)
+file = os.open_file('test/assets/file.txt', .read)!
 file.close()
-var stat_res2 = try file.stat()
-t.eq(stat_res2, error.Closed)
+t.eq(true, file.closed)
 
 -- File.seek()
-file = os.openFile('test/assets/file.txt', .read)
-try:
-    file.seek(-1)
-catch err:
-    t.eq(err, error.InvalidArgument)
-file.seek(3)
-t.eq(file.read(3), 'bar')
-
--- File.seekFromCur()
-file = os.openFile('test/assets/file.txt', .read)
-file.seekFromCur(3)
-t.eq(file.read(3), 'bar')
-file.seekFromCur(-6)
-t.eq(file.read(3), 'foo')
+file = os.open_file('test/assets/file.txt', .read)!
+file.seek(3)!
+t.eq('bar', str(file.read(3)!))
+file.seek(-6)!
+t.eq('foo', str(file.read(3)!))
 
 -- File.seekFromEnd()
-file = os.openFile('test/assets/file.txt', .read)
-file.seekFromEnd(-3)
-t.eq(file.read(3), 'bar')
-try:
-    file.seekFromEnd(1)
-catch err:
-    t.eq(err, error.InvalidArgument)
-file.seekFromEnd(-6)
-t.eq(file.read(3), 'foo')
+file = os.open_file('test/assets/file.txt', .read)!
+file.seekFromEnd(-3)!
+t.eq('bar', str(file.read(3)!))
+-- t.eq(error.InvalidArgument, file.seekFromEnd(1).unwrapError())
+file.seekFromEnd(-6)!
+t.eq('foo', str(file.read(3)!))
 
--- File.streamLines()
-file = os.openFile('test/assets/multiline.txt', .read)
-var lines = List[string]{}
-for file.streamLines() -> line:
-    lines.append(line)
-t.eq(lines.len(), 3)
-t.eq(lines[0], "foo\n")
-t.eq(lines[1], "abcxyz\n")
-t.eq(lines[2], 'bar')
+-- File.seekFromStart()
+file = os.open_file('test/assets/file.txt', .read)!
+t.eq(error.InvalidArgument, file.seekFromStart(-1).unwrapError())
+file.seekFromStart(3)!
+t.eq('bar', str(file.read(3)!))
 
--- File.streamLines2()
-file = os.openFile('test/assets/multiline.txt', .read)
-lines = List[string]{}
-for file.streamLines(2) -> line:
-    lines.append(line)
-t.eq(lines.len(), 3)
-t.eq(lines[0], "foo\n")
-t.eq(lines[1], "abcxyz\n")
-t.eq(lines[2], 'bar')
+-- File.write(str) from create
+file = os.createFile('test/assets/write.txt', true)!
+_ = file.write('foobar')!
+t.eq('foobar', str(os.read_file('test/assets/write.txt')!))
 
--- File.write() from create
-file = os.createFile('test/assets/write.txt', true)
-t.eq(file.write('foobar'), 6)
-t.eq(os.readFile('test/assets/write.txt'), 'foobar')
-
--- File.write() from open
-file = os.openFile('test/assets/write.txt', .write)
-file.seekFromEnd(0)
-t.eq(file.write('abcxyz'), 6)
-t.eq(os.readFile('test/assets/write.txt'), 'foobarabcxyz')
+-- File.write(str) from open
+file = os.open_file('test/assets/write.txt', .write)!
+file.seekFromEnd(0)!
+_ = file.write('abcxyz')!
+t.eq('foobarabcxyz', str(os.read_file('test/assets/write.txt')!))
 
 -- Dir.iterator()
-dir = os.openDir('test/assets/dir', true)
-var iter = dir.iterator()
-var entries = List[os.DirEntry]{}
-while iter.next() -> n:
-    entries.append(n)
-t.eq(entries.len(), 3)
-entries.sort((a, b) => a.name.less(b.name))
-t.eq(entries[0].name, 'dir2')
-t.eq(entries[0].type, symbol.dir)
-t.eq(entries[1].name, 'file.txt')
-t.eq(entries[1].type, symbol.file)
-t.eq(entries[2].name, 'file2.txt')
-t.eq(entries[2].type, symbol.file)
+dir = os.open_dir('test/assets/dir', true)!
+iter := dir.iterator()
+entries := Array[os.DirEntry]{}
+while iter.next(&dir)! |n|:
+    entries << n
+t.eq(3, entries.len())
+entries.sort(|a, b| a.name.less(b.name))
+t.eq('dir2', entries[0].name)
+t.eq(os.FileKind.directory, entries[0].kind)
+t.eq('file.txt', entries[1].name)
+t.eq(os.FileKind.file, entries[1].kind)
+t.eq('file2.txt', entries[2].name)
+t.eq(os.FileKind.file, entries[2].kind)
 
--- Dir.walk()
-dir = os.openDir('test/assets/dir', true)
-iter = dir.walk()
-entries = .{}
-while iter.next() -> n:
-    entries.append(n)
-t.eq(entries.len(), 4)
-entries.sort((a, b) => a.path.less(b.path))
-t.eq(entries[0].path, 'dir2')
-if os.system == 'windows':
-    t.eq(entries[1].path, 'dir2\file.txt')
-else:
-    t.eq(entries[1].path, 'dir2/file.txt')
-t.eq(entries[2].path, 'file.txt')
-t.eq(entries[3].path, 'file2.txt')
+-- -- Dir.walk()
+-- dir = os.open_dir('test/assets/dir', true)!
+-- iter = dir.walk()
+-- entries = {}
+-- while iter.next() -> n:
+--     entries.append(n)
+-- t.eq(4, entries.len())
+-- entries.sort((a, b) => a.path.less(b.path))
+-- t.eq('dir2', entries[0].path)
+-- if meta.system() == .windows:
+--     t.eq('dir2\file.txt', entries[1].path)
+-- else:
+--     t.eq('dir2/file.txt', entries[1].path)
+-- t.eq('file.txt', entries[2].path)
+-- t.eq('file2.txt', entries[3].path)
 
--- writeFile()
-if os.cpu != 'wasm32':
-    var s = ''.insertByte(0, 255)
-    os.writeFile('test.txt', s)
-    var file = os.openFile('test.txt', .read)
-    var bytes = file.readAll()
-    t.eq(bytes.len(), 1)
-    t.eq(bytes.getByte(0), 255)
+-- writeFile(str)
+if meta.cpu() != 'wasm32':
+    s := 'hello'
+    os.write_file('test.txt', s)!
+    file := os.open_file('test.txt', .read)!
+    t.eq('hello', str(file.read_all()!))
 
 --cytest: pass

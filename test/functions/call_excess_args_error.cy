@@ -1,13 +1,11 @@
-fn foo(a int) int:
+fn foo(a int) -> int:
     return a + 3
 foo(1, 2)
 
 --cytest: error
---CompileError: Can not find compatible function for call: `foo(_, _)`.
---Functions named `foo` in `main`:
---    fn foo(int) int
+--CompileError: Expected `1` arguments, found `2`, when calling the function `fn foo(int) -> int`.
 --
 --main:3:1:
 --foo(1, 2)
---^
+--^~~~~~~~~
 --

@@ -12,10 +12,6 @@ pub const KeyU64 = extern union {
         modSymId: cy.chunk.SymId,
         funcSigId: sema.FuncSigId,
     },
-    rtFieldTableKey: extern struct {
-        typeId: cy.TypeId,
-        fieldId: rt.FieldId,
-    },
 
     pub fn initModFuncKey(modSymId: cy.chunk.SymId, funcSigId: sema.FuncSigId) KeyU64 {
         return .{
@@ -43,15 +39,6 @@ pub const KeyU64 = extern union {
             },
         };
     }
-
-    pub fn initFieldTableKey(typeId: cy.TypeId, fieldId: rt.FieldId) KeyU64 {
-        return .{
-            .rtFieldTableKey = .{
-                .typeId = typeId,
-                .fieldId = fieldId,
-            },
-        };
-    }
 };
 
 pub const KeyU64Context = struct {
@@ -63,28 +50,28 @@ pub const KeyU64Context = struct {
     }
 };
 
-pub const KeyU96 = extern union {
+pub const KeyU128 = extern union {
     val: extern struct {
         a: u64,
-        b: u32,
+        b: u64,
     },
 
-    pub fn initModFuncKey(sym: *cy.sym.FuncSym, funcSigId: cy.sema.FuncSigId) KeyU96 {
+    pub fn initModFuncKey(sym: *cy.sym.FuncSym, sig: *cy.FuncSig) KeyU128 {
         return .{ .val = .{
             .a = @intFromPtr(sym),
-            .b = funcSigId,
+            .b = @intFromPtr(sig),
         }};
     }
 };
 
-pub const KeyU96Context = struct {
-    pub fn hash(_: @This(), key: KeyU96) u64 {
+pub const KeyU128Context = struct {
+    pub fn hash(_: @This(), key: KeyU128) u64 {
         var hasher = std.hash.Wyhash.init(0);
         @call(.always_inline, std.hash.Wyhash.update, .{&hasher, std.mem.asBytes(&key.val.a)});
         @call(.always_inline, std.hash.Wyhash.update, .{&hasher, std.mem.asBytes(&key.val.b)});
         return hasher.final();
     }
-    pub fn eql(_: @This(), a: KeyU96, b: KeyU96) bool {
+    pub fn eql(_: @This(), a: KeyU128, b: KeyU128) bool {
         return a.val.a == b.val.a and a.val.b == b.val.b;
     }
 };

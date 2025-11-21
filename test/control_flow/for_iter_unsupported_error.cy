@@ -1,10 +1,10 @@
-for 123 -> i:
-    print i
+for 123 |i|:
+    print(i)
 
 --cytest: error
---CompileError: Can not find the symbol `iterator` in `int`.
+--CompileError: Can not find the symbol `iterator` for `int`.
 --
 --main:1:5:
---for 123 -> i:
---    ^
+--for 123 |i|:
+--    ^~~
 --

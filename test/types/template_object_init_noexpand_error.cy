@@ -1,12 +1,12 @@
 type Foo[T type]:
     a T
 
-var a = Foo{a=123}
+a := Foo{a=123}
 
 --cytest: error
---CompileError: Expected a type symbol. `Foo` is a type template and must be expanded to a type first.
+--CompileError: Expected a type, found type template. Expand `Foo` to a type.
 --
---main:4:9:
---var a = Foo{a=123}
---        ^
+--main:4:6:
+--a := Foo{a=123}
+--     ^~~
 --

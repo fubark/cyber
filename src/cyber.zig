@@ -1,5 +1,3 @@
-// Copyright (c) 2023 Cyber (See LICENSE)
-
 const builtin = @import("builtin");
 
 pub const ast = @import("ast.zig");
@@ -17,12 +15,20 @@ pub const ParseResult = parser.Result;
 
 pub const sema = @import("sema.zig");
 pub const sema_func = @import("sema_func.zig");
+pub const sema_type = @import("sema_type.zig");
+pub const ct_inline = @import("ct_inline.zig");
 pub const Sema = sema.Sema;
 pub const unescapeString = sema.unescapeString;
+pub const FuncSig = sema.FuncSig;
 
 pub const cte = @import("cte.zig");
+pub const template = @import("template.zig");
+pub const Instance = template.Instance;
 
 pub const ir = @import("ir.zig");
+pub const dce = @import("dce.zig");
+
+pub const cgen = @import("cgen.zig");
 
 pub const types = @import("types.zig");
 pub const TypeId = types.TypeId;
@@ -45,46 +51,36 @@ pub const Chunk = chunk.Chunk;
 pub const ChunkId = chunk.ChunkId;
 pub const FuncId = chunk.FuncId;
 
-pub const builtins = @import("builtins/builtins.zig");
+pub const core = @import("builtins/core.zig");
 pub const bindings = @import("builtins/bindings.zig");
 
 pub const hash = @import("hash.zig");
-pub const rt = @import("runtime.zig");
-pub const Context = rt.Context;
 pub const fmt = @import("fmt.zig");
 pub const http = @import("http.zig");
 
 pub const value = @import("value.zig");
 pub const Value = value.Value;
+pub const TypeValue = value.TypeValue;
 
 pub const vm = @import("vm.zig");
 pub const VM = vm.VM;
-pub const getStackOffset = vm.getStackOffset;
-pub const getInstOffset = vm.getInstOffset;
 
 pub const heap = @import("heap.zig");
+pub const Heap = heap.Heap;
 pub const HeapObject = heap.HeapObject;
-pub const MapInner = heap.MapInner;
-pub const Map = heap.Map;
-pub const CyList = heap.List;
+pub const MapValue = heap.MapValue;
 pub const Pointer = heap.Pointer;
-pub const Astring = heap.Astring;
-pub const MaxPoolObjectStringByteLen = heap.MaxPoolObjectAstringByteLen;
 
-pub const fiber = @import("fiber.zig");
+pub const sync = @import("sync.zig");
+pub const thread = @import("thread.zig");
+pub const Thread = thread.Thread;
+pub const worker = @import("worker.zig");
 
-pub const vmc = @import("vm_c.zig");
+pub const vmc = @import("vmc");
 pub const Fiber = vmc.Fiber;
 
-pub const arc = @import("arc.zig");
-
-const map = @import("map.zig");
-pub const ValueMap = map.ValueMap;
-pub const ValueMapEntry = map.ValueMapEntry;
-
-const list = @import("list.zig");
-pub const List = list.List;
-pub const ListAligned = list.ListAligned;
+pub const fifo = @import("fifo.zig");
+pub const BoundedArray = @import("bounded_array.zig").BoundedArray;
 
 pub const debug = @import("debug.zig");
 pub const StackTrace = debug.StackTrace;
@@ -97,6 +93,7 @@ pub const ByteCodeBuffer = bytecode.ByteCodeBuffer;
 pub const OpCode = bytecode.OpCode;
 pub const Inst = bytecode.Inst;
 pub const DebugSym = bytecode.DebugSym;
+pub const DebugTableEntry = bytecode.DebugTableEntry;
 pub const getInstLenAt = bytecode.getInstLenAt;
 
 pub const simd = @import("simd.zig");
@@ -106,12 +103,13 @@ pub const isWasm = builtin.cpu.arch.isWasm();
 pub const isWasmFreestanding = isWasm and builtin.os.tag == .freestanding;
 pub const is32Bit = build_options.is32Bit;
 pub const hasStdFiles = !isWasm;
-pub const hasGC = build_options.gc;
+pub const hasCYC = build_options.cyc;
 pub const hasFFI = build_options.ffi;
 pub const hasJIT = build_options.jit;
 pub const hasCLI = build_options.cli;
 
 const build_options = @import("build_options");
+pub var event_id: u64 = 1;
 pub const Trace = build_options.trace;
 pub const TraceRC = Trace and true;
 pub const TrackGlobalRC = build_options.trackGlobalRC;
@@ -129,14 +127,22 @@ pub fn Nullable(comptime T: type) type {
     return T;
 }
 
-pub const ZHostFuncFn = *const fn (*VM) Value;
-pub fn hostFuncEntry(name: []const u8, func: ZHostFuncFn) C.HostFuncEntry {
-    return .{
-        .name = C.toStr(name),
-        .func = @ptrCast(func),
-    };
-}
-pub const ZHostFuncCFn = *const fn (*VM) callconv(.C) Value;
+pub const CtFuncContext = extern struct {
+    func: *Func,
+    args: [*]const Value,
+    node: *ast.Node,
+};
+
+pub const SemaFuncContext = extern struct {
+    func: *Func,
+    expr_start: usize,
+    node: *ast.Node,
+};
+
+pub const ZHostFn = *const fn(*VM) callconv(.c) C.Ret;
+pub const ZCtFn = *const fn(*Chunk, *const CtFuncContext, *sema.ExprResult) callconv(.c) bool;
+pub const ZSemaFn = *const fn(*Chunk, *const SemaFuncContext, *sema.ExprResult) callconv(.c) bool;
+pub const ZCtEvalFuncFn = *const fn(*Chunk, *const CtFuncContext) callconv(.c) TypeValue;
 
 pub const log = @import("log.zig");
 pub const utils = @import("utils.zig");

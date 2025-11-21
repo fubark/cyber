@@ -12,9 +12,7 @@ pub fn expectError(act_err_union: anytype, exp: anyerror) !void {
     return std.testing.expectError(exp, act_err_union);
 }
 
-pub fn eq(act: anytype, exp: @TypeOf(act)) !void {
-    try std.testing.expectEqual(exp, act);
-}
+pub const eq = std.testing.expectEqual;
 
 // Currently zig doesn't let you use @TypeOf on a arg to the right. We'll want this when it does.
 // pub fn eq(act: @TypeOf(exp), exp: anytype) !void {
@@ -106,9 +104,9 @@ pub fn setLogLevel(level: std.log.Level) void {
     std.testing.log_level = level;
 }
 
-var mocks: std.ArrayList(*Mock) = std.ArrayList(*Mock).init(
-    if (builtin.is_test) alloc else std.heap.page_allocator,
-);
+var mocks: std.ArrayList(*Mock) = std.ArrayList(*Mock).initCapacity(
+    if (builtin.is_test) alloc else std.heap.page_allocator, 0,
+) catch @panic("error");
 
 pub fn unitTrace(loc: std.builtin.SourceLocation) void {
     for (mocks.items) |mock| {

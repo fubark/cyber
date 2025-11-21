@@ -1,19 +1,20 @@
 type Foo:
     a    int
 
-    fn $set(self, name string, val any):
-        panic('error')
+fn (&Foo) @set(name str, val int):
+    panic('error')
 
-var f = Foo{a=123}
+f := Foo{a=123}
 f.foo = 234
 
---cytest: error
+--cytest: panic
 --panic: error
 --
---main:5:9 $set:
---        panic('error')
---        ^
---main:8:3 main:
+--[trace]
+--main:5:5 Foo.@set:
+--    panic('error')
+--    ^
+--main:8:1 main:
 --f.foo = 234
---  ^
+--^
 --

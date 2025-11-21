@@ -13,6 +13,8 @@
     --marked: #ffa430;
     --mono-font: Consolas, Menlo, Monaco, "Andale Mono", "Ubuntu Mono", monospace;
     --keyword: #ff7d67;
+    --declaration: #ffc57b;
+    --type: #ffabab;
 
     --header-line: #333;
 
@@ -108,12 +110,16 @@ body {
 main {
     padding-top: 0px;
     padding-left: calc(var(--nav-width) + 20px);
-    padding-right: 20px;
+    padding-right: 40px;
 }
 
 em {
     font-style: normal;
     color: #fb6767;
+}
+
+div.desc ul li {
+    padding-bottom: 15px;
 }
 
 /* mobile */
@@ -265,6 +271,61 @@ main code {
     background: none;
     color: var(--accent-light);
     padding: 2px 6px;
+}
+
+main.api code {
+    color: var(--text);
+}
+
+main.api code .type {
+    color: var(--type);
+}
+main.api code .keyword {
+    color: var(--keyword);
+}
+main.api code .op {
+    color: var(--keyword);
+}
+main.api code .decl {
+    color: var(--declaration);
+}
+main.api h1 code {
+    font-size: 24px;
+}
+main.api blockquote.type {
+    border-left: 3px solid var(--type);
+}
+
+main.api table.index-table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+main.api table.index-table td {
+    vertical-align: top;
+}
+
+main.api table.index-table td div.double {
+    display: flex;
+    flex-direction: row;
+}
+
+main.api table.index-table td div.double div {
+    flex: 1;
+}
+
+@media screen and (max-width: 1199px) {
+    main.api table.index-table td div.double {
+        flex-direction: column;
+    }
+}
+
+main.api table.index-table code {
+    font-size: 15px;
+}
+
+main.api table.index-table a {
+    color: var(--declaration);
 }
 
 /* block code */

@@ -1,10 +1,10 @@
-var a = 123
-print(a as float)
+a := 123
+print(as[str] a)
 
 --cytest: error
---CompileError: Cast expects `float`, got `int`.
+--CompileError: Cannot cast `int` to `str`.
 --
---main:2:12:
---print(a as float)
---           ^
+--main:2:15:
+--print(as[str] a)
+--              ^
 --

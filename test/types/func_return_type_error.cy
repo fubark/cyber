@@ -1,4 +1,4 @@
-fn foo() int:
+fn foo() -> int:
     return 1.2
 
 --cytest: error
@@ -6,5 +6,5 @@ fn foo() int:
 --
 --main:2:12:
 --    return 1.2
---           ^
+--           ^~~
 --

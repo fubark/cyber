@@ -1,77 +1,74 @@
 use test
 
 -- Read dereferenced `int`.
-var a = 123
-var b = *a
-test.eq(b.*, 123)
+a := 123
+b := *a
+test.eq(123, b.*)
 
 -- pointer indexing, primitive.
-test.eq(b[0], 123)
+test.eq(123, b[0])
 
 -- pointer set index, primitive.
 b[0] = 234
-test.eq(b[0], 234)
-test.eq(a, 234)
+test.eq(234, b[0])
+test.eq(234, a)
 
 -- pointer slicing
-test.eq(b[0..10].len(), 10)
+test.eq(10, b[0..10].len())
 
 -- Write to `int` pointer.
 b.* = 345
-test.eq(b.*, 345)
-test.eq(a, 345)
+test.eq(345, b.*)
+test.eq(345, a)
 
 type Foo cstruct:
     a int
 
 -- Read dereferenced cstruct.
-var f = Foo{a=123}
-var g = *f
-test.eq(g.a, 123)
-test.eq(g.*.a, 123)
+f := Foo{a=123}
+g := *f
+test.eq(123, g.a)
+test.eq(123, g.*.a)
 
 -- pointer indexing, cstruct.
-test.eq(g[0].a, 123)
+test.eq(123, g[0].a)
 
 -- pointer set index, cstruct.
 g[0] = Foo{a=234}
 test.eq(g[0].a, 234)
-test.eq(f.a, 234)
+test.eq(234, f.a)
 
 -- Write to cstruct pointer.
 g.* = Foo{a=345}
-test.eq(g.a, 345)
+test.eq(345, g.a)
 
 -- Write to cstruct pointer member.
 g.a = 456
-test.eq(g.a, 456)
+test.eq(456, g.a)
 
 -- Read dereferenced `int` from static variable.
-var .sa = 123
-var b2 = *sa
-test.eq(b2.*, 123)
+global sa int = 123
+b2 := *sa
+test.eq(123, b2.*)
 
--- pointer.fromAddr
-var ptr = pointer.fromAddr(void, 0xDEADBEEF)
-test.eq(ptr.addr(), 3735928559)
+-- Cast to Ptr.
+ptr := as[Ptr[void]] 0xDEADBEEF
+test.eq(3735928559, as ptr)
 
--- pointer.fromRef
-var a2 = 123
-var a2_ref = ^a2
-var a2_ptr = pointer.fromRef(a2_ref)
-test.eq(a2_ptr.*, 123)
+-- unsafe cast.
+a2 := 123
+a2_ref := ^a2
+a2_ptr := @unsafeCast(Ptr[int], a2_ref)
+test.eq(123, a2_ptr.*)
 
--- Infer pointer child type.
-var foo_ptr *Foo = *.{a=123}
-test.eq(foo_ptr.a, 123)
-
--- Infer pointer slice child type.
-var foo_slice [*]Foo = *.{
-    .{a=123},
-    .{a=234},
+-- Pointer span of array.
+arr := [2]Foo{
+    {a=123},
+    {a=234},
 }
-test.eq(foo_slice.len(), 2)
-test.eq(foo_slice[0].a, 123)
-test.eq(foo_slice[1].a, 234)
+foo_span := arr[0..]
+test.eq(2, foo_span.len())
+test.eq(123, foo_span[0].a)
+test.eq(234, foo_span[1].a)
 
 --cytest: pass

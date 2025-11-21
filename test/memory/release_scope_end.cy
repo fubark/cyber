@@ -1,17 +1,17 @@
 type S:
-    value any
+    value ^int
 
-    fn foo(self):
-        var a = S{value=123}
-        if false:
-            var a = S{value=123}
+fn (&S) foo():
+    a := S{value=^123}
+    if false:
+        a := S{value=^123}
 
 -- if scope.
 if false:
-    var a = S{value=123}
+    a := S{value=^123}
 
 -- method scope.
-var s = S{value=234}
+s := S{value=^234}
 s.foo()
 
 --cytest: pass

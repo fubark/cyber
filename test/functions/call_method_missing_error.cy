@@ -1,7 +1,7 @@
 type S:
-    a any
+    a int
 
-var o = S{}
+o := S{a=1}
 o.foo()
 
 --cytest: error
@@ -9,5 +9,5 @@ o.foo()
 --
 --main:5:3:
 --o.foo()
---  ^
+--  ^~~
 --

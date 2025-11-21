@@ -1,20 +1,20 @@
-use t 'test'
+use test
 
 -- Strings.
-t.eq('foo' == 'bar', false)
-t.eq('foo' == 'foo', true)
+test.eq(false, 'foo' == 'bar')
+test.eq(true, 'foo' == 'foo')
 
 -- Reference equals.
 type S:
-    value any
-var s = ^S{value=123}
-var a = ^S{value=123}
-t.eq(a == s, false)
+    value int
+s := ^S{value=123}
+a := ^S{value=123}
+test.eq(false, a == s)
 a = s
-t.eq(a == s, true)
+test.eq(true, a == s)
 
 -- Error equals.
-t.eq(error.SomeError == error.OtherError, false)
-t.eq(error.SomeError == error.SomeError, true)
+test.eq(false, error.SomeError == error.OtherError)
+test.eq(true, error.SomeError == error.SomeError)
 
 --cytest: pass

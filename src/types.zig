@@ -4,10 +4,11 @@ const t = stdx.testing;
 const cy = @import("cyber.zig");
 const C = @import("capi.zig");
 const rt = cy.rt;
+const ir = cy.ir;
 const sema = cy.sema;
 const fmt = @import("fmt.zig");
 const v = fmt.v;
-const vmc = @import("vm_c.zig");
+const vmc = @import("vmc");
 const log = cy.log.scoped(.types);
 const ast = cy.ast;
 
@@ -17,29 +18,61 @@ pub const TypeKind = enum(u8) {
     null = vmc.TYPE_KIND_NULL,
     bool = vmc.TYPE_KIND_BOOL,
     int = vmc.TYPE_KIND_INT,
+    raw = vmc.TYPE_KIND_RAW,
     float = vmc.TYPE_KIND_FLOAT,
-    hostobj = vmc.TYPE_KIND_HOSTOBJ,
     enum_t = vmc.TYPE_KIND_ENUM,
     choice = vmc.TYPE_KIND_CHOICE,
     struct_t = vmc.TYPE_KIND_STRUCT,
     option = vmc.TYPE_KIND_OPTION,
-    trait = vmc.TYPE_KIND_TRAIT,
+    generic_trait = vmc.TYPE_KIND_GENERIC_TRAIT,
     bare = vmc.TYPE_KIND_BARE,
-    ct_ref = vmc.TYPE_KIND_CTREF,
-    array = vmc.TYPE_KIND_ARRAY,
+    vector = vmc.TYPE_KIND_VECTOR,
+    partial_vector = vmc.TYPE_KIND_PARTIAL_VECTOR,
     func_ptr = vmc.TYPE_KIND_FUNC_PTR,
-    func_union = vmc.TYPE_KIND_FUNC_UNION,
+    func = vmc.TYPE_KIND_FUNC,
     func_sym = vmc.TYPE_KIND_FUNC_SYM,
     pointer = vmc.TYPE_KIND_PTR,
+    borrow = vmc.TYPE_KIND_BORROW,
+    void = vmc.TYPE_KIND_VOID,
+    generic = vmc.TYPE_KIND_GENERIC,
+    result = vmc.TYPE_KIND_RESULT,
+    ref_trait = vmc.TYPE_KIND_REF_TRAIT,
+    borrow_trait = vmc.TYPE_KIND_BORROW_TRAIT,
+    int_lit = vmc.TYPE_KIND_INT_LIT,
+    generic_vector = vmc.TYPE_KIND_GENERIC_VECTOR,
+    never = vmc.TYPE_KIND_NEVER,
+    c_variadic = vmc.TYPE_KIND_CVARIADIC,
+    c_union = vmc.TYPE_KIND_CUNION,
+    ex_borrow = vmc.TYPE_KIND_EXBORROW,
+    dyn_trait = vmc.TYPE_KIND_DYN_TRAIT,
 };
 
 pub const TypeInfo = packed struct {
-    is_future: bool = false,
+    /// Type can only be used at compile-time.
+    ct: bool = false,
 
-    /// Whether this type or a child parameter contains a ct_ref.
-    ct_ref: bool = false,
+    /// Type is a borrow or contains a borrow reference.
+    borrow_only: bool = false,
 
-    padding: u6 = undefined,
+    managed: bool = false,
+
+    /// Relys on builtin `@copy` (not considering a user defined @copy) instead of a memcpy.
+    copy_base: bool = false,
+
+    /// Has a user defined `@copy`.
+    /// When `copy_ctor and !copy_user`, the compiler can reduce a `@copy` call to a `retain` for example.
+    copy_user: bool = false,
+
+    /// Fully resolved. Memory layout and copy semantics have been determined.
+    resolved: bool = false,
+
+    /// Either implements `NoCopy` or has a member that implements `NoCopy`.
+    no_copy: bool = false,
+
+    /// Must be determined without resolving the type.
+    generic: bool = false,
+    
+    padding: u8 = 0,
 };
 
 pub const Type = extern struct {
@@ -47,14 +80,14 @@ pub const Type = extern struct {
     sym_: *cy.sym.TypeSym,
     id_: TypeId,
     info: TypeInfo,
-    has_get_method: bool = false,
-    has_set_method: bool = false,
-    has_init_pair_method: bool = false,
 
-    /// Optional since not all types have inlined retained members.
-    /// TODO: Retain layouts should belong to specific types but it's here in `Type` for convenience.
-    retain_layout: ?*RetainLayout = null,
-    retain_layout_owned: bool = true,
+    /// If `null`, the destructor is a no-op.
+    dtor: ?*cy.Func = null,
+
+    deinit_obj: ?*cy.Func = null,
+
+    /// If `null`, the copy constructor is a memcpy.
+    copy_ctor: ?*cy.Func = null,
 
     pub fn id(self: *Type) TypeId {
         return self.id_;
@@ -68,12 +101,174 @@ pub const Type = extern struct {
         return self.sym_.head.name();
     }
 
-    pub fn isVmObject(self: *Type) bool {
+    pub fn canCCast(self: *Type) bool {
         switch (self.kind()) {
+            .option => {
+                const option = self.cast(.option);
+                return option.zero_union;
+            },
+            .float,
+            .bool,
+            .raw,
+            .int,
+            .pointer => return true,
+            else => return false,
+        }
+    }
+
+    pub fn isCZeroEligible(self: *Type) bool {
+        switch (self.id()) {
+            else => {
+                switch (self.kind()) {
+                    .raw,
+                    .int => {
+                        return true;
+                    },
+                    .struct_t => {
+                        return self.cast(.struct_t).cstruct;
+                    },
+                    else => {},
+                }
+            }
+        }
+        return false;
+    }
+
+    /// Type must not contain any reference types to be const eligible.
+    /// Although we may allow them when consts can also be runtime initialized.
+    pub fn isConstEligible(self: *Type) bool {
+        switch (self.id()) {
+            bt.I32,
+            bt.I64,
+            bt.Bool,
+            bt.F64,
+            bt.F32,
+            bt.StrLit,
+            bt.Str => {
+                return true;
+            },
+            else => {},
+        }
+        switch (self.kind()) {
+            .pointer => {
+                const pointer = self.cast(.pointer);
+                return !pointer.ref;
+            },
+            .vector => {
+                const array_t = self.cast(.vector);
+                return array_t.elem_t.isConstEligible();
+            },
+            .partial_vector => {
+                const array_t = self.cast(.partial_vector);
+                return array_t.elem_t.isConstEligible();
+            },
+            .struct_t => {
+                const struct_t = self.cast(.struct_t);
+                std.debug.assert(self.isResolved());
+                for (struct_t.fields()) |field| {
+                    if (!field.type.isConstEligible()) {
+                        return false;
+                    }
+                }
+                return true;
+            },
+            .borrow,
             .choice,
             .option,
-            .array,
+            .enum_t,
+            .float,
+            .bool,
+            .raw,
+            .int => {
+                return true;
+            },
+            else => {
+                return false;
+            },
+        }
+    }
+
+    pub fn isPrimitive(self: *Type) bool {
+        switch (self.kind()) {
+            .pointer => {
+                return !self.cast(.pointer).ref;
+            },
+            .ref_trait,
+            .func,
+            .result,
+            .choice,
+            .vector,
+            .partial_vector,
+            .generic_trait,
             .struct_t => {
+                return false;
+            },
+            .option => {
+                const option = self.cast(.option);
+                return option.zero_union and option.child_t.isPrimitive();
+            },
+            else => {
+                return true;
+            }
+        }
+    }
+
+    pub fn reg_size(self: *Type) usize {
+        return (self.size() + 7) >> 3;
+    }
+
+    /// Whether `cy.Value` is boxed.
+    pub fn is_cte_boxed(self: *Type) bool {
+        switch (self.kind()) {
+            .borrow_trait,
+            .result,
+            .choice,
+            .vector,
+            .partial_vector,
+            .c_union,
+            .struct_t => {
+                return true;
+            },
+            .option => {
+                return !self.cast(.option).zero_union;
+            },
+            else => {
+                return false;
+            }
+        }
+    }
+
+    pub fn isVmManagedRef(self: *Type) bool {
+        switch (self.kind()) {
+            .pointer => {
+                return self.cast(.pointer).ref;
+            },
+            .func,
+            .choice,
+            .result,
+            .vector,
+            .partial_vector,
+            .struct_t => {
+                return true;
+            },
+            .option => {
+                const option_t = self.cast(.option);
+                if (!option_t.zero_union) {
+                    return true;
+                }
+                return option_t.child_t.isRefPointer();
+            },
+            else => {
+                return false;
+            }
+        }
+    }
+
+    pub fn isRefLike(self: *Type) bool {
+        switch (self.kind()) {
+            .borrow,
+            .ex_borrow,
+            .pointer => {
                 return true;
             },
             else => {
@@ -82,31 +277,173 @@ pub const Type = extern struct {
         }
     }
 
-    pub fn selfOrPointee(self: *Type) *Type {
+    pub fn isObject(self: *Type) bool {
+        return self.id() == bt.Object;
+    }
+
+    pub fn isObjectLike(self: *Type) bool {
+        switch (self.kind()) {
+            .pointer => {
+                return self.cast(.pointer).ref;
+            },
+            .func => {
+                return true;
+            },
+            else => {
+                return false;
+            }
+        }
+    }
+
+    pub fn is_generic(self: *Type) bool {
+        return self.info.generic;
+    }
+
+    pub fn is_stack_ptr(self: *Type) bool {
+        switch (self.kind()) {
+            .pointer => {
+                return !self.cast(.pointer).ref;
+            },
+            .borrow => return true,
+            else => {
+                return false;
+            },
+        }
+    }
+
+    pub fn is_min_resolved(self: *Type) bool {
+        return self.info.shallow_resolved;
+    }
+
+    pub fn isResolved(self: *Type) bool {
+        return self.info.resolved;
+    }
+
+    pub fn isManaged(self: *Type) bool {
+        if (cy.Trace) {
+            if (!self.info.resolved) {
+                std.debug.panic("Expected resolved type {s}.", .{self.name()});
+            }
+        }
+        return self.info.managed;
+    }
+
+    pub fn has_copy_ctor(self: *Type) bool {
+        if (cy.Trace) {
+            if (!self.info.resolved) {
+                std.debug.panic("Expected resolved type {s}.", .{self.name()});
+            }
+        }
+        return self.info.copy_base or self.info.copy_user;
+    }
+
+    pub fn is_sendable(self: *Type) bool {
+        switch (self.kind()) {
+        //     .struct_t => return self.cast(.struct_t).fields(),
+        //     .c_union => return self.cast(.c_union).fields(),
+        //     .choice => return self.cast(.choice).fields(),
+        //     .option => return self.cast(.option).fields(),
+        //     .result => return self.cast(.result).fields(),
+        //     else => return null, 
+            .int => return true,
+            else => return false,
+        }
+    }
+
+    pub fn is_copyable(self: *Type) bool {
+        return self.hasCopyCtor() or !self.info.no_copy;
+    }
+
+    pub fn hasCopyCtor(self: *Type) bool {
+        if (cy.Trace) {
+            if (!self.info.resolved) {
+                std.debug.panic("Expected resolved type {s}.", .{self.name()});
+            }
+        }
+        return self.info.copy_base or self.info.copy_user;
+    }
+
+    pub fn isCStruct(self: *Type) bool {
+        return self.kind() == .struct_t and self.cast(.struct_t).cstruct;
+    }
+
+    pub fn pointeeOrSelf(self: *Type) *Type {
         if (self.kind() == .pointer) {
             return self.cast(.pointer).child_t;
+        } else if (self.kind() == .borrow) {
+            return self.cast(.borrow).child_t;
+        } else if (self.kind() == .ex_borrow) {
+            return self.cast(.ex_borrow).child_t;
         } else {
             return self;
         }
     }
 
-    pub fn size(self: *Type) u64 {
+    pub fn alignment(self: *Type) u8 {
         switch (self.kind()) {
-            .struct_t => return self.cast(.struct_t).size,
-            .option => return self.cast(.option).size,
-            .array => return self.cast(.array).size,
-            .hostobj => return 1,
-            .int => return 1,
-            .float => return 1,
-            .pointer => return 1,
+            .c_union => return self.cast(.c_union).alignment,
+            .struct_t => return self.cast(.struct_t).alignment,
+            .result => return self.cast(.result).alignment,
+            .option => return self.cast(.option).alignment,
+            .choice => return self.cast(.choice).alignment,
+            .vector => return self.cast(.vector).elem_t.alignment(),
+            .partial_vector => return 8,
+            .raw => return @intCast(self.cast(.raw).bits / 8),
+            .int => return @intCast(self.cast(.int).bits / 8),
+            .float => return @intCast(self.cast(.float).bits / 8),
+            .pointer => return 8,
+            .borrow => return 8,
+            .ex_borrow => return 8,
+            .borrow_trait,
+            .ref_trait => return 8,
+            .bool => return 1,
+            .enum_t => return 8,
+            .never => return 1,
+            .void => return 1,
+            .func_ptr => return 8,
+            .func => return 8,
+            .generic => return 1,
             else => std.debug.panic("TODO: {} size", .{self.kind()}),
         }
     }
 
+    /// Returns the size in bytes.
+    pub fn size(self: *Type) usize {
+        switch (self.kind()) {
+            .c_union => return self.cast(.c_union).size,
+            .struct_t => return self.cast(.struct_t).size,
+            .result => return self.cast(.result).size,
+            .option => return self.cast(.option).size,
+            .choice => return self.cast(.choice).size,
+            .vector => return self.cast(.vector).size,
+            .partial_vector => return self.cast(.partial_vector).size,
+            .raw => return self.cast(.raw).bits / 8,
+            .int => return self.cast(.int).bits / 8,
+            .float => return self.cast(.float).bits / 8,
+            .pointer => return 8,
+            .borrow => return 8,
+            .ex_borrow => return 8,
+            .borrow_trait,
+            .ref_trait => return 16,
+            .bool => return 1,
+            .enum_t => return 8,
+            .never => return 0,
+            .void => return 0,
+            .func_ptr => return 8,
+            .func => return 8,
+            .generic => return 0,
+            else => std.debug.panic("TODO: {} size", .{self.kind()}),
+        }
+    }
+
+    // pub fn wordSize(self: *Type) usize {
+    //     return std.math.divCeil(usize, self.size(), 8) catch unreachable;
+    // }
+
     pub fn sym(self: *Type) *cy.sym.TypeSym {
         if (cy.Trace) {
             if (self.kind() == .null) {
-                cy.panic("Null type does not have a symbol.");
+                @panic("Null type does not have a symbol.");
             }
         }
         return self.sym_;
@@ -122,15 +459,15 @@ pub const Type = extern struct {
     }
 
     pub fn destroy(self: *Type, alloc: std.mem.Allocator) void {
-        if (self.retain_layout) |layout| {
-            if (self.retain_layout_owned) {
-                layout.destroy(alloc);
-            }
-        }
         switch (self.kind()) {
             .null => {},
             .choice => {
                 const impl = self.cast(.choice);
+                impl.deinit(alloc);
+                alloc.destroy(impl);
+            },
+            .c_union => {
+                const impl = self.cast(.c_union);
                 impl.deinit(alloc);
                 alloc.destroy(impl);
             },
@@ -144,8 +481,20 @@ pub const Type = extern struct {
                 impl.deinit(alloc);
                 alloc.destroy(impl);
             },
-            .trait => {
-                const impl = self.cast(.trait);
+            .dyn_trait => {
+                const impl = self.cast(.dyn_trait);
+                alloc.destroy(impl);
+            },
+            .ref_trait => {
+                const impl = self.cast(.ref_trait);
+                alloc.destroy(impl);
+            },
+            .borrow_trait => {
+                const impl = self.cast(.borrow_trait);
+                alloc.destroy(impl);
+            },
+            .generic_trait => {
+                const impl = self.cast(.generic_trait);
                 impl.deinit(alloc);
                 alloc.destroy(impl);
             },
@@ -153,8 +502,24 @@ pub const Type = extern struct {
                 const impl = self.cast(.pointer);
                 alloc.destroy(impl);
             },
-            .func_union => {
-                const impl = self.cast(.func_union);
+            .borrow => {
+                const impl = self.cast(.borrow);
+                alloc.destroy(impl);
+            },
+            .ex_borrow => {
+                const impl = self.cast(.ex_borrow);
+                alloc.destroy(impl);
+            },
+            .int_lit => {
+                const impl = self.cast(.int_lit);
+                alloc.destroy(impl);
+            },
+            .c_variadic => {
+                const impl = self.cast(.c_variadic);
+                alloc.destroy(impl);
+            }, 
+            .func => {
+                const impl = self.cast(.func);
                 alloc.destroy(impl);
             },
             .func_sym => {
@@ -165,12 +530,24 @@ pub const Type = extern struct {
                 const impl = self.cast(.func_ptr);
                 alloc.destroy(impl);
             },
-            .hostobj => {
-                const impl = self.cast(.hostobj);
+            .generic => {
+                const impl = self.cast(.generic);
+                alloc.destroy(impl);
+            },
+            .void => {
+                const impl = self.cast(.void);
+                alloc.destroy(impl);
+            },
+            .never => {
+                const impl = self.cast(.never);
                 alloc.destroy(impl);
             },
             .bool => {
                 const impl = self.cast(.bool);
+                alloc.destroy(impl);
+            },
+            .raw => {
+                const impl = self.cast(.raw);
                 alloc.destroy(impl);
             },
             .int => {
@@ -181,12 +558,16 @@ pub const Type = extern struct {
                 const impl = self.cast(.float);
                 alloc.destroy(impl);
             },
-            .array => {
-                const impl = self.cast(.array);
+            .partial_vector => {
+                const impl = self.cast(.partial_vector);
                 alloc.destroy(impl);
             },
-            .ct_ref => {
-                const impl = self.cast(.ct_ref);
+            .vector => {
+                const impl = self.cast(.vector);
+                alloc.destroy(impl);
+            },
+            .generic_vector => {
+                const impl = self.cast(.generic_vector);
                 alloc.destroy(impl);
             },
             .bare => {
@@ -197,63 +578,85 @@ pub const Type = extern struct {
                 const impl = self.cast(.option);
                 alloc.destroy(impl);
             },
+            .result => {
+                const impl = self.cast(.result);
+                alloc.destroy(impl);
+            },
         }
     }
 
-    /// Whether this type is boxed by default. 
-    /// The inverse means that the type is unboxable to an 8-byte Value.
-    pub fn isBoxed(self: *Type) bool {
-        switch (self.id()) {
-            bt.String,
-            bt.Map,
-            bt.MapIter,
-            bt.Fiber,
-            bt.Type,
-            bt.Dyn,
-            bt.ExternFunc,
-            bt.Symbol,
-            bt.Error,
-            bt.Float,
-            bt.Any => return true,
-            bt.Integer,
-            bt.Void,
-            bt.Byte,
-            bt.Boolean => return false,
-            else => {
-                switch (self.kind()) {
-                    .option,
-                    .choice,
-                    .array,
-                    .trait,
-                    .hostobj,
-                    .struct_t => return true,
-                    .enum_t,
-                    .bool,
-                    .float,
-                    .int => return false,
-                    .pointer => {
-                        if (self.cast(.pointer).ref) {
-                            return true;
-                        } else {
-                            return false;
-                        }
-                    },
-                    .func_ptr,
-                    .func_union,
-                    .func_sym => {
-                        return true;
-                    },
-                    .null,
-                    .bare,
-                    .ct_ref => {
-                        std.debug.panic("Unexpected type kind: {}", .{self.kind()});
-                    },
+    pub fn isInstanceOf(self: *Type, tmpl: *cy.sym.Template) bool {
+        const variant = self.sym().instance orelse return false;
+        return variant.data.sym.template == tmpl;
+    }
+
+    pub fn instanceOf(self: *Type, tmpl: *cy.sym.Template) ?*cy.Instance {
+        const variant = self.sym().instance orelse return null;
+        if (variant.data.sym.template == tmpl) {
+            return variant;
+        } else {
+            return null;
+        }
+    }
+
+    /// Assumes types and functions are already resolved.
+    pub fn get_trait_method_impl(self: *cy.Type, member: cy.types.TraitMember) ?*cy.Func {
+        const func_sym = self.sym().getMod().getSym(member.func.name()) orelse return null;
+        if (func_sym.type != .func) {
+            return null;
+        }
+
+        var next: ?*cy.Func = func_sym.cast(.func).first;
+        while (next) |func| {
+            if (!func.isMethod()) {
+                next = func.next;
+                continue;
+            }
+            const trait_sig = member.func.sig;
+
+            // Skip receiver.
+            const trait_params = trait_sig.params()[1..];
+            const func_params = func.sig.params()[1..];
+            for (trait_params, 0..) |trait_param, i| {
+                if (trait_param != func_params[i]) {
+                    next = func.next;
+                    continue;
                 }
             }
+            if (trait_sig.ret != func.sig.ret) {
+                next = func.next;
+                continue;
+            }
+            return func;
+        }
+        return null;
+    }
+
+    pub fn eqUnderlyingType(self: *Type, other: *Type) bool {
+        if (self.kind() != other.kind()) {
+            return false;
+        }
+        switch (self.kind()) {
+            .pointer => {
+                const pointer_t = self.cast(.pointer);
+                const other_t = other.cast(.pointer);
+                return pointer_t.ref == other_t.ref and pointer_t.child_t == other_t.child_t;
+            },
+            .raw => {
+                const a = self.cast(.raw);
+                const b = other.cast(.raw);
+                return a.bits == b.bits;
+            },
+            .int => {
+                const a = self.cast(.int);
+                const b = other.cast(.int);
+                return a.bits == b.bits;
+            },
+            else => return false,
         }
     }
 
-    pub fn isRef(self: *Type) bool {
+    pub fn isRefPointer(self: *Type) bool {
         return self.kind() == .pointer and self.cast(.pointer).ref;
     }
 
@@ -261,11 +664,42 @@ pub const Type = extern struct {
         return self.kind() == .pointer and !self.cast(.pointer).ref;
     }
 
+    pub fn getBaseType(self: *Type) *cy.Type {
+        if (self.getRefLikeChild()) |child_t| {
+            return child_t.getBaseType();
+        } else {
+            return self;
+        }
+    }
+
+    pub fn getRefLikeChild(self: *Type) ?*Type {
+        if (self.kind() == .pointer) {
+            return self.cast(.pointer).child_t;
+        }
+        if (self.kind() == .borrow) {
+            return self.cast(.borrow).child_t;
+        }
+        if (self.kind() == .ex_borrow) {
+            return self.cast(.ex_borrow).child_t;
+        }
+        return null;
+    }
+
+    pub fn cases(self: *Type) ?[]const Case {
+        switch (self.kind()) {
+            .choice => return self.cast(.choice).cases(),
+            .result => return &self.cast(.result).cases_arr,
+            else => return null, 
+        }
+    }
+
     pub fn fields(self: *Type) ?[]const Field {
         switch (self.kind()) {
             .struct_t => return self.cast(.struct_t).fields(),
+            .c_union => return self.cast(.c_union).fields(),
             .choice => return self.cast(.choice).fields(),
             .option => return self.cast(.option).fields(),
+            .result => return self.cast(.result).fields(),
             else => return null, 
         }
     }
@@ -273,21 +707,36 @@ pub const Type = extern struct {
 
 fn TypeImpl(comptime kind: TypeKind) type {
     return switch (kind) {
-        .ct_ref     => CtRef,
-        .trait      => Trait,
+        .generic_trait => GenericTrait,
+        .dyn_trait,
+        .borrow_trait,
+        .ref_trait  => Trait,
         .option     => Option,
+        .result     => Result,
         .choice     => Choice,
+        .c_union    => CUnion,
         .enum_t     => Enum,
-        .hostobj    => HostObject,
-        .array      => Array,
+        .vector => Vector,
+        .partial_vector => PartialVector,
+        .generic_vector => GenericVector,
         .struct_t   => Struct,
         .pointer    => Pointer,
-        .func_ptr,
+        .borrow     => Borrow,
+        .ex_borrow  => Borrow,
+        .func_ptr   => FuncPtr,
         .func_sym,
-        .func_union => Func,
+        .func       => Func,
+        .raw        => Raw,
         .int        => Int,
         .float      => Float,
-        else => Empty,
+        .int_lit,
+        .c_variadic,
+        .generic,
+        .null,
+        .bare,
+        .bool,
+        .never,
+        .void       => Empty,
     };
 }
 
@@ -303,14 +752,15 @@ pub const Int = extern struct {
     bits: u32,
 };
 
-pub const Empty = extern struct {
+pub const Raw = extern struct {
     base: Type = undefined,
+
+    bits: u32,
+    distinct: bool,
 };
 
-pub const CtRef = extern struct {
+pub const Empty = extern struct {
     base: Type = undefined,
-
-    ct_param_idx: u32,
 };
 
 pub const Enum = extern struct {
@@ -323,16 +773,17 @@ pub const Enum = extern struct {
         alloc.free(self.cases());
     }
 
-    pub fn isResolved(self: *Enum) bool {
-        return self.cases_len != 0;
-    }
-
-    pub fn getValueSym(self: *Enum, val: u16) *cy.sym.EnumCase {
-        return self.cases_ptr[val];
-    }
-
     pub fn getCaseByIdx(self: *Enum, idx: u32) *cy.sym.EnumCase {
         return self.cases_ptr[idx];
+    }
+
+    pub fn getCaseByTag(self: *Enum, tag: u32) *cy.sym.EnumCase {
+        for (self.cases()) |case| {
+            if (case.val == tag) {
+                return case;
+            }
+        }
+        std.debug.panic("Can not find case: {}", .{tag});
     }
 
     pub fn cases(self: *Enum) []*cy.sym.EnumCase {
@@ -355,19 +806,80 @@ pub const Enum = extern struct {
     }
 };
 
+pub const Result = extern struct {
+    base: Type = undefined,
+
+    child_t: *Type,
+
+    /// Byte size.
+    size: cy.Nullable(u32) = cy.NullId,
+
+    alignment: u8 = 0,
+
+    cases_arr: [2]Case = undefined,
+    fields_arr: [2]Field = undefined,
+
+    pub fn fields(self: *Result) []const Field {
+        return &self.fields_arr;
+    }
+};
+
 pub const Option = extern struct {
     base: Type = undefined,
 
     child_t: *Type,
+
+    /// Byte size.
     size: cy.Nullable(u32) = cy.NullId,
+
+    alignment: u8 = 0,
+
+    /// Reference types do not need a separate tag field and relies on the value being 0 to indicate `none`.
+    zero_union: bool,
 
     fields_arr: [2]Field = undefined,
 
-    pub fn isResolved(self: *Option) bool {
-        return self.size != cy.NullId;
+    pub fn fields(self: *Option) []const Field {
+        return &self.fields_arr;
+    }
+};
+
+pub const CUnion = extern struct {
+    base: Type = undefined,
+
+    /// Byte size. Maximum payload type size.
+    size: cy.Nullable(u32) = cy.NullId,
+
+    cases_ptr: [*]CUnionCase = undefined,
+    cases_len: u32 = 0,
+
+    alignment: u8 = 0,
+
+    fields_arr: [1]Field = undefined,
+
+    pub fn deinit(self: *CUnion, alloc: std.mem.Allocator) void {
+        alloc.free(self.cases());
     }
 
-    pub fn fields(self: *Option) []const Field {
+    pub fn cases(self: *CUnion) []CUnionCase {
+        return self.cases_ptr[0..self.cases_len];
+    }
+
+    pub fn getCaseByIdx(self: *CUnion, idx: u32) *cy.sym.UnionCase {
+        return self.cases_ptr[idx].sym.?;
+    }
+
+    pub fn getCase(self: *CUnion, name: []const u8) ?*cy.sym.UnionCase {
+        const mod = self.base.sym().getMod();
+        if (mod.getSym(name)) |res| {
+            if (res.type == .cunion_case) {
+                return res.cast(.cunion_case);
+            }
+        }
+        return null;
+    }
+
+    pub fn fields(self: *CUnion) []const Field {
         return &self.fields_arr;
     }
 };
@@ -375,11 +887,15 @@ pub const Option = extern struct {
 pub const Choice = extern struct {
     base: Type = undefined,
 
-    /// Maximum payload type size in addition to the tag size.
+    /// Byte size. Maximum payload type size in addition to the tag size.
     size: cy.Nullable(u32) = cy.NullId,
 
-    cases_ptr: [*]*cy.sym.ChoiceCase = undefined,
+    cases_ptr: [*]Case = undefined,
     cases_len: u32 = 0,
+
+    alignment: u8 = 0,
+
+    tag_t: *Type,
 
     fields_arr: [2]Field = undefined,
 
@@ -387,16 +903,21 @@ pub const Choice = extern struct {
         alloc.free(self.cases());
     }
 
-    pub fn isResolved(self: *Choice) bool {
-        return self.cases_len != 0;
-    }
-
-    pub fn cases(self: *Choice) []*cy.sym.ChoiceCase {
+    pub fn cases(self: *Choice) []Case {
         return self.cases_ptr[0..self.cases_len];
     }
 
     pub fn getCaseByIdx(self: *Choice, idx: u32) *cy.sym.ChoiceCase {
-        return self.cases_ptr[idx];
+        return self.cases_ptr[idx].sym.?;
+    }
+
+    pub fn getCaseByTag(self: *Choice, tag: u32) *cy.sym.ChoiceCase {
+        for (self.cases()) |case| {
+            if (case.val == tag) {
+                return case.sym.?;
+            }
+        }
+        std.debug.panic("Can not find case: {}", .{tag});
     }
 
     pub fn getCase(self: *Choice, name: []const u8) ?*cy.sym.ChoiceCase {
@@ -409,19 +930,17 @@ pub const Choice = extern struct {
         return null;
     }
 
+    pub fn getCaseTag(self: *Choice, name: []const u8) ?u32 {
+        if (self.getCase(name)) |sym| {
+            return sym.val;
+        } else {
+            return null;
+        }
+    }
+
     pub fn fields(self: *Choice) []const Field {
         return &self.fields_arr;
     }
-};
-
-pub const HostObject = extern struct {
-    base: Type = undefined,
-
-    getChildrenFn: C.GetChildrenFn = null,
-    finalizerFn: C.FinalizerFn = null,
-
-    /// If `true`, invoke finalizer before releasing children.
-    pre: bool = false,
 };
 
 /// TODO: Hash fields for static casting.
@@ -433,21 +952,30 @@ pub const Struct = extern struct {
     fields_len: u32 = cy.NullId,
     fields_owned: bool = true,
 
+    /// Recursive. Field states only includes struct members.
+    field_state_len: usize = 0,
+
+    /// Byte size.
     size: cy.Nullable(u32) = cy.NullId,
 
     /// Linear lookup since most types don't have many impls.
     impls_ptr: [*]Impl = undefined,
     impls_len: u32 = cy.NullId,
 
+    alignment: u8 = 0,
     cstruct: bool,
+    opaque_t: bool,
     tuple: bool,
 
     /// Only relevant for structs/cstructs.
     /// Used to detect circular dependency.
     resolving_struct: bool = false,
 
+    next_dead_ref_fn: ?*const fn(vm: *cy.VM, obj: *cy.HeapObject, start: bool) ?*anyopaque = null,
+    deinit_fn: ?*const fn(vm: *cy.VM, obj: *cy.HeapObject) void = null,
+
     fn deinit(self: *Struct, alloc: std.mem.Allocator) void {
-        if (self.isResolved()) {
+        if (self.base.isResolved()) {
             if (self.fields_owned) {
                 alloc.free(self.fields());
             }
@@ -463,15 +991,11 @@ pub const Struct = extern struct {
         return self.fields_ptr[0..self.fields_len];
     }
 
-    pub fn isResolved(self: *Struct) bool {
-        return self.fields_len != cy.NullId;
-    }
-
     pub fn impls(self: *Struct) []Impl {
         return self.impls_ptr[0..self.impls_len];
     }
 
-    pub fn implements(self: *Struct, trait_t: *Trait) bool {
+    pub fn implements(self: *Struct, trait_t: *GenericTrait) bool {
         for (self.impls()) |impl| {
             if (impl.trait == trait_t) {
                 return true;
@@ -482,7 +1006,7 @@ pub const Struct = extern struct {
 };
 
 pub const Impl = struct {
-    trait: *Trait,
+    trait: *GenericTrait,
 
     funcs: []*cy.Func,
 
@@ -495,34 +1019,100 @@ pub const TraitMember = struct {
     func: *cy.Func,
 };
 
-pub const Trait = extern struct {
+const ZHashMap = extern struct {
+    metadata: ?*anyopaque,
+    size: u32,
+    available: u32,
+    pointer_stability: u64,
+};
+
+pub const GenericTrait = extern struct {
     base: Type = undefined,
 
     members_ptr: [*]const TraitMember = undefined,
     members_len: u32 = 0,
 
-    pub fn deinit(self: *Trait, alloc: std.mem.Allocator) void {
-        alloc.free(self.members());
+    predicate: ?*cy.Func = null,
+
+    impls: ZHashMap,
+
+    pub fn zimpls(self: *GenericTrait) *std.AutoHashMapUnmanaged(*cy.Type, void) {
+        return @ptrCast(&self.impls);
     }
 
-    pub fn members(self: *Trait) []const TraitMember {
+    pub fn deinit(self: *GenericTrait, alloc: std.mem.Allocator) void {
+        // Functions are owned by trait since they are defined together.
+        for (self.members()) |member| {
+            member.func.destroy(alloc);
+        }
+        alloc.free(self.members());
+
+        self.zimpls().deinit(alloc);
+    }
+
+    pub fn members(self: *GenericTrait) []const TraitMember {
         return self.members_ptr[0..self.members_len];
     }
+};
+
+pub const Trait = extern struct {
+    base: Type = undefined,
+
+    generic: *GenericTrait,
+};
+
+pub const FuncPtr = extern struct {
+    base: Type = undefined,
+
+    sig: *cy.FuncSig,
+
+    /// Useful for the VM backend to know which function pointers to generate dispatch code.
+    extern_is_called: bool = false, 
 };
 
 pub const Func = extern struct {
     base: Type = undefined,
 
-    sig: cy.sema.FuncSigId,
+    sig: *cy.FuncSig,
+    opaque_: bool = false,
 };
 
-pub const Array = extern struct {
+pub const GenericVector = extern struct {
+    base: Type = undefined,
+
+    elem_t: *cy.Type,
+};
+
+pub const PartialVector = extern struct {
     base: Type = undefined,
 
     n: u64,
     elem_t: *cy.Type,
+
+    /// Byte size.
     size: u64 = 0,
-    resolved: bool = false,
+};
+
+pub const Vector = extern struct {
+    base: Type = undefined,
+
+    n: u64,
+    elem_t: *cy.Type,
+
+    /// Byte size.
+    size: u64 = 0,
+};
+
+pub const VaList = extern struct {
+    base: Type = undefined,
+
+    elem: ?*Type,
+};
+
+pub const Borrow = extern struct {
+    base: Type = undefined,
+
+    child_t: *Type,
 };
 
 pub const Pointer = extern struct {
@@ -532,427 +1122,268 @@ pub const Pointer = extern struct {
     child_t: *Type,
 };
 
+pub const CUnionCase = extern struct {
+    sym: ?*cy.sym.UnionCase,
+    name_ptr: [*]const u8,
+    name_len: u32,
+    payload_t: *cy.Type,
+
+    pub fn name(self: *const CUnionCase) []const u8 {
+        return self.name_ptr[0..self.name_len];
+    }
+};
+
+pub const Case = extern struct {
+    sym: ?*cy.sym.ChoiceCase,
+    name_ptr: [*]const u8,
+    name_len: u32,
+    val: u32,
+    payload_t: *cy.Type,
+
+    pub fn name(self: *const Case) []const u8 {
+        return self.name_ptr[0..self.name_len];
+    }
+};
+
 pub const Field = extern struct {
     sym: *cy.sym.Field,
     type: *cy.Type,
-    /// For struct/cstruct. Field offset from the start of the parent.
+
+    /// For struct/cstruct. Field offset in bytes from the start of the parent.
     offset: u32,
-};
 
-const RetainLayoutKind = enum(u8) {
-    struct_k,
-    array,
-    union_k,
-    option,
-};
+    /// Considers nested struct fields only.
+    state_offset: u32 = 0,
 
-pub const RetainCase = extern struct {
-    /// If `null`, case is a simple retained value.
-    layout: ?*RetainLayout
-};
+    init: ?*ir.Expr = null,
 
-pub const RetainLayout = extern struct {
-    kind: RetainLayoutKind,
-    data: extern union {
-        option: RetainCase,
-        union_k: extern struct {
-            ptr: [*]const ?RetainCase,
-            len: usize,
+    init_value: cy.Value = undefined,
 
-            pub fn layouts(self: *@This()) []const ?RetainCase {
-                return self.ptr[0..self.len];
-            }
-        },
-        array: extern struct {
-            n: u32,
-            elem_size: u32,
-
-            /// If `null`, elem is a simple retained value.
-            layout: ?*RetainLayout,
-        },
-        struct_k: extern struct {
-            ptr: [*]const RetainEntry,
-            len: usize,
-
-            pub fn entries(self: *@This()) []const RetainEntry {
-                return self.ptr[0..self.len];
-            }
-        },
-    },
-
-    pub fn destroy(self: *RetainLayout, alloc: std.mem.Allocator) void {
-        switch (self.kind) {
-            .union_k => {
-                alloc.free(self.data.union_k.layouts());
-            },
-            .struct_k => {
-                const entries = self.data.struct_k.entries();
-                for (entries) |e| {
-                    if (e.kind == .refs) {
-                        alloc.free(e.data.refs.ptr[0..e.data.refs.len]);
-                    }
-                }
-                alloc.free(entries);
-            },
-            .option,
-            .array => {},
-        }
-        alloc.destroy(self);
-    }
-};
-
-const RetainEntryKind = enum(u8) {
-    refs,
-    layout,
-};
-
-pub const RetainEntry = extern struct {
-    kind: RetainEntryKind,
-
-    /// `Value` offset from the parent type. Will eventually be a byte offset instead.
-    offset: u32, 
-
-    data: extern union {
-        refs: extern struct {
-            ptr: [*]const u8,
-            len: usize,
-        },
-        layout: *RetainLayout,
-    },
-};
-
-pub const RtType = extern struct {
-    type: *Type,
-    kind: TypeKind,
-    // Duped to avoid lookup from `sym`.
-    // symType: cy.sym.SymType,
-    has_get_method: bool = false,
-    has_set_method: bool = false,
-    has_init_pair_method: bool = false,
-
-    info: TypeInfo,
-
-    data: extern union {
-        // Even though this increases the size of other type entries, it might not be worth
-        // separating into another table since it would add another indirection.
-        host_object: extern struct {
-            getChildrenFn: C.GetChildrenFn,
-            finalizerFn: C.FinalizerFn,
-        },
-        option: extern struct {
-            // Size of tag type or child type.
-            max_fields: u16,
-
-            child_t: cy.TypeId,
-        },
-        // This is duped from StructType so that object creation/destruction avoids the lookup from `sym`.
-        struct_t: extern struct {
-            /// Total size, currently indicates number of `Value`s but will end up being the byte size.
-            size: u16,
-
-            cstruct: bool,
-            tuple: bool,
-
-            // boxed_entries_ptr: [*]BoxedEntry,
-            // boxed_entries_len: u16,
-
-            // pub fn boxedEntries(self: *const @This()) []BoxedEntry {
-            //     return self.boxed_entries_ptr[0..self.boxed_entries_len];
-            // }
-        },
-        ct_ref: extern struct {
-            ct_param_idx: u32,
-        },
-        array: extern struct {
-            n: usize,
-            elem_t: cy.TypeId,
-        },
-        float: extern struct {
-            bits: u8,
-        },
-        int: extern struct {
-            bits: u8,
-        },
-        pointer: extern struct {
-            ref: bool,
-            child_t: cy.TypeId,
-        },
-        func_ptr: extern struct {
-            sig: cy.sema.FuncSigId,
-        },
-        func_union: extern struct {
-            sig: cy.sema.FuncSigId,
-        },
-        func_sym: extern struct {
-            sig: cy.sema.FuncSigId,
-        },
-    },
-
-    pub fn name(self: *const RtType) []const u8 {
-        return self.type.name();
-    }
-
-    pub fn sym(self: *const RtType) *cy.sym.TypeSym {
-        return self.type.sym();
-    }
-
-    pub fn isBoxed(self: *const RtType) bool {
-        return self.type.isBoxed();
-    }
+    /// For compile-time evaluation.
+    init_n: ?*ast.Node = null,
 };
 
 test "types internals." {
-    try t.eq(@sizeOf(RtType), @sizeOf(vmc.TypeEntry));
-    try t.eq(@offsetOf(RtType, "kind"), @offsetOf(vmc.TypeEntry, "kind"));
-    try t.eq(@offsetOf(RtType, "has_get_method"), @offsetOf(vmc.TypeEntry, "has_get_method"));
-    try t.eq(@offsetOf(RtType, "has_set_method"), @offsetOf(vmc.TypeEntry, "has_set_method"));
-    try t.eq(@offsetOf(RtType, "data"), @offsetOf(vmc.TypeEntry, "data"));
 }
 
-pub const PrimitiveEnd: TypeId = vmc.PrimitiveEnd;
 pub const BuiltinEnd: TypeId = vmc.BuiltinEnd;
 
 const bt = BuiltinTypes;
 pub const BuiltinTypes = struct {
-    pub const Any: TypeId = vmc.TYPE_ANY;
-    pub const Boolean: TypeId = vmc.TYPE_BOOLEAN;
-    pub const Byte: TypeId = vmc.TYPE_BYTE;
-    pub const TagLit: TypeId = vmc.TYPE_TAGLIT;
-    pub const Float: TypeId = vmc.TYPE_FLOAT;
-    pub const Integer: TypeId = vmc.TYPE_INTEGER;
-    pub const String: TypeId = vmc.TYPE_STRING;
+    pub const Object: TypeId = vmc.TYPE_OBJECT;
+    pub const Bool: TypeId = vmc.TYPE_BOOL;
+    pub const I8: TypeId = vmc.TYPE_I8;
+    pub const I16: TypeId = vmc.TYPE_I16;
+    pub const I32: TypeId = vmc.TYPE_I32;
+    pub const I64: TypeId = vmc.TYPE_I64;
+    pub const IntLit: TypeId = vmc.TYPE_INT_LIT;
+    pub const R8: TypeId = vmc.TYPE_R8;
+    pub const R16: TypeId = vmc.TYPE_R16;
+    pub const R32: TypeId = vmc.TYPE_R32;
+    pub const R64: TypeId = vmc.TYPE_R64;
+    pub const F64: TypeId = vmc.TYPE_F64;
+    pub const F32: TypeId = vmc.TYPE_F32;
+    pub const Str: TypeId = vmc.TYPE_STR;
+    pub const StrLit: TypeId = vmc.TYPE_STR_LIT;
+    pub const MutStr: TypeId = vmc.TYPE_MUT_STR;
+    pub const NoCopy: TypeId = vmc.TYPE_NO_COPY;
+    pub const Thread: TypeId = vmc.TYPE_THREAD;
+    pub const PartialStructLayout: TypeId = vmc.TYPE_PARTIAL_STRUCT_LAYOUT;
     pub const Symbol: TypeId = vmc.TYPE_SYMBOL;
-    pub const Placeholder6: TypeId = vmc.TYPE_PLACEHOLDER6;
-    pub const Placeholder4: TypeId = vmc.TYPE_PLACEHOLDER4;
-    pub const Placeholder5: TypeId = vmc.TYPE_PLACEHOLDER5;
-    pub const Map: TypeId = vmc.TYPE_MAP;
-    pub const MapIter: TypeId = vmc.TYPE_MAP_ITER;
+    pub const Never: TypeId = vmc.TYPE_NEVER;
+    pub const Any: TypeId = vmc.TYPE_ANY;
+    pub const Code: TypeId = vmc.TYPE_CODE;
     pub const Void: TypeId = vmc.TYPE_VOID;
     pub const Null: TypeId = vmc.TYPE_NULL;
     pub const Error: TypeId = vmc.TYPE_ERROR;
-    pub const Fiber: TypeId = vmc.TYPE_FIBER;
     pub const Type: TypeId = vmc.TYPE_TYPE;
-    pub const ExprType: TypeId = vmc.TYPE_EXPRTYPE;
+    pub const StrBuffer: TypeId = vmc.TYPE_STR_BUFFER;
     pub const FuncSig: TypeId = vmc.TYPE_FUNC_SIG;
-    pub const Placeholder2: TypeId = vmc.TYPE_PLACEHOLDER2;
-    pub const Placeholder3: TypeId = vmc.TYPE_PLACEHOLDER3;
-    pub const Placeholder1: TypeId = vmc.TYPE_PLACEHOLDER1;
-    pub const Func: TypeId = vmc.TYPE_FUNC;
+    pub const Dependent: TypeId = vmc.TYPE_DEPENDENT;
+    pub const Infer: TypeId = vmc.TYPE_INFER;
     pub const TccState: TypeId = vmc.TYPE_TCC_STATE;
-    pub const ExternFunc: TypeId = vmc.TYPE_EXTERN_FUNC;
     pub const Range: TypeId = vmc.TYPE_RANGE;
     pub const Table: TypeId = vmc.TYPE_TABLE;
-    pub const Memory: TypeId = vmc.TYPE_MEMORY;
 
-    /// Used to indicate no type value.
+    // Used to indicate no type value.
     // pub const Undefined: TypeId = vmc.TYPE_UNDEFINED;
+};
 
-    /// A dynamic type does not have a static type.
-    /// This is not the same as bt.Any which is a static type.
-    pub const Dyn: TypeId = vmc.TYPE_DYN;
+pub var NullSym = cy.sym.TypeSym{
+    .head = cy.Sym.init(.null, null, "<null>"),
+    .decl = null,
+    .type = undefined,
+    .instance = null,
+    .impls_ = .{},
+    .mod = undefined,
 };
 
 pub var NullType = Type{
     .kind_ = .null,
-    .sym_ = undefined,
+    .sym_ = &NullSym,
     .id_ = 0,
     .info = undefined,
 };
 
-pub const ChunkExt = struct {
-};
+pub fn getType(s: *cy.Sema, id: TypeId) *cy.Type {
+    return s.types.items[id];
+}
 
-pub const SemaExt = struct {
+/// Assumes `src_t` is fully resolved.
+pub fn createTypeCopy(s: *cy.Sema, id: TypeId, src_t: *cy.Type) !*Type {
+    var new_t: *cy.Type = undefined;
+    switch (src_t.kind()) {
+        .raw => {
+            const impl = src_t.cast(.raw);
+            new_t = try s.createTypeWithId(.raw, id, .{ .bits = impl.bits });
+        },
+        .int => {
+            const impl = src_t.cast(.int);
+            new_t = try s.createTypeWithId(.int, id, .{ .bits = impl.bits });
+        },
+        .pointer => {
+            const impl = src_t.cast(.pointer);
+            new_t = try s.createTypeWithId(.pointer, id, .{ .ref = impl.ref, .child_t = impl.child_t });
+        },
+        .struct_t => {
+            const impl = src_t.cast(.struct_t);
+            new_t = try s.createTypeWithId(.struct_t, id, .{
+                .size = impl.size,
+                .alignment = impl.alignment,
+                .cstruct = impl.cstruct,
+                .opaque_t = impl.opaque_t,
+                .tuple = impl.tuple,
+                .fields_ptr = impl.fields_ptr,
+                .fields_len = impl.fields_len,
+                .fields_owned = false,
+            });
+        },
+        .vector => {
+            const impl = src_t.cast(.vector);
+            new_t = try s.createTypeWithId(.vector, id, .{
+                .n = impl.n,
+                .elem_t = impl.elem_t,
+                .size = impl.size,
+            });
+        },
+        .partial_vector => {
+            const impl = src_t.cast(.partial_vector);
+            new_t = try s.createTypeWithId(.partial_vector, id, .{
+                .n = impl.n,
+                .elem_t = impl.elem_t,
+                .size = impl.size,
+            });
+        },
+        else => {
+            std.debug.panic("TODO: {}", .{src_t.kind()});
+        },
+    }
+    new_t.info.distinct = true;
+    return new_t;
+}
 
-    /// Assumes `src_t` is fully resolved.
-    pub fn createTypeCopy(s: *cy.Sema, id: TypeId, src_t: *cy.Type) !*Type {
-        switch (src_t.kind()) {
-            .int => {
-                const impl = src_t.cast(.int);
-                return s.createTypeWithId(.int, id, .{ .bits = impl.bits });
-            },
-            .hostobj => {
-                const impl = src_t.cast(.hostobj);
-                return s.createTypeWithId(.hostobj, id, .{
-                    .getChildrenFn = impl.getChildrenFn,
-                    .finalizerFn = impl.finalizerFn,
-                    .pre = impl.pre,
-                });
-            },
-            .struct_t => {
-                const impl = src_t.cast(.struct_t);
-                const new_t = try s.createTypeWithId(.struct_t, id, .{
-                    .size = impl.size,
-                    .cstruct = impl.cstruct,
-                    .tuple = impl.tuple,
-                    .fields_ptr = impl.fields_ptr,
-                    .fields_len = impl.fields_len,
-                    .fields_owned = false,
-                });
-                new_t.retain_layout = src_t.retain_layout;
-                new_t.retain_layout_owned = false;
-                return new_t;
-            },
-            else => {
-                std.debug.panic("TODO: {}", .{src_t.kind()});
-            },
+/// Type creation updates the sema type table as well as the runtime type table.
+/// Some helpers at compile-time rely on an updated runtime type table. 
+pub fn createType(s: *cy.Sema, comptime kind: TypeKind, data: TypeImpl(kind)) !*Type {
+    const new = try s.alloc.create(TypeImpl(kind));
+    new.* = data;
+    const id = s.types.items.len;
+    new.base = .{
+        .sym_ = undefined,
+        .kind_ = kind,
+        .info = .{},
+        .id_ = @intCast(id),
+    };
+    try s.types.append(s.alloc, @ptrCast(new));
+
+    if (cy.Trace) {
+        // s.compiler.vm.c.types = s.types.items.ptr;
+        // s.compiler.vm.c.types_len = s.types.items.len;
+    }
+    return @ptrCast(new);
+}
+
+pub fn createTypeWithId(s: *cy.Sema, comptime kind: TypeKind, id: TypeId, data: TypeImpl(kind)) !*Type {
+    const new = try s.alloc.create(TypeImpl(kind));
+    new.* = data;
+    new.base = .{
+        .sym_ = undefined,
+        .kind_ = kind,
+        .info = .{},
+        .id_ = id,
+    };
+    if (id >= s.types.items.len) {
+        const old_len = s.types.items.len;
+        try s.types.resize(s.alloc, id + 1);
+        for (old_len..id) |i| {
+            s.types.items[i] = &NullType;
+        }
+
+        if (cy.Trace) {
+            // s.compiler.vm.c.types = s.types.items.ptr;
+            // s.compiler.vm.c.types_len = s.types.items.len;
+        }
+    } else {
+        if (s.types.items[id].kind() != .null) {
+            return error.DuplicateTypeId;
         }
     }
+    s.types.items[id] = @ptrCast(new);
+    return @ptrCast(new);
+}
 
-    /// Type creation updates the sema type table as well as the runtime type table.
-    /// Some helpers at compile-time rely on an updated runtime type table. 
-    pub fn createType(s: *cy.Sema, comptime kind: TypeKind, data: TypeImpl(kind)) !*Type {
-        const new = try s.alloc.create(TypeImpl(kind));
-        new.* = data;
-        const id = s.types.items.len;
-        new.base = .{
-            .sym_ = undefined,
-            .kind_ = kind,
-            .info = .{},
-            .id_ = @intCast(id),
-        };
-        try s.types.append(s.alloc, @ptrCast(new));
+pub fn reserveType(s: *cy.Sema) !TypeId {
+    const id = s.types.items.len;
+    try s.types.append(s.alloc, undefined);
+    s.types.items[id] = &NullType;
 
-        s.compiler.vm.c.types = s.types.items.ptr;
-        s.compiler.vm.c.types_len = s.types.items.len;
-        return @ptrCast(new);
+    if (cy.Trace) {
+        // s.compiler.vm.c.types = s.types.items.ptr;
+        // s.compiler.vm.c.types_len = s.types.items.len;
     }
+    return @intCast(id);
+}
 
-    pub fn createTypeWithId(s: *cy.Sema, comptime kind: TypeKind, id: TypeId, data: TypeImpl(kind)) !*Type {
-        const new = try s.alloc.create(TypeImpl(kind));
-        new.* = data;
-        new.base = .{
-            .sym_ = undefined,
-            .kind_ = kind,
-            .info = .{},
-            .id_ = id,
-        };
-        if (id >= s.types.items.len) {
-            const old_len = s.types.items.len;
-            try s.types.resize(s.alloc, id + 1);
-            for (old_len..id) |i| {
-                s.types.items[i] = &NullType;
-            }
+// TODO: Move to `Type.allocName`.
+pub fn allocTypeName(s: *cy.Sema, type_: *Type) ![]const u8 {
+    var buf = std.Io.Writer.Allocating.init(s.alloc);
+    defer buf.deinit();
 
-            s.compiler.vm.c.types = s.types.items.ptr;
-            s.compiler.vm.c.types_len = s.types.items.len;
-        } else {
-            if (s.types.items[id].kind() != .null) {
-                return error.DuplicateTypeId;
-            }
-        }
-        s.types.items[id] = @ptrCast(new);
-        return @ptrCast(new);
+    try s.writeTypeName(&buf.writer, type_, null);
+    return buf.toOwnedSlice();
+}
+
+pub fn allocSymName(s: *cy.Sema, sym: *cy.Sym) ![]const u8 {
+    var buf = std.Io.Writer.Allocating.init(s.alloc);
+    defer buf.deinit();
+
+    try cy.sym.writeSymName(s, &buf.writer, sym, .{ .from = null });
+    return buf.toOwnedSlice();
+}
+
+pub fn writeTypeName(s: *cy.Sema, w: *std.Io.Writer, type_: *Type, from: ?*cy.Chunk) !void {
+    if (type_.kind() == .null) {
+        try w.writeByte('_');
+        return;
     }
+    try cy.sym.writeSymName(s, w, @ptrCast(type_.sym()), .{ .from = from });
+}
 
-    pub fn reserveType(s: *cy.Sema) !TypeId {
-        const id = s.types.items.len;
-        try s.types.append(s.alloc, undefined);
-        s.types.items[id] = &NullType;
-
-        s.compiler.vm.c.types = s.types.items.ptr;
-        s.compiler.vm.c.types_len = s.types.items.len;
-        return @intCast(id);
+pub fn getRtCompareType(s: *cy.Sema, type_: *Type) u32 {
+    _ = s;
+    if (type_.kind() == .pointer and type_.cast(.pointer).ref) {
+        return 0x80000000 | type_.cast(.pointer).child_t.id();
     }
-
-    pub fn getType(s: *cy.Sema, id: TypeId) *Type {
-        return s.types.items[id];
-    }
-
-    pub fn allocRtTypeName(s: *cy.Sema, id: u32) ![]const u8 {
-        var buf: std.ArrayListUnmanaged(u8) = .{};
-        defer buf.deinit(s.alloc);
-
-        const w = buf.writer(s.alloc);
-        if (id & vmc.REF_TYPE_BIT == vmc.REF_TYPE_BIT) {
-            try w.writeAll("^");
-        }
-        const type_ = s.getType(id & vmc.TYPE_MASK);
-        try cy.sym.writeSymName(s, w, @ptrCast(type_.sym()), .{ .from = null });
-        return buf.toOwnedSlice(s.alloc);
-    }
-
-    pub fn allocTypeName(s: *cy.Sema, type_: *Type) ![]const u8 {
-        var buf: std.ArrayListUnmanaged(u8) = .{};
-        defer buf.deinit(s.alloc);
-
-        const w = buf.writer(s.alloc);
-        try s.writeTypeName(w, type_, null);
-        return buf.toOwnedSlice(s.alloc);
-    }
-
-    pub fn writeTypeName(s: *cy.Sema, w: anytype, type_: *Type, from: ?*cy.Chunk) !void {
-        if (type_.kind() == .null) {
-            try w.writeByte('_');
-            return;
-        }
-        try cy.sym.writeSymName(s, w, @ptrCast(type_.sym()), .{ .from = from });
-    }
-
-    pub fn getRtCompareType(s: *cy.Sema, type_: *Type) u32 {
-        _ = s;
-        if (type_.kind() == .pointer and type_.cast(.pointer).ref) {
-            return vmc.REF_TYPE_BIT | type_.cast(.pointer).child_t.id();
-        }
-        return type_.id();
-    }
-};
+    return type_.id();
+}
 
 pub fn isAnyOrDynamic(id: TypeId) bool {
-    return id == bt.Any or id == bt.Dyn;
-}
-
-/// Check type constraints on target func signature.
-pub fn isTypeFuncSigCompat(c: *cy.Compiler, args: []const *Type, ret_cstr: ReturnCstr, targetId: sema.FuncSigId) bool {
-    const target = c.sema.getFuncSig(targetId);
-    if (cy.Trace) {
-        const sigStr = c.sema.formatFuncSig(targetId, &cy.tempBuf, null) catch cy.fatal();
-        log.tracev("matching against: {s}", .{sigStr});
-    }
-
-    // First check params length.
-    if (args.len != target.params_len) {
-        return false;
-    }
-
-    // Check each param type. Attempt to satisfy constraints.
-    for (target.params(), args) |cstrType, argType| {
-        if (isTypeCompat(c, argType, cstrType)) {
-            continue;
-        }
-        if (argType.id() == bt.Dyn) {
-            if (isTypeCompat(c, cstrType, argType)) {
-                // Only defer to runtime type check if arg type is a parent type of cstrType.
-                continue;
-            }
-        }
-        log.tracev("`{s}` not compatible with param `{s}`", .{argType.name(), cstrType.name()});
-        return false;
-    }
-
-    // Check return type. Target is the source return type.
-    return isValidReturnType(c, target.ret, ret_cstr);
-}
-
-pub const ReturnCstr = enum(u8) {
-    any,       // exprStmt.
-    not_void,  // expr.
-};
-
-pub fn isValidReturnType(_: *cy.Compiler, type_: *cy.Type, cstr: ReturnCstr) bool {
-    switch (cstr) {
-        .any => {
-            return true;
-        },
-        .not_void => {
-            return type_.id() != bt.Void;
-        },
-    }
+    return id == bt.Object or id == bt.Dyn;
 }
 
 pub fn isRtTypeCompat(c: *cy.Compiler, shape_t: TypeId, is_ref: bool, cstr_t: TypeId, rec: bool) bool {
     if (is_ref) {
-        if (cstr_t == bt.Any or cstr_t == bt.Dyn) {
+        if (cstr_t == bt.Object or cstr_t == bt.Dyn) {
             return true;
         }
         const cstr_te = c.sema.getType(cstr_t);
@@ -963,7 +1394,7 @@ pub fn isRtTypeCompat(c: *cy.Compiler, shape_t: TypeId, is_ref: bool, cstr_t: Ty
         if (shape_t == cstr_t) {
             return true;
         }
-        if (cstr_t == bt.Any or cstr_t == bt.Dyn) {
+        if (cstr_t == bt.Object or cstr_t == bt.Dyn) {
             return true;
         }
         if (rec) {
@@ -976,11 +1407,17 @@ pub fn isRtTypeCompat(c: *cy.Compiler, shape_t: TypeId, is_ref: bool, cstr_t: Ty
     return false;
 }
 
-pub fn isTypeCompat(_: *cy.Compiler, src_t: *Type, cstr_t: *Type) bool {
+pub fn isTypeCompat(c: *cy.Compiler, src_t: *Type, cstr_t: *Type) bool {
     if (src_t == cstr_t) {
         return true;
     }
-    if (cstr_t.id() == bt.Any or cstr_t.id() == bt.Dyn) {
+    // if (cstr_t.id() == bt.Object and src_t.isRefLike()) {
+    //     return true;
+    // }
+    if (cstr_t.id() == c.sema.ptr_void_t.id() and src_t.isPointer()) {
+        return true;
+    }
+    if (cstr_t.kind() == .c_variadic) {
         return true;
     }
     return false;
@@ -1009,14 +1446,13 @@ pub fn isFuncSigCompat(c: *cy.Compiler, id: sema.FuncSigId, targetId: sema.FuncS
 
 pub fn toRtConcreteType(type_: *cy.Type) ?*cy.Type {
     return switch (type_.id()) {
-        bt.Dyn,
-        bt.Any => null,
+        bt.Object => null,
         else => return type_,
     };
 }
 
 pub fn typeEqualOrChildOf(a: TypeId, b: TypeId) bool {
-    if (b == bt.Any) {
+    if (b == bt.Object) {
         return true;
     }
     if (a == b) {
@@ -1034,10 +1470,6 @@ pub fn unionOf(c: *cy.Compiler, a: *Type, b: *Type) *Type {
     if (a == b) {
         return a;
     } else {
-        if (a.id() == bt.Dyn or b.id() == bt.Dyn) {
-            return c.sema.dyn_t;
-        } else {
-            return c.sema.any_t;
-        }
+        return c.sema.object_t;
     }
 }

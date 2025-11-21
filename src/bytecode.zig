@@ -3,19 +3,41 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
-const rt = cy.rt;
 const log = cy.log.scoped(.bytecode);
 const fmt = @import("fmt.zig");
 const debug = @import("debug.zig");
 const v = fmt.v;
 const ast = cy.ast;
-const vmc = @import("vm_c.zig");
+const vmc = @import("vmc");
+const bcgen = @import("bc_gen.zig");
+
+/// Surface bad inst generation by recording just the opcodes and comparing that by walking the bytecode.
+/// Used with `checkBytecode`.
+const RecordOpcodes = builtin.mode == .Debug and false;
+
+pub const StringSlice = struct {
+    idx: u64,
+    len_: u64, // sign bit indicates ascii
+
+    pub fn len(self: *const StringSlice) usize {
+        return @intCast(self.len_ & ~(@as(u64, 1) << 63));
+    }
+
+    pub fn ascii(self: *const StringSlice) bool {
+        return self.len_ & (1 << 63) != 0;
+    }
+};
 
 /// Holds vm instructions.
 pub const ByteCodeBuffer = struct {
     alloc: std.mem.Allocator,
+
+    /// TODO: Rename to `insts`.
     ops: std.ArrayListUnmanaged(Inst),
     consts: std.ArrayListUnmanaged(cy.Value),
+
+    /// TODO: Rename to `ops`.
+    opcodes: std.ArrayListUnmanaged(OpCode),
 
     /// Whether a const is boxed.
     consts_boxed: std.ArrayListUnmanaged(bool),
@@ -23,70 +45,86 @@ pub const ByteCodeBuffer = struct {
     /// Const map for deduping.
     constMap: std.AutoHashMapUnmanaged(u64, u32),
 
-    /// After compilation, consts is merged into the ops buffer.
-    /// This should be used by the interpreter to read const values.
-    mconsts: []const cy.Value,
+    /// Zero delimited. slice -> isAscii.
+    const_string_map: std.StringHashMapUnmanaged(bool),
 
     vm: *cy.VM,
 
     /// Maps bytecode insts back to source code.
     /// Contains entries ordered by `pc`. 
     debugTable: std.ArrayListUnmanaged(DebugSym),
-    unwind_table: std.ArrayListUnmanaged(cy.fiber.UnwindKey),
 
-    /// Ordered labels by `pc` for debugging only.
-    debugMarkers: std.ArrayListUnmanaged(DebugMarker),
-
-    /// Unwind entries.
-    unwind_slots: std.ArrayListUnmanaged(u8),
-    unwind_slot_prevs: std.ArrayListUnmanaged(cy.fiber.UnwindKey),
-    unwind_trys: std.ArrayListUnmanaged(cy.fiber.UnwindTry),
+    /// Ordered pc to each func's `CHK_STK` inst. Used to recover return reg size during unwind.
+    func_table: std.ArrayListUnmanaged(usize),
 
     /// Currently each inst maps to a nullable desc idx, but ideally it should be sparser like the debug table.
     instDescs: if (cy.Trace) std.ArrayListUnmanaged(cy.Nullable(u32)) else void,
     instDescExtras: if (cy.Trace) std.ArrayListUnmanaged(InstDescExtra) else void,
+
+    /// Maps pc to a bitset with active pointer locals.
+    ptr_table: std.ArrayListUnmanaged(PcPtrLayout),
+
+    ptr_layouts: std.ArrayListUnmanaged([]bool),
+    ptr_layout_map: std.HashMapUnmanaged([]const bool, usize, PtrLayoutContext, 80),
+
+    ptr_layout_builder: std.ArrayListUnmanaged(bool),
+
+    markers: std.AutoHashMapUnmanaged(u32, *cy.Func),
 
     /// The required stack size for the main frame.
     mainStackSize: u32,
 
     main_pc: u32,
 
-    pub fn init(alloc: std.mem.Allocator, vm: *cy.VM) !ByteCodeBuffer {
-        var new = ByteCodeBuffer{
+    pub fn init(alloc: std.mem.Allocator, vm: *cy.VM) ByteCodeBuffer {
+        const new = ByteCodeBuffer{
             .alloc = alloc,
             .mainStackSize = 0,
             .main_pc = 0,
             .ops = .{},
+            .opcodes = .{},
             .vm = vm,
             .consts = .{},
             .consts_boxed = .{},
             .constMap = .{},
             .debugTable = .{},
-            .unwind_table = .{},
-            .debugMarkers = .{},
+            .func_table = .{},
             .instDescs = if (cy.Trace) .{} else {},
             .instDescExtras = if (cy.Trace) .{} else {},
-            .mconsts = &.{},
-            .unwind_slots = .{},
-            .unwind_slot_prevs = .{},
-            .unwind_trys = .{},
+            .const_string_map = .{},
+            .ptr_table = .{},
+            .ptr_layouts = .{},
+            .ptr_layout_map = .{},
+            .ptr_layout_builder = .{},
+            .markers = .{},
         };
-        // Perform big allocation for instruction buffer for more consistent heap allocation.
-        try new.ops.ensureTotalCapacityPrecise(alloc, 4096);
         return new;
     }
 
     pub fn deinit(self: *ByteCodeBuffer) void {
         self.ops.deinit(self.alloc);
+        self.opcodes.deinit(self.alloc);
         self.consts.deinit(self.alloc);
         self.consts_boxed.deinit(self.alloc);
         self.constMap.deinit(self.alloc);
+        {
+            var iter = self.const_string_map.iterator();
+            while (iter.next()) |e| {
+                const str: [:0]const u8 = @ptrCast(e.key_ptr.*);
+                self.alloc.free(str);
+            }
+        }
+        self.const_string_map.deinit(self.alloc);
         self.debugTable.deinit(self.alloc);
-        self.unwind_table.deinit(self.alloc);
-        self.debugMarkers.deinit(self.alloc);
-        self.unwind_slots.deinit(self.alloc);
-        self.unwind_slot_prevs.deinit(self.alloc);
-        self.unwind_trys.deinit(self.alloc);
+        self.func_table.deinit(self.alloc);
+        self.ptr_table.deinit(self.alloc);
+        for (self.ptr_layouts.items) |layout| {
+            self.alloc.free(layout);
+        }
+        self.ptr_layouts.deinit(self.alloc);
+        self.ptr_layout_map.deinit(self.alloc);
+        self.ptr_layout_builder.deinit(self.alloc);
+        self.markers.deinit(self.alloc);
         if (cy.Trace) {
             self.instDescs.deinit(self.alloc);
             for (self.instDescExtras.items) |extra| {
@@ -99,14 +137,15 @@ pub const ByteCodeBuffer = struct {
     pub fn clear(self: *ByteCodeBuffer) void {
         self.main_pc = 0;
         self.ops.clearRetainingCapacity();
+        self.opcodes.clearRetainingCapacity();
         self.consts.clearRetainingCapacity();
         self.consts_boxed.clearRetainingCapacity();
         self.debugTable.clearRetainingCapacity();
+        self.func_table.clearRetainingCapacity();
         self.unwind_table.clearRetainingCapacity();
-        self.debugMarkers.clearRetainingCapacity();
-        self.unwind_slots.clearRetainingCapacity();
-        self.unwind_slot_prevs.clearRetainingCapacity();
-        self.unwind_trys.clearRetainingCapacity();
+        self.unwind_slot_obj.clearRetainingCapacity();
+        self.unwind_slot_obj_prev.clearRetainingCapacity();
+        self.unwind_slot_typed.clearRetainingCapacity();
         if (cy.Trace) {
             self.instDescs.clearRetainingCapacity();
             for (self.instDescExtras.items) |extra| {
@@ -118,6 +157,23 @@ pub const ByteCodeBuffer = struct {
 
     pub inline fn len(self: *ByteCodeBuffer) usize {
         return self.ops.items.len;
+    }
+
+    const ConstString = struct {
+        slice: [:0]const u8,
+        ascii: bool,
+    };
+
+    pub fn getOrPushConstString(self: *ByteCodeBuffer, str: []const u8) !ConstString {
+        const res = try self.const_string_map.getOrPut(self.alloc, str);
+        if (!res.found_existing) {
+            res.key_ptr.* = try self.alloc.dupeZ(u8, str);
+            res.value_ptr.* = cy.string.isAstring(str);
+        }
+        return .{
+            .slice = @ptrCast(res.key_ptr.*),
+            .ascii = res.value_ptr.*,
+        };
     }
 
     pub fn getOrPushConst(self: *ByteCodeBuffer, boxed: bool, val: cy.Value) !u32 {
@@ -136,57 +192,13 @@ pub const ByteCodeBuffer = struct {
         }
     }
 
-    pub fn pushDebugFuncStart(self: *ByteCodeBuffer, func: *cy.Func, chunkId: u32) !void {
-        const name = func.name();
-        try self.debugMarkers.append(self.alloc, .{
-            .type = @intFromEnum(DebugMarkerType.funcStart),
-            .pc = @intCast(self.ops.items.len),
-            .data = .{
-                .funcStart = .{
-                    .name_ptr = name.ptr,
-                    .name_len = @intCast(name.len),
-                    .chunkId = chunkId,
-                },
-            },
-        });
-    }
-
-    pub fn pushDebugFuncEnd(self: *ByteCodeBuffer, func: *cy.Func, chunkId: u32) !void {
-        const name = func.name();
-        try self.debugMarkers.append(self.alloc, .{
-            .type = @intFromEnum(DebugMarkerType.funcEnd),
-            .pc = @intCast(self.ops.items.len),
-            .data = .{
-                .funcEnd = .{
-                    .name_ptr = name.ptr,
-                    .name_len = @intCast(name.len),
-                    .chunkId = chunkId,
-                },
-            },
-        });
-    }
-
-    pub fn pushDebugLabel(self: *ByteCodeBuffer, name: []const u8) !void {
-        try self.debugMarkers.append(self.alloc, .{
-            .type = @intFromEnum(DebugMarkerType.label),
-            .pc = @intCast(self.ops.items.len),
-            .data = .{
-                .label = .{
-                    .namePtr = name.ptr,
-                    .nameLen = @intCast(name.len),
-                },
-            },
-        });
-    }
-
-    pub fn pushFailableDebugSym(self: *ByteCodeBuffer, pc: usize, file: u32, loc: u32, frameLoc: u32, unwind_key: cy.fiber.UnwindKey) !void {
+    pub fn pushFailableDebugSym(self: *ByteCodeBuffer, pc: usize, file: u32, loc: u32, frameLoc: u32) !void {
         try self.debugTable.append(self.alloc, .{
             .pc = @intCast(pc),
             .loc = loc,
             .file = @intCast(file),
             .frameLoc = frameLoc,
         });
-        try self.unwind_table.append(self.alloc, unwind_key);
     }
 
     pub fn pushOp(self: *ByteCodeBuffer, code: OpCode) !void {
@@ -197,6 +209,9 @@ pub const ByteCodeBuffer = struct {
         const start = self.ops.items.len;
         try self.ops.resize(self.alloc, self.ops.items.len + 1);
         self.ops.items[start] = Inst.initOpCode(code);
+        if (RecordOpcodes) {
+            try self.opcodes.append(self.alloc, code);
+        }
         if (cy.Trace) {
             try self.instDescs.append(self.alloc, desc orelse cy.NullId);
         }
@@ -211,6 +226,9 @@ pub const ByteCodeBuffer = struct {
         try self.ops.resize(self.alloc, self.ops.items.len + 2);
         self.ops.items[start] = Inst.initOpCode(code);
         self.ops.items[start+1] = .{ .val = arg };
+        if (RecordOpcodes) {
+            try self.opcodes.append(self.alloc, code);
+        }
         if (cy.Trace) {
             try self.instDescs.append(self.alloc, desc orelse cy.NullId);
         }
@@ -226,6 +244,10 @@ pub const ByteCodeBuffer = struct {
         self.ops.items[start] = Inst.initOpCode(code);
         self.ops.items[start+1] = .{ .val = arg };
         self.ops.items[start+2] = .{ .val = arg2 };
+
+        if (RecordOpcodes) {
+            try self.opcodes.append(self.alloc, code);
+        }
         if (cy.Trace) {
             try self.instDescs.append(self.alloc, desc orelse cy.NullId);
         }
@@ -242,6 +264,10 @@ pub const ByteCodeBuffer = struct {
         self.ops.items[start+1] = .{ .val = arg };
         self.ops.items[start+2] = .{ .val = arg2 };
         self.ops.items[start+3] = .{ .val = arg3 };
+
+        if (RecordOpcodes) {
+            try self.opcodes.append(self.alloc, code);
+        }
         if (cy.Trace) {
             try self.instDescs.append(self.alloc, desc orelse cy.NullId);
         }
@@ -262,13 +288,16 @@ pub const ByteCodeBuffer = struct {
     }
 
     pub fn pushOpSlice(self: *ByteCodeBuffer, code: OpCode, args: []const u8) !void {
-        try self.pushOpSliceExt(code, args, .{});
+        try self.pushOpSliceExt(code, args, null);
     }
     
     pub fn pushOpSliceExt(self: *ByteCodeBuffer, code: OpCode, args: []const u8, desc: ?u32) !void {
         const start = self.ops.items.len;
         try self.ops.resize(self.alloc, self.ops.items.len + args.len + 1);
         self.ops.items[start] = Inst.initOpCode(code);
+        if (RecordOpcodes) {
+            try self.opcodes.append(self.alloc, code);
+        }
         for (args, 0..) |arg, i| {
             self.ops.items[start+i+1] = .{ .val = arg };
         }
@@ -281,6 +310,10 @@ pub const ByteCodeBuffer = struct {
         const start = self.ops.items.len;
         try self.ops.resize(self.alloc, self.ops.items.len + size);
         return start;
+    }
+
+    pub fn setOpArgU64(self: *ByteCodeBuffer, idx: usize, arg: u64) void {
+        @as(*align(1) u64, @ptrCast(&self.ops.items[idx])).* = arg;
     }
 
     pub fn setOpArgU48(self: *ByteCodeBuffer, idx: usize, arg: u48) void {
@@ -297,38 +330,6 @@ pub const ByteCodeBuffer = struct {
 
     pub fn setOpArgs1(self: *ByteCodeBuffer, idx: usize, arg: u8) void {
         self.ops.items[idx].val = arg;
-    }
-
-    pub fn getOrPushStaticStringConst(self: *ByteCodeBuffer, str: []const u8) !u32 {
-        const val = try self.getOrPushStaticStringValue(str);
-        // TODO: Reuse the same const.
-        return self.getOrPushConst(true, val);
-    }
-
-    pub fn getOrPushStaticUstring(self: *ByteCodeBuffer, str: []const u8) !cy.Value {
-        var allocated: bool = undefined;
-        const val = try cy.heap.getOrAllocUstring(self.vm, str, &allocated);
-        if (allocated) {
-            try self.vm.staticObjects.append(self.alloc, val);
-        }
-        return val;
-    }
-
-    pub fn getOrPushStaticAstring(self: *ByteCodeBuffer, str: []const u8) !cy.Value {
-        var allocated: bool = undefined;
-        const val = try cy.heap.getOrAllocAstring(self.vm, str, &allocated);
-        if (allocated) {
-            try self.vm.staticObjects.append(self.alloc, val);
-        }
-        return val;
-    }
-
-    pub fn getOrPushStaticStringValue(self: *ByteCodeBuffer, str: []const u8) !cy.Value {
-        if (cy.string.isAstring(str)) {
-            return try self.getOrPushStaticAstring(str);
-        } else {
-            return try self.getOrPushStaticUstring(str);
-        }
     }
 };
 
@@ -347,549 +348,505 @@ fn printStderr(comptime format: []const u8, args: anytype) void {
     }
 }
 
-fn printInstArgs(w: anytype, names: []const []const u8, args: []const fmt.FmtValue) !u64 {
-    const S = struct {
-        var format: [256]u8 = undefined;
-    };
-    var b = std.io.fixedBufferStream(&S.format);
-    if (names.len > 0) {
-        _ = try b.write(names[0]);
-        _ = try b.write("={}");
-        for (names[1..]) |name| {
-            _ = try b.write(" ");
-            _ = try b.write(name);
-            _ = try b.write("={}");
-        }
-    }
-    return try fmt.printCount(w, b.getWritten(), args);
-}
-
 const DumpInstOptions = struct {
     prefix: ?[]const u8 = null,
     extra: ?[]const u8 = null,
 };
 
-pub fn dumpInst(vm: *cy.VM, pcOffset: u32, code: OpCode, pc: [*]const Inst, opts: DumpInstOptions) !void {
-    const w = vm.clearTempString();
-    var len: u64 = undefined;
+pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize, pc_off: ?usize, pc: [*]const Inst, opts: DumpInstOptions) !void {
     if (opts.prefix) |prefix| {
-        len = try fmt.printCount(w, "{}{} {}: ", &.{v(prefix), v(pcOffset), v(code)});
+        if (pc_off) |off| {
+            try w.print("{s}{}:{} {}: ", .{prefix, chunk_id.?, off, code});
+        } else {
+            try w.print("{s}@{x} {}: ", .{prefix, @intFromPtr(pc), code});
+        }
     } else {
-        len = try fmt.printCount(w, "{} {}: ", &.{v(pcOffset), v(code)});
+        if (pc_off) |off| {
+            try w.print("{}:{} {}: ", .{chunk_id.?, off, code});
+        } else {
+            try w.print("@{x} {}: ", .{@intFromPtr(pc), code});
+        }
     }
     switch (code) {
-        .ref => {
-            const src = pc[1].val;
-            const dst = pc[2].val;
-            len += try fmt.printCount(w, "%{} = ref(%{})", &.{
-                v(dst), v(src)});
-        },
-        .lift => {
-            const src = pc[1].val;
-            const src_is_struct = pc[2].val == 1;
-            const obj_t = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            const dst = pc[6].val;
-            len += try fmt.printCount(w, "%{} = lift(%{}, struct={}, obj_t={})", &.{
-                v(dst), v(src), v(src_is_struct), v(obj_t)});
-        },
         .captured => {
-            const closure = pc[1].val;
-            const varIdx = pc[2].val;
-            const retain = pc[3].val;
-            const dst = pc[4].val;
-            len += try fmt.printCount(w, "%{} = closure(%{})[{}], retain={}", &.{v(dst), v(closure), v(varIdx), v(retain)});
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const closure = pc[3].val;
+            const member_idx = pc[4].val;
+            try w.print("%{} = [%{} + {}]", .{dst, closure, member_idx});
         },
-        .negFloat,
-        .negInt => {
-            const child = pc[1].val;
-            const dst = pc[2].val;
-            len += try printInstArgs(w, &.{"child", "dst"},
-                &.{v(child), v(dst) });
+        .fneg32,
+        .fneg,
+        .neg => {
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const child = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            try w.print("%{} = -%{}", .{dst, child});
         },
-        .appendList => {
-            const lhs = pc[1].val;
-            const rhs = pc[2].val;
-            const dst = pc[3].val;
-            len += try printInstArgs(w, &.{"lhs", "rhs", "dst"},
-                &.{v(lhs), v(rhs), v(dst) });
+        .ret_n => {
+            const ret_size = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            try w.print("ret %0..%{}", .{ret_size});
         },
-        .lessInt,
-        .lessFloat,
-        .lessEqualInt,
-        .lessEqualFloat,
-        .greaterInt,
-        .greaterFloat,
-        .greaterEqualInt,
-        .greaterEqualFloat,
-        .divFloat,
-        .divInt,
-        .mulFloat,
-        .mulInt,
-        .subFloat,
-        .subInt,
-        .addFloat,
-        .addInt => {
-            const lhs = pc[1].val;
-            const rhs = pc[2].val;
-            const dst = pc[3].val;
+        .or_,
+        .lsl,
+        .feq,
+        .feq32,
+        .lt,
+        .flt,
+        .flt32,
+        .le,
+        .fle,
+        .fle32,
+        .gt,
+        .fgt,
+        .fgt32,
+        .ge,
+        .fge,
+        .fge32,
+        .fdiv,
+        .fdiv32,
+        .idiv,
+        .div,
+        .fmul,
+        .fmul32,
+        .imul,
+        .mul,
+        .fsub,
+        .fsub32,
+        .sub,
+        .fadd,
+        .fadd32,
+        .add => {
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const lhs = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const rhs = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
             const op: []const u8 = switch (code) {
-                .lessInt,
-                .lessFloat => "<",
-                .lessEqualInt,
-                .lessEqualFloat => "<=",
-                .greaterInt,
-                .greaterFloat => ">",
-                .greaterEqualInt,
-                .greaterEqualFloat => ">=",
-                .divFloat,
-                .divInt => "/",
-                .mulFloat,
-                .mulInt => "*",
-                .subFloat,
-                .subInt => "-",
-                .addFloat,
-                .addInt => "+",
+                .or_ => "||",
+                .lsl => "<<",
+                .feq32,
+                .feq => "=",
+                .lt,
+                .flt32,
+                .flt => "<",
+                .le,
+                .fle32,
+                .fle => "<=",
+                .gt,
+                .fgt32,
+                .fgt => ">",
+                .ge,
+                .fge32,
+                .fge => ">=",
+                .fdiv,
+                .fdiv32,
+                .idiv,
+                .div => "/",
+                .fmul,
+                .fmul32,
+                .imul,
+                .mul => "*",
+                .fsub,
+                .fsub32,
+                .sub => "-",
+                .fadd,
+                .fadd32,
+                .add => "+",
                 else => return error.TODO,
             };
-            len += try fmt.printCount(w, "%{} = %{} {} %{}", &.{v(dst), v(lhs), v(op), v(rhs)});
+            try w.print("%{} = %{} {s} %{}", .{dst, lhs, op, rhs});
         },
-        .callSym => {
-            const ret = pc[1].val;
-            const numArgs = pc[2].val;
-            const numRet = pc[3].val;
-            const symId = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
-            len += try fmt.printCount(w, "%{} = syms[{}](%{}..%{}) nret={}", &.{
-                v(ret), v(symId), v(ret + 5), v(ret + 5 + numArgs), v(numRet)
+        .call_union => {
+            const base = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            try w.print("?..%{} = call_union(%{}..)", .{
+                base, base + 4,
+            });
+        },
+        .chk_stk => {
+            const ret_size = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const frame_size = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            try w.print("ret={}, frame={}", .{
+                ret_size, frame_size,
+            });
+        },
+        .call => {
+            const base = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const func_pc = @as(*const align(1) u48, @ptrCast(pc + 3)).*;
+            const func_id: u32 = @as(*const align(1) u32, @ptrFromInt(func_pc - 4)).*;
+
+            const name = vm.funcSymDetails.items[func_id].name();
+            // if (vm.funcSymDetails.items[func_id].func) |func| {
+            //     if (func.parent.parent) |parent| {
+            //         if (parent.type != .chunk) {
+            //             _ = try fmt.printCount(w, "%{} = {}.{}(%{}..%{})", &.{
+            //                 v(ret), v(parent.name()), v(name), v(ret + 5), v(ret + 5 + vm.funcSyms.items[func_id].nparams),
+            //             });
+            //             break :b;
+            //         }
+            //     }
+            // }
+
+            const sig = vm.sema.getFuncSig(vm.funcSymDetails.items[func_id].sig);
+            var reg_size: usize = 0;
+            for (sig.params()) |param| {
+                reg_size += param.get_type().reg_size();
+            }
+            if (sig.ret.reg_size() > 0) {
+                if (sig.ret.reg_size() == 1) {
+                    try w.print("%{} = ", .{base - sig.ret.reg_size()});
+                } else {
+                    try w.print("%{}..%{} = ", .{base - sig.ret.reg_size(), base});
+                }
+            }
+            if (vm.funcSymDetails.items[func_id].func) |func| {
+                const parent = func.parent_mod_sym().name();
+                try w.print("{s}.{s}(%{}..%{})", .{
+                    parent, name, base + 4, base + 4 + reg_size,
+                });
+            } else {
+                try w.print("{s}(%{}..%{})", .{
+                    name, base + 4, base + 4 + reg_size,
+                });
+            }
+        },
+        .call_host => {
+            const base = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const ptr_int = @as(*const align(1) u48, @ptrCast(pc + 3)).*;
+            if (ptr_int == 0) {
+                try w.print("?..%{} = <placeholder>(%{}..?)", .{
+                    base, base + 4,
+                });
+            } else {
+                const ptr: *anyopaque = @ptrFromInt(ptr_int);
+                const func_id = vm.host_funcs.get(ptr).?;
+                const name = vm.funcSymDetails.items[func_id].name();
+                const sig = vm.sema.getFuncSig(vm.funcSymDetails.items[func_id].sig);
+                try w.print("%{} = {s}(%{}..%{})", .{
+                    base - bcgen.type_reg_size(sig.ret), name, base + 4, base + 4 + sig.numParams(),
+                });
+            }
+        },
+        .call_ptr => {
+            const base = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            try w.print("?..%{} = %{}(%{}..)", .{
+                base, base + 3, base + 4,
             });
         },
         .call_trait => {
-            const ret = pc[1].val;
-            const numArgs = pc[2].val;
-            const numRet = pc[3].val;
-            const vtable_idx = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
-            len += try fmt.printCount(w, "%{} = syms[id](%{}..%{}), id=%{}.vtable[{}] nret={}", &.{
-                v(ret), v(ret + 5), v(ret + 5 + numArgs), v(ret + 4), v(vtable_idx), v(numRet)
+            const base = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const vtable_idx = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            try w.print("?..%{} = %{}.vtable[{}](%{}..)", .{
+                base, base + 3, vtable_idx, base + 4,
             });
         },
-        .callFuncIC => {
-            const ret = pc[1].val;
-            const numRet = pc[3].val;
-            const pcPtr: [*]cy.Inst = @ptrFromInt(@as(usize, @intCast(@as(*const align(1) u48, @ptrCast(pc + 6)).*)));
-            len += try fmt.printCount(w, "ret={}, nret={}, pc={}", &.{v(ret), v(numRet), v(pcPtr)});
-        },
-        .call => {
-            const ret = pc[1].val;
-            const numArgs = pc[2].val;
-            len += try fmt.printCount(w, "%{} = %{}(%{}..%{})", &.{v(ret), v(ret + 4), v(ret + 5), v(ret + 5 + numArgs)});
-        },
-        .lambda => {
-            const func_id = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const ptr_t = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            const dst = pc[5].val;
-            len += try fmt.printCount(w, "%{} = lambda(id={}, ptr_t={})", &.{
-                v(dst), v(func_id), v(ptr_t)});
-        },
         .closure => {
-            const func_id = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            // const func_id = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const func_id: usize = 0;
             const union_t = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            const numCaptured = pc[5].val;
-            const local = pc[6].val;
-            const dst = pc[7].val;
-            len += try fmt.printCount(w, "%{} = closure(id={}, union_t={}, ncap={}, closure={} vals={})", &.{
-                v(dst), v(func_id), v(union_t), v(numCaptured), 
-                v(local), fmt.sliceU8(std.mem.sliceAsBytes(pc[8..8+numCaptured])),
+            const numCaptured = pc[11].val;
+            const is_stack_closure = pc[12].val == 1;
+            try w.print("%{} = closure(id={}, union_t={}, ncap={}, stack={}, vals={any})", .{
+                dst, func_id, union_t, numCaptured, is_stack_closure,
+                std.mem.sliceAsBytes(pc[13..13+numCaptured*2]),
             });
         },
         .true => {
             const dst = pc[1].val;
-            len += try fmt.printCount(w, "%{} = true", &.{v(dst)});
+            try w.print("%{} = true", .{dst});
         },
         .false => {
             const dst = pc[1].val;
-            len += try fmt.printCount(w, "%{} = false", &.{v(dst)});
+            try w.print("%{} = false", .{dst});
         },
-        .const_byte => {
-            const val = pc[1].val;
-            const dst = pc[2].val;
-            len += try fmt.printCount(w, "%{} = byte({})", &.{v(dst), v(val)});
+        .nops => {
+            const ptr_len = @as(*const align(1) u64, @ptrCast(pc + 1)).*;
+            const ptr: [*]u8 = @ptrFromInt(ptr_len & 0xffffffffffff);
+            const len_ = ptr_len >> 48;
+            const str = ptr[0..len_];
+            try w.print("'{s}'", .{str});
         },
-        .constIntV8 => {
-            const val: i8 = @bitCast(pc[1].val);
-            const dst = pc[2].val;
-            len += try fmt.printCount(w, "%{} = int({})", &.{v(dst), v(val)});
+        .const_str => {
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const ptr_len = @as(*const align(1) u64, @ptrCast(pc + 3)).*;
+            const ptr: [*]u8 = @ptrFromInt(ptr_len & 0xffffffffffff);
+            const len_ = ptr_len >> 48;
+            const ascii = pc[11].val == 1;
+            const str = ptr[0..len_];
+            try w.print("%{}..%{} = '{s}' ascii={}", .{dst, dst+3, str, ascii});
         },
-        .constRetain,
-        .constOp => {
-            const idx = @as(*const align (1) u16, @ptrCast(pc + 1)).*;
-            const dst = pc[3].val;
-            len += try fmt.printCount(w, "%{} = consts[{}]", &.{v(dst), v(idx)});
+        .const_8 => {
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const val = pc[3].val;
+            try w.print("%{} = {}", .{dst, val});
         },
-        .copy,
-        .copyReleaseDst,
-        .copyRetainSrc,
-        .copyRetainRelease => {
-            const src = pc[1].val;
-            const dst = pc[2].val;
-            len += try fmt.printCount(w, "%{} = %{}", &.{v(dst), v(src)});
+        .const_8s => {
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const val: i8 = @bitCast(pc[3].val);
+            try w.print("%{} = {}", .{dst, val});
         },
-        .copy_struct => {
-            const src = pc[1].val;
-            const dst = pc[2].val;
-            len += try fmt.printCount(w, "%{} = copy(%{})", &.{v(dst), v(src)});
+        .const_64 => {
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const val = @as(*const align (1) u64, @ptrCast(pc + 3)).*;
+            try w.print("%{} = {}", .{dst, val});
         },
-        .copyObjDyn => {
-            const src = pc[1].val;
-            const dst = pc[2].val;
-            len += try fmt.printCount(w, "%{} = copy(%{})", &.{v(dst), v(src)});
+        .mov_4,
+        .mov_3,
+        .mov_2,
+        .mov => {
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const src = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            try w.print("%{} = %{}", .{dst, src});
         },
-        .end => {
-            const endLocal = pc[1].val;
-            len += try fmt.printCount(w, "endLocal={}", &.{ v(endLocal) });
+        .cmp_str,
+        .cmp_8,
+        .cmp => {
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const left = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const right = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
+            try w.print("%{} = (%{} == %{})", .{dst, left, right});
         },
-        .compare => {
-            const left = pc[1].val;
-            const right = pc[2].val;
-            const dst = pc[3].val;
-            len += try fmt.printCount(w, "%{} = (%{} == %{})", &.{v(dst), v(left), v(right)});
-        },
-        .fieldDyn => {
-            const recv = pc[1].val;
-            const dst = pc[2].val;
-            const symId = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            len += try fmt.printCount(w, "%{} = %{}.(fields[{}])", &.{v(dst), v(recv), v(symId)});
-        },
-        .fieldDynIC => {
-            const recv = pc[1].val;
-            const dst = pc[2].val;
-            const typeId = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
-            const idx = pc[7].val;
-            len += try fmt.printCount(w, "recv={}, dst={}, type={}, idx={}", &.{v(recv), v(dst), v(typeId), v(idx)});
-        },
-        .forRangeInit => {
-            const start = pc[1].val;
-            const end = pc[2].val;
-            const inc = pc[3].val;
-            const cnt = pc[4].val;
-            const each = pc[5].val;
-            const forRangeInstOffset = @as(*const align(1) u16, @ptrCast(pc + 6)).*;
-            len += try printInstArgs(w, &.{"start", "end", "inc", "cnt", "each", "off"}, 
-                &.{v(start), v(end), v(inc), v(cnt), v(each), v(forRangeInstOffset)});
-        },
-        .forRangeReverse,
-        .forRange => {
-            const counter = pc[1].val;
-            const end = pc[2].val;
-            const userCounter = pc[3].val;
-            const negOffset = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
-            len += try fmt.printCount(w, "counter={}, end={}, userCounter={}, negOffset={}", &.{v(counter), v(end), v(userCounter), v(negOffset)});
-        },
-        .indexMap => {
-            const map = pc[1].val;
-            const index = pc[2].val;
-            const dst = pc[3].val;
-            len += try fmt.printCount(w, "%{} = %{}[%{}]", &.{v(dst), v(map), v(index)});
-        },
-        .indexList => {
-            const list = pc[1].val;
-            const index = pc[2].val;
-            const dst = pc[3].val;
-            len += try fmt.printCount(w, "%{} = %{}[%{}]", &.{v(dst), v(list), v(index)});
-        },
-        .ret_dyn => {
-            const nargs = pc[1].val;
-            len += try fmt.printCount(w, "%0 = maybe_box(%{})", &.{v(5+nargs)});
-        },
+        // .indexMap => {
+        //     const map = pc[1].val;
+        //     const index = pc[2].val;
+        //     const dst = pc[3].val;
+        //     _ = try fmt.printCount(w, "%{} = %{}[%{}]", &.{v(dst), v(map), v(index)});
+        // },
+        // .indexList => {
+        //     const list = pc[1].val;
+        //     const index = pc[2].val;
+        //     const dst = pc[3].val;
+        //     _ = try fmt.printCount(w, "%{} = %{}[%{}]", &.{v(dst), v(list), v(index)});
+        // },
         .jump => {
             const jump = @as(*const align(1) i16, @ptrCast(pc + 1)).*;
-            const jumpU32: u32 = @bitCast(@as(i32, jump));
-            len += try fmt.printCount(w, "jmp @{}", &.{v(pcOffset +% jumpU32)});
+            const abs = @abs(jump);
+            if (jump < 0) {
+                if (pc_off) |off| {
+                    try w.print("jmp @{}", .{off - abs});
+                } else {
+                    try w.print("jmp {*}", .{pc - abs});
+                }
+            } else {
+                if (pc_off) |off| {
+                    try w.print("jmp @{}", .{off + abs});
+                } else {
+                    try w.print("jmp {*}", .{pc + abs});
+                }
+            }
         },
-        .jumpCond => {
-            const jump = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
-            len += try fmt.printCount(w, "if %{} jmp @{}", &.{v(pc[1].val), v(pcOffset + jump)});
+        .jump_t => {
+            const cond = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const jump = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            if (pc_off) |off| {
+                try w.print("if (%{}) jmp @{}", .{cond, off + jump});
+            } else {
+                try w.print("if (%{}) jmp {*}", .{cond, &pc[jump]});
+            }
         },
-        .jumpNotCond => {
-            const jump = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
-            len += try fmt.printCount(w, "if !%{} jmp @{}", &.{v(pc[1].val), v(pcOffset + jump)});
+        .jump_f => {
+            const cond = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const jump = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            if (pc_off) |off| {
+                try w.print("if (!%{}) jmp @{}", .{cond, off + jump});
+            } else {
+                try w.print("if (!%{}) jmp {*}", .{cond, &pc[jump]});
+            }
         },
-        .not => {
-            const cond = pc[1].val;
-            const dst = pc[2].val;
-            len += try fmt.printCount(w, "%{} = !%{}", &.{v(dst), v(cond)});
+        .is_zero => {
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const val = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            try w.print("%{} = (%{} == 0)", .{dst, val});
         },
-        .none => {
-            const opt = pc[1].val;
-            const dst = pc[2].val;
-            len += try fmt.printCount(w, "%{} = isNone(%{})", &.{v(dst), v(opt)});
-        },
-        .list => {
-            const startLocal = pc[1].val;
-            const numElems = pc[2].val;
-            const type_id = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            const dst = pc[5].val;
-            len += try fmt.printCount(w, "%{} = List(type={}){{%{}..%{}}", &.{v(dst), v(type_id), v(startLocal), v(startLocal+numElems)});
-        },
-        .map => {
-            const dst = pc[1].val;
-            len += try fmt.printCount(w, "%{} = new Map", &.{ v(dst) });
-        },
+        // .list => {
+        //     const startLocal = pc[1].val;
+        //     const numElems = pc[2].val;
+        //     const type_id = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+        //     const dst = pc[5].val;
+        //     _ = try fmt.printCount(w, "%{} = List(type={}){{%{}..%{}}", &.{v(dst), v(type_id), v(startLocal), v(startLocal+numElems)});
+        // },
+        // .map => {
+        //     const dst = pc[1].val;
+        //     _ = try fmt.printCount(w, "%{} = new Map", &.{ v(dst) });
+        // },
         .trait => {
             const src = pc[1].val;
             const type_id = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
             const vtable = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
             const dst = pc[6].val;
 
-            len += try fmt.printCount(w, "%{} = trait(type={}, vtable={}, %{})", &.{
-                v(dst), v(type_id), v(vtable), v(src),
+            try w.print("%{} = trait(type={}, vtable={}, %{})", .{
+                dst, type_id, vtable, src,
             });
         },
-        .array => {
-            const arg_start = pc[1].val;
-            const nelems = pc[2].val;
-            const arr_t = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            const dst = pc[5].val;
-            len += try fmt.printCount(w, "%{} = arr_t={}{%{}..%{}}", &.{
-                v(dst), v(arr_t), v(arg_start), v(arg_start+nelems),
-            });
-        },
-        .object => {
-            const typeId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const size = pc[3].val;
-            _ = size;
-            const argStart = pc[4].val;
-            const numFields = pc[5].val;
-            const ref = pc[6].val == 1;
-            _ = ref;
-            const dst = pc[7].val;
-            len += try fmt.printCount(w, "%{} = type={}{%{}..%{}}", &.{
-                v(dst), v(typeId), v(argStart), v(argStart+numFields)
+        .new => {
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const type_id = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const name = try vm.sema.allocTypeName(vm.sema.types.items[type_id]);
+            defer vm.alloc.free(name);
+            const size = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
+            try w.print("%{} = {s}{{size={}}}", .{
+                dst, name, size,
             });
         },
         .retain => {
-            const local = pc[1].val;
-            len += try fmt.printCount(w, "%{}.rc += 1", &.{v(local)});
+            const reg = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            try w.print("%{}.rc += 1", .{reg});
         },
+        .release_opt,
         .release => {
-            const local = pc[1].val;
-            len += try fmt.printCount(w, "%{}.rc -= 1", &.{v(local)});
+            const reg = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const jump = @as(*const align(1) i16, @ptrCast(pc + 3)).*;
+            try w.print("%{}.rc -= 1; jmp {}", .{reg, jump});
         },
-        .releaseN => {
-            const numRegs = pc[1].val;
-            const regs = std.mem.sliceAsBytes(pc[2..2+numRegs]);
-            len += try fmt.printCount(w, "{}", &.{fmt.sliceU8(regs)});
+        .dtor_str => {
+            const reg = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            try w.print("destruct [%{}]", .{reg});
         },
-        .set => {
-            const rec = pc[1].val;
-            const idx = pc[2].val;
-            const release = pc[3].val == 1;
-            const val = pc[4].val;
-            len += try fmt.printCount(w, "[%{} + {}] = %{}, release={}", &.{v(rec), v(idx), v(val), v(release)});
+        .store_4w,
+        .store_3w,
+        .store_2w,
+        .store_64,
+        .store_32,
+        .store_16,
+        .store_8 => {
+            const dst_ptr = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const dst_off = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const src = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
+            try w.print("[%{} + {}] = %{}", .{dst_ptr, dst_off, src});
         },
-        .set_s => {
-            const rec = pc[1].val;
-            const val_t = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
-            const idx = pc[4].val;
-            const size = pc[5].val;
-            const has_retain_layout = pc[6].val == 1;
-            const val = pc[7].val;
-            len += try fmt.printCount(w, "[%{} + {}] = %{}, type={}, size={}, retain={}", &.{v(rec), v(idx), v(val), v(val_t), v(size), v(has_retain_layout)});
+        .store_n => {
+            const dst_ptr = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const dst_off = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const src = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
+            const size = @as(*const align(1) u16, @ptrCast(pc + 7)).*;
+            try w.print("[%{} + {}] = %{}.. size={}", .{dst_ptr, dst_off, src, size});
         },
-        .typeCheck => {
-            const slot = pc[1].val;
-            const exp_t = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
-            const dst = pc[6].val;
-            len += try fmt.printCount(w, "%{} = check(%{}, type={})", &.{v(dst), v(slot), v(exp_t)});
+        .await_op => {
+            const local = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            try w.print("await(%{})", .{local});
         },
-        .unbox => {
-            const slot = pc[1].val;
-            const type_id = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
-            const dst = pc[4].val;
-            len += try fmt.printCount(w, "%{} = unbox(%{}, type={})", &.{v(dst), v(slot), v(type_id)});
+        .addr => {
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const reg = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            try w.print("%{} = *%{}", .{dst, reg});
         },
-        .box => {
-            const slot = pc[1].val;
-            const type_id = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
-            const dst = pc[4].val;
-            len += try fmt.printCount(w, "%{} = box(%{}, type={})", &.{v(dst), v(slot), v(type_id)});
+        .add_i16 => {
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const left = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const right_amt = @as(*const align(1) i16, @ptrCast(pc + 5)).*;
+            try w.print("%{} = %{} + {}", .{dst, left, right_amt});
         },
-        .type => {
-            const type_id = @as(*const align(1) u32, @ptrCast(pc + 1)).*;
-            const dst = pc[6].val;
-            len += try fmt.printCount(w, "%{} = type(id={})", &.{v(dst), v(type_id)});
+        .load_n => {
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const src_ptr = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const src_off = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
+            const size = @as(*const align(1) u16, @ptrCast(pc + 7)).*;
+            try w.print("%{} = [%{} + {}] size={}", .{dst, src_ptr, src_off, size});
         },
-        .addr_static => {
-            const var_id = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const is_obj = pc[3].val == 1;
-            const dst = pc[4].val;
-            len += try fmt.printCount(w, "%{} = *vars[{}], obj={}", &.{v(dst), v(var_id), v(is_obj)});
+        .load_2w,
+        .load_3w,
+        .load_4w,
+        .load_8,
+        .load_32,
+        .load_16,
+        .load_64 => {
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const src = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const src_off = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
+            try w.print("%{} = [%{} + {}]", .{dst, src, src_off});
         },
-        .addr_local => {
-            const local = pc[1].val;
-            const dst = pc[2].val;
-            len += try fmt.printCount(w, "%{} = *%{}.values", &.{v(dst), v(local)});
+        // .setIndexList => {
+        //     const list = pc[1].val;
+        //     const index = pc[2].val;
+        //     const right = pc[3].val;
+        //     _ = try fmt.printCount(w, "list={}, index={}, right={}", &.{v(list), v(index), v(right)});
+        // },
+        .ret_gen => {
+            const type_id = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const ret_size = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const reg_end = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
+            const resume_off = pc[7].val;
+            try w.print("ret gen(type={}, %{}..%{}, resume_off={}, ret_size={})",
+                .{type_id, ret_size+4, reg_end, resume_off, ret_size});
         },
-        .addr_const_index => {
-            const local = pc[1].val;
-            const offset = pc[2].val;
-            const dst = pc[3].val;
-            len += try fmt.printCount(w, "%{} = &%{}[{}]", &.{v(dst), v(local), v(offset)});
+        .gen_next => {
+            const ret = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const base = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const gen = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
+            try w.print("%{}..%{} = next(%{})", .{ret, base, gen });
         },
-        .addr_index => {
-            const local = pc[1].val;
-            const index = pc[2].val;
-            const dst = pc[3].val;
-            len += try fmt.printCount(w, "%{} = &%{}[%{}]", &.{v(dst), v(local), v(index)});
+        .ret_y => {
+            const ret_size = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const resume_off = pc[3].val;
+            const done = pc[4].val == 1;
+            try w.print("yield ret={}, resume_off={}, done={}", .{ret_size, resume_off, done});
         },
-        .deref_value_ptr => {
-            const ptr = pc[1].val;
-            const retain = pc[3].val == 1;
-            const dst = pc[4].val;
-            len += try fmt.printCount(w, "%{} = %{}.*, retain={}", &.{v(dst), v(ptr), v(retain)});
-        },
-        .deref => {
-            const recv = pc[1].val;
-            const offset = pc[2].val;
-            const retain = pc[3].val == 1;
-            const dst = pc[4].val;
-            len += try fmt.printCount(w, "%{} = [%{} + {}], retain={}", &.{v(dst), v(recv), v(offset), v(retain)});
-        },
-        .deref_obj => {
-            const obj = pc[1].val;
-            const offset = pc[4].val;
-            const size = pc[5].val;
-            const retain = pc[6].val == 1;
-            const dst = pc[7].val;
-            len += try fmt.printCount(w, "%{} = [%{} + {}], size={}, retain={}", &.{v(dst), v(obj), v(offset), v(size), v(retain)});
-        },
-        .deref_struct_ptr => {
-            const ptr = pc[1].val;
-            const size = pc[5].val;
-            const dst = pc[7].val;
-            len += try fmt.printCount(w, "%{} = struct(%{}.*, nfields={})", &.{v(dst), v(ptr), v(size)});
-        },
-        .set_deref_ptr => {
-            const ref = pc[1].val;
-            const val = pc[3].val;
-            len += try fmt.printCount(w, "%{}.* = %{}", &.{v(ref), v(val)});
-        },
-        .set_deref_struct_ptr => {
-            const ref = pc[1].val;
-            const size = pc[3].val;
-            const val = pc[4].val;
-            len += try fmt.printCount(w, "%{}.* = %{}, size={}", &.{v(ref), v(val), v(size)});
-        },
-        .setFieldDyn,
-        .setFieldDynIC => {
-            const recv = pc[1].val;
-            const fieldId = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
-            const val = pc[4].val;
-            len += try fmt.printCount(w, "recv={}, fid={}, rhs={}", &.{v(recv), v(fieldId), v(val)});
-        },
-        .setIndexList => {
-            const list = pc[1].val;
-            const index = pc[2].val;
-            const right = pc[3].val;
-            len += try fmt.printCount(w, "list={}, index={}, right={}", &.{v(list), v(index), v(right)});
-        },
-        .coinit => {
-            const startArgs = pc[1].val;
-            const numArgs = pc[2].val;
-            const argDst = pc[3].val;
-            const jump = pc[4].val;
-            const initialStackSize = pc[5].val;
-            const dst = pc[6].val;
-            len += try fmt.printCount(w, "startArgs={}, numArgs={}, argDst={}, jump={}, initStack={}, dst={}",
-                &.{v(startArgs), v(numArgs), v(argDst), v(jump), v(initialStackSize), v(dst)});
-        },
-        .coresume => {
-            const fiberLocal = pc[1].val;
-            const retLocal = pc[2].val;
-            len += try fmt.printCount(w, "fiberLocal={}, retLocal={}", &.{v(fiberLocal), v(retLocal) });
-        },
-        .sliceList => {
-            const recv = pc[1].val;
-            const range = pc[2].val;
-            const dst = pc[3].val;
-            len += try fmt.printCount(w, "%{} = %{}[Range(%{})]", &.{v(dst), v(recv), v(range)});
-        },
+        // .sliceList => {
+        //     const recv = pc[1].val;
+        //     const range = pc[2].val;
+        //     const dst = pc[3].val;
+        //     _ = try fmt.printCount(w, "%{} = %{}[Range(%{})]", &.{v(dst), v(recv), v(range)});
+        // },
         .castAbstract => {
-            const child = pc[1].val;
-            const expTypeId = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
-            const dst = pc[3].val;
-            len += try fmt.printCount(w, "%{} = cast(type={}, %{})", &.{v(dst), v(expTypeId), v(child)});
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const child = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const expTypeId = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
+            try w.print("%{} = cast(type={}, %{})", .{dst, expTypeId, child});
         },
         .cast => {
-            const child = pc[1].val;
-            const expTypeId = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
-            const dst = pc[4].val;
-            len += try fmt.printCount(w, "%{} = cast(type={}, %{})", &.{v(dst), v(expTypeId), v(child)});
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const child = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const expTypeId = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
+            try w.print("%{} = cast(type={}, %{})", .{dst, expTypeId, child});
         },
-        .func_ptr => {
-            const id = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const dst = pc[5].val;
-            len += try fmt.printCount(w, "id={} dst={}", &.{v(id), v(dst)});
+        .memsetz => {
+            const dst_ptr = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const offset = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const len = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
+            try w.print("[%{}+{}..{}] = 0", .{dst_ptr, offset, offset+len});
         },
-        .func_union => {
-            const id = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const dst = pc[5].val;
-            len += try fmt.printCount(w, "id={} dst={}", &.{v(id), v(dst)});
+        .lnot => {
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const cond = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            try w.print("%{} = !%{}", .{dst, cond});
         },
-        .staticVar => {
-            const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const dst = pc[3].val;
-            len += try fmt.printCount(w, "%{} = vars[{}]", &.{v(dst), v(symId)});
+        .sext => {
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const src = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const bits = pc[5].val;
+            try w.print("%{} = sext({}, %{})", .{dst, bits, src});
         },
-        .context => {
-            const idx = pc[1].val;
-            const dst = pc[2].val;
-            len += try fmt.printCount(w, "%{} = context_vars[{}]", &.{v(dst), v(idx)});
+        .zext => {
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const src = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const bits = pc[5].val;
+            try w.print("%{} = zext({}, %{})", .{dst, bits, src});
         },
-        .setStaticVar => {
-            const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const src = pc[3].val;
-            const release = pc[4].val == 1;
-            len += try fmt.printCount(w, "vars[{}] = %{}, release={}", &.{v(symId), v(src), v(release)});
+        .fn_union => {
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const src = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const type_id = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
+            try w.print("%{} = fnunion(%{}, type={})", .{dst, src, type_id});
         },
-        .catch_op => {
-            const endOffset = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const err_slot = pc[3].val;
-            const dst_retained = pc[4].val;
-            len += try fmt.printCount(w, "catch jmp={}, err_slot={}, dst_retained={}", &.{v(endOffset), v(err_slot), v(dst_retained)});
+        .unwrap_nz => {
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const src = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            try w.print("%{} = %{}.?", .{dst, src});
         },
-        .unwrap_union => {
-            const choice_s = pc[1].val;
-            const tag = pc[2].val;
-            const offset = pc[3].val;
-            _ = offset;
-            const retain = pc[4].val == 1;
-            const dst = pc[5].val;
-            len += try fmt.printCount(w, "%{} = %{}.!{}, retain={}", &.{v(dst), v(choice_s), v(tag), v(retain)});
-        },
-        .unwrap_union_s => {
-            const choice_s = pc[1].val;
-            const tag = pc[2].val;
-            const type_id = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            const offset = pc[5].val;
-            _ = offset;
-            const size = pc[6].val;
-            const has_retain_layout = pc[7].val;
-            _ = has_retain_layout;
-            const dst = pc[8].val;
-            len += try fmt.printCount(w, "%{} = %{}.!tag={}, type={} size={}", &.{v(dst), v(choice_s), v(tag), v(type_id), v(size)});
+        .unwrap_addr => {
+            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const choice_s = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const tag = pc[5].val;
+            const offset = pc[6].val;
+            try w.print("%{} = %{}.!{} + {}", .{dst, choice_s, tag, offset});
         },
         else => {},
     }
 
     if (opts.extra) |extra| {
-        const ExtraStartCol = 60;
-        if (len > ExtraStartCol) {
-            fmt.print(w, "\n{}| {}", &.{fmt.repeat(' ', ExtraStartCol), v(extra)});
-        } else {
-            fmt.print(w, "{}| {}", &.{fmt.repeat(' ', @intCast(ExtraStartCol-len)), v(extra)});
+        if (extra.len > 0) {
+            try w.print(" | {s}", .{extra});
         }
     }
     try w.writeByte('\n');
-    rt.print(vm, vm.getTempString());
 }
 
 pub const StringIndexContext = struct {
@@ -937,6 +894,11 @@ pub const Inst = packed struct {
     }
 };
 
+pub const DebugTableEntry = extern struct {
+    ptr: [*]Inst,
+    chunk: *cy.Chunk,
+};
+
 pub const DebugSym = extern struct {
     /// Start position of an inst.
     pc: u32,
@@ -944,424 +906,367 @@ pub const DebugSym = extern struct {
     /// Source pos.
     loc: u32,
 
-    /// Indexes into `Chunk.procs`.
+    /// Indexes into `Chunk.funcs_debug`. The source chunk is `FuncDebugInfo.src_chunk`.
     frameLoc: u32,
 
     /// ChunkId.
     file: u16,
 };
 
-const DebugMarkerType = enum(u8) {
-    label,
-    funcStart,
-
-    /// `pc` is exclusive.
-    funcEnd,
-};
-
-const DebugMarker = extern struct {
-    data: extern union {
-        label: extern struct {
-            /// Unowned.
-            namePtr: [*]const u8,
-            nameLen: u16,
-        },
-        funcStart: extern struct {
-            name_ptr: [*]const u8,
-            name_len: u32,
-            chunkId: u32,
-
-            pub fn name(self: @This()) []const u8 {
-                return self.name_ptr[0..self.name_len];
-            }
-        },
-        funcEnd: extern struct {
-            name_ptr: [*]const u8,
-            name_len: u32,
-            chunkId: u32,
-
-            pub fn name(self: @This()) []const u8 {
-                return self.name_ptr[0..self.name_len];
-            }
-        },
-    },
-
-    /// Inst position of marker.
+pub const PcPtrLayout = extern struct {
     pc: u32,
-    type: u8,
-
-    pub fn getLabelName(self: DebugMarker) []const u8 {
-        return self.data.label.namePtr[0..self.data.label.nameLen];
-    }
-
-    pub fn etype(self: *const DebugMarker) DebugMarkerType {
-        return @enumFromInt(self.type);
-    }
+    layout: u32,
 };
 
-pub const CallSymInstLen = vmc.CALL_SYM_INST_LEN;
-pub const CallInstLen = vmc.CALL_INST_LEN;
-pub const CallValueInstLen = vmc.CALL_VALUE_INST_LEN;
-pub const RetDynLen = 2;
+pub const CallTraitInstLen = vmc.CALL_TRAIT_INST_LEN;
+pub const CallPtrInstLen = vmc.CALL_PTR_INST_LEN;
+pub const CallUnionInstLen = vmc.CALL_UNION_INST_LEN;
 
 test "getInstLenAt" {
     var code = Inst.initOpCode(.call);
-    try t.eq(getInstLenAt(@ptrCast(&code)), CallInstLen);
+    try t.eq(vmc.CALL_INST_LEN, getInstLenAt(@ptrCast(&code)));
 }
 
 pub fn getInstLenAt(pc: [*]const Inst) u8 {
     switch (pc[0].opcode()) {
-        .ret0,
-        .ret1 => {
+        .end,
+        .ret_0,
+        .ret,
+        .trap => {
             return 1;
         },
-        .ret_dyn,
-        .typeCheckOption,
-        .throw,
-        .retain,
-        .end,
-        .release,
-        .true,
-        .false,
-        .await_op,
-        .map => {
+        .retain_nz => {
             return 2;
         },
-        .releaseN => {
-            const numVars = pc[1].val;
-            return 2 + numVars;
-        },
-        .negFloat,
-        .negInt,
-        .ref,
-        .addr_local,
-        .copy_struct,
-        .not,
-        .copy,
-        .call_value,
-        .copyRetainSrc,
-        .copyReleaseDst,
-        .copyRetainRelease,
-        .copyObjDyn,
-        .constIntV8,
-        .const_byte,
-        .jump,
-        .future_value,
-        .coyield,
-        .coresume,
-        .none,
-        .tag_lit,
-        .context,
-        .coreturn,
-        .symbol => {
+        .await_op,
+        .retain,
+        .true,
+        .false,
+        .dtor_str,
+        .ret_n,
+        .call_ptr,
+        .call_union,
+        .jump => {
             return 3;
         },
-        .bitwiseNot,
-        .lessFloat,
-        .greaterFloat,
-        .lessEqualFloat,
-        .greaterEqualFloat,
-        .lessInt,
-        .greaterInt,
-        .lessEqualInt,
-        .greaterEqualInt,
-        .addFloat,
-        .subFloat,
-        .mulFloat,
-        .divFloat,
-        .powFloat,
-        .modFloat,
-        .addInt,
-        .subInt,
-        .mulInt,
-        .divInt,
-        .powInt,
-        .modInt,
-        .bitwiseAnd,
-        .bitwiseOr,
-        .bitwiseXor,
-        .bitwiseLeftShift,
-        .bitwiseRightShift,
-        .appendList,
-        .sliceList,
-        .set_deref_ptr,
-        .addr_const_index,
-        .addr_index,
-        .call,
-        .constOp,
-        .constRetain,
-        .staticVar,
-        .jumpCond,
-        .compare,
-        .compareNot,
-        .setCaptured,
-        .jumpNotCond => {
+        .const_8s,
+        .const_8 => {
             return 4;
         },
-        .setIndexList,
-        .setIndexMap,
-        .indexList,
-        .indexMap,
-        .addr_static,
-        .set_deref_struct_ptr,
-        .set,
-        .deref_value_ptr,
-        .setStaticVar,
-        .func_union,
-        .deref,
-        .captured,
-        .box,
-        .unbox,
-        .catch_op,
-        .castAbstract => {
+        .ret_y,
+        .fneg32,
+        .fneg,
+        .neg,
+        .release_opt,
+        .release,
+        .unwrap_nz,
+        .i2f,
+        .i2f32,
+        .f2i,
+        .f32_2i,
+        .fabs,
+        .f32abs,
+        .is_zero,
+        .lnot,
+        .not,
+        // .map,
+        // .appendList,
+        // .sliceList,
+        .jump_t,
+        .jump_f,
+        .extern_func,
+        .call_trait,
+        .mov,
+        .mov_2,
+        .mov_3,
+        .mov_4,
+        .addr,
+        .const_16,
+        .chk_stk,
+        // .setIndexList,
+        // .setIndexMap,
+        // .indexList,
+        // .indexMap,
+        .nop32 => {
             return 5;
         },
-        .match => {
-            const numConds = pc[2].val;
-            return 5 + numConds * 3;
-        },
-        .cast,
-        .unwrap_union,
-        .lambda,
-        .func_ptr,
-        .list,
-        .array,
-        .forRange,
-        .forRangeReverse => {
+        .captured,
+        // .list,
+        .zext,
+        .sext => {
             return 6;
         },
-        .lift,
-        .typeCheck,
-        .type,
-        .trait,
-        .coinit => {
+        .gen_next,
+        .gen_end,
+        .fn_union,
+        .lsl,
+        .lsr,
+        .fadd,
+        .fadd32,
+        .fsub,
+        .fsub32,
+        .fmul,
+        .fmul32,
+        .fdiv,
+        .fdiv32,
+        .fmod,
+        .fmod32,
+        .add,
+        .sub,
+        .imul,
+        .mul,
+        .idiv,
+        .div,
+        .pow,
+        .imod,
+        .mod,
+        .and_,
+        .or_,
+        .xor,
+        .cmp_8,
+        .cmp,
+        .cmp_str,
+        .ucmp,
+        .castAbstract,
+        .memsetz,
+        .unwrap_addr,
+        .feq32,
+        .feq,
+        .flt,
+        .fgt,
+        .fle,
+        .fge,
+        .flt32,
+        .fgt32,
+        .fle32,
+        .fge32,
+        .lt,
+        .gt,
+        .le,
+        .ge,
+        .add_i16,
+        .mov_n,
+        .new,
+        .const_32,
+        .load_8,
+        .load_16,
+        .load_32,
+        .load_64,
+        .load_2w,
+        .load_3w,
+        .load_4w,
+        .store_8,
+        .store_16,
+        .store_32,
+        .store_64,
+        .store_2w,
+        .store_3w,
+        .store_4w => {
             return 7;
         },
-        .set_s,
-        .deref_obj,
-        .deref_struct_ptr,
-        .forRangeInit => {
+        .ret_gen,
+        .cast => {
             return 8;
         },
-        .closure => {
-            const numCaptured = pc[5].val;
-            return 8 + numCaptured;
-        },
-        .object => {
-            const num_fields = pc[5].val;
-            return 8 + num_fields;
-        },
-        .unwrap_union_s => {
+        .fn_vm,
+        .fn_host,
+        .trait,
+        .load_n,
+        .store_n,
+        .call,
+        .call_host,
+        .nops => {
             return 9;
         },
-        .func_sym,
-        .setFieldDyn,
-        .setFieldDynIC => {
-            return 10;
-        },
-        .fieldDyn,
-        .fieldDynIC => {
+        .const_64 => {
             return 11;
         },
-        .call_trait,
-        .callSym,
-        .callNativeFuncIC,
-        .callFuncIC => {
-            return CallSymInstLen;
+        .const_str => {
+            return 12;
+        },
+        .closure => {
+            const numCaptured = pc[11].val;
+            return 13 + numCaptured * 2;
         },
     }
 }
 
 pub const OpCode = enum(u8) {
     /// Copies a constant value from `consts` to a dst local.
-    /// [constIdx u16] [dst]
-    constOp = vmc.CodeConstOp,
-    constRetain = vmc.CodeConstRetain,
-    constIntV8 = vmc.CodeConstIntV8,
-    const_byte = vmc.CodeConstByte,
-    addFloat = vmc.CodeAddFloat,
-    subFloat = vmc.CodeSubFloat,
-    /// Push boolean onto register stack.
+    const_64 = vmc.CodeCONST_64,
+    const_str = vmc.CodeCONST_STR,
+    const_8s = vmc.CodeCONST_8S,
+    const_8 = vmc.CodeCONST_8,
+    const_16 = vmc.CodeCONST_16,
+    const_32 = vmc.CodeCONST_32,
     true = vmc.CodeTrue,
     false = vmc.CodeFalse,
-    /// Pops top register, performs not, and pushes result onto stack.
-    not = vmc.CodeNot,
-    none = vmc.CodeNone,
-    /// Copies a local from src to dst.
-    copy = vmc.CodeCopy,
-    copyReleaseDst = vmc.CodeCopyReleaseDst,
-    copyRetainSrc = vmc.CodeCopyRetainSrc,
-    copyRetainRelease = vmc.CodeCopyRetainRelease,
-    copy_struct = vmc.CodeCopyStruct,
-    copyObjDyn = vmc.CodeCopyObjDyn,
+    lnot = vmc.CodeLNOT,
+    is_zero = vmc.CodeIsZero,
+    mov = vmc.CodeMOV,
+    mov_2 = vmc.CodeMOV_2,
+    mov_3 = vmc.CodeMOV_3,
+    mov_4 = vmc.CodeMOV_4,
+    mov_n = vmc.CodeMOV_N,
 
-    setIndexList = vmc.CodeSetIndexList,
-    setIndexMap = vmc.CodeSetIndexMap,
+    // setIndexList = vmc.CodeSetIndexList,
+    // setIndexMap = vmc.CodeSetIndexMap,
 
-    indexList = vmc.CodeIndexList,
-    indexMap = vmc.CodeIndexMap,
+    // indexList = vmc.CodeIndexList,
+    // indexMap = vmc.CodeIndexMap,
 
-    appendList = vmc.CodeAppendList,
+    // appendList = vmc.CodeAppendList,
 
     /// First operand points the first elem and also the dst local. Second operand contains the number of elements.
-    list = vmc.CodeList,
-    array = vmc.CodeArray,
+    // list = vmc.CodeList,
     /// First operand points the first entry value and also the dst local. Second operand contains the number of elements.
     /// Const key indexes follow the size operand.
-    map = vmc.CodeMap,
-    sliceList = vmc.CodeSliceList,
-    /// Pops top register, if value evals to false, jumps the pc forward by an offset.
-    jumpNotCond = vmc.CodeJumpNotCond,
-    jumpCond = vmc.CodeJumpCond,
+    // map = vmc.CodeMap,
+    // sliceList = vmc.CodeSliceList,
+    jump_f = vmc.CodeJUMP_F,
+    jump_t = vmc.CodeJUMP_T,
     /// Jumps the pc by an 16-bit integer offset.
-    jump = vmc.CodeJump,
+    jump = vmc.CodeJUMP,
 
+    release_opt = vmc.CodeReleaseOpt,
     release = vmc.CodeRelease,
+    dtor_str = vmc.CodeDTOR_STR,
 
-    /// Exclusively used for block end to distinguish from temp releases.
-    releaseN = vmc.CodeReleaseN,
+    chk_stk = vmc.CodeCHK_STK,
+    call = vmc.CodeCALL,
+    call_host = vmc.CodeCALL_HOST,
+    call_trait = vmc.CodeCALL_TRAIT,
+    ret_0 = vmc.CodeRET_0,
+    ret = vmc.CodeRET,
+    ret_n = vmc.CodeRET_N,
+    call_ptr = vmc.CodeCALL_PTR,
+    call_union = vmc.CodeCALL_UNION,
 
-    callSym = vmc.CodeCallSym,
-    callFuncIC = vmc.CodeCallFuncIC,
-    callNativeFuncIC = vmc.CodeCallNativeFuncIC,
-    call_trait = vmc.CodeCallTrait,
-    ret1 = vmc.CodeRet1,
-    ret0 = vmc.CodeRet0,
-    ret_dyn = vmc.CodeRetDyn,
+    load_8 = vmc.CodeLOAD_8,
+    load_16 = vmc.CodeLOAD_16,
+    load_32 = vmc.CodeLOAD_32,
+    load_64 = vmc.CodeLOAD_64,
+    load_2w = vmc.CodeLOAD_2W,
+    load_3w = vmc.CodeLOAD_3W,
+    load_4w = vmc.CodeLOAD_4W,
+    load_n = vmc.CodeLOAD_N,
 
-    /// Calls a lambda.
-    /// [calleeLocal] [numArgs] [numRet=0/1]
-    call = vmc.CodeCall,
-    call_value = vmc.CodeCallValue,
+    closure = vmc.CodeCLOSURE,
+    cmp_8 = vmc.CodeCMP_8,
+    cmp = vmc.CodeCMP,
+    cmp_str = vmc.CodeCMP_STR,
 
-    typeCheck = vmc.CodeTypeCheck,
-    typeCheckOption = vmc.CodeTypeCheckOption,
+    feq32 = vmc.CodeFEQ32,
+    flt32 = vmc.CodeFLT32,
+    fgt32 = vmc.CodeFGT32,
+    fle32 = vmc.CodeFLE32,
+    fge32 = vmc.CodeFGE32,
+    fadd32 = vmc.CodeFADD32,
+    fsub32 = vmc.CodeFSUB32,
+    fmul32 = vmc.CodeFMUL32,
+    fdiv32 = vmc.CodeFDIV32,
+    fmod32 = vmc.CodeFMOD32,
+    fneg32 = vmc.CodeFNEG32,
 
-    deref_obj = vmc.CodeDerefObj,
-    deref = vmc.CodeDeref,
-    fieldDyn = vmc.CodeFieldDyn,
-    fieldDynIC = vmc.CodeFieldDynIC,
-    lambda = vmc.CodeLambda,
-    closure = vmc.CodeClosure,
-    compare = vmc.CodeCompare,
-    lessFloat = vmc.CodeLessFloat,
-    greaterFloat = vmc.CodeGreaterFloat,
-    lessEqualFloat = vmc.CodeLessEqualFloat,
-    greaterEqualFloat = vmc.CodeGreaterEqualFloat,
-    lessInt = vmc.CodeLessInt,
-    greaterInt = vmc.CodeGreaterInt,
-    lessEqualInt = vmc.CodeLessEqualInt,
-    greaterEqualInt = vmc.CodeGreaterEqualInt,
+    feq = vmc.CodeFEQ,
+    flt = vmc.CodeFLT,
+    fgt = vmc.CodeFGT,
+    fle = vmc.CodeFLE,
+    fge = vmc.CodeFGE,
+    fadd = vmc.CodeFADD,
+    fsub = vmc.CodeFSUB,
+    fmul = vmc.CodeFMUL,
+    fdiv = vmc.CodeFDIV,
+    fmod = vmc.CodeFMOD,
+    fneg = vmc.CodeFNEG,
 
-    mulFloat = vmc.CodeMulFloat,
-    divFloat = vmc.CodeDivFloat,
-    powFloat = vmc.CodePowFloat,
-    modFloat = vmc.CodeModFloat,
+    lt = vmc.CodeLT,
+    gt = vmc.CodeGT,
+    le = vmc.CodeLE,
+    ge = vmc.CodeGE,
+    ucmp = vmc.CodeUCMP,
 
-    compareNot = vmc.CodeCompareNot,
-
-    negFloat = vmc.CodeNegFloat,
-
-    object = vmc.CodeObject,
+    new = vmc.CodeNEW,
     trait = vmc.CodeTrait,
 
-    box = vmc.CodeBox,
-    unbox = vmc.CodeUnbox,
-    addr_static = vmc.CodeAddrStatic,
-    addr_local = vmc.CodeAddrLocal,
-    addr_const_index = vmc.CodeAddrConstIndex,
-    addr_index = vmc.CodeAddrIndex,
-    deref_value_ptr = vmc.CodeDerefValuePtr,
-    deref_struct_ptr = vmc.CodeDerefStructPtr,
-    set_deref_ptr = vmc.CodeSetDerefPtr,
-    set_deref_struct_ptr = vmc.CodeSetDerefStructPtr,
-    unwrap_union = vmc.CodeUnwrapUnion,
-    unwrap_union_s = vmc.CodeUnwrapUnionS,
+    addr = vmc.CodeADDR,
+    unwrap_addr = vmc.CodeUnwrapAddr,
+    unwrap_nz = vmc.CodeUnwrapNZ,
 
-    setFieldDyn = vmc.CodeSetFieldDyn,
-    setFieldDynIC = vmc.CodeSetFieldDynIC,
-    set = vmc.CodeSet,
-    set_s = vmc.CodeSetS,
+    store_8 = vmc.CodeSTORE_8,
+    store_16 = vmc.CodeSTORE_16,
+    store_32 = vmc.CodeSTORE_32,
+    store_64 = vmc.CodeSTORE_64,
+    store_2w = vmc.CodeSTORE_2W,
+    store_3w = vmc.CodeSTORE_3W,
+    store_4w = vmc.CodeSTORE_4W,
+    store_n = vmc.CodeSTORE_N,
+    memsetz = vmc.CodeMEMSETZ,
 
-    coinit = vmc.CodeCoinit,
-    coyield = vmc.CodeCoyield,
-    coresume = vmc.CodeCoresume,
-    coreturn = vmc.CodeCoreturn,
+    ret_gen = vmc.CodeRET_GEN,
+    ret_y = vmc.CodeRET_Y,
+    gen_next = vmc.CodeGEN_NEXT,
+    gen_end = vmc.CodeGEN_END,
+    retain_nz = vmc.CodeRetainNZ,
     retain = vmc.CodeRetain,
-
-    /// Lifts a source local to a box object and stores the result in `dstLocal`.
-    /// The source local is also retained.
-    /// [srcLocal] [dstLocal]
-    lift = vmc.CodeLift,
-    ref = vmc.CodeRef,
-
     captured = vmc.CodeCaptured,
-    setCaptured = vmc.CodeSetCaptured,
-    tag_lit = vmc.CodeTagLit,
-    symbol = vmc.CodeSymbol,
 
-    bitwiseAnd = vmc.CodeBitwiseAnd,
-    bitwiseOr = vmc.CodeBitwiseOr,
-    bitwiseXor = vmc.CodeBitwiseXor,
-    bitwiseNot = vmc.CodeBitwiseNot,
-    bitwiseLeftShift = vmc.CodeBitwiseLeftShift,
-    bitwiseRightShift = vmc.CodeBitwiseRightShift,
-    addInt = vmc.CodeAddInt,
-    subInt = vmc.CodeSubInt,
-    mulInt = vmc.CodeMulInt,
-    divInt = vmc.CodeDivInt,
-    modInt = vmc.CodeModInt,
-    powInt = vmc.CodePowInt,
-    negInt = vmc.CodeNegInt,
-    forRangeInit = vmc.CodeForRangeInit,
-    forRange = vmc.CodeForRange,
-    forRangeReverse = vmc.CodeForRangeReverse,
-
-    /// Performs an eq comparison with a sequence of locals.
-    /// The pc then jumps with the offset of the matching local, otherwise the offset from the end is used.
-    /// [exprLocal] [numCases] [case1Local] [case1Jump] ... [elseJump]
-    match = vmc.CodeMatch,
-
-    /// Copies and retains a static variable to a destination local.
-    /// [symId u16] [dstLocal]
-    staticVar = vmc.CodeStaticVar,
-
-    /// Copies a local register to a static variable.
-    /// [symId u16] [local]
-    setStaticVar = vmc.CodeSetStaticVar,
-
-    context = vmc.CodeContext,
-
-    /// Wraps a static function in a function value.
-    /// [symId u16] [dstLocal]
-    func_ptr = vmc.CodeFuncPtr,
-    func_union = vmc.CodeFuncUnion,
-    func_sym = vmc.CodeFuncSym,
-
-    /// Allocates a symbol object to a destination local.
-    /// [symType] [symId] [dst]
-    type = vmc.CodeType,
+    and_ = vmc.CodeAND,
+    or_ = vmc.CodeOR,
+    xor = vmc.CodeXOR,
+    not = vmc.CodeNOT,
+    lsl = vmc.CodeLSL,
+    lsr = vmc.CodeLSR,
+    add = vmc.CodeAdd,
+    add_i16 = vmc.CodeAddI16,
+    sub = vmc.CodeSub,
+    imul = vmc.CodeIMUL,
+    mul = vmc.CodeMUL,
+    idiv = vmc.CodeIDIV,
+    div = vmc.CodeDIV,
+    mod = vmc.CodeMOD,
+    imod = vmc.CodeIMOD,
+    pow = vmc.CodePow,
+    neg = vmc.CodeNeg,
+    zext = vmc.CodeZEXT,
+    sext = vmc.CodeSEXT,
+    f2i = vmc.CodeF2I,
+    f32_2i = vmc.CodeF32_2I,
+    i2f = vmc.CodeI2F,
+    i2f32 = vmc.CodeI2F32,
+    fabs = vmc.CodeFABS,
+    f32abs = vmc.CodeF32ABS,
+    fn_vm = vmc.CodeFN_VM,
+    fn_host = vmc.CodeFN_HOST,
+    fn_union = vmc.CodeFN_UNION,
+    extern_func = vmc.CodeExternFunc,
 
     cast = vmc.CodeCast,
     castAbstract = vmc.CodeCastAbstract,
 
-    catch_op = vmc.CodeCatch,
-    throw = vmc.CodeThrow,
+    await_op = vmc.CodeAWAIT,
 
-    await_op = vmc.CodeAwait,
-    future_value = vmc.CodeFutureValue,
+    nop32 = vmc.CodeNOP32,
+    nops = vmc.CodeNOPS,
+    trap = vmc.CodeTRAP,
 
     /// Indicates the end of the main script.
-    end = vmc.CodeEnd,
+    end = vmc.CodeEND,
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 122);
+    try t.eq(127, std.enums.values(OpCode).len);
     try t.eq(@sizeOf(Inst), 1);
-    if (cy.is32Bit) {
-        try t.eq(@sizeOf(DebugMarker), 16);
-    } else {
-        try t.eq(@sizeOf(DebugMarker), 24);
-    }
     try t.eq(@sizeOf(DebugSym), 16);
 }
+
+pub const PtrLayoutContext = struct {
+    pub fn hash(_: @This(), key: []const bool) u64 {
+        var c = std.hash.Wyhash.init(0);
+        c.update(std.mem.sliceAsBytes(key));
+        return c.final();
+    }
+    pub fn eql(_: @This(), a: []const bool, b: []const bool) bool {
+        return std.mem.eql(bool, a, b);
+    }
+};

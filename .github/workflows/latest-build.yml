@@ -322,7 +322,7 @@ jobs:
   docs:
     runs-on: ubuntu-22.04
     env:
-      ZIG_VERSION: 0.14.1
+      ZIG_VERSION: 0.15.2
     steps:
       - name: Clone repo.
         uses: actions/checkout@v3

@@ -373,7 +373,7 @@ jobs:
             core.exportVariable('COMMIT', context.sha.substring(0, 7));
 
       - name: Cache.
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: |-
             ~/.cache/zig

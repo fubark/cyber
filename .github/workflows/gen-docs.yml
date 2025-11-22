@@ -81,6 +81,7 @@ jobs:
           LD_LIBRARY_PATH=`pwd`/md4c/build/src zig-out/bin/cyber docs/gen-docs.cy -version "${{ format('v{0}-dev {1}-{2}', env.SHORT_VERSION, env.BUILD, env.COMMIT) }}"
           mkdir -p docs/public
           mv docs/docs.html docs/public/index.html
+          mv docs/api.html docs/public/api.html
 
       - name: Deploy.
         uses: peaceiris/actions-gh-pages@v3

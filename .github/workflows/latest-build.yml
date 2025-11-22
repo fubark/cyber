@@ -108,7 +108,7 @@ jobs:
       BIN_EXT: ${{ contains(matrix.config.target, 'windows') && '.exe' || '' }}
       ZIG_MODE_FLAG: ${{ (matrix.config.mode == 'release' && '-Doptimize=ReleaseFast') || '' }}
       DEV_FLAG: ${{ startsWith(github.ref, 'refs/tags/') && '-Ddev=false' || '' }}
-      ZIG_VERSION: 0.14.1
+      ZIG_VERSION: 0.15.2
     steps:
       - name: Install Linux deps.
         if: env.BUILD_HOST == 'ubuntu-22.04' && env.BUILD_TARGET == 'x86_64-linux-gnu'
@@ -127,7 +127,7 @@ jobs:
       - name: Install zig.
         if: env.BUILD_HOST == 'ubuntu-22.04'
         run: |
-          wget -c https://ziglang.org/download/${{ env.ZIG_VERSION }}/zig-linux-x86_64-${{ env.ZIG_VERSION }}.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
+          wget -c https://ziglang.org/download/${{ env.ZIG_VERSION }}/zig-x86_64-linux-${{ env.ZIG_VERSION }}.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
 
       - name: Install wasm3.
         if: env.BUILD_HOST == 'ubuntu-22.04' && (env.BUILD_TARGET == 'wasm32-freestanding' || env.BUILD_TARGET == 'wasm32-wasi')
@@ -142,19 +142,19 @@ jobs:
       - name: Install zig.
         if: env.BUILD_HOST == 'macos-12'
         run: |
-          wget -c https://ziglang.org/download/${{ env.ZIG_VERSION }}/zig-macos-x86_64-${{ env.ZIG_VERSION }}.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
+          wget -c https://ziglang.org/download/${{ env.ZIG_VERSION }}/zig-x86_64-macos-${{ env.ZIG_VERSION }}.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
           xcode-select --print-path
 
       - name: Install zig.
         if: env.BUILD_HOST == 'macos-14'
         run: |
-          wget -c https://ziglang.org/download/${{ env.ZIG_VERSION }}/zig-macos-aarch64-${{ env.ZIG_VERSION }}.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
+          wget -c https://ziglang.org/download/${{ env.ZIG_VERSION }}/zig-aarch64-macos-${{ env.ZIG_VERSION }}.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
           xcode-select --print-path
 
       - name: Install zig.
         if: env.BUILD_HOST == 'windows-2022'
         run: |
-          Invoke-WebRequest -Uri 'https://ziglang.org/download/${{ env.ZIG_VERSION }}/zig-windows-x86_64-${{ env.ZIG_VERSION }}.zip' -OutFile 'C:\zig.zip'
+          Invoke-WebRequest -Uri 'https://ziglang.org/download/${{ env.ZIG_VERSION }}/zig-x86_64-windows-${{ env.ZIG_VERSION }}.zip' -OutFile 'C:\zig.zip'
           cd C:\
           7z x zig.zip
           Add-Content $env:GITHUB_PATH 'C:\zig-windows-x86_64-${{ env.ZIG_VERSION }}\'
@@ -332,7 +332,7 @@ jobs:
 
       - name: Install zig.
         run: |
-          wget -c https://ziglang.org/download/${{ env.ZIG_VERSION }}/zig-linux-x86_64-${{ env.ZIG_VERSION }}.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
+          wget -c https://ziglang.org/download/${{ env.ZIG_VERSION }}/zig-x86_64-linux-${{ env.ZIG_VERSION }}.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
 
       - name: Build md4c.
         run: |

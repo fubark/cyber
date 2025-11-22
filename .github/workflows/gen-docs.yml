@@ -12,7 +12,7 @@ jobs:
   deploy:
     runs-on: ubuntu-22.04
     env:
-      ZIG_VERSION: 0.14.1
+      ZIG_VERSION: 0.15.2
     steps:
       - name: Clone repo.
         uses: actions/checkout@v3
@@ -22,7 +22,7 @@ jobs:
 
       - name: Install zig.
         run: |
-          wget -c https://ziglang.org/download/${{ env.ZIG_VERSION }}/zig-linux-x86_64-${{ env.ZIG_VERSION }}.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
+          wget -c https://ziglang.org/download/${{ env.ZIG_VERSION }}/zig-x86_64-linux-${{ env.ZIG_VERSION }}.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
 
       - name: Build md4c.
         run: |

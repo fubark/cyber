@@ -141,7 +141,7 @@ jobs:
           Add-Content $env:GITHUB_PATH 'C:\zig-windows-x86_64-${{ env.ZIG_VERSION }}\'
 
       - name: Cache.
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: |-
             ~/.cache/zig

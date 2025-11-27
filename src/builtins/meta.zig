@@ -1,10 +1,11 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const build_options = @import("build_options");
+const build_config = @import("build_config");
 const cy = @import("../cyber.zig");
 const C = @import("../capi.zig");
 const bt = cy.types.BuiltinTypes;
 const zErrFunc = cy.core.zErrFunc;
+const cFunc = cy.core.cFunc;
 const zErrCtFunc = cy.core.zErrCtFunc;
 const sema = cy.sema;
 const sema_type = cy.sema_type;
@@ -61,6 +62,8 @@ const funcs = [_]struct{[]const u8, C.BindFunc}{
     .{"has_decl",        zErrCtFunc(null, has_decl)},
     .{"reachable",       zErrCtFunc(null, reachable)},
     .{"dump_frame",      zErrFunc(dump_frame)},
+    .{"trace_retains",   cFunc(trace_retains)},
+    .{"trace_releases",  cFunc(trace_releases)},
 
     // PartialStructLayout
     .{"PartialStructLayout.is_field_active", zErrCtFunc(null, PartialStructLayout_is_field_active)},
@@ -85,10 +88,10 @@ const funcs = [_]struct{[]const u8, C.BindFunc}{
 };
 
 comptime {
-    @export(&bind, .{ .name = "cl_mod_meta", .linkage = .strong });
+    @export(&bind, .{ .name = "cl_mod_bind_meta", .linkage = .strong });
 }
 
-pub fn bind(_: *cy.VM, mod: *C.Sym) callconv(.c) void {
+pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
     for (funcs) |e| {
         C.mod_add_func(mod, e.@"0", e.@"1");
     }
@@ -421,7 +424,7 @@ pub fn enum_case(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     const case = T.cast(.enum_t).getCaseByTag(@intCast(enum_val));
     const case_t = (try c.vm.findType("meta.EnumCase")).?;
     const case_v = try c.heap.newInstance(case_t, &.{
-        C.field_init("name", try c.heap.newStr(case.head.name())),
+        field_init("name", try c.heap.newStr(case.head.name())),
     });
     return cy.TypeValue.init(case_t, case_v);
 }
@@ -444,10 +447,11 @@ pub fn log_(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     const val = ctx.args[0];
     defer c.heap.destructValue2(val_t, val);
 
-    const w = std.debug.lockStderrWriter(&cy.debug.print_buf);
-    defer std.debug.unlockStderrWriter();
-    _ = try c.heap.writeValue(w, val_t.id(), val, false);
-    try w.writeByte('\n');
+    var w = std.Io.Writer.Allocating.init(c.alloc);
+    defer w.deinit();
+    _ = try c.heap.writeValue(&w.writer, val_t.id(), val, false);
+    try w.writer.writeByte('\n');
+    c.vm.log(w.written());
     return cy.TypeValue.init(c.sema.void_t, cy.Value.Void);
 }
 
@@ -551,7 +555,7 @@ pub fn build_option(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
 
 pub fn cy_full_version(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     _ = ctx;
-    const str = try c.heap.newStr(build_options.full_version);
+    const str = try c.heap.newStr(build_config.full_version);
     return cy.TypeValue.init(c.sema.str_t, str);
 }
 
@@ -639,7 +643,7 @@ pub fn is_vm_target(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     return cy.TypeValue.init(c.sema.bool_t, res);
 }
 
-const SystemKind = enum {
+pub const SystemKind = enum {
     linux,
     macos,
     windows,
@@ -717,7 +721,7 @@ pub fn type_struct_state_len(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue
 
 pub fn type_name_rt(t: *cy.Thread) !C.Ret {
     if (!cy.Trace) {
-        return t.prepPanic("Requires `TRACE` mode.");
+        return t.ret_panic("Requires `TRACE` mode.");
     }
 
     const ret = t.ret(cy.heap.Str);
@@ -791,6 +795,8 @@ pub fn type_init(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     }
 }
 
+const field_init = cy.heap.field_init;
+
 fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
     const info_t = (try c.vm.findType("meta.TypeInfo")).?;
     switch (type_.id()) {
@@ -812,7 +818,7 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const bits = type_.cast(.float).bits;
                     const float_info_t = (try c.vm.findType("meta.FloatInfo")).?;
                     const float_info = try c.heap.newInstance(float_info_t, &.{
-                        C.field_init("bits", cy.Value.initInt(bits)),
+                        field_init("bits", cy.Value.initInt(bits)),
                     });
                     return c.heap.newChoice(info_t, "float", float_info);
                 },
@@ -821,7 +827,7 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const trait_ref = type_.cast(.ref_trait);
                     const child_t = cy.Value.initPtr(trait_ref.generic);
                     const case = try c.heap.newInstance(case_t, &.{
-                        C.field_init("child", child_t),
+                        field_init("child", child_t),
                     });
                     return c.heap.newChoice(info_t, "ref_trait", case);
                 },
@@ -830,7 +836,7 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const borrow_trait = type_.cast(.borrow_trait);
                     const child_t = cy.Value.initPtr(borrow_trait.generic);
                     const case = try c.heap.newInstance(case_t, &.{
-                        C.field_init("child", child_t),
+                        field_init("child", child_t),
                     });
                     return c.heap.newChoice(info_t, "borrow_trait", case);
                 },
@@ -839,7 +845,7 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const borrow = type_.cast(.borrow);
                     const child_t = cy.Value.initPtr(borrow.child_t);
                     const borrow_info = try c.heap.newInstance(borrow_info_t, &.{
-                        C.field_init("child", child_t),
+                        field_init("child", child_t),
                     });
                     return c.heap.newChoice(info_t, "borrow", borrow_info);
                 },
@@ -848,7 +854,7 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const pointer = type_.cast(.pointer);
                     const child_t = cy.Value.initPtr(pointer.child_t);
                     const ptr_info = try c.heap.newInstance(ptr_info_t, &.{
-                        C.field_init("child", child_t),
+                        field_init("child", child_t),
                     });
                     if (pointer.ref) {
                         return c.heap.newChoice(info_t, "ref", ptr_info);
@@ -860,7 +866,7 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const raw_t = type_.cast(.raw);
                     const raw_info_t = (try c.vm.findType("meta.RawInfo")).?;
                     const raw_info = try c.heap.newInstance(raw_info_t, &.{
-                        C.field_init("bits", cy.Value.initInt(raw_t.bits)),
+                        field_init("bits", cy.Value.initInt(raw_t.bits)),
                     });
                     return c.heap.newChoice(info_t, "raw", raw_info);
                 },
@@ -868,7 +874,7 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const int_t = type_.cast(.int);
                     const int_info_t = (try c.vm.findType("meta.IntInfo")).?;
                     const int_info = try c.heap.newInstance(int_info_t, &.{
-                        C.field_init("bits", cy.Value.initInt(int_t.bits)),
+                        field_init("bits", cy.Value.initInt(int_t.bits)),
                     });
                     return c.heap.newChoice(info_t, "int", int_info);
                 },
@@ -879,7 +885,7 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const name = type_.name();
                     const trait_info_t = (try c.vm.findType("meta.GenTraitInfo")).?;
                     const trait_info = try c.heap.newInstance(trait_info_t, &.{
-                        C.field_init("name", try c.heap.newStr(name)),
+                        field_init("name", try c.heap.newStr(name)),
                     });
                     return c.heap.newChoice(info_t, "gen_trait", trait_info);
                 },
@@ -887,8 +893,8 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const vector_t = type_.cast(.partial_vector);
                     const vector_info_t = (try c.vm.findType("meta.VectorInfo")).?;
                     const vector_info = try c.heap.newInstance(vector_info_t, &.{
-                        C.field_init("len", cy.Value.initInt(@intCast(vector_t.n))),
-                        C.field_init("elem", cy.Value.initPtr(vector_t.elem_t)),
+                        field_init("len", cy.Value.initInt(@intCast(vector_t.n))),
+                        field_init("elem", cy.Value.initPtr(vector_t.elem_t)),
                     });
                     return c.heap.newChoice(info_t, "partial_vector", vector_info);
                 },
@@ -896,8 +902,8 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const vector_t = type_.cast(.vector);
                     const vector_info_t = (try c.vm.findType("meta.VectorInfo")).?;
                     const vector_info = try c.heap.newInstance(vector_info_t, &.{
-                        C.field_init("len", cy.Value.initInt(@intCast(vector_t.n))),
-                        C.field_init("elem", cy.Value.initPtr(vector_t.elem_t)),
+                        field_init("len", cy.Value.initInt(@intCast(vector_t.n))),
+                        field_init("elem", cy.Value.initPtr(vector_t.elem_t)),
                     });
                     return c.heap.newChoice(info_t, "vector", vector_info);
                 },
@@ -905,7 +911,7 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const opt_info_t = (try c.vm.findType("meta.OptionInfo")).?;
                     const elem_t = cy.Value.initPtr(type_.sym().instance.?.params[0].asPtr(*cy.Type));
                     const opt_info = try c.heap.newInstance(opt_info_t, &.{
-                        C.field_init("child", @bitCast(elem_t)),
+                        field_init("child", @bitCast(elem_t)),
                     });
                     return c.heap.newChoice(info_t, "option", opt_info);
                 },
@@ -913,7 +919,7 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const res_info_t = (try c.vm.findType("meta.ResultInfo")).?;
                     const elem_t = cy.Value.initPtr(type_.sym().instance.?.params[0].asPtr(*cy.Type));
                     const opt_info = try c.heap.newInstance(res_info_t, &.{
-                        C.field_init("child", @bitCast(elem_t)),
+                        field_init("child", @bitCast(elem_t)),
                     });
                     return c.heap.newChoice(info_t, "result", opt_info);
                 },
@@ -927,8 +933,8 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const buffer = try c.heap.new_buffer_undef(buffer_t, cases.len);
                     for (cases, 0..) |case, i| {
                         const case_v = try c.heap.newInstance(choice_case_t, &.{
-                            C.field_init("name", try c.heap.newStr(case.name())),
-                            C.field_init("type", cy.Value.initPtr(case.payload_t)),
+                            field_init("name", try c.heap.newStr(case.name())),
+                            field_init("type", cy.Value.initPtr(case.payload_t)),
                         });
                         defer c.heap.release(case_v);
                         try buffer.asHeapObject().buffer.initElem(c.heap, choice_case_t, i, case_v.asHeapObject().object.getBytePtr());
@@ -938,8 +944,8 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const str_t = (try c.vm.findType("?str")).?.cast(.option);
                     const namev = try c.heap.newSome(str_t, try c.heap.newStr(name));
                     const choice_info = try c.heap.newInstance(choice_info_t, &.{
-                        C.field_init("name", namev),
-                        C.field_init("cases", buffer),
+                        field_init("name", namev),
+                        field_init("cases", buffer),
                     });
                     return c.heap.newChoice(info_t, "choice", choice_info);
                 },
@@ -953,7 +959,7 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const buffer = try c.heap.new_buffer_undef(buffer_t, cases.len);
                     for (cases, 0..) |case, i| {
                         const case_v = try c.heap.newInstance(enum_case_t, &.{
-                            C.field_init("name", try c.heap.newStr(case.head.name())),
+                            field_init("name", try c.heap.newStr(case.head.name())),
                         });
                         defer c.heap.release(case_v);
                         try buffer.asHeapObject().buffer.initElem(c.heap, enum_case_t, i, case_v.asHeapObject().object.getBytePtr());
@@ -962,8 +968,8 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const str_t = (try c.vm.findType("?str")).?.cast(.option);
                     const namev = try c.heap.newSome(str_t, try c.heap.newStr(name));
                     const enum_info = try c.heap.newInstance(enum_info_t, &.{
-                        C.field_init("name", namev),
-                        C.field_init("cases", buffer),
+                        field_init("name", namev),
+                        field_init("cases", buffer),
                     });
                     return c.heap.newChoice(info_t, "enum", enum_info);
                 },
@@ -975,8 +981,8 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const buffer = try c.heap.new_buffer_undef(buffer_t, cases.len);
                     for (cases, 0..) |case, i| {
                         const case_v = try c.heap.newInstance(case_t, &.{
-                            C.field_init("name", try c.heap.newStr(case.name())),
-                            C.field_init("type", cy.Value.initPtr(case.payload_t)),
+                            field_init("name", try c.heap.newStr(case.name())),
+                            field_init("type", cy.Value.initPtr(case.payload_t)),
                         });
                         defer c.heap.release(case_v);
                         try buffer.asHeapObject().buffer.initElem(c.heap, case_t, i, case_v.asHeapObject().object.getBytePtr());
@@ -987,8 +993,8 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const namev = try c.heap.newSome(str_t, try c.heap.newStr(name));
                     const cunion_info_t = (try c.vm.findType("meta.CUnionInfo")).?;
                     const info = try c.heap.newInstance(cunion_info_t, &.{
-                        C.field_init("name", namev),
-                        C.field_init("cases", buffer),
+                        field_init("name", namev),
+                        field_init("cases", buffer),
                     });
                     return c.heap.newChoice(info_t, "cunion", info);
                 },
@@ -1000,10 +1006,10 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const buffer = try c.heap.new_buffer_undef(buffer_t, fields.len);
                     for (fields, 0..) |field, i| {
                         const f = try c.heap.newInstance(field_t, &.{
-                            C.field_init("name", try c.heap.newStr(field.sym.head.name())),
-                            C.field_init("type", cy.Value.initPtr(field.type)),
-                            C.field_init("offset", cy.Value.initInt(@intCast(field.offset))),
-                            C.field_init("state_offset", cy.Value.initInt(@intCast(field.state_offset))),
+                            field_init("name", try c.heap.newStr(field.sym.head.name())),
+                            field_init("type", cy.Value.initPtr(field.type)),
+                            field_init("offset", cy.Value.initInt(@intCast(field.offset))),
+                            field_init("state_offset", cy.Value.initInt(@intCast(field.state_offset))),
                         });
                         defer c.heap.release(f);
                         try buffer.asHeapObject().buffer.initElem(c.heap, field_t, i, f.asHeapObject().object.getBytePtr());
@@ -1014,15 +1020,15 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     if (struct_t.cstruct) {
                         const struct_info_t = (try c.vm.findType("meta.CStructInfo")).?;
                         const struct_info = try c.heap.newInstance(struct_info_t, &.{
-                            C.field_init("name", @bitCast(namev)),
-                            C.field_init("fields", buffer),
+                            field_init("name", @bitCast(namev)),
+                            field_init("fields", buffer),
                         });
                         return c.heap.newChoice(info_t, "cstruct", struct_info);
                     } else {
                         const struct_info_t = (try c.vm.findType("meta.StructInfo")).?;
                         const struct_info = try c.heap.newInstance(struct_info_t, &.{
-                            C.field_init("name", @bitCast(namev)),
-                            C.field_init("fields", buffer),
+                            field_init("name", @bitCast(namev)),
+                            field_init("fields", buffer),
                         });
                         return c.heap.newChoice(info_t, "struct", struct_info);
                     }
@@ -1067,10 +1073,10 @@ pub fn type_field(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     const field_t = (try c.findResolvedType("meta.StructField", ctx.node)).?;
     const struct_field = type_.cast(.struct_t).fields()[field.idx];
     const val = try c.heap.newInstance(field_t, &.{
-        C.field_init("name", try c.heap.newStr(name)),
-        C.field_init("type", cy.Value.initPtr(struct_field.type)),
-        C.field_init("offset", cy.Value.initInt(@intCast(struct_field.offset))),
-        C.field_init("state_offset", cy.Value.initInt(@intCast(struct_field.state_offset))),
+        field_init("name", try c.heap.newStr(name)),
+        field_init("type", cy.Value.initPtr(struct_field.type)),
+        field_init("offset", cy.Value.initInt(@intCast(struct_field.offset))),
+        field_init("state_offset", cy.Value.initInt(@intCast(struct_field.state_offset))),
     });
     return cy.TypeValue.init(field_t, val);
 }
@@ -1090,16 +1096,16 @@ fn newFuncInfo(c: *cy.Chunk, kind: u8, sig: *cy.FuncSig) !cy.Value {
     const buffer = try c.heap.new_buffer_undef(buffer_t, params.len);
     for (params, 0..) |param, i| {
         const p = try c.heap.newInstance(param_t, &.{
-            C.field_init("type", cy.Value.initPtr(param.get_type())),
+            field_init("type", cy.Value.initPtr(param.get_type())),
         });
         defer c.heap.release(p);
         try buffer.asHeapObject().buffer.initElem(c.heap, param_t, i, p.asHeapObject().object.getBytePtr());
     }
 
     return c.heap.newInstance(func_info_t, &.{
-        C.field_init("kind", cy.Value.initInt(kind)),
-        C.field_init("ret", cy.Value.initPtr(sig.ret)),
-        C.field_init("params", buffer),
+        field_init("kind", cy.Value.initInt(kind)),
+        field_init("ret", cy.Value.initPtr(sig.ret)),
+        field_init("params", buffer),
     });
 }
 
@@ -1135,4 +1141,22 @@ fn type_is_instance_of(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     const template = sym.cast(.template);
     const is_instance = type_.isInstanceOf(template);
     return cy.TypeValue.init(c.sema.bool_t, cy.Value.initBool(is_instance));
+}
+
+fn trace_retains(t: *cy.Thread) callconv(.c) C.Ret {
+    const ret = t.ret(i64);
+
+    if (!cy.Trace) return t.ret_panic("Requires TRACE.");
+
+    ret.* = t.heap.c.numRetains;
+    return C.RetOk;
+}
+
+fn trace_releases(t: *cy.Thread) callconv(.c) C.Ret {
+    const ret = t.ret(i64);
+
+    if (!cy.Trace) return t.ret_panic("Requires TRACE.");
+
+    ret.* = t.heap.c.numReleases;
+    return C.RetOk;
 }

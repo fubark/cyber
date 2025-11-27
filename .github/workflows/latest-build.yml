@@ -106,7 +106,7 @@ jobs:
       BUILD_CMD: ${{ matrix.config.cmd }}
       BIN_NAME: cyber
       BIN_EXT: ${{ contains(matrix.config.target, 'windows') && '.exe' || '' }}
-      ZIG_MODE_FLAG: ${{ (matrix.config.mode == 'release' && '-Doptimize=ReleaseFast') || '' }}
+      ZIG_MODE_FLAG: ${{ (matrix.config.mode == 'release' && '-Doptimize=ReleaseSafe') || '' }}
       DEV_FLAG: ${{ startsWith(github.ref, 'refs/tags/') && '-Ddev=false' || '' }}
       ZIG_VERSION: 0.15.2
     steps:
@@ -206,11 +206,10 @@ jobs:
         run: |
           zig build test ${{ env.ZIG_TARGET_FLAG }} ${{ env.DEV_FLAG }}
 
-      # Optimize with ReleaseSafe since there are issues with Zig 0.11.0 and building tests for ReleaseFast.
       - name: Run tests. (release)
         if: env.BUILD_TARGET != 'wasm32-wasi' && (env.BUILD_CMD == 'cli' || (env.BUILD_CMD == 'lib' && env.BUILD_TARGET != 'x86_64-windows-msvc'))
         run: |
-          zig build test ${{ env.ZIG_TARGET_FLAG }} ${{ env.DEV_FLAG}} -Doptimize=ReleaseFast
+          zig build test ${{ env.ZIG_TARGET_FLAG }} ${{ env.DEV_FLAG}} -Doptimize=ReleaseSafe
 
       - name: Run tests.
         if: env.BUILD_TARGET == 'wasm32-freestanding' || env.BUILD_TARGET == 'wasm32-wasi'

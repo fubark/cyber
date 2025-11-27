@@ -30,9 +30,6 @@ pub const BuiltinsData = struct {
     PtrSpanByte: *cy.Type,
 };
 
-pub const ModuleData = struct {
-};
-
 const types = [_]struct{[]const u8, C.BindType}{
     .{"void",           C.TYPE_CREATE(createVoidType)},
     .{"never",          C.TYPE_CREATE(createNeverType)},
@@ -268,19 +265,13 @@ const funcs = [_]struct{[]const u8, C.BindFunc}{
     .{"Generator[].status", cFunc(Generator_status)},
     .{"Generator[].next",   zErrCtFunc(Generator_next, null)},
     .{"Generator[].end",    zErrCtFunc(Generator_end, null)},
-
-    .{"traceRetains",   cFunc(traceRetains)},
-    .{"traceReleases",  cFunc(traceReleases)},
 };
 
 comptime {
-    @export(&bind, .{ .name = "cl_mod_core", .linkage = .strong });
+    @export(&bind, .{ .name = "cl_mod_bind_core", .linkage = .strong });
 }
 
-pub fn bind(vm: *cy.VM, mod: *C.Sym) callconv(.c) void {
-    const data = vm.alloc.create(ModuleData) catch @panic("error");
-    data.* = .{};
-
+pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
     for (funcs) |e| {
         C.mod_add_func(mod, e.@"0", e.@"1");
     }
@@ -290,14 +281,6 @@ pub fn bind(vm: *cy.VM, mod: *C.Sym) callconv(.c) void {
     }
 
     C.mod_on_load(mod, onLoad);
-    C.mod_on_destroy(mod, onDestroy);
-    C.mod_set_data(mod, @ptrCast(data));
-}
-
-fn onDestroy(vm_: ?*C.VM, mod: ?*C.Sym) callconv(.c) void {
-    const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-    const data: *ModuleData = @ptrCast(@alignCast(C.mod_get_data(mod)));
-    vm.alloc.destroy(data);
 }
 
 fn onLoad(vm: ?*C.VM, mod: ?*C.Sym) callconv(.c) void {
@@ -487,8 +470,7 @@ pub fn prepPanicZError(t: *cy.Thread, err: anyerror, optTrace: ?*std.builtin.Sta
             std.debug.dumpStackTrace(trace.*);
         }
     }
-    const sym = errorSymbol(err);
-    return t.ret_panic(@tagName(sym));
+    return t.ret_panic(@errorName(err));
 }
 
 fn createFuncSymType(vm: ?*C.VM, c_mod: ?*C.Sym, decl: ?*C.Node) callconv(.c) *C.Type {
@@ -909,38 +891,6 @@ fn createVectorType(vm: ?*C.VM, c_mod: ?*C.Sym, decl: ?*C.Node) callconv(.c) ?*C
     return @ptrCast(new_t);
 }
 
-fn errorSymbol(err: anyerror) Symbol {
-    switch (err) {
-        error.AssertError           => return .AssertError,
-        error.EvalError             => return .EvalError,
-        error.Unicode               => return .Unicode,
-        error.InvalidResult         => return .InvalidResult,
-        error.InvalidArgument       => return .InvalidArgument,
-        error.InvalidEnumTag        => return .InvalidArgument,
-        error.FileNotFound          => return .FileNotFound,
-        error.OutOfBounds           => return .OutOfBounds,
-        error.PermissionDenied      => return .PermissionDenied,
-        error.StdoutStreamTooLong   => return .StreamTooLong,
-        error.StderrStreamTooLong   => return .StreamTooLong,
-        error.EndOfStream           => return .EndOfStream,
-        error.Unsupported           => return .Unsupported,
-        error.ParseError            => return .ParseError,
-        else                        => return .UnknownError,
-    }
-}
-
-fn traceRetains(t: *cy.Thread) callconv(.c) C.Ret {
-    const ret = t.ret(i64);
-    ret.* = t.heap.c.numRetains;
-    return C.RetOk;
-}
-
-fn traceReleases(t: *cy.Thread) callconv(.c) C.Ret {
-    const ret = t.ret(i64);
-    ret.* = t.heap.c.numReleases;
-    return C.RetOk;
-}
-
 pub fn copyStruct(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !void {
     const struct_t = ctx.func.sig.ret.cast(.struct_t);
 
@@ -1345,7 +1295,7 @@ pub fn log(t: *cy.Thread) callconv(.c) C.Ret {
     _ = t.ret(void);
     const str = t.param(cy.heap.Str);
     defer t.heap.destructStr(&str);
-    t.c.vm.log.?(@ptrCast(t.c.vm), C.to_bytes(str.slice()));
+    t.c.vm.log(str.slice());
     return C.RetOk;
 }
 
@@ -1501,7 +1451,7 @@ pub fn completeFuture(t: *cy.Thread, future: cy.heap.Future) !void {
     var opt_node = future.inner.cont_head;
     while (opt_node != cy.NullId) {
         const node = &t.c.vm.task_nodes.items[opt_node];
-        try t.c.vm.ready_tasks.writeItem(node.task);
+        // try t.c.vm.ready_tasks.writeItem(node.task);
         opt_node = node.next;
         node.task.type = .dead;
     }
@@ -1791,10 +1741,12 @@ fn FuncSig_param_at(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
 
     const param_t = ctx.func.sig.ret;
     const param = try c.heap.newInstance(param_t, &.{
-        C.field_init("type", cy.Value.initPtr(sig.params_ptr[@intCast(idx)].get_type())),
+        field_init("type", cy.Value.initPtr(sig.params_ptr[@intCast(idx)].get_type())),
     });
     return cy.TypeValue.init(param_t, param);
 }
+
+const field_init = cy.heap.field_init;
 
 fn Vector_ct_repeat(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     const array_t = ctx.func.parent.parent.?.cast(.type).type.cast(.vector);

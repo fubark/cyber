@@ -1255,7 +1255,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(127, std.enums.values(OpCode).len);
+    try t.eq(126, std.enums.values(OpCode).len);
     try t.eq(@sizeOf(Inst), 1);
     try t.eq(@sizeOf(DebugSym), 16);
 }

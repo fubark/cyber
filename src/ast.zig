@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const C = cy.C;
 const log = cy.log.scoped(.ast);
 
 pub const NodeType = enum(u8) {
@@ -1041,6 +1042,14 @@ pub const Node = struct {
 
     pub fn setType(self: *Node, node_t: NodeType) void {
         @as(*NodeHeader, @ptrFromInt(@intFromPtr(self) - 1)).*.type = node_t;
+    }
+
+    pub fn from_c(node: *C.Node) *Node {
+        return @ptrCast(node);
+    }
+
+    pub fn to_c(self: *Node) *C.Node {
+        return @ptrCast(self);
     }
 
     pub fn cast(self: *Node, comptime node_t: NodeType) *NodeData(node_t) {

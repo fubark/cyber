@@ -11,9 +11,3 @@ pub const TestBackend = enum {
     tcc,
     cc,
 };
-
-pub const Allocator = enum {
-    zig,
-    malloc,
-    mimalloc,
-};

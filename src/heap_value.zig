@@ -1,5 +1,5 @@
 const std = @import("std");
-const build_options = @import("build_options");
+const build_config = @import("build_config");
 const vmc = @import("vmc");
 const cy = @import("cyber.zig");
 const C = @import("capi.zig");
@@ -9,7 +9,7 @@ const bt = cy.types.BuiltinTypes;
 
 const log = cy.log.scoped(.heap_value);
 
-const log_mem = build_options.log_mem;
+const log_mem = build_config.log_mem;
 const log_free = log_mem and true;
 
 pub fn moveValueTo(self: *cy.Heap, val_t: *cy.Type, dst: [*]u8, val: Value) void {
@@ -477,10 +477,8 @@ pub inline fn retainObject(self: *cy.Heap, obj: *cy.HeapObject) void {
         log.tracevIf(log_mem, "{} +1, {s}, {*}", .{obj.rc(), self.getType(obj.getTypeId()).name(), obj});
     }
     obj.retain();
-    if (cy.TrackGlobalRC) {
-        self.c.refCounts += 1;
-    }
     if (cy.Trace) {
+        self.c.refCounts += 1;
         self.c.numRetains += 1;
     }
 }
@@ -492,10 +490,8 @@ pub inline fn retainInc(self: *cy.Heap, val: cy.Value, inc: u32) void {
         log.tracevIf(log_mem, "{} +{}, {s}, {*}", .{obj.head.rc, inc, self.getTypeName(obj.getTypeId()), obj});
     }
     obj.head.rc += inc;
-    if (cy.TrackGlobalRC) {
-        self.c.refCounts += inc;
-    }
     if (cy.Trace) {
+        self.c.refCounts += inc;
         self.c.trace.numRetains += inc;
     }
 }
@@ -505,12 +501,12 @@ pub fn releaseOpaque(self: *cy.Heap, obj: *anyopaque) void {
 }
 
 pub fn releaseObject(self: *cy.Heap, obj: *cy.HeapObject) void {
-    releaseObject2(self, obj, false, {});
+    releaseObject2(self, obj, false);
 }
 
-pub fn releaseObject2(self: *cy.Heap, obj: *cy.HeapObject, comptime gc: bool, res: if (gc) *C.GCResult else void) void {
+pub fn releaseObject2(self: *cy.Heap, obj: *cy.HeapObject, comptime fatal: bool) void {
     if (releaseOnly(self, obj)) {
-        @call(.never_inline, destroyObject, .{self, obj, gc, res});
+        @call(.never_inline, destroyObject, .{self, obj, fatal});
     }
 }
 
@@ -524,21 +520,17 @@ pub fn releaseOnly(self: *cy.Heap, obj: *cy.HeapObject) bool {
         if (self.checkDoubleFree(obj)) {
             std.debug.panic("Double free. {*}", .{obj});
         }
-        if (cy.TrackGlobalRC) {
-            if (self.c.refCounts == 0) {
-                std.debug.print("Double free. {}\n", .{obj.getTypeId()});
-                cy.fatal();
-            }
+        if (self.c.refCounts == 0) {
+            std.debug.print("Double free. {}\n", .{obj.getTypeId()});
+            cy.fatal();
         }
     }
     if (cy.TraceRC) {
         log.tracevIf(log_mem, "{} -1, {s}, {*}", .{obj.rc(), self.getType(obj.getTypeId()).name(), obj});
     }
     obj.release();
-    if (cy.TrackGlobalRC) {
-        self.c.refCounts -= 1;
-    }
     if (cy.Trace) {
+        self.c.refCounts -= 1;
         self.c.numReleases += 1;
     }
     return obj.rc() == 0;
@@ -561,7 +553,7 @@ pub fn unbox2(self: *cy.Heap, val: Value, type_id: cy.TypeId) !Value {
             return Value.initRaw(0);
         },
         bt.Bool => {
-            return Value.initBool(val.asRefBool());
+            return Value.initBool(val.asPtr(*bool).*);
         },
         bt.F64 => {
             return Value.initFloat64(val.asRefF64());
@@ -614,7 +606,7 @@ pub fn unbox(self: *cy.Heap, val: Value) !cy.Value {
     return unbox2(self, val, type_id);
 }
 
-pub fn destroyObject(self: *cy.Heap, obj: *cy.heap.HeapObject, comptime fatal: bool, res: if (fatal) *C.GCResult else void) void {
+pub fn destroyObject(self: *cy.Heap, obj: *cy.heap.HeapObject, comptime fatal: bool) void {
     if (cy.Trace) {
         if (obj.isFreed()) {
             cy.panicFmt("Double free object: {*} Should have been discovered in release op.", .{obj});
@@ -855,9 +847,6 @@ pub fn destroyObject(self: *cy.Heap, obj: *cy.heap.HeapObject, comptime fatal: b
                 },
             }
         },
-    }
-    if (fatal) {
-        res.num_obj_freed += 1;
     }
     if (cy.Trace) {
         if (self.countFrees) {

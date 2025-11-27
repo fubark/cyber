@@ -6,8 +6,7 @@ const vmc = cy.vmc;
 const rt = cy.rt;
 const bt = cy.types.BuiltinTypes;
 const Value = cy.Value;
-const mi = @import("mimalloc");
-const build_options = @import("build_options");
+const build_config = @import("build_config");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const std = @import("std");
@@ -16,119 +15,7 @@ const tcc = @import("tcc");
 const log = cy.log.scoped(.heap);
 const NullId = std.math.maxInt(u32);
 const NullU8 = std.math.maxInt(u8);
-const log_mem = build_options.log_mem;
-
-var gpa: std.heap.GeneralPurposeAllocator(.{
-    .enable_memory_limit = false,
-    .stack_trace_frames = if (builtin.mode == .Debug) 12 else 0,
-}) = .{};
-var miAlloc: mi.Allocator = undefined;
-var trace_allocator: TraceAllocator = undefined;
-var initedAllocator = false;
-
-fn initAllocator() void {
-    defer initedAllocator = true;
-    switch (cy.Malloc) {
-        .zig, .malloc => return,
-        .mimalloc => {
-            miAlloc.init();
-        },
-    }
-    // var traceAlloc: stdx.heap.TraceAllocator = undefined;
-    // traceAlloc.init(miAlloc.allocator());
-    // traceAlloc.init(child);
-    // defer traceAlloc.dump();
-    // const alloc = traceAlloc.allocator();
-}
-
-pub fn getAllocator() std.mem.Allocator {
-    if (!initedAllocator) {
-        initAllocator();
-    }
-    switch (cy.Malloc) {
-        .mimalloc => {
-            return miAlloc.allocator();
-        },
-        .malloc => {
-            return std.heap.c_allocator;
-        },
-        .zig => {
-            if (builtin.is_test) {
-                if (cy.Trace) {
-                    trace_allocator.alloc_ = t.alloc;
-                    return trace_allocator.allocator();
-                } else {
-                    return t.alloc;
-                }
-            }
-            if (cy.isWasm) {
-                return std.heap.wasm_allocator;
-            } else {
-                return gpa.allocator();
-            }
-        },
-    }
-}
-
-pub fn deinitAllocator() void {
-    switch (cy.Malloc) {
-        .mimalloc => {
-            miAlloc.deinit();
-            initedAllocator = false;
-        },
-        .malloc => {
-            return;
-        },
-        .zig => {
-            if (cy.isWasm) {
-                return;
-            } else {
-                _ = gpa.deinit();
-                initedAllocator = false;
-            }
-        },
-    }
-}
-
-// Uses a backing allocator and zeros the freed memory to surface UB more consistently.
-pub const TraceAllocator = struct {
-    alloc_: std.mem.Allocator,
-
-    const vtable = std.mem.Allocator.VTable{
-        .alloc = alloc,
-        .resize = resize,
-        .free = free,
-        .remap = remap,
-    };
-
-    pub fn allocator(self: *TraceAllocator) std.mem.Allocator {
-        return std.mem.Allocator{
-            .ptr = self,
-            .vtable = &vtable,
-        };
-    }
-
-    fn alloc(ptr: *anyopaque, len: usize, log2_align: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
-        const self: *TraceAllocator = @ptrCast(@alignCast(ptr));
-        return self.alloc_.rawAlloc(len, log2_align, ret_addr);
-    }
-
-    fn resize(ptr: *anyopaque, buf: []u8, log2_align: std.mem.Alignment, new_len: usize, ret_addr: usize) bool {
-        const self: *TraceAllocator = @ptrCast(@alignCast(ptr));
-        return self.alloc_.rawResize(buf, log2_align, new_len, ret_addr);
-    }
-
-    fn remap(ptr: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {
-        const self: *TraceAllocator = @ptrCast(@alignCast(ptr));
-        return self.alloc_.rawRemap(memory, alignment, new_len, ret_addr);
-    }
-
-    fn free(ptr: *anyopaque, buf: []u8, log2_align: std.mem.Alignment, ret_addr: usize) void {
-        const self: *TraceAllocator = @ptrCast(@alignCast(ptr));
-        @memset(buf, 0);
-        return self.alloc_.rawFree(buf, log2_align, ret_addr);
-    }
-};
+const log_mem = build_config.log_mem;
 
 pub const ObjectTrace = struct {
     /// Triggered at a specific event_id.
@@ -190,7 +77,7 @@ pub const Heap = struct {
                 .ctx = cy.NullId,
                 .numRetains = 0,
                 .numReleases = 0,
-                .refCounts = if (cy.TrackGlobalRC) 0 else undefined,
+                .refCounts = 0,
                 .trace_event = 1,
             },
         };
@@ -397,8 +284,8 @@ pub const Heap = struct {
         const dst = new.object.getBytePtr();
 
         const mod = type_.sym().getMod();
-        for (field_inits) |field_init| {
-            const name = C.from_bytes(field_init.name);
+        for (field_inits) |finit| {
+            const name = C.from_bytes(finit.name);
             const sym = mod.getSym(name) orelse {
                 cy.panicFmt("No such field `{s}`.", .{name});
             };
@@ -408,7 +295,7 @@ pub const Heap = struct {
             }
             const field = fields[sym.cast(.field).idx];
 
-            const val = @as(Value, @bitCast(field_init.value));
+            const val = @as(Value, @bitCast(finit.value));
             self.moveValueTo(field.type, dst + field.offset, val);
         }
         return Value.initPtr(new);
@@ -1081,13 +968,9 @@ pub fn allocBigObject(self: *Heap, type_id: cy.TypeId, size: usize) !*HeapObject
     ptr_obj.pointer.ptr = obj;
 
     log.tracevIf(log_mem, "0 +1 alloc big object: {*} type={} evt={}", .{obj, type_id, cy.event_id});
-    if (cy.TrackGlobalRC) {
+    if (cy.Trace) {
         self.c.refCounts += 1;
-    }
-    if (cy.Trace) {
         self.c.numRetains += 1;
-    }
-    if (cy.Trace) {
         try traceAlloc(self, obj);
     }
     return obj;
@@ -1147,14 +1030,9 @@ pub fn allocPoolObject(self: *Heap, type_id: cy.TypeId) !*HeapObject {
             // Ensure tail is updated if it was the same segment as head.
             self.heapFreeTail = self.heapFreeHead;
         }
-    }
-    if (cy.TrackGlobalRC) {
         self.c.refCounts += 1;
-    }
-    if (cy.Trace) {
         self.c.numRetains += 1;
     }
-
     return ptr;
 }
 
@@ -1162,9 +1040,9 @@ pub fn new_buffer_undef(self: *Heap, buffer_t: *cy.Type, len: usize) !Value {
     const elem_t = buffer_t.sym().instance.?.params[0].asPtr(*cy.Type);
     const ptr = try self.new_byte_buffer(elem_t.size() * len);
     return self.newInstance(buffer_t, &.{
-        C.field_init("base", Value.initPtr(ptr)),
-        C.field_init("length", Value.initInt(@intCast(len))),
-        C.field_init("header", Value.initInt(@intCast(len))),
+        field_init("base", Value.initPtr(ptr)),
+        field_init("length", Value.initInt(@intCast(len))),
+        field_init("header", Value.initInt(@intCast(len))),
     });
 }
 
@@ -1172,10 +1050,14 @@ pub fn new_buffer_empty(self: *Heap, buffer_t: *cy.Type, cap: usize) !Value {
     const elem_t = buffer_t.sym().instance.?.params[0].asPtr(*cy.Type);
     const ptr = try self.new_byte_buffer(elem_t.size() * cap);
     return self.newInstance(buffer_t, &.{
-        C.field_init("base", Value.initPtr(ptr)),
-        C.field_init("length", Value.initInt(0)),
-        C.field_init("header", Value.initInt(@intCast(cap))),
+        field_init("base", Value.initPtr(ptr)),
+        field_init("length", Value.initInt(0)),
+        field_init("header", Value.initInt(@intCast(cap))),
     });
+}
+
+pub fn field_init(name: []const u8, val: Value) C.FieldInit {
+    return .{ .name = C.to_bytes(name), .value = @bitCast(val) };
 }
 
 pub fn new_buffer(self: *Heap, buffer_t: *cy.Type, args: []Value) !Value {
@@ -1187,9 +1069,9 @@ pub fn new_buffer(self: *Heap, buffer_t: *cy.Type, args: []Value) !Value {
     }
 
     return self.newInstance(buffer_t, &.{
-        C.field_init("base", Value.initPtr(ptr)),
-        C.field_init("length", Value.initInt(@intCast(args.len))),
-        C.field_init("header", Value.initInt(@intCast(args.len))),
+        field_init("base", Value.initPtr(ptr)),
+        field_init("length", Value.initInt(@intCast(args.len))),
+        field_init("header", Value.initInt(@intCast(args.len))),
     });
 }
 
@@ -1226,10 +1108,10 @@ pub fn new_slice(self: *Heap, slice_t: *cy.Type, args: []Value) !Value {
         try self.copyValueTo2(elem_t, dst + i * elem_t.size(), arg);
     }
     return self.newInstance(slice_t, &.{
-        C.field_init("buf", Value.initPtr(raw_buffer)),
-        C.field_init("ptr", Value.initPtr(dst)),
-        C.field_init("_len", Value.initInt(@intCast(args.len))),
-        C.field_init("header", Value.initInt(@intCast(args.len))),
+        field_init("buf", Value.initPtr(raw_buffer)),
+        field_init("ptr", Value.initPtr(dst)),
+        field_init("_len", Value.initInt(@intCast(args.len))),
+        field_init("header", Value.initInt(@intCast(args.len))),
     });
 }
 
@@ -1242,9 +1124,9 @@ pub fn newArray(self: *Heap, arr_t: *cy.Type, args: []Value) !Value {
     }
 
     return self.newInstance(arr_t, &.{
-        C.field_init("buf", Value.initPtr(buf.ptr)),
-        C.field_init("length", Value.initInt(@intCast(args.len))),
-        C.field_init("header", Value.initInt(@intCast(args.len))),
+        field_init("buf", Value.initPtr(buf.ptr)),
+        field_init("length", Value.initInt(@intCast(args.len))),
+        field_init("header", Value.initInt(@intCast(args.len))),
     });
 }
 
@@ -1758,10 +1640,7 @@ pub fn getObjectAllocEvent(vm: *Heap, ptr: *HeapObject) u64 {
 }
 
 pub fn isObjectAlreadyFreed(self: *Heap, obj: *cy.HeapObject) bool {
-    if (obj.isFreed()) {
-        // Can check structId for pool objects since they are still in memory.
-        return true;
-    }
+    // NOTE: Cannot check pointer contents since it could be an invalidated big object.
     if (self.objectTraceMap.get(obj)) |trace| {
         // For external objects check for trace entry.
         if (trace.free_ctx != null) {
@@ -1779,23 +1658,23 @@ test "Free object invalidation." {
     // Invalidation only happens in trace mode.
     if (cy.Trace) {
         // Free pool object with no previous free slot invalidates object pointer.
-        var obj = try allocPoolObject(&vm, 100);
-        vm.heap.freePoolObject(obj);
-        try t.eq(obj.getTypeId(), cy.NullId);
+        var obj = try vm.main_thread.heap.allocPoolObject(100);
+        vm.main_thread.heap.freePoolObject(obj);
+        try t.eq(obj.header().object.meta, cy.NullId);
 
         // Free pool object with previous free slot invalidates object pointer.
-        var obj1 = try allocPoolObject(&vm, 100);
-        var obj2 = try allocPoolObject(&vm, 100);
-        vm.heap.freePoolObject(obj1); // Previous slot is freed.
-        vm.heap.freePoolObject(obj2);
-        try t.eq(obj1.getTypeId(), cy.NullId);
-        try t.eq(obj2.getTypeId(), cy.NullId);
+        var obj1 = try vm.main_thread.heap.allocPoolObject(100);
+        var obj2 = try vm.main_thread.heap.allocPoolObject(100);
+        vm.main_thread.heap.freePoolObject(obj1); // Previous slot is freed.
+        vm.main_thread.heap.freePoolObject(obj2);
+        try t.eq(obj1.header().object.meta, cy.NullId);
+        try t.eq(obj2.header().object.meta, cy.NullId);
 
         // Free external object invalidates object pointer.
-        obj = try allocBigObject(&vm, 100, 40);
-        vm.c.debugPc = 123;
-        vm.heap.freeBigObject(obj, 40, false);
-        try t.eq(cy.arc.isObjectAlreadyFreed(&vm, obj), true);
+        obj = try vm.main_thread.heap.allocBigObject(100, 40);
+        vm.main_thread.heap.c.ctx = 123;
+        vm.main_thread.heap.freeBigObject(obj, 40);
+        try t.eq(isObjectAlreadyFreed(&vm.main_thread.heap, obj), true);
     }
 }
 

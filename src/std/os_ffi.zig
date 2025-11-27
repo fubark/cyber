@@ -2,19 +2,13 @@ const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
 const tcc = @import("tcc");
-const cy = @import("../cyber.zig");
-const c = @import("../capi.zig");
-const cli = @import("../cli.zig");
-const rt = cy.rt;
-const Value = cy.Value;
-const core = @import("../builtins/core.zig");
+const app = @import("../app.zig");
+const c = app.C;
+const cli = app.cli;
 const bindings = @import("../builtins/bindings.zig");
 const prepareThrowSymbol = bindings.prepareThrowSymbol;
 const Symbol = bindings.Symbol;
 const os = @import("os.zig");
-const sema = cy.sema;
-const bt = cy.types.BuiltinTypes;
-const types = cy.types;
 
 const log = cy.log.scoped(.ffi);
 
@@ -696,26 +690,6 @@ pub const CFuncData = struct {
     ptr: *anyopaque,
     sig: *cy.FuncSig,
 };
-
-pub fn dlopen(path: []const u8) !std.DynLib {
-    if (builtin.os.tag == .linux and builtin.link_libc) {
-        const path_c = try std.posix.toPosixPath(path);
-        // Place the lookup scope of the symbols in this library ahead of the global scope.
-        const RTLD_DEEPBIND = 0x00008;
-        return std.DynLib{
-            .inner = .{
-                .handle = std.c.dlopen(&path_c, std.c.RTLD.LAZY | RTLD_DEEPBIND) orelse {
-                    return error.FileNotFound;
-                },
-            },
-        };
-    } else {
-        return std.DynLib.open(path);
-    }
-}
-
-pub extern fn __floatundidf(u64) f64;
-pub extern fn __fixunsdfdi(f64) u64;
 
 fn cyRelease(t: *cy.Thread, val: Value) callconv(.c) void {
     t.heap.release(val);

@@ -72,7 +72,7 @@ pub fn performDCE(c: *cy.Compiler) !void {
     defer ctx.stack.deinit(c.alloc);
 
     // Visit main.
-    try ctx.stack.append(c.alloc, c.main_ir);
+    try ctx.stack.append(c.alloc, c.program_ir);
 
     // Visit all destructors that were instantiated.
     for (c.sema.deinit_obj_tmpl.variants.items) |variant| {

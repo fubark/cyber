@@ -498,10 +498,10 @@ pub const HostVar = extern struct {
     decl: ?*ast.GlobalDecl,
     type: *cy.Type,
 
-    ir: ?*ir.Expr,
+    val: ?*anyopaque,
 
     pub fn isResolved(self: *HostVar) bool {
-        return self.ir != null;
+        return self.val != null;
     }
 };
 
@@ -1247,7 +1247,7 @@ pub fn createUserVar(c: *cy.Chunk, parent: *Sym, name: []const u8, decl: ?*ast.G
 pub fn createHostVar(c: *cy.Chunk, parent: *Sym, name: []const u8, decl: ?*ast.GlobalDecl) !*HostVar {
     const sym = try createSym(c.alloc, .hostVar, .{
         .head = Sym.init(.hostVar, parent, name),
-        .ir = null,
+        .val = null,
         .decl = decl,
         .type = &cy.types.NullType,
     });

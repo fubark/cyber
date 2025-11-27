@@ -4,26 +4,15 @@ const expectEqual = std.testing.expectEqual;
 
 pub const alloc = std.testing.allocator;
 
-pub fn expect(pred: bool) !void {
-    try std.testing.expect(pred);
-}
-
-pub fn expectError(act_err_union: anytype, exp: anyerror) !void {
-    return std.testing.expectError(exp, act_err_union);
-}
-
+pub const expect = std.testing.expect;
+pub const expect_error = std.testing.expectError;
 pub const eq = std.testing.expectEqual;
 
-// Currently zig doesn't let you use @TypeOf on a arg to the right. We'll want this when it does.
-// pub fn eq(act: @TypeOf(exp), exp: anytype) !void {
-//     try std.testing.expectEqual(exp, act);
-// }
-
-pub fn eqT(comptime T: type, act: T, exp: T) !void {
+pub fn eqT(comptime T: type, exp: T, act: T) !void {
     try std.testing.expectEqual(exp, act);
 }
 
-pub fn neq(act: anytype, exp: @TypeOf(act)) !void {
+pub fn neq(exp: anytype, act: @TypeOf(exp)) !void {
     // TODO: expectEqual still prints debug messages when not equal.
     std.testing.expectEqual(exp, act) catch return;
     return error.Equal;
@@ -34,17 +23,17 @@ test "neq" {
     try neq(1, 2);
 }
 
-pub fn eqApprox(act: anytype, exp: @TypeOf(act), tolerance: @TypeOf(act)) !void {
+pub fn eqApprox(exp: anytype, act: @TypeOf(exp), tolerance: @TypeOf(exp)) !void {
     try std.testing.expectApproxEqAbs(exp, act, tolerance);
 }
 
-pub fn eqApproxEps(act: anytype, exp: @TypeOf(act)) !void {
+pub fn eqApproxEps(exp: anytype, act: @TypeOf(exp)) !void {
     const eps = comptime std.math.epsilon(@TypeOf(exp));
     try eqApprox(act, exp, eps);
 }
 
 // Format using decimal.
-pub fn eqApproxDec(act: anytype, exp: @TypeOf(act), tolerance: @TypeOf(act)) !void {
+pub fn eqApproxDec(exp: anytype, act: @TypeOf(exp), tolerance: @TypeOf(exp)) !void {
     const T = @TypeOf(exp);
     switch (@typeInfo(T)) {
         .Float => if (!std.math.approxEqAbs(T, exp, act, tolerance)) {
@@ -64,32 +53,27 @@ pub fn eqUnionEnum(act: anytype, exp: @Type(.EnumLiteral)) !void {
     }
 }
 
-pub fn eqStrFree(alloc_: std.mem.Allocator, act: []const u8, exp: []const u8) !void {
+pub fn eqStrFree(alloc_: std.mem.Allocator, exp: []const u8, act: []const u8) !void {
     defer alloc_.free(act);
     try std.testing.expectEqualStrings(exp, act);
 }
 
-pub fn eqStr(act: []const u8, exp: []const u8) !void {
-    try std.testing.expectEqualStrings(exp, act);
-}
+pub const eqStr = std.testing.expectEqualStrings;
+pub const eqSlice = std.testing.expectEqualSlices;
 
-pub fn eqSlice(comptime T: type, act: []const T, exp: []const T) !void {
-    try std.testing.expectEqualSlices(T, exp, act);
-}
-
-pub fn eqStringSlices(act: []const []const u8, exp: []const []const u8) !void {
+pub fn eqStringSlices(exp: []const []const u8, act: []const []const u8) !void {
     const S = struct {
-        fn check(act_: []const u8, exp_: []const u8) !void {
-            try eqSlice(u8, act_, exp_);
+        fn check(exp_: []const u8, act_: []const u8) !void {
+            try eqSlice(u8, exp_, act_);
         }
     };
-    try eqSliceCb([]const u8, S.check, act, exp);
+    try eqSliceCb([]const u8, S.check, exp, act);
 }
 
-pub fn eqSliceCb(comptime T: type, cb: fn (act: T, exp: T) anyerror!void, act_slice: []const T, exp_slice: []const T) !void {
-    try eq(act_slice.len, exp_slice.len);
+pub fn eqSliceCb(comptime T: type, cb: fn (exp: T, act: T) anyerror!void, exp_slice: []const T, act_slice: []const T) !void {
+    try eq(exp_slice.len, act_slice.len);
     for (act_slice, 0..) |act, i| {
-        cb(act, exp_slice[i]) catch |err| {
+        cb(exp_slice[i], act) catch |err| {
             std.debug.print("expected {any}, found {any} at idx {}\n", .{ exp_slice[i], act, i });
             return err;
         };

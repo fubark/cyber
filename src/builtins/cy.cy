@@ -1216,12 +1216,10 @@ type Backend enum:
 
 type EvalConfig:
     single_run          bool    = false
-    file_modules        bool    = false
     gen_all_debug_syms  bool    = false
     backend             Backend = .vm
-    reload              bool    = false
     spawn_exe           bool    = false
-    persist_main_locals bool    = false
+    persist_main        bool    = false
 
 type EvalResult:
     code  int
@@ -1369,7 +1367,7 @@ fn (&REPL) read(read_line ReadLineFn) -> ?str:
             continue
 
 fn (&REPL) eval_print(code str):
-    res := $vm.eval('eval', code, { persist_main_locals=true })
+    res := $vm.eval('eval', code, { persist_main=true })
     if res.code != Success:
         if res.code == ErrorCompile:
             report := $vm.compile_error_summary()

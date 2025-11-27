@@ -200,10 +200,10 @@ pub fn reserveHostVar(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: ?*a
     return sym;
 }
 
-pub fn resolveHostVar(c: *cy.Chunk, sym: *cy.sym.HostVar, var_t: *cy.Type, expr: *ir.Expr) !void {
+pub fn resolveHostVar(c: *cy.Chunk, sym: *cy.sym.HostVar, var_t: *cy.Type, val: *anyopaque) !void {
     _ = c;
     sym.type = var_t;
-    sym.ir = expr;
+    sym.val = val;
 } 
 
 pub fn reserveConst(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: ?*ast.ConstDecl) !*cy.sym.Const {
@@ -473,6 +473,42 @@ pub fn resolveFuncInfo(c: *cy.Chunk, func: *cy.Func, sig: *cy.FuncSig) void {
     _ = c;
     func.sig = sig;
     func.info.resolved = true;
+}
+
+pub fn get_pub_resolved_chunk_sym(c: *cy.Chunk, chunk: *cy.sym.Chunk, name: []const u8, node: *ast.Node) anyerror!?*cy.Sym {
+    _ = node;
+    const mod = chunk.getMod();
+    const sym = mod.getSym(name) orelse return null;
+    switch (sym.type) {
+        .module_alias => {
+            {
+                // TODO: check visibility.
+                return null;
+            }
+            return sym.cast(.module_alias).sym;
+        },
+        .use_alias => {
+            const alias = sym.cast(.use_alias);
+            {
+                // TODO: check visibility.
+                return null;
+            }
+            if (!alias.resolved) {
+                try sema.resolveUseAlias(c, alias);
+            }
+            return alias.sym;
+        },
+        .type_alias => {
+            const alias = sym.cast(.type_alias);
+            if (!alias.resolved) {
+                try sema_type.resolve_type_alias(c, alias);
+            }
+            return &alias.sym.head;
+        },
+        else => {
+            return sym;
+        }
+    }
 }
 
 /// Note that resolved refers to a resolved symbol path and not the underlying symbol content.

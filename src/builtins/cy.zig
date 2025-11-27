@@ -21,10 +21,10 @@ fn create_vm_type(vm: ?*C.VM, c_mod: ?*C.Sym, decl: ?*C.Node) callconv(.c) *C.Ty
 }
 
 comptime {
-    @export(&bind, .{ .name = "cl_mod_cy", .linkage = .strong });
+    @export(&bind, .{ .name = "cl_mod_bind_cy", .linkage = .strong });
 }
 
-pub fn bind(_: *cy.VM, mod: *C.Sym) callconv(.c) void {
+pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
     for (funcs) |e| {
         C.mod_add_func(mod, e.@"0", e.@"1");
     }
@@ -91,7 +91,7 @@ pub fn UserVM_compile_error_summary(t: *cy.Thread) anyerror!C.Ret {
     const uvm = t.param(*UserVM);
     const cvm: *C.VM = @ptrCast(uvm.vm);
     const summary = C.vm_compile_error_summary(cvm);
-    defer C.vm_free(cvm, summary);
+    defer C.vm_freeb(cvm, summary);
     ret.* = try t.heap.init_str(summary);
     return C.RetOk;
 }
@@ -100,7 +100,7 @@ pub fn UserVM_panic_summary(t: *cy.Thread) anyerror!C.Ret {
     const ret = t.ret(cy.heap.Str);
     const uvm = t.param(*UserVM);
     const summary = C.thread_panic_summary(@ptrCast(uvm.vm.main_thread));
-    defer C.vm_free(@ptrCast(uvm.vm), summary);
+    defer C.vm_freeb(@ptrCast(uvm.vm), summary);
     ret.* = try t.heap.init_str(summary);
     return C.RetOk;
 }
@@ -121,7 +121,7 @@ pub fn UserVM_value_desc(t: *cy.Thread) anyerror!C.Ret {
     const uval = t.param(UserValue);
 
     const str = C.value_desc(cvm, val_t, @ptrCast(uval.val));
-    defer C.vm_free(cvm, str);
+    defer C.vm_freeb(cvm, str);
     ret.* = try t.heap.init_str(str);
     return C.RetOk;
 }
@@ -135,12 +135,10 @@ pub fn UserValue_object_type(t: *cy.Thread) anyerror!C.Ret {
 
 const UserEvalConfig = extern struct {
     single_run: bool,
-    file_modules: bool,
     gen_all_debug_syms: bool, 
     backend: u64,
-    reload: bool,
     spawn_exe: bool,
-    persist_main_locals: bool,
+    persist_main: bool,
 };
 
 pub fn UserVM_eval(t: *cy.Thread) !C.Ret {
@@ -153,12 +151,10 @@ pub fn UserVM_eval(t: *cy.Thread) !C.Ret {
 
     const config_c = C.EvalConfig{
         .single_run = config.single_run,
-        .file_modules = config.file_modules,
         .gen_all_debug_syms = config.gen_all_debug_syms,
         .backend = @intCast(config.backend),
-        .reload = config.reload,
         .spawn_exe = config.spawn_exe,
-        .persist_main_locals = config.persist_main_locals,
+        .persist_main = config.persist_main,
     };
 
     var res: C.EvalResult = undefined;
@@ -246,12 +242,16 @@ pub fn _parser_comments(t: *cy.Thread) anyerror!C.Ret {
     return C.RetOk;
 }
 
-fn parserReportFn(cx: *anyopaque, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror {
-    _ = pos;
-    const vm: *cy.VM = @ptrCast(@alignCast(cx));
-    const msg = try cy.fmt.allocFormat(vm.alloc, format, args);
-    defer vm.alloc.free(msg);
+fn parserReportFn(p: *cy.Parser, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror {
+    const msg = try cy.fmt.allocFormat(p.alloc, format, args);
+    defer p.alloc.free(msg);
+
     std.debug.print("{s}\n", .{msg});
+
+    var wa = std.Io.Writer.Allocating.init(p.alloc);
+    defer wa.deinit();
+    try cy.debug.write_user_error_trace2(&wa.writer, p.ast.view(), "<memory>", pos);
+    std.debug.print("{s}\n", .{wa.written()});
     return error.ParseError;
 }
 

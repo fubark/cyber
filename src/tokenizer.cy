@@ -1,3 +1,5 @@
+use meta
+
 src := ```
 use math
 

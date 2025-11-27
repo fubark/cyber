@@ -111,6 +111,10 @@ fn access_result_payload(%T type, rec Code) -> ResultChild[T]
 #[bind, unsafe]
 fn access_result_error(rec Code) -> error
 
+-- TODO: These should be enabled by the trace flag.
+#[bind] fn trace_retains() -> int
+#[bind] fn trace_releases() -> int
+
 --| Raise compile-time error.
 #[consteval]
 fn unsupported() -> never:

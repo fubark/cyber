@@ -8,10 +8,10 @@ const bt = cy.types.BuiltinTypes;
 pub const Src = @embedFile("math.cy");
 
 comptime {
-    @export(&bind, .{ .name = "cl_mod_math", .linkage = .strong });
+    @export(&bind, .{ .name = "cl_mod_bind_math", .linkage = .strong });
 }
 
-pub fn bind(_: *cy.VM, mod: *C.Sym) callconv(.c) void {
+pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
     for (funcs) |e| {
         C.mod_add_func(mod, e.@"0", e.@"1");
     }

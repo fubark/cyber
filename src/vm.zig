@@ -1,6 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const build_options = @import("build_options");
+const build_config = @import("build_config");
 const aarch64 = builtin.cpu.arch == .aarch64;
 const stdx = @import("stdx");
 const fatal = cy.fatal;
@@ -28,8 +28,6 @@ const UserVM = cy.UserVM;
 const logger = cy.log.scoped(.vm);
 
 const trace_panic_at_main_heap_event: u64 = 0;
-
-pub export threadlocal var cur_thread: ?*cy.Thread = null;
 
 const VMC = extern struct {
     consts_ptr: [*]Value,
@@ -79,11 +77,10 @@ pub const VM = struct {
 
     next_thread_id: usize,
 
-    u8Buf: std.ArrayListAligned(u8, .@"8"),
+    u8Buf: std.ArrayList(u8),
 
     /// Tasks in this queue are ready to be executed (not in a waiting state).
     /// `queueTask` appends tasks here.
-    ready_tasks: cy.fifo.LinearFifo(cy.heap.AsyncTask, .Dynamic),
     task_nodes: std.ArrayList(cy.heap.AsyncTaskNode),
 
     /// vtables for trait impls, each vtable contains func ids.
@@ -106,11 +103,7 @@ pub const VM = struct {
     /// Host write hook.
     print: C.PrintFn,
     print_err: C.PrintErrorFn,
-    log: C.LogFn,
-
-    /// Interface used for imports and fetch.
-    httpClient: http.HttpClient,
-    stdHttpClient: if (cy.hasCLI) *http.StdHttpClient else *anyopaque,
+    log_fn: C.LogFn,
 
     /// One TCC state for `bindLib`.
     tcc_state: if (cy.hasFFI) ?*tcc.TCCState else ?*anyopaque,
@@ -161,19 +154,16 @@ pub const VM = struct {
             // Initialize to NullId to indicate vm is still in initing.
             .deinited = false,
             .config = undefined,
-            .httpClient = undefined,
-            .stdHttpClient = undefined,
             .userData = null,
             .data = .{},
             .print = default_print,
             .print_err = default_print_err,
-            .log = default_log,
+            .log_fn = default_log,
             .tempBuf = undefined,
             .last_exe_error = "",
             .last_res = C.Success,
             .num_evals = 0,
             .num_cont_evals = 0,
-            .ready_tasks = cy.fifo.LinearFifo(cy.heap.AsyncTask, .Dynamic).init(alloc),
             .task_nodes = .{},
             .vtables = .{},
             .env_local_saves = .{},
@@ -189,12 +179,6 @@ pub const VM = struct {
         try self.main_thread.init(0, alloc, self);
         if (cy.Trace) {
             self.main_thread.heap.c.trace_panic_at_event = trace_panic_at_main_heap_event;
-        }
-
-        if (cy.hasCLI) {
-            self.stdHttpClient = try alloc.create(http.StdHttpClient);
-            self.stdHttpClient.* = http.StdHttpClient.init(self.alloc);
-            self.httpClient = self.stdHttpClient.iface();
         }
 
         try self.funcSyms.ensureTotalCapacityPrecise(self.alloc, 255);
@@ -249,11 +233,8 @@ pub const VM = struct {
         }
 
         if (reset) {
-            self.ready_tasks.deinit();
-            self.ready_tasks = cy.fifo.LinearFifo(cy.heap.AsyncTask, .Dynamic).init(self.alloc);
             self.task_nodes.clearRetainingCapacity();
         } else {
-            self.ready_tasks.deinit();
             self.task_nodes.deinit(self.alloc);
         }
 
@@ -328,13 +309,6 @@ pub const VM = struct {
         }
 
         if (!reset) {
-            if (cy.hasCLI) {
-                self.httpClient.deinit();
-                self.alloc.destroy(self.stdHttpClient);
-            }
-        }
-
-        if (!reset) {
             self.deinited = true;
         }
 
@@ -356,8 +330,8 @@ pub const VM = struct {
     }
 
     pub fn validate(self: *VM, srcUri: []const u8, src: ?[]const u8, config: C.ValidateConfig) !void {
+        _ = config;
         var compile_c = C.defaultCompileConfig();
-        compile_c.file_modules = config.file_modules;
         compile_c.skip_codegen = true;
         _ = try self.compile(srcUri, src, compile_c);
     }
@@ -366,7 +340,6 @@ pub const VM = struct {
         try self.resetVM();
         self.config = C.defaultEvalConfig();
         self.config.single_run = config.single_run;
-        self.config.file_modules = config.file_modules;
         self.config.gen_all_debug_syms = true;
 
         var tt = cy.debug.timer();
@@ -407,10 +380,9 @@ pub const VM = struct {
 
         var compile_c = C.defaultCompileConfig();
         compile_c.single_run = config.single_run;
-        compile_c.file_modules = config.file_modules;
         compile_c.gen_all_debug_syms = cy.Trace;
         compile_c.backend = config.backend;
-        compile_c.persist_main_locals = config.persist_main_locals;
+        compile_c.persist_main = config.persist_main;
         const res = try self.compiler.compile(src_uri, src, compile_c);
         tt.endPrintVerbose("compile");
 
@@ -506,24 +478,6 @@ pub const VM = struct {
                 .res = null,
                 .res_t = bt.Void,
             };
-        }
-    }
-
-    pub fn dumpStats(self: *const VM) void {
-        const S = struct {
-            fn opCountLess(_: void, a: vmc.OpCount, b: vmc.OpCount) bool {
-                return a.count > b.count;
-            }
-        };
-        std.debug.print("main ops evaled: {}\n", .{self.main_thread.c.trace.totalOpCounts});
-        std.sort.pdq(vmc.OpCount, &self.main_thread.c.trace.opCounts, {}, S.opCountLess);
-        var i: u32 = 0;
-
-        while (i < vmc.NumCodes) : (i += 1) {
-            if (self.main_thread.c.trace.opCounts[i].count > 0) {
-                const op = std.meta.intToEnum(cy.OpCode, self.main_thread.c.trace.opCounts[i].code) catch continue;
-                std.debug.print("\t{s} {}\n", .{@tagName(op), self.main_thread.c.trace.opCounts[i].count});
-            }
         }
     }
 
@@ -717,8 +671,8 @@ pub const VM = struct {
         var tt = cy.debug.timer();
 
         const S = struct {
-            fn parserReport(ctx: *anyopaque, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror {
-                const c: *cy.Chunk = @ptrCast(@alignCast(ctx));
+            fn parserReport(p: *cy.Parser, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror {
+                const c: *cy.Chunk = @ptrCast(@alignCast(p.ctx));
                 _ = try c.compiler.addReportFmt(.parse_err, format, args, c.id, pos);
                 return error.ParseError;
             }
@@ -740,6 +694,18 @@ pub const VM = struct {
         chunk.updateAstView(res.ast);
         if (res.has_error) {
             return error.CompileError;
+        }
+    }
+
+    pub fn log(self: *cy.VM, msg: []const u8) void {
+        self.log_fn.?(@ptrCast(self), C.to_bytes(msg));
+    }
+
+    pub fn log_tracev(self: *cy.VM, comptime format: []const u8, args: anytype) void {
+        if (cy.Trace and C.verbose()) {
+            const msg = std.fmt.allocPrint(self.alloc, format, args) catch @panic("error");
+            defer self.alloc.free(msg);
+            self.log(msg);
         }
     }
 };
@@ -886,11 +852,11 @@ fn zCallTrait(t: *cy.Thread, pc: [*]cy.Inst, fp: [*]Value, vtable_idx: u16, base
 }
 
 fn z_dump_thread_inst(t: *cy.Thread, pc: [*]const cy.Inst) callconv(.c) void {
-    cy.thread.print_thread_inst(t, pc) catch cy.fatal();
+    try cy.thread.print_thread_inst(t, pc);
 }
 
 pub fn zDestroyObject(t: *cy.Thread, obj: *HeapObject) callconv(.c) void {
-    t.heap.destroyObject(obj, false, {});
+    t.heap.destroyObject(obj, false);
 } 
 
 pub fn zFreePoolObject(t: *cy.Thread, obj: *HeapObject) callconv(.c) void {
@@ -901,10 +867,11 @@ pub fn zFreeBigObject(t: *cy.Thread, obj: *HeapObject, size: usize) callconv(.c)
     t.heap.freeBigObject(obj, size);
 } 
 
-pub fn zPrintTraceAtPc(vm: *cy.VM, debug_pc: ?*anyopaque, title: C.Bytes, msg: C.Bytes) callconv(.c) void {
-    const w = std.debug.lockStderrWriter(&cy.debug.print_buf);
-    defer std.debug.unlockStderrWriter();
-    cy.debug.write_trace_at_pc(vm, w, debug_pc, C.from_bytes(title), C.from_bytes(msg)) catch cy.fatal();
+pub fn zPrintTraceAtPc(t: *cy.Thread, debug_pc: ?*anyopaque, title: C.Bytes, msg: C.Bytes) callconv(.c) void {
+    var w = std.Io.Writer.Allocating.init(t.alloc);
+    defer w.deinit();
+    cy.debug.write_trace_at_pc(t.c.vm, &w.writer, debug_pc, C.from_bytes(title), C.from_bytes(msg)) catch cy.fatal();
+    t.c.vm.log(w.written());
 }
 
 pub fn zGetExternFunc(vm: *cy.VM, func_id: u32) callconv(.c) *const anyopaque {
@@ -916,9 +883,10 @@ pub fn zGetExternFunc(vm: *cy.VM, func_id: u32) callconv(.c) *const anyopaque {
 }
 
 pub fn zDumpObjectTrace(t: *cy.Thread, obj: *HeapObject) callconv(.c) void {
-    const w = std.debug.lockStderrWriter(&cy.debug.print_buf);
-    defer std.debug.unlockStderrWriter();
-    cy.debug.write_object_trace(t, w, obj) catch cy.fatal();
+    var w = std.Io.Writer.Allocating.init(t.alloc);
+    defer w.deinit();
+    cy.debug.write_object_trace(t, &w.writer, obj) catch cy.fatal();
+    t.c.vm.log(w.written());
 }
 
 fn zAllocFuncUnion(t: *cy.Thread, type_id: cy.TypeId, func_ptr: Value) callconv(.c) vmc.ValueResult {
@@ -1108,10 +1076,8 @@ fn zAlloc(vm: *VM, n: usize) callconv(.c) vmc.BufferResult {
     };
 }
 
-fn zLog(fmtz: [*:0]const u8, valsPtr: [*]const fmt.FmtValue, len: usize) callconv(.c) void {
-    const format = std.mem.sliceTo(fmtz, 0);
-    const vals = valsPtr[0..len];
-    cy.debug.log2(format, vals);
+fn z_log(t: *cy.Thread, msg: [*]const u8, len: usize) callconv(.c) void {
+    t.c.vm.log(msg[0..len]);
 }
 
 fn zCheckDoubleFree(t: *cy.Thread, obj: *cy.HeapObject) callconv(.c) bool {
@@ -1130,21 +1096,18 @@ fn zCheckRetainDanglingPointer(t: *cy.Thread, obj: *cy.HeapObject) callconv(.c) 
     }
 }
 
-fn zPanicFmt(t: *cy.Thread, formatz: [*:0]const u8, argsPtr: [*]const fmt.FmtValue, numArgs: usize) callconv(.c) void {
-    const format = formatz[0..std.mem.sliceTo(formatz, 0).len];
-    const args = argsPtr[0..numArgs];
-
-    const msg = fmt.allocFormat(t.alloc, format, args) catch |err| {
+fn z_panic_unexpected_choice(t: *cy.Thread, exp: i64, act: i64) callconv(.c) void {
+    const msg = std.fmt.allocPrint(t.alloc, "Expected active choice tag `{}`, found `{}`.", .{exp, act}) catch |err| {
         if (err == error.OutOfMemory) {
             t.c.panic_type = vmc.PANIC_INFLIGHT_OOM;
             return;
         } else {
             cy.panic("unexpected");
         }
-    };
+    };        
     t.c.panic_payload = @as(u64, @intFromPtr(msg.ptr)) | (@as(u64, msg.len) << 48);
     t.c.panic_type = vmc.PANIC_MSG;
-    logger.tracev("{s}", .{msg});
+    t.log_tracev("{s}", .{msg});
 }
 
 fn c_strlen(s: [*:0]const u8) callconv(.c) usize {
@@ -1156,39 +1119,37 @@ fn c_pow(b: f64, e: f64) callconv(.c) f64 {
 }
 
 comptime {
-    if (cy.isWasmFreestanding and build_options.vmEngine == .c) {
+    if (cy.isWasmFreestanding and build_config.vmEngine == .c) {
         @export(c_strlen, .{ .name = "strlen", .linkage = .strong });
         @export(c_pow, .{ .name = "pow", .linkage = .strong });
     }
 
-    if (build_options.export_vmz) {
-        @export(&zAwait, .{ .name = "zAwait", .linkage = .strong });
-        @export(&zPanicFmt, .{ .name = "zPanicFmt", .linkage = .strong });
-        @export(&zAllocBigObject, .{ .name = "zAllocBigObject", .linkage = .strong });
-        @export(&zAllocPoolObject, .{ .name = "zAllocPoolObject", .linkage = .strong });
-        @export(&z_ret_generator, .{ .name = "z_ret_generator", .linkage = .strong });
-        @export(&zAllocClosure, .{ .name = "zAllocClosure", .linkage = .strong });
-        @export(&zAllocFuncUnion, .{ .name = "zAllocFuncUnion", .linkage = .strong });
-        @export(&zAlloc, .{ .name = "zAlloc", .linkage = .strong });
-        @export(&zCallPtr, .{ .name = "zCallPtr", .linkage = .strong });
-        @export(&zCallUnion, .{ .name = "zCallUnion", .linkage = .strong });
-        @export(&zCallTrait, .{ .name = "zCallTrait", .linkage = .strong });
-        @export(&zOpCodeName, .{ .name = "zOpCodeName", .linkage = .strong });
-        @export(&zLog, .{ .name = "zLog", .linkage = .strong });
-        @export(&zGetTypeName, .{ .name = "zGetTypeName", .linkage = .strong });
-        @export(&zFree, .{ .name = "zFree", .linkage = .strong });
-        @export(&zDestroyObject, .{ .name = "zDestroyObject", .linkage = .strong });
-        @export(&zFreePoolObject, .{ .name = "zFreePoolObject", .linkage = .strong });
-        @export(&zFreeBigObject, .{ .name = "zFreeBigObject", .linkage = .strong });
-        @export(&z_dump_thread_inst, .{ .name = "z_dump_thread_inst", .linkage = .strong });
-        @export(&zCheckDoubleFree, .{ .name = "zCheckDoubleFree", .linkage = .strong });
-        @export(&zCheckRetainDanglingPointer, .{ .name = "zCheckRetainDanglingPointer", .linkage = .strong });
-        @export(&zFatal, .{ .name = "zFatal", .linkage = .strong });
-        @export(&zEnsureListCap, .{ .name = "zEnsureListCap", .linkage = .strong });
-        @export(&zDumpObjectTrace, .{ .name = "zDumpObjectTrace", .linkage = .strong });
-        @export(&zPrintTraceAtPc, .{ .name = "zPrintTraceAtPc", .linkage = .strong });
-        @export(&zGetExternFunc, .{ .name = "zGetExternFunc", .linkage = .strong });
-    }
+    @export(&zAwait, .{ .name = "zAwait", .linkage = .strong });
+    @export(&z_panic_unexpected_choice, .{ .name = "z_panic_unexpected_choice", .linkage = .strong });
+    @export(&zAllocBigObject, .{ .name = "zAllocBigObject", .linkage = .strong });
+    @export(&zAllocPoolObject, .{ .name = "zAllocPoolObject", .linkage = .strong });
+    @export(&z_ret_generator, .{ .name = "z_ret_generator", .linkage = .strong });
+    @export(&zAllocClosure, .{ .name = "zAllocClosure", .linkage = .strong });
+    @export(&zAllocFuncUnion, .{ .name = "zAllocFuncUnion", .linkage = .strong });
+    @export(&zAlloc, .{ .name = "zAlloc", .linkage = .strong });
+    @export(&zCallPtr, .{ .name = "zCallPtr", .linkage = .strong });
+    @export(&zCallUnion, .{ .name = "zCallUnion", .linkage = .strong });
+    @export(&zCallTrait, .{ .name = "zCallTrait", .linkage = .strong });
+    @export(&zOpCodeName, .{ .name = "zOpCodeName", .linkage = .strong });
+    @export(&z_log, .{ .name = "z_log", .linkage = .strong });
+    @export(&zGetTypeName, .{ .name = "zGetTypeName", .linkage = .strong });
+    @export(&zFree, .{ .name = "zFree", .linkage = .strong });
+    @export(&zDestroyObject, .{ .name = "zDestroyObject", .linkage = .strong });
+    @export(&zFreePoolObject, .{ .name = "zFreePoolObject", .linkage = .strong });
+    @export(&zFreeBigObject, .{ .name = "zFreeBigObject", .linkage = .strong });
+    @export(&z_dump_thread_inst, .{ .name = "z_dump_thread_inst", .linkage = .strong });
+    @export(&zCheckDoubleFree, .{ .name = "zCheckDoubleFree", .linkage = .strong });
+    @export(&zCheckRetainDanglingPointer, .{ .name = "zCheckRetainDanglingPointer", .linkage = .strong });
+    @export(&zFatal, .{ .name = "zFatal", .linkage = .strong });
+    @export(&zEnsureListCap, .{ .name = "zEnsureListCap", .linkage = .strong });
+    @export(&zDumpObjectTrace, .{ .name = "zDumpObjectTrace", .linkage = .strong });
+    @export(&zPrintTraceAtPc, .{ .name = "zPrintTraceAtPc", .linkage = .strong });
+    @export(&zGetExternFunc, .{ .name = "zGetExternFunc", .linkage = .strong });
 }
 
 pub fn default_print(_: ?*C.Thread, _: C.Bytes) callconv(.c) void {

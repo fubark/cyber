@@ -6,6 +6,7 @@
 -- gcc -shared foo.o -o libfoo.so
 
 use c
+use meta
 
 #if meta.is_vm_target():
     #c.bind_lib('./libfoo.dylib')

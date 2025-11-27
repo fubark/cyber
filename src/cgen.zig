@@ -2173,9 +2173,10 @@ pub fn host_new_obj_init(t: *cy.Thread, id: cy.TypeId, src: [*]u8, size: usize) 
 }
 
 pub fn host_ensure_thread() callconv(.c) *cy.Thread {
-    return cy.vm.cur_thread orelse {
+    const ptr = vmc.cur_thread orelse {
         std.debug.panic("expected existing thread.", .{});
     };
+    return @ptrCast(ptr);
 }
 
 pub fn host_call_func(t: *cy.Thread, ret_size: usize, func: cy.Value) callconv(.c) ?*anyopaque {

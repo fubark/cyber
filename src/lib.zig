@@ -1,30 +1,38 @@
 const std = @import("std");
-const build_options = @import("build_options");
+const build_config = @import("build_config");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
 const fatal = cy.fatal;
 const mi = @import("mimalloc");
 const cy = @import("cyber.zig");
+const meta_mod = @import("builtins/meta.zig");
 const Value = cy.Value;
 const zt = stdx.testing;
 const log = cy.log.scoped(.lib);
 const bt = cy.types.BuiltinTypes;
 const C = @import("capi.zig");
+const is_wasm = builtin.cpu.arch.isWasm();
 const vmc = cy.vmc;
-
-const cli = @import("cli.zig");
-
-comptime {
-    if (build_options.cli or builtin.os.tag == .wasi) {
-        std.testing.refAllDecls(cli);
-    }
-}
 
 export var clVerbose = false;
 export var clSilent = false;
 
+export var cl_logger: C.GlobalLogFn = default_logger;
+export var CL_TRACE: bool = build_config.trace;
+
+fn default_logger(s: C.Bytes) callconv(.c) void {
+    _ = s;
+}
+
 export fn cl_vm_init() *cy.VM {
-    const alloc = cy.heap.getAllocator();
+    const alloc = std.heap.c_allocator;
+    const vm = alloc.create(cy.VM) catch fatal();
+    vm.init(alloc) catch fatal();
+    return @ptrCast(vm);
+}
+
+export fn cl_vm_initx(allocator: C.Allocator) *cy.VM {
+    const alloc = C.fromAllocator(allocator);
     const vm = alloc.create(cy.VM) catch fatal();
     vm.init(alloc) catch fatal();
     return @ptrCast(vm);
@@ -32,8 +40,23 @@ export fn cl_vm_init() *cy.VM {
 
 export fn cl_vm_deinit(vm: *cy.VM) void {
     vm.deinit(false);
-    const alloc = cy.heap.getAllocator();
-    alloc.destroy(vm);
+    vm.alloc.destroy(vm); 
+}
+
+export fn cl_thread_vm(t: *cy.Thread) *cy.VM {
+    return t.c.vm;
+}
+
+export fn cl_thread_allocator(t: *cy.Thread) C.Allocator {
+    return C.toAllocator(t.alloc);
+}
+
+export fn cl_thread_dump_stats(t: *cy.Thread) void {
+    return t.dump_stats() catch @panic("error");
+}
+
+export fn cl_vm_allocator(vm: *cy.VM) C.Allocator {
+    return C.toAllocator(vm.alloc);
 }
 
 export fn cl_thread_rc(t: *cy.Thread) usize {
@@ -46,9 +69,9 @@ export fn cl_thread_count_objects(t: *cy.Thread) usize {
 
 export fn cl_thread_dump_live_objects(t: *cy.Thread) void {
     if (cy.Trace) {
-        const w = std.debug.lockStderrWriter(&cy.debug.print_buf);
-        defer std.debug.unlockStderrWriter();
-
+        var lw = std.Io.Writer.Allocating.init(t.alloc);
+        defer lw.deinit();
+        const w = &lw.writer;
         w.print("begin dump live objects\n", .{}) catch @panic("error");
         var iter = t.heap.objectTraceMap.iterator();
         while (iter.next()) |it| {
@@ -58,6 +81,7 @@ export fn cl_thread_dump_live_objects(t: *cy.Thread) void {
             }
         }
         w.print("end dump live objects\n", .{}) catch @panic("error");
+        t.c.vm.log(lw.written());
     }
 }
 
@@ -71,6 +95,10 @@ export fn cl_thread_ret(t: *cy.Thread, size: usize) *anyopaque {
     return t.ret_sized(size);
 }
 
+export fn cl_thread_ret_panic(t: *cy.Thread, msg: C.Bytes) C.Ret {
+    return t.ret_panic(C.from_bytes(msg));
+}
+
 export fn cl_thread_param(t: *cy.Thread, size: usize) *anyopaque {
     return t.param_sized(size).ptr;
 }
@@ -79,17 +107,65 @@ export fn cl_thread_float(t: *cy.Thread) f64 {
     return t.param(f64);
 }
 
+export fn cl_thread_f32(t: *cy.Thread) f32 {
+    return t.param(f32);
+}
+
+export fn cl_thread_int(t: *cy.Thread) i64 {
+    return t.param(i64);
+}
+
+export fn cl_thread_i32(t: *cy.Thread) i32 {
+    return t.param(i32);
+}
+
+export fn cl_thread_i16(t: *cy.Thread) i16 {
+    return t.param(i16);
+}
+
+export fn cl_thread_i8(t: *cy.Thread) i8 {
+    return t.param(i8);
+}
+
+export fn cl_thread_r64(t: *cy.Thread) u64 {
+    return t.param(u64);
+}
+
+export fn cl_thread_r32(t: *cy.Thread) u32 {
+    return t.param(u32);
+}
+
+export fn cl_thread_r16(t: *cy.Thread) u16 {
+    return t.param(u16);
+}
+
+export fn cl_thread_byte(t: *cy.Thread) u8 {
+    return t.param(u8);
+}
+
+export fn cl_thread_slice(t: *cy.Thread) cy.heap.Slice {
+    return t.param(cy.heap.Slice);
+}
+
+export fn cl_thread_str(t: *cy.Thread) cy.heap.Str {
+    return t.param(cy.heap.Str);
+}
+
 export fn cl_thread_ptr(t: *cy.Thread) *anyopaque {
     return t.param(*anyopaque);
 }
 
-export fn cl_new_bytes(vm: *cy.VM, size: usize) C.Bytes {
-    const slice = vm.alloc.alignedAlloc(u8, .@"8", size) catch fatal();
+export fn cl_slice_init(t: *cy.Thread, byte_buffer_t: cy.TypeId, num_elems: usize, elem_size: usize) cy.heap.Slice {
+    return t.heap.init_slice_undef(byte_buffer_t, num_elems, elem_size) catch fatal();
+}
+
+export fn cl_vm_allocb(vm: *cy.VM, size: usize) C.Bytes {
+    const slice = vm.alloc.alloc(u8, size) catch fatal();
     return C.to_bytes(slice);
 }
 
-export fn cl_vm_free(vm: *cy.VM, bytes: C.Bytes) void {
-    vm.alloc.free(bytes.ptr[0..bytes.len]);
+export fn cl_vm_freeb(vm: *cy.VM, bytes: C.Bytes) void {
+    vm.alloc.free(C.from_bytes(bytes));
 }
 
 export fn cl_vm_freez(vm: *cy.VM, str: [*:0]const u8) void {
@@ -103,20 +179,11 @@ export fn clGetAllocator(vm: *cy.VM) C.Allocator {
 export fn clDefaultEvalConfig() C.EvalConfig {
     return .{
         .single_run = false,
-        .file_modules = false,
-        .reload = false,
         .backend = C.BackendVM,
         .gen_all_debug_syms = false,
         .spawn_exe = false, 
-        .persist_main_locals = false,
+        .persist_main = false,
     };
-}
-
-export fn clSetNewMockHttp(vm: *cy.VM) *anyopaque {
-    const client = vm.alloc.create(cy.http.MockHttpClient) catch fatal();
-    client.* = cy.http.MockHttpClient.init(vm.alloc);
-    vm.httpClient = client.iface();
-    return client;
 }
 
 export fn cl_vm_reset(vm: *cy.VM) void {
@@ -258,15 +325,30 @@ export fn clDefaultCompileConfig() C.CompileConfig {
     return .{
         .single_run = false,
         .gen_all_debug_syms = false,
-        .file_modules = false,
         .backend = C.BackendVM,
         .skip_codegen = false,
         .emit_source_map = false,
-        .persist_main_locals = false,
+        .persist_main = false,
     };
 }
 
-export fn clCompile(vm: *cy.VM, uri: C.Bytes, src: C.Bytes, config: C.CompileConfig) C.ResultCode {
+export fn cl_vm_compile_path(vm: *cy.VM, uri: C.Bytes, config: C.CompileConfig) C.ResultCode {
+    var res = C.Success;
+    _ = vm.compile(C.from_bytes(uri), null, config) catch |err| {
+        switch (err) {
+            error.CompileError => {
+                res = C.ErrorCompile;
+            },
+            else => {
+                res = C.ErrorUnknown;
+            },
+        }
+    };
+    vm.last_res = res;
+    return res;
+}    
+
+export fn cl_vm_compile(vm: *cy.VM, uri: C.Bytes, src: C.Bytes, config: C.CompileConfig) C.ResultCode {
     var res = C.Success;
     _ = vm.compile(C.from_bytes(uri), C.from_bytes(src), config) catch |err| {
         switch (err) {
@@ -282,11 +364,9 @@ export fn clCompile(vm: *cy.VM, uri: C.Bytes, src: C.Bytes, config: C.CompileCon
     return res;
 }
 
-export fn clValidate(vm: *cy.VM, src: C.Bytes) C.ResultCode {
+export fn cl_vm_validate(vm: *cy.VM, src: C.Bytes) C.ResultCode {
     var res = C.Success;
-    _ = vm.validate("main", C.from_bytes(src), .{
-        .file_modules = false,
-    }) catch |err| {
+    _ = vm.validate("main", C.from_bytes(src), .{}) catch |err| {
         switch (err) {
             error.CompileError => {
                 res = C.ErrorCompile;
@@ -300,30 +380,18 @@ export fn clValidate(vm: *cy.VM, src: C.Bytes) C.ResultCode {
     return res;
 }
 
-test "clValidate()" {
-    const vm = C.create();
-    defer vm.destroy();
+test "cl_vm_validate()" {
+    const vm = C.vm_init();
+    defer C.vm_deinit(vm);
 
     C.setSilent(true);
     defer C.setSilent(false);
 
-    var res = vm.validate("1 + 2");
+    var res = C.vm_validate(vm, "_ = 1 + 2");
     try zt.eq(res, C.Success);
 
-    res = vm.validate("1 +");
+    res = C.vm_validate(vm, "_ = 1 +");
     try zt.eq(res, C.ErrorCompile);
-}
-
-export fn cl_param_int(t: *cy.Thread, idx: usize) i64 {
-    return t.getInt(@intCast(idx));
-}
-
-export fn cl_param_float(t: *cy.Thread, idx: usize) f64 {
-    return t.getFloat(@intCast(idx));
-}
-
-export fn cl_param_value(t: *cy.Thread, idx: usize) Value {
-    return t.getValue(@intCast(idx));
 }
 
 export fn clResultName(code: C.ResultCode) C.Bytes {
@@ -361,31 +429,42 @@ export fn cl_thread_panic_summary(t: *cy.Thread) C.Bytes {
     return C.to_bytes(summary);
 }
 
+export fn cl_thread_panic_trace(t: *cy.Thread) C.StackTrace {
+    return .{
+        .frames = @ptrCast(t.stack_trace.frames.ptr),
+        .frames_len = t.stack_trace.frames.len,
+    };
+}
+
 export fn clReportApiError(vm: *const cy.VM, msg: C.Bytes) void {
     vm.setApiError(C.from_bytes(msg)) catch fatal();
 }
 
-export fn cl_get_resolver(vm: *cy.VM) C.ResolverFn {
-    return vm.compiler.moduleResolver;
+export fn cl_vm_resolver(vm: *cy.VM) C.ResolverFn {
+    return vm.compiler.resolver;
 }
 
-export fn cl_set_resolver(vm: *cy.VM, resolver: C.ResolverFn) void {
-    vm.compiler.moduleResolver = resolver;
+export fn cl_vm_set_resolver(vm: *cy.VM, resolver: C.ResolverFn) void {
+    vm.compiler.resolver = resolver;
 }
 
-export fn cl_resolve(vm: *cy.VM, uri: C.Bytes) C.Bytes {
+export fn cl_vm_resolve(vm: *cy.VM, uri: C.Bytes) C.Bytes {
     var buf: [4096]u8 = undefined;
     const r_uri_temp = cy.compiler.resolveModuleUri(vm.compiler, &buf, C.from_bytes(uri)) catch fatal();
     const r_uri = vm.alloc.dupe(u8, r_uri_temp) catch fatal();
     return C.to_bytes(r_uri);
 }
 
+export fn cl_vm_set_dl_resolver(vm: *cy.VM, dl_resolver: C.DlResolverFn) void {
+    vm.compiler.dl_resolver = dl_resolver;
+}
+
 export fn cl_vm_get_loader(vm: *cy.VM) C.ModuleLoaderFn {
-    return vm.compiler.moduleLoader;
+    return vm.compiler.loader;
 }
 
 export fn cl_vm_set_loader(vm: *cy.VM, loader: C.ModuleLoaderFn) void {
-    vm.compiler.moduleLoader = loader;
+    vm.compiler.loader = loader;
 }
 
 export fn cl_vm_printer(vm: *cy.VM) C.PrintFn {
@@ -405,37 +484,39 @@ export fn cl_vm_set_eprinter(vm: *cy.VM, print: C.PrintErrorFn) void {
 }
 
 export fn cl_vm_set_logger(vm: *cy.VM, logger: C.LogFn) void {
-    vm.log = logger;
+    vm.log_fn = logger;
 }
 
-export fn cl_thread_detect_cycles(t: *cy.Thread) C.GCResult {
-    const res = t.detect_cycles() catch cy.fatal();
-    return .{
-        .num_obj_freed = res.num_obj_freed,
-    };
+export fn cl_vm_dump_bytecode(vm: *cy.VM) void {
+    cy.debug.dumpBytecode(vm, .{}) catch @panic("error");
 }
 
-export fn clFindType(vm: *cy.VM, spec: C.Bytes) ?*cy.Type {
+export fn cl_thread_check_memory(t: *cy.Thread) C.MemoryCheck {
+    return t.check_memory() catch cy.fatal();
+}
+
+export fn cl_find_type(vm: *cy.VM, spec: C.Bytes) ?*cy.Type {
     return vm.findType(C.from_bytes(spec)) catch @panic("error");
 }
 
-test "clFindType()" {
-    const vm = C.create();
-    defer vm.destroy();
+test "cl_find_type()" {
+    const vm = C.vm_init();
+    defer C.vm_deinit(vm);
 
     // Before types are loaded.
-    try zt.eq(vm.findType("int"), null);
+    try zt.eq(C.vm_find_type(vm, "int"), null);
 
     // Load builtin type.
-    _ = vm.compile("main", "", C.defaultCompileConfig());
-    try zt.eq(vm.findType("int").?.id(), C.TypeInteger);
+    _ = C.vm_compile(vm, "main", "", C.defaultCompileConfig());
+    const act: *cy.Type = @ptrCast(@alignCast(C.vm_find_type(vm, "int")));
+    try zt.eq(act.id(), C.TypeI64);
 
     // Load type declared from main.
-    _ = vm.compile("main",
+    _ = C.vm_compile(vm, "main",
         \\type Foo:
         \\    a int
     , C.defaultCompileConfig());
-    try zt.expect(vm.findType("Foo") != null);
+    try zt.expect(C.vm_find_type(vm, "Foo") != null);
 }
 
 export fn clExpandTypeTemplate(vm: *cy.VM, ctemplate: ?*C.Sym, types_ptr: [*]const *cy.Type, args_ptr: [*]const cy.Value, nargs: usize) ?*cy.Type {
@@ -478,40 +559,12 @@ export fn cl_thread_retain(t: *cy.Thread, val: Value) void {
     t.heap.retain(val);
 }
 
-export fn clGetUserData(vm: *cy.VM) ?*anyopaque {
+export fn cl_vm_user_data(vm: *cy.VM) ?*anyopaque {
     return vm.userData;
 }
 
-export fn clSetUserData(vm: *cy.VM, userData: ?*anyopaque) void {
+export fn cl_vm_set_user_data(vm: *cy.VM, userData: ?*anyopaque) void {
     vm.userData = userData;
-}
-
-export fn clTrue() Value {
-    return Value.True;
-}
-
-export fn clFalse() Value {
-    return Value.False;
-}
-
-export fn clBool(b: bool) Value {
-    return Value.initBool(b);
-}
-
-export fn cl_float(n: f64) Value {
-    return Value.initFloat64(n);
-}
-
-export fn cl_int(n: i64) Value {
-    return Value.initInt(@intCast(n));
-}
-
-export fn clInt32(n: i32) Value {
-    return Value.initInt(n);
-}
-
-export fn clPtr(ptr: *anyopaque) Value {
-    return Value.initPtr(ptr);
 }
 
 export fn cl_str_init(t: *cy.Thread, cstr: C.Bytes) C.str {
@@ -528,6 +581,10 @@ export fn cl_ustr_init(t: *cy.Thread, cstr: C.Bytes) C.str {
 
 export fn cl_str_deinit(t: *cy.Thread, s: *cy.heap.Str) void {
     t.heap.destructStr(s);
+}
+
+export fn cl_str_bytes(s: cy.heap.Str) C.Bytes {
+    return C.to_bytes(s.slice());
 }
 
 export fn cl_array_empty(t: *cy.Thread, array_t: *cy.Type) Value {
@@ -574,101 +631,6 @@ export fn cl_lift(t: *cy.Thread, type_: *cy.Type, value: *anyopaque) Value {
     return Value.initPtr(res);
 }
 
-test "cl_struct_new()" {
-    const vm = C.create();
-    defer vm.destroy();
-
-    var res: C.Value = undefined;
-    vm.evalMust( 
-        \\type Foo:
-        \\    a int
-        \\    b string
-    , &res);
-    const foo_t = vm.findType("Foo").?;
-    const val = vm.newInstance(foo_t, &.{
-        C.toFieldInit("a", C.int(123)),
-        C.toFieldInit("b", vm.newString("abc")),
-    });
-    // try t.eq(C.getType(val), foo_t);
-
-    try zt.eq(vm.getField(val, "a"), 123);
-    try zt.eqStr(C.asString(vm.getField(val, "b")), "abc");
-}
-
-export fn cl_option_none_new(t: *cy.Thread, option_t: *cy.Type) cy.Value {
-    return t.heap.newNone(option_t.cast(.option)) catch @panic("error");
-}
-
-export fn cl_option_new(t: *cy.Thread, option_t: *cy.Type, val: cy.Value) cy.Value {
-    return t.heap.newSome(option_t.cast(.option), val) catch @panic("error");
-}
-
-export fn cl_result_new(t: *cy.Thread, res_t: *cy.Type, val: cy.Value) cy.Value {
-    return t.heap.newRes(res_t.cast(.result), val) catch @panic("error");
-}
-
-export fn cl_result_error_new(t: *cy.Thread, res_t: *cy.Type, err: cy.Value) cy.Value {
-    return t.heap.newErr(res_t.cast(.result), err) catch @panic("error");
-}
-
-export fn cl_choice_new(t: *cy.Thread, choice_t: *cy.Type, name: C.Bytes, val: cy.Value) cy.Value {
-    return t.heap.newChoice(choice_t, C.from_bytes(name), val) catch @panic("error");
-}
-
-test "cl_choice_new()" {
-    const vm = C.create();
-    defer vm.destroy();
-
-    var res: C.Value = undefined;
-    vm.evalMust( 
-        \\type Foo enum:
-        \\    case a int
-        \\    case b string
-    , &res);
-    const foo_t = vm.findType("Foo").?;
-    const val = vm.newChoice(foo_t, "a", C.int(123));
-    // try t.eq(C.getType(val), foo_t);
-    try zt.eq(vm.unwrapChoice(foo_t, val, "a"), 123);
-}
-
-export fn clSymbol(vm: *cy.VM, str: C.Bytes) Value {
-    const id = vm.sema.ensureSymbol(C.from_bytes(str)) catch fatal();
-    return Value.initSymbol(@intCast(id));
-}
-
-export fn clGetField(vm: *cy.VM, val: cy.Value, name: C.Bytes) cy.Value {
-    _ = vm;
-    _ = val;
-    _ = name;
-    // return vm.getFieldName(val, C.fromStr(name)) catch {
-    //     return cy.panicFmt("Can not access field: `{s}`", .{C.fromStr(name)});
-    // };
-    @panic("TODO");
-}
-
-test "clGetField()" {
-    const vm = C.create();
-    defer vm.destroy();
-
-    var res: C.Value = undefined;
-    vm.evalMust( 
-        \\type Foo:
-        \\    a int
-        \\    b string
-        \\Foo{a=123, b='abc'}
-    , &res);
-    defer vm.release(res);
-    try zt.eq(vm.getField(res, "a"), 123);
-    try zt.eqStr(C.asString(vm.getField(res, "b")), "abc");
-}
-
-export fn cl_choice_unwrap(t: *cy.Thread, choice_t: *cy.Type, choice: cy.Value, name: C.Bytes) cy.Value {
-    const zname = C.from_bytes(name);
-    return t.heap.unwrapChoice(choice_t, choice, zname) catch |err| {
-        return cy.panicFmt("{}", .{err});
-    };
-}
-
 // To enable logging for tests:
 // c.setVerbose(true);
 // c.setLog(printLogger);
@@ -676,88 +638,17 @@ fn printLogger(str: C.Bytes) callconv(.C) void {
     std.debug.print("{s}\n", .{ C.from_bytes(str) });
 }
 
-test "clUnwrapChoice()" {
-    const vm = C.create();
-    defer vm.destroy();
-
-    var res: C.Value = undefined;
-    vm.evalMust( 
-        \\type Foo enum:
-        \\    case a int
-        \\    case b string
-        \\Foo.a(123)
-    , &res);
-    defer vm.release(res);
-
-    const choice_t = C.getType(res);
-    const unboxed = C.unboxPtr(res);
-    try zt.eq(vm.unwrapChoice(choice_t, unboxed, "a"), 123);
+export fn cl_symbol(vm: *cy.VM, name: C.Bytes) u64 {
+    return vm.sema.ensureSymbol(C.from_bytes(name)) catch @panic("error");
 }
 
-export fn cl_as_float(val: Value) f64 {
-    return val.asF64();
-}
+test "cl_symbol()" {
+    const vm = C.vm_init();
+    defer C.vm_deinit(vm);
 
-test "cl_as_float()" {
-    try zt.eq(C.asFloat(C.float(123.0)), 123);
-}
-
-export fn clRefToBool(val: Value) bool {
-    return val.refToBool();
-}
-
-test "clToBool()" {
-    const vm = C.create();
-    defer vm.destroy();
-
-    try zt.eq(C.toBool(C.float(0)), false);
-    try zt.eq(C.toBool(C.float(123.0)), true);
-
-    var i = vm.newInt(0);
-    try zt.eq(C.toBool(i), false);
-    i = vm.newInt(1);
-    try zt.eq(C.toBool(i), true);
-
-    try zt.eq(C.toBool(C.True), true);
-    try zt.eq(C.toBool(C.False), false);
-}
-
-export fn clAsBool(val: Value) bool {
-    return val.asBool();
-}
-
-export fn clAsRefBool(val: Value) bool {
-    return val.asRefBool();
-}
-
-test "clAsBoxInt()" {
-    const vm = C.create();
-    defer vm.destroy();
-
-    const val = vm.newInt(123);
-    try zt.eq(C.asBoxInt(val), 123);
-}
-
-export fn clAsString(val: cy.Value) C.Bytes {
-    return C.to_bytes(val.asString());
-}
-
-export fn clAsSymbol(val: Value) u64 {
-    return val.asSymbol();
-}
-
-test "clAsSymbol()" {
-    const vm = C.create();
-    defer vm.destroy();
-
-    var val = C.symbol(vm, "foo");
-    try zt.eq(C.asSymbol(val), 49);
-
-    val = C.symbol(vm, "bar");
-    try zt.eq(C.asSymbol(val), 50);
-
-    val = C.symbol(vm, "foo");
-    try zt.eq(C.asSymbol(val), 49);
+    const val = C.symbol(vm, "foo");
+    try zt.eq(val + 1, C.symbol(vm, "foo2"));
+    try zt.eq(val, C.symbol(vm, "foo"));
 }
 
 export fn cl_object_string(t: *cy.Thread, val: Value) C.Bytes {
@@ -767,17 +658,14 @@ export fn cl_object_string(t: *cy.Thread, val: Value) C.Bytes {
 
 test "Constants." {
     try zt.eq(C.TypeVoid, bt.Void);
-    try zt.eq(C.TypeBoolean, bt.Boolean);
+    try zt.eq(C.TypeBool, bt.Bool);
     try zt.eq(C.TypeError, bt.Error);
     try zt.eq(C.TypeSymbol, bt.Symbol);
-    try zt.eq(C.TypeInteger, bt.Integer);
-    try zt.eq(C.TypeFloat, bt.Float);
-    try zt.eq(C.TypeFunc, bt.Func);
-    try zt.eq(C.TypeString, bt.String);
-    try zt.eq(C.TypeFiber, bt.Fiber);
-    try zt.eq(C.TypeExternFunc, bt.ExternFunc);
+    try zt.eq(C.TypeI64, bt.I64);
+    try zt.eq(C.TypeF64, bt.F64);
+    try zt.eq(C.TypeStr, bt.Str);
+    // try zt.eq(C.TypeFiber, bt.Fiber);
     try zt.eq(C.TypeType, bt.Type);
-    try zt.eq(C.TypeTccState, bt.TccState);
     try zt.eq(C.TypeFuncSig, bt.FuncSig);
     try zt.eq(C.TypeCode, bt.Code);
 }
@@ -798,57 +686,289 @@ export fn cl_vm_main_thread(vm: *cy.VM) *cy.Thread {
     return vm.main_thread;
 }
 
+export fn cl_thread_trace_info(t: *cy.Thread) C.TraceInfo {
+    return .{
+        .num_retains = t.heap.c.numRetains,
+        .num_releases = t.heap.c.numReleases,
+    };
+}
+
+export fn cl_thread_signal_host_segfault(t: *cy.Thread) void {
+    cy.debug.thread_signal_host_segfault(t) catch @panic("error");
+}
+
+export fn cl_thread_signal_host_panic(t: *cy.Thread) void {
+    cy.debug.thread_signal_host_panic(t) catch @panic("error");
+}
+
 export fn cl_value_desc(vm: *cy.VM, val_t: cy.TypeId, val: *Value) C.Bytes {
     const res = cy.debug.alloc_value_desc(vm, val_t, val) catch @panic("error");
     return C.to_bytes(res);
 }
 
-export fn clGetFullVersion() C.Bytes {
-    return C.to_bytes(build_options.full_version);
+export fn cl_full_version() C.Bytes {
+    return C.to_bytes(build_config.full_version);
 }
 
-test "clGetFullVersion()" {
-    const str = C.getFullVersion();
-    try zt.eqStr(C.from_bytes(str), build_options.full_version);
+test "cl_full_version()" {
+    const str = C.full_version();
+    try zt.eqStr(str, build_config.full_version);
 }
 
-export fn clGetVersion() C.Bytes {
-    return C.to_bytes(build_options.version);
+export fn cl_version() C.Bytes {
+    return C.to_bytes(build_config.version);
 }
 
-test "clGetVersion()" {
-    const str = C.getVersion();
-    try zt.eqStr(C.from_bytes(str), build_options.version);
+test "cl_version()" {
+    const str = C.version();
+    try zt.eqStr(str, build_config.version);
 }
 
-export fn clGetBuild() C.Bytes {
-    return C.to_bytes(build_options.build);
+export fn cl_build() C.Bytes {
+    return C.to_bytes(build_config.build);
 }
 
-test "clGetBuild()" {
-    const str = C.getBuild();
-    try zt.eqStr(C.from_bytes(str), build_options.build);
+test "cl_build()" {
+    const str = C.build();
+    try zt.eqStr(str, build_config.build);
 }
 
-export fn clGetCommit() C.Bytes {
-    return C.to_bytes(build_options.commit);
+export fn cl_commit() C.Bytes {
+    return C.to_bytes(build_config.commit);
 }
 
-test "clGetCommit()" {
-    const str = C.getCommit();
-    try zt.eqStr(C.from_bytes(str), build_options.commit);
-}
-
-/// Used in C/C++ code to log synchronously.
-pub export fn zig_log(buf: [*c]const u8) void {
-    log.tracev("{s}", .{ buf });
-}
-
-pub export fn zig_log_u32(buf: [*c]const u8, val: u32) void {
-    log.tracev("{s}: {}", .{ buf, val });
+test "cl_commit()" {
+    const str = C.commit();
+    try zt.eqStr(str, build_config.commit);
 }
 
 comptime {
-    @export(&cy.compiler.defaultModuleResolver, .{ .name = "cl_default_resolver", .linkage = .strong });
-    @export(&cy.compiler.defaultModuleLoader, .{ .name = "cl_default_loader", .linkage = .strong });
+    @export(&cy.compiler.default_resolver, .{ .name = "cl_default_resolver", .linkage = .strong });
+    @export(&cy.compiler.default_loader, .{ .name = "cl_default_loader", .linkage = .strong });
+}
+
+test "Return from main." {
+    const vm = C.vm_init();
+    defer C.vm_deinit(vm);
+
+    var res: C.EvalResult = undefined;
+    _ = C.vm_eval(vm,
+        \\fn main() -> int:
+        \\  return 123
+    , &res);
+    try zt.eq(123, @as(*i64, @ptrCast(res.res)).*);
+}
+
+test "Bind functions." {
+    const vm = C.vm_init();
+    defer C.vm_deinit(vm);
+
+    const S = struct {
+        fn mod_test(t_: *C.Thread) C.Ret {
+            const ret: *i64 = C.thread_ret(t_, i64);
+            const a = C.thread_int(t_);
+            ret.* = a + 1;
+            return C.RetOk;
+        }
+        fn loader(vm_: *C.VM, mod: *C.Sym, uri: C.Bytes, res: [*c]C.LoaderResult) callconv(.c) bool {
+            const name = C.from_bytes(uri);
+            if (std.mem.eql(u8, name, "mod")) {
+                C.mod_add_func(mod, "test", C.BIND_FUNC(&mod_test));
+                res[0].src = C.to_bytes("#[bind] fn test(a int) -> int");
+                return true;
+            } else {
+                return C.default_loader(vm_, mod, uri, res);
+            }
+        }
+    };
+    C.vm_set_loader(vm, @ptrCast(&S.loader));
+
+    var res: C.EvalResult = undefined;
+    _ = C.vm_eval(vm, 
+        \\use mod
+        \\use test
+        \\test.eq(123, mod.test(122))
+    , &res);
+}
+
+test "Stack trace unwinding." {
+    const vm = C.vm_init();
+    defer C.vm_deinit(vm);
+
+    var res: C.EvalResult = undefined;
+    var code = C.vm_eval(vm,
+        \\use test
+        \\a := 123
+        \\b := a / 0
+    , &res);
+
+    try zt.eq(C.ErrorPanic, code);
+    var thread = C.vm_main_thread(vm);
+    {
+        const report = C.thread_panic_summary(thread);
+        defer C.vm_freeb(vm, report);
+        try zt.eqStr(
+            \\panic: Division by zero.
+            \\
+            \\eval:3:6 main:
+            \\b := a / 0
+            \\     ^
+            \\
+        , report);
+    }
+
+    var trace = C.thread_panic_trace(thread);
+    try zt.eq(trace.frames_len, 1);
+    try eqStackFrame(trace.frames[0], .{
+        .name = C.to_bytes("main"),
+        .chunk = 0,
+        .line = 2,
+        .col = 5,
+        .line_pos = 18,
+    });
+
+    C.vm_reset(vm);
+
+    // Function stack trace.
+    code = C.vm_eval(vm, 
+        \\use test
+        \\fn foo() -> int:
+        \\  a := 123
+        \\  return a / 0
+        \\b := foo()
+    , &res);
+
+    try zt.eq(C.ErrorPanic, code);
+    thread = C.vm_main_thread(vm);
+    {
+        const report = C.thread_panic_summary(thread);
+        defer C.vm_freeb(vm, report);
+        try zt.eqStr(
+            \\panic: Division by zero.
+            \\
+            \\eval:4:10 foo:
+            \\  return a / 0
+            \\         ^
+            \\eval:5:6 main:
+            \\b := foo()
+            \\     ^
+            \\
+        , report);
+    }
+    trace = C.thread_panic_trace(thread);
+    try zt.eq(trace.frames_len, 2);
+    try eqStackFrame(trace.frames[0], .{
+        .name = C.to_bytes("foo"),
+        .chunk = 0,
+        .line = 3,
+        .col = 9,
+        .line_pos = 37,
+    });
+    try eqStackFrame(trace.frames[1], .{
+        .name = C.to_bytes("main"),
+        .chunk = 0,
+        .line = 4,
+        .col = 5,
+        .line_pos = 52,
+    });
+}
+
+fn eqStackFrame(act: C.StackFrame, exp: C.StackFrame) !void {
+    try zt.eqStr(C.from_bytes(act.name), C.from_bytes(exp.name));
+    try zt.eq(exp.chunk, act.chunk);
+    try zt.eq(exp.line, act.line);
+    try zt.eq(exp.col, act.col);
+    try zt.eq(exp.line_pos, act.line_pos);
+}
+
+test "Bind global persists across multiple evals." {
+    const vm = C.vm_init();
+    defer C.vm_deinit(vm);
+
+    var global: i64 = 0;
+    C.vm_set_user_data(vm, &global);
+    C.vm_set_loader(vm, struct {
+        fn loader(vm_: ?*C.VM, mod: ?*C.Sym, spec: C.Bytes, res: [*c]C.LoaderResult) callconv(.c) bool {
+            if (std.mem.eql(u8, C.from_bytes(spec), "mod")) {
+                const ptr = C.vm_user_data(vm_);
+                C.mod_add_global(mod.?, "g", C.BIND_GLOBAL(ptr));
+                res[0].src = C.to_bytes("#[bind] global g int");
+                return true;
+            } else {
+                return C.default_loader(vm_, mod, spec, res);
+            }
+        }
+    }.loader);
+
+    try zt.eq(0, global);
+    var eval_res: C.EvalResult = undefined;
+    _ = C.vm_eval(vm, 
+        \\use m 'mod'
+        \\m.g = 1
+    , &eval_res);
+    try zt.eq(1, global);
+    _ = C.vm_eval(vm, 
+        \\use m 'mod'
+        \\m.g = m.g + 1
+    , &eval_res);
+    try zt.eq(2, global);
+}
+
+test "Multiple evals with same VM." {
+    const vm = C.vm_init();
+    defer C.vm_deinit(vm);
+
+    const src =
+        \\use test
+        \\a := 1
+        \\test.eq(a, 1)
+        ;
+
+    var eval_res: C.EvalResult = undefined;
+    var res = C.vm_eval(vm, src, &eval_res);
+    try zt.eq(C.Success, res);
+
+    res = C.vm_eval(vm, src, &eval_res);
+    try zt.eq(C.Success, res);
+
+    res = C.vm_eval(vm, src, &eval_res);
+    try zt.eq(C.Success, res);
+}
+
+const Endian = enum {
+    little,
+    big,
+};
+
+test "meta constants" {
+    const vm = C.vm_init();
+    defer C.vm_deinit(vm);
+
+    var eval_res: C.EvalResult = undefined;
+    var res = C.vm_eval(vm, 
+        \\use meta
+        \\fn main() -> SystemKind:
+        \\  return meta.system()
+    , &eval_res);
+    try zt.eq(C.Success, res);
+    const exp_system = std.enums.nameCast(meta_mod.SystemKind, builtin.os.tag);
+    try zt.eq(@intFromEnum(exp_system), @as(*i64, @ptrCast(eval_res.res)).*);
+
+    res = C.vm_eval(vm, 
+        \\use meta
+        \\fn main() -> str:
+        \\  return meta.cpu()
+    , &eval_res);
+    try zt.eq(C.Success, res);
+    const exp_cpu = @tagName(builtin.cpu.arch);
+    try zt.eqStr(exp_cpu, C.str_bytes(@as(*C.str, @ptrCast(eval_res.res)).*));
+
+    res = C.vm_eval(vm, 
+        \\use meta
+        \\fn main() -> Endian:
+        \\  return meta.endian()
+    , &eval_res);
+    try zt.eq(C.Success, res);
+    const exp_endian = std.enums.nameCast(Endian, builtin.cpu.arch.endian());
+    try zt.eq(@intFromEnum(exp_endian), @as(*i64, @ptrCast(eval_res.res)).*);
 }

@@ -1,17 +1,12 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const endian = builtin.target.cpu.arch.endian();
 const stdx = @import("stdx");
 const t = stdx.testing;
 const debug = builtin.mode == .Debug;
-const log = cy.log.scoped(.value);
 const cy = @import("cyber.zig");
 const C = @import("capi.zig");
-const rt = cy.rt;
 const bt = cy.types.BuiltinTypes;
-const fmt = @import("fmt.zig");
 const vmc = @import("vmc");
-const build_options = @import("build_options");
 
 const SignMask: u64 = 1 << 63;
 const TaggedValueMask: u64 = 0x7ffc000000000000;
@@ -195,49 +190,8 @@ pub const Value = packed union {
         return val.asPtr(*cy.heap.StrZ).slice();
     }
 
-    pub inline fn refToF64(self: *const Value) f64 {
-        @setRuntimeSafety(debug);
-        return @call(.never_inline, refToF64OrErr, .{self}) catch cy.fatal();
-    }
-
-    pub fn refToF64OrErr(self: *const Value) !f64 {
-        const obj = self.asHeapObject();
-        switch (obj.getTypeId()) {
-            bt.Str => {
-                const str = obj.string.slice();
-                return std.fmt.parseFloat(f64, str) catch 0;
-            },
-            bt.Bool => {
-                return if (self.asRefBool()) 1 else 0;
-            },
-            bt.I64 => {
-                return @floatFromInt(self.asRefInt());
-            },
-            else => {
-                log.tracev("unsupported conv to number: {}", .{obj.getTypeId()});
-                return error.Unsupported;
-            },
-        }
-    }
-
     pub inline fn assumeNotBoolToBool(self: *const Value) bool {
         return !self.isNone();
-    }
-
-    pub fn refToBool(self: *const Value) bool {
-        if (self.isRefBool()) {
-            return self.asRefBool();
-        }
-        if (self.isRefFloat() and self.asRefF64() == 0) {
-            return false;
-        }
-        if (self.isRefInt() and self.asRefInt() == 0) {
-            return false;
-        }
-        if (self.isRefString() and self.asString().len == 0) {
-            return false;
-        }
-        return true;
     }
 
     pub inline fn isRefArray(self: *const Value) bool {
@@ -307,10 +261,6 @@ pub const Value = packed union {
 
     pub inline fn asBool(self: *const Value) bool {
         return self.val == 1;
-    }
-
-    pub inline fn asRefBool(self: *const Value) bool {
-        return self.asHeapObject().object.firstValue.val == 1;
     }
 
     pub inline fn isTrue(self: *const Value) bool {

@@ -1,26 +1,26 @@
 type Account:
-    name    string
+    name    str
     balance float
 
-    fn deposit(self, amt float):
-        self.balance += amt
+fn Account :: @init(name str) -> Account:
+    return {name=name, balance=0}
 
-    fn withdraw(self, amt float):
-        if amt > self.balance:
-            throw error.InsufficientFunds
-        else:
-            self.balance -= amt
+fn (&Account) deposit(amt float):
+    $balance += amt
 
-    fn show(self, title string):
-        print "$(title), $(self.name), $(self.balance)"
+fn (&Account) withdraw(amt float) -> !void:
+    if amt > $balance:
+        return error.InsufficientFunds
+    else:
+        $balance -= amt
 
-fn Account.new(name string) Account:
-    return Account{name=name, balance=0.0}
+fn (&Account) show(title str):
+    print('%{title}, %{self.name}, %{self.balance}')
 
-var a = Account.new('Savings')
+a := Account('Savings')
 a.show('Initial')
 a.deposit(1000.00)
 a.show('After deposit')
-a.withdraw(100.00)
---a.withdraw(2000.00)
+a.withdraw(100.00)!
+--a.withdraw(2000.00)!
 a.show('After withdraw')

@@ -47,12 +47,10 @@ CLRet mynode_compute(CLThread* t) {
     return CL_RET_OK;
 }
 
-CLValue load_myglobal(CLVM* vm) {
-    return CL_BITCAST(CLValue, 234.0);
-}
+double myglobal = 234.0;
 
 // This module loader provides the source code and callbacks to load @host funcs, vars, and types.
-bool loader(CLVM* vm, CLSym* mod, CLBytes uri, CLBytes* out_src) {
+bool loader(CLVM* vm, CLSym* mod, CLBytes uri, CLLoaderResult* res) {
     if (strncmp("my_mod", uri.ptr, uri.len) == 0) {
         const char* src = (
             "#[bind] fn add(a, b float) -> float\n"
@@ -70,14 +68,13 @@ bool loader(CLVM* vm, CLSym* mod, CLBytes uri, CLBytes* out_src) {
         cl_mod_add_func(mod, CL_BYTES("MyNode.@init"), CL_BIND_FUNC(mynode_init));
         cl_mod_add_func(mod, CL_BYTES("MyNode.@deinit"), CL_BIND_FUNC(mynode_deinit));
         cl_mod_add_func(mod, CL_BYTES("MyNode.compute"), CL_BIND_FUNC(mynode_compute));
-        cl_mod_add_global(mod, CL_BYTES("my_global"), load_myglobal);
+        cl_mod_add_global(mod, CL_BYTES("my_global"), CL_BIND_GLOBAL(&myglobal));
 
-        *out_src = cl_new_bytes(vm, strlen(src));
-        memcpy((void*)out_src->ptr, src, strlen(src));
+        res->src = CL_BYTES(src);
         return true;
     } else {
         // Fallback to the default module loader to load builtin modules such as `core`.
-        return cl_default_loader(vm, mod, uri, out_src);
+        return cl_default_loader(vm, mod, uri, res);
     }
 }
 
@@ -113,7 +110,7 @@ int main() {
     } else {
         CLBytes summary = cl_vm_error_summary(vm);
         printf("%.*s\n", (int)summary.len, summary.ptr);
-        cl_vm_free(vm, summary);
+        cl_vm_freeb(vm, summary);
     }
 
     // Check that all references were accounted for. (Should be 0)

@@ -1,10 +1,11 @@
-fn go() dyn:
-    print 'start'
-    coyield
-    for 0..100 -> i:
-        print i
-        coyield
+-- TODO: Implement new fibers.
+-- fn go() dyn:
+--     print 'start'
+--     coyield
+--     for 0..100 -> i:
+--         print i
+--         coyield
 
-var f = coinit(go)
-while f.status() != .done:
-    coresume f
+-- var f = coinit(go)
+-- while f.status() != .done:
+--     coresume f

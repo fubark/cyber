@@ -8,53 +8,51 @@
 
 use os
 
-var MaxRuns = 50
+max_runs := 50
 
-var cmd = os.args()[2..]
+cmd := os.args()[2..]
 
-var totalTimes = List[float]{}
-var times = List[float]{}
+total_times := []float{}
+times := []float{}
 
-for 0..MaxRuns:
-    var start = os.now()
+for 0..max_runs:
+    start := os.now()!
 
-    var res = os.execCmd(cmd)
-    var out = res['out'] as string
-    var idx = out.find('time:') ?else
-        throw error.NoTimeOutput
-    out = out[idx + 'time:'.len()..]
-    var endIdx = out.find('\n').?
-    var msStr = out[0..endIdx].trim(.ends, ' \t')
-    var ms = float(msStr)
-    times.append(ms)
+    res := os.exec(cmd)
+    idx := res.out.index('time:') ?else
+        panic('NoTimeOutput')
+    out := res.out[idx + 'time:'.len()..]
+    endIdx := out.index('\n').?
+    msStr := out[0..endIdx].trim(' \t')
+    ms := float(msStr)
+    times <<= ms
 
-    var totalTime = (os.now() - start) * 1000
-    totalTimes.append(totalTime)
+    total_time := (os.now()! - start) * 1000
+    total_times <<= total_time
 
-var sum = 0.0
-for times -> time:
+sum := 0.0
+for times |time|:
     sum += time
-var scriptTime = sum / float(times.len())
+scriptTime := sum / float(times.len())
 
 sum = 0.0
-for totalTimes -> time:
+for total_times |time|:
     sum += time
-var totalTime = sum / float(totalTimes.len())
+totalTime := sum / float(total_times.len())
 
 -- Get peak memory usage.
-cmd.insert(0, '/usr/bin/time')
-cmd.insert(1, '-l')
-var res = os.execCmd(cmd)
-var out = res['err'] as string
-var idx = out.find('maximum resident set size') ?else
-    throw error.NoMemoryOutput
-out = out[0..idx].trim(.right, ' ')
-var i = out.len()-1
-while out[i] != ` `:
+cmd = cmd.insert(0, '/usr/bin/time')
+cmd = cmd.insert(1, '-l')
+res := os.exec(cmd)
+idx := res.err.index('maximum resident set size') ?else
+    panic('NoMemoryOutput')
+out := res.err[0..idx].trimRight(' ')
+i := out.len()-1
+while out[i] != ' ':
     i -= 1
-var mem = float(out[i+1..])
+mem := float(out[i+1..])
 
-print "Total: ${totalTime}ms"
-print "Script: ${scriptTime}ms"
-print "Load: ${totalTime - scriptTime}ms"
-print "Peak Memory: ${mem / 1000000} MB"
+print('Total: %{totalTime}ms')
+print('Script: %{scriptTime}ms')
+print('Load: %{totalTime - scriptTime}ms')
+print('Peak Memory: %{mem / 1000000} MB')

@@ -7,35 +7,35 @@
 #define TRACE_DUMP_OPS 0 
 #define TRACE_DUMP_NOP 0
 
-extern __thread Thread* cur_thread;
+__thread ZThread* cur_thread = NULL;
 
 // Dump assembly.
 // zig cc -c src/vm.c -S -O2 -DDEBUG=0 -DCGOTO=1 -DTRACE=0 -DIS_32BIT=0 -DHAS_CYC=1
 
 #define STATIC_ASSERT(cond, msg) typedef char static_assertion_##msg[(cond)?1:-1]
 
-#define TRACEV_IF(cond, msg, ...) \
-    do { if (TRACE && clVerbose && cond) zLog(msg, (FmtValue[]){__VA_ARGS__}, sizeof((FmtValue[]){__VA_ARGS__})/sizeof(FmtValue)); } while (false)
-#define TRACEV(msg, ...) \
-    do { if (TRACE && clVerbose) zLog(msg, (FmtValue[]){__VA_ARGS__}, sizeof((FmtValue[]){__VA_ARGS__})/sizeof(FmtValue)); } while (false)
 #if TRACE
+    #define TRACEV_IF(cond, ...) \
+        if (clVerbose && cond) {\
+        __VA_ARGS__; \
+        }
+
+    #define TRACEV(...) \
+        if (clVerbose) {\
+        __VA_ARGS__; \
+        }
+
     #define TRACE_ERR(format, ...) \
         do { if (TRACE) fprintf(stderr, format, __VA_ARGS__); } while (false)
 #else
     #define TRACE_ERR(format, ...)
+    #define TRACEV_IF(cond, ...)
+    #define TRACEV(...)
 #endif
-#define LOG(msg, ...) \
-    do { zLog(msg, (FmtValue[]){__VA_ARGS__}, sizeof((FmtValue[]){__VA_ARGS__})/sizeof(FmtValue)); } while (false)
 
 #define ASSERT(cond) \
     do { if (!(cond)) zFatal(); } while (false)
 
-#define FMT_STRZ(s) ((FmtValue){ .type = FMT_TYPE_STRING, .data = { .string = s }, .data2 = { .string = strlen(s) }})
-#define FMT_STR(s) ((FmtValue){ .type = FMT_TYPE_STRING, .data = { .string = s.ptr }, .data2 = { .string = s.len }})
-#define FMT_STRLEN(s, len) ((FmtValue){ .type = FMT_TYPE_STRING, .data = { .string = s }, .data2 = { .string = len }})
-#define FMT_U32(v) ((FmtValue){ .type = FMT_TYPE_U32, .data = { .u32 = v }})
-#define FMT_U64(v) ((FmtValue){ .type = FMT_TYPE_U64, .data = { .u64 = v }})
-#define FMT_PTR(v) ((FmtValue){ .type = FMT_TYPE_PTR, .data = { .ptr = v }})
 #define str(x) ((Str){ x, strlen(x) })
 
 // static inline FmtValue FMT_U32(u32 v) {
@@ -60,6 +60,15 @@ static inline Value* closureGetCapturedValuesPtr(FuncUnion* closure) {
     return &closure->data.closure.firstCapturedVal;
 }
 
+static void tlog(ZThread* t, const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    char buf[1024];
+    int n = vsnprintf(buf, 1024, fmt, args);
+    va_end(args);
+    z_log(t, buf, n);
+}
+
 static inline bool releaseOnly(ZThread* t, HeapObject* obj) {
     ObjectHeader* head = (ObjectHeader*)((intptr_t)obj - 8);
 
@@ -69,23 +78,22 @@ static inline bool releaseOnly(ZThread* t, HeapObject* obj) {
         int len = snprintf(buf, sizeof(buf), "%p at t%d@%p(code=%u)", obj, t->c.id, (Inst*)t->heap.c.ctx, *(Inst*)t->heap.c.ctx);
         Str title = str("double free");       
         Str msg = (Str){&buf[0], len};
-        zPrintTraceAtPc(t->c.vm, t->heap.c.ctx, title, msg);
+        zPrintTraceAtPc(t, t->heap.c.ctx, title, msg);
         zDumpObjectTrace(t, obj);
         zFatal();
     }
-    TRACEV_IF(LOG_MEM, "t{}: vmc | {} -1 | {}, {}", FMT_U64(t->c.id), FMT_U32(head->rc), FMT_STR(zGetTypeName(t->c.vm, OBJ_TYPEID(obj))), FMT_PTR(obj));
+    TRACEV_IF(LOG_MEM,
+        Str name = zGetTypeName(t->c.vm, OBJ_TYPEID(obj));
+        tlog(t, "t%d: vmc | %d -1 | %.*s, %p", t->c.id, head->rc, name.len, name.ptr, obj);
+    )
 #endif
     head->rc -= 1;
-#if TRACK_GLOBAL_RC
-    #if TRACE
+#if TRACE
     if (t->heap.c.refCounts == 0) {
-        LOG("Double free. {}", FMT_U32(OBJ_TYPEID(head)));
+        tlog(t, "Double free. %d", OBJ_TYPEID(head));
         zFatal();
     }
-    #endif
     t->heap.c.refCounts -= 1;
-#endif
-#if TRACE
     t->heap.c.numReleases += 1;
 #endif
     return head->rc == 0;
@@ -98,7 +106,10 @@ static inline void release(ZThread* t, HeapObject* obj) {
 }
 
 static inline void freeObject(ZThread* t, HeapObject* obj, size_t size) {
-    TRACEV_IF(LOG_MEM, "free {} {}", FMT_STR(zGetTypeName(t->c.vm, OBJ_TYPEID(obj))), FMT_PTR(obj));
+    TRACEV_IF(LOG_MEM,
+        Str name = zGetTypeName(t->c.vm, OBJ_TYPEID(obj));
+        tlog(t, "free %.*s %p", name.len, name.ptr, obj);
+    )
     if (size <= 8 * 4) {
         zFreePoolObject(t, obj);
     } else {
@@ -108,7 +119,10 @@ static inline void freeObject(ZThread* t, HeapObject* obj, size_t size) {
 
 static inline void retain(ZThread* t, HeapObject* obj) {
     ObjectHeader* head = (ObjectHeader*)((intptr_t)obj - 8);
-    TRACEV_IF(LOG_MEM, "t{}: vmc | {} +1 | {}, {}", FMT_U64(t->c.id), FMT_U32(head->rc), FMT_STR(zGetTypeName(t->c.vm, OBJ_TYPEID(obj))), FMT_PTR(obj));
+    TRACEV_IF(LOG_MEM,
+        Str name = zGetTypeName(t->c.vm, OBJ_TYPEID(obj));
+        tlog(t, "t%d: vmc | %d +1 | %.*s, %p", t->c.id, head->rc, name.len, name.ptr, obj);
+    )
     head->rc += 1;
 #if TRACE
     if (zCheckRetainDanglingPointer(t, obj)) {
@@ -116,15 +130,13 @@ static inline void retain(ZThread* t, HeapObject* obj) {
         int len = snprintf(buf, sizeof(buf), "%p at pc: %p(code=%u)", obj, (Inst*)t->heap.c.ctx, *((Inst*)t->heap.c.ctx));
         Str title = str("retain dangling ptr");       
         Str msg = (Str){&buf[0], len};
-        zPrintTraceAtPc(t->c.vm, t->heap.c.ctx, title, msg);
+        zPrintTraceAtPc(t, t->heap.c.ctx, title, msg);
         zDumpObjectTrace(t, obj);
         zFatal();
     }
 #endif
-#if TRACK_GLOBAL_RC
-    t->heap.c.refCounts += 1;
-#endif
 #if TRACE
+    t->heap.c.refCounts += 1;
     t->heap.c.numRetains += 1;
 #endif
 }
@@ -211,7 +223,7 @@ static i64 ipow(i64 b, i64 e) {
 static void panicStaticMsg(ZThread* t, const char* msg) {
     t->c.panic_payload = (u64)msg | (((u64)(strlen(msg))) << 48);
     t->c.panic_type = PANIC_STATIC_MSG;
-    TRACEV("{}", FMT_STRZ(msg));
+    TRACEV(tlog(t, "%s", msg));
 }
 
 static inline void panicDivisionByZero(ZThread* t) {
@@ -224,12 +236,6 @@ static inline void panicOutOfBounds(ZThread* t) {
 
 static inline void panicExpectedInteger(ZThread* t) {
     panicStaticMsg(t, "Expected integer operand.");
-}
-
-static inline void panicUnexpectedChoice(ZThread* t, i64 tag, i64 exp) {
-    zPanicFmt(t, "Expected active choice tag `{}`, found `{}`.", (FmtValue[]){
-        FMT_U32((u32)exp), FMT_U32((u32)tag),
-    }, 2);
 }
 
 static Value buildGenCallInfo(bool cont, u8 call_inst_off, u8 stack_size) {
@@ -1151,7 +1157,7 @@ beginSwitch:
             pc += 7;
             NEXT();
         } else {
-            panicUnexpectedChoice(t, VALUE_AS_INTEGER(ptr[0]), (i64)pc[5]);
+            z_panic_unexpected_choice(t, (i64)pc[5], VALUE_AS_INTEGER(ptr[0]));
             RETURN(RES_PANIC);
         }
     }
@@ -1164,7 +1170,7 @@ beginSwitch:
             pc += 5;
             NEXT();
         } else {
-            panicUnexpectedChoice(t, 0, 1);
+            z_panic_unexpected_choice(t, 1, 0);
             RETURN(RES_PANIC);
         }
     }

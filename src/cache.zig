@@ -182,7 +182,7 @@ fn computeSpecHashStr(spec: []const u8) [16]u8 {
 test "computeSpecHashStr" {
     // Formats 0 to entire width.
     var res: [16]u8 = undefined;
-    _ = std.fmt.formatIntBuf(&res, 0, 16, .lower, .{ .width = 16, .fill = '0' });
+    _ = std.fmt.printInt(&res, 0, 16, .lower, .{ .width = 16, .fill = '0' });
     try std.testing.expectEqualStrings(&res, "0000000000000000");
 }
 

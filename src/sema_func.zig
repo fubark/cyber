@@ -221,7 +221,7 @@ pub fn matchGenericFuncRtSema(c: *cy.Chunk, template: *cy.sym.FuncTemplate,
         } else {
             arg = Argument.init(end_args[i - pre_args.len]);
         }
-        const final_arg = try matchTemplateArg(c, params[i], arg, template, &template_ctx, i);
+        const final_arg = try matchTemplateArg(c, params[i], arg, template, &template_ctx, i, true);
         if (final_arg.resolve_t == .rt) {
             c.expr_stack.items[expr_start + arg_idx] = final_arg.res.rt;
             arg_idx += 1;
@@ -272,7 +272,7 @@ pub fn matchGenericFuncRt(c: *cy.Chunk, template: *cy.sym.FuncTemplate,
         } else {
             arg = Argument.init(end_args[i - pre_args.len]);
         }
-        const final_arg = try matchTemplateArg(c, params[i], arg, template, &template_ctx, i);
+        const final_arg = try matchTemplateArg(c, params[i], arg, template, &template_ctx, i, false);
         if (final_arg.resolve_t == .rt) {
             args[arg_idx] = final_arg.res.rt.ir;
             arg_idx += 1;
@@ -944,6 +944,9 @@ fn matchOverloadedFunc(c: *cy.Chunk, func: *cy.Func, pre_args: []const Argument,
 }
 
 pub fn ownOrManageArg(c: *cy.Chunk, arg: sema.ExprResult, node: *ast.Node) !sema.ExprResult {
+    if (arg.resType == .infer_error) {
+        return arg;
+    }
     // Object types are managed from the caller side.
     // Other types are copied and managed from the callee side.
     if (arg.type.isObjectLike()) {
@@ -984,16 +987,16 @@ fn resolveRtArg(c: *cy.Chunk, arg: Argument, node: *ast.Node, opt_target: ?sema.
                     res.owned = true;
                     return res;
                 }
-                return ownOrManageArg(c, res, node);
+                return res;
             } else {
                 const res = try c.semaExpr(node, .{
                     .return_infer_error = overloaded,
                 });
-                return ownOrManageArg(c, res, node);
+                return res;
             }
         },
         .pre_resolved => {
-            return ownOrManageArg(c, arg.data.pre_resolved, node);
+            return arg.data.pre_resolved;
         },
         .receiver => {
             if (opt_target) |target| {
@@ -1097,9 +1100,9 @@ fn resolveRtArg(c: *cy.Chunk, arg: Argument, node: *ast.Node, opt_target: ?sema.
                     }
                 }
 
-                return ownOrManageArg(c, arg.data.receiver, node);
+                return arg.data.receiver;
             } else {
-                return ownOrManageArg(c, arg.data.receiver, node);
+                return arg.data.receiver;
             }
         },
         .skip => {
@@ -1210,7 +1213,7 @@ fn matchTemplateArgCt(c: *cy.Chunk, param: sema.FuncParam, arg: Argument, templa
 }
 
 fn matchTemplateArg(c: *cy.Chunk, param: sema.FuncParam, arg: Argument, template: *cy.sym.FuncTemplate,
-    template_ctx: *sema.ResolveContext, param_idx: usize) !Argument {
+    template_ctx: *sema.ResolveContext, param_idx: usize, comptime sema_func: bool) !Argument {
 
     const param_t = param.get_type();
     const ast_param = template.func_params[param_idx];
@@ -1241,7 +1244,10 @@ fn matchTemplateArg(c: *cy.Chunk, param: sema.FuncParam, arg: Argument, template
             target = param;
         }
     }
-    const res = try resolveRtArg(c, arg, arg.node, target, false);
+    var res = try resolveRtArg(c, arg, arg.node, target, false);
+    if (!sema_func) {
+        res = try ownOrManageArg(c, res, arg.node);
+    }
 
     const generic_param = param_t.id() == bt.Infer or param_t.is_generic();
     if (generic_param) {
@@ -1414,7 +1420,8 @@ fn matchArgCt(c: *cy.Chunk, arg: *ast.Node, param: sema.FuncParam, req_value: bo
 }
 
 fn matchArg(c: *cy.Chunk, arg: Argument, param: sema.FuncParam, overloaded: bool, out_match: *bool) !sema.ExprResult {
-    const res = try resolveRtArg(c, arg, arg.node, param, overloaded);
+    var res = try resolveRtArg(c, arg, arg.node, param, overloaded);
+    res = try ownOrManageArg(c, res, arg.node);
 
     const ct_compat = cy.types.isTypeCompat(c.compiler, res.type, param.get_type());
     if (!ct_compat) {

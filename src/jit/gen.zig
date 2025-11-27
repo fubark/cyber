@@ -111,7 +111,7 @@ pub fn getPos(c: *cy.Chunk) usize {
     return c.jitBuf.buf.items.len;
 }
 
-pub fn ensureUnusedCap(buf: *std.ArrayListAlignedUnmanaged(u8, std.heap.page_size_min), alloc: std.mem.Allocator, size: usize) !usize {
+pub fn ensureUnusedCap(buf: *std.ArrayListAlignedUnmanaged(u8, .fromByteUnits(std.heap.page_size_min)), alloc: std.mem.Allocator, size: usize) !usize {
     if (buf.items.len + size > buf.capacity) {
         var inc = buf.capacity / 2;
         if (inc <= std.heap.page_size_min) {

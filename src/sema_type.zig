@@ -69,7 +69,7 @@ pub fn resolve_custom_type(c: *cy.Chunk, decl: *ast.CustomTypeDecl, opt_variant:
 fn resolveCustomTypeResult(c: *cy.Chunk, decl: *ast.CustomTypeDecl, binding: C.BindType) !*cy.Type {
     switch (binding.type) {
         C.BindTypeCreate => {
-            const ctype = binding.data.create.create_fn.?(@ptrCast(c.vm), c.sym.head.toC(), C.toNode(@ptrCast(decl))) orelse {
+            const ctype = binding.data.create.create_fn.?(@ptrCast(c.vm), c.sym.head.toC(), ast.Node.to_c(@ptrCast(decl))) orelse {
                 return error.CompileError;
             };
             return @ptrCast(@alignCast(ctype));
@@ -1088,7 +1088,11 @@ pub fn resolveResultType(c: *cy.Chunk, res_t: *cy.types.Result, decl: *ast.Node)
     const has_managed_payload = res_t.child_t.isManaged();
     const has_copy_payload = res_t.child_t.has_copy_ctor();
     const has_no_copy_payload = res_t.child_t.info.no_copy;
-    size += res_t.child_t.size();
+    var payload_size = res_t.child_t.size();
+    if (payload_size < 8) {
+        payload_size = 8;
+    }
+    size += payload_size;
 
     if (res_t.child_t.alignment() > alignment) {
         std.debug.panic("Unsupported alignment.", .{});

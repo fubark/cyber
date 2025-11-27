@@ -15,7 +15,6 @@ pub const Allocator = struct {
     const vtable = std.mem.Allocator.VTable{
         .alloc = alloc,
         .resize = resize,
-        .remap = remap,
         .free = free,
         .remap = remap,
     };

@@ -1,10 +1,10 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const build_options = @import("build_options");
+const build_config = @import("build_config");
 const cy = @import("cyber.zig");
 const vmc = @import("vmc");
 const c = @import("capi.zig");
-const log = cy.log.scoped(.thread);
+const logger = cy.log.scoped(.thread);
 const stdx = @import("stdx");
 const zt = stdx.testing;
 const fmt = @import("fmt.zig");
@@ -35,20 +35,22 @@ pub fn ret_generator(heap: *cy.Heap, type_id: cy.TypeId, ret_size: u16, frame: [
 pub fn panic(t: *Thread, err: cy.Value) !void {
     _ = err;
 
-    log.tracev("Begin thread panic.", .{});
+    logger.tracev("Begin thread panic.", .{});
 
     // TODO: Run stack error destructors.
 
     var cx = t.getFiberContext();
 
-    if (cy.Trace) {
+    if (cy.Trace and c.verbose()) {
         if (cx.pc) |pc| {
             const sym = cy.debug.getDebugSymByPc(t.c.vm, pc) orelse {
-                log.trace("at pc: {*}", .{cx.pc});
+                logger.trace("at pc: {*}", .{cx.pc});
                 return error.NoDebugSym;
             };
-            std.debug.print("panic pc: {},{}\n", .{sym.file, sym.pc});
-            cy.thread.print_thread_inst(t, pc) catch @panic("unexpected");
+            if (!c.silent()) {
+                t.log("panic pc: {}:{}", .{sym.file, sym.pc});
+                cy.thread.print_thread_inst(t, pc) catch @panic("unexpected");
+            }
         } else {
             @panic("TODO");
         }
@@ -97,14 +99,18 @@ pub fn get_ptr_layout(vm: *cy.VM, pc: [*]cy.Inst) ?[]bool {
     return entry.chunk.buf.ptr_layouts.items[table[idx].layout];
 }
 
+const FreeHeapResult = struct {
+    num_freed: u32,
+};
+
 /// Sweep frees each heap object disregarding any dependencies. Triggered from fatal error.
 /// Only critical destructors should be invoked.
-pub fn freeHeapPages(t: *cy.Thread) !c.GCResult {
-    var res = c.GCResult{
-        .num_obj_freed = 0,
+pub fn freeHeapPages(t: *cy.Thread) !FreeHeapResult {
+    const res = FreeHeapResult{
+        .num_freed = 0,
     };
 
-    log.tracev("Free heap pages.", .{});
+    logger.tracev("Free heap pages.", .{});
     for (t.heap.heapPages.items, 0..) |page, j| {
         _ = j;
     
@@ -117,7 +123,7 @@ pub fn freeHeapPages(t: *cy.Thread) !c.GCResult {
                     obj = @ptrCast(@alignCast(obj.pointer.ptr));
                 }
 
-                log.tracev("free: {s}, rc={} {*}", .{t.heap.getType(obj.getTypeId()).name(), obj.rc(), obj});
+                logger.tracev("free: {s}, rc={} {*}", .{t.heap.getType(obj.getTypeId()).name(), obj.rc(), obj});
                 if (cy.Trace) {
                     if (t.heap.checkDoubleFree(obj)) {
                         var buf: [128]u8 = undefined;
@@ -126,19 +132,17 @@ pub fn freeHeapPages(t: *cy.Thread) !c.GCResult {
                             obj, t.heap.c.ctx, @tagName(pc[0].opcode()),
                         }) catch @panic("error");
 
-                        const w = std.debug.lockStderrWriter(&cy.debug.print_buf);
-                        defer std.debug.unlockStderrWriter();
-
-                        cy.debug.write_trace_at_pc(t.c.vm, w, @ptrFromInt(t.heap.c.ctx), "double free", msg) catch @panic("error");
-                        cy.debug.write_object_trace(t, w, obj) catch @panic("error");
+                        var w = std.Io.Writer.Allocating.init(t.alloc);
+                        defer w.deinit();
+                        cy.debug.write_trace_at_pc(t.c.vm, &w.writer, @ptrFromInt(t.heap.c.ctx), "double free", msg) catch @panic("error");
+                        cy.debug.write_object_trace(t, &w.writer, obj) catch @panic("error");
+                        t.c.vm.log(w.written());
                         cy.fatal();
                     }
-                }
-                if (cy.TrackGlobalRC) {
                     t.heap.c.refCounts -= obj.rc();
                 }
 
-                t.heap.destroyObject(obj, true, &res);
+                t.heap.destroyObject(obj, true);
             }
             i += 1;
         }
@@ -151,7 +155,7 @@ pub fn freeHeapPages(t: *cy.Thread) !c.GCResult {
     }
     t.heap.buffers.clearRetainingCapacity();
 
-    log.tracev("free result: num_obj_freed={}", .{res.num_obj_freed});
+    logger.tracev("free result: num_freed={}", .{res.num_freed});
     return res;
 }
 
@@ -281,10 +285,10 @@ pub const Thread = struct {
     }
 
     pub fn getGlobalRC(t: *const cy.Thread) usize {
-        if (cy.TrackGlobalRC) {
+        if (cy.Trace) {
             return t.heap.c.refCounts;
         } else {
-            cy.panic("Enable TrackGlobalRC.");
+            cy.panic("Enable Trace.");
         }
     }
 
@@ -372,7 +376,7 @@ pub const Thread = struct {
         const dupe = try self.alloc.dupe(u8, msg);
         self.c.panic_payload = @as(u64, @intFromPtr(dupe.ptr)) | (@as(u64, dupe.len) << 48);
         self.c.panic_type = vmc.PANIC_MSG;
-        log.tracev("{s}", .{dupe});
+        logger.tracev("{s}", .{dupe});
         return error.Panic;
     }
 
@@ -388,16 +392,16 @@ pub const Thread = struct {
         };
         self.panic_payload = @as(u64, @intFromPtr(msg.ptr)) | (@as(u64, msg.len) << 48);
         self.panic_type = vmc.PANIC_MSG;
-        log.tracev("{s}", .{msg});
+        logger.tracev("{s}", .{msg});
         return error.Panic;
     }
 
     pub fn handleExecResult(self: *Thread, res: vmc.ResultCode) !void {
-        log.tracev("handle exec error: {}", .{res});
+        logger.tracev("handle exec error: {}", .{res});
         if (res == vmc.RES_PANIC) {
             try handleInterrupt(self);
         } else if (res == vmc.RES_UNKNOWN) {
-            log.tracev("Unknown error code.", .{});
+            logger.tracev("Unknown error code.", .{});
             try handleInterrupt(self);
         }
     }
@@ -418,12 +422,12 @@ pub const Thread = struct {
     /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
     /// This is also the entry way for native code to call into the VM, assuming pc, framePtr, and virtual registers are already set.
     pub fn exec_auto(self: *Thread, handle_panic: bool) error{OutOfMemory, Panic, NoDebugSym, Unexpected, Await, End}!void {
-        log.tracev("begin eval loop", .{});
+        logger.tracev("begin eval loop", .{});
 
-        if (comptime build_options.vmEngine == .zig) {
+        if (comptime build_config.vmEngine == .zig) {
             return error.Unsupported;
-        } else if (comptime build_options.vmEngine == .c) {
-            cy.vm.cur_thread = self;
+        } else if (comptime build_config.vmEngine == .c) {
+            vmc.cur_thread = @ptrCast(self);
             while (true) {
                 const res = vmc.execBytecode(@ptrCast(self));
 
@@ -807,7 +811,7 @@ pub const Thread = struct {
         if (growSize < 16) {
             growSize = 16;
         }
-        log.tracev("grow stack to size={}", .{self.c.stack_len + growSize});
+        logger.tracev("grow stack to size={}", .{self.c.stack_len + growSize});
         try self.growStackPrecise(self.c.stack_len + growSize);
     }
 
@@ -875,14 +879,14 @@ pub const Thread = struct {
     /// Walks the stack and records each frame.
     pub fn recordCurFrames(self: *cy.Thread) !void {
         @branchHint(.cold);
-        log.tracev("recordCompactFrames", .{});
+        logger.tracev("recordCompactFrames", .{});
 
         var fp = getStackOffset(self.c.stack_ptr, self.c.fp);
         var pc: ?[*]cy.Inst = self.c.pc;
         while (true) {
             const frame = getFrame(self, self.c.stack(), fp, pc);
             const frame_t = frame.frame_type();
-            log.tracev("record on pc={*}, fp={}, type={}", .{pc, fp, frame_t});
+            logger.tracev("record on pc={*}, fp={}, type={}", .{pc, fp, frame_t});
 
             if (fp == 0 or frame_t == .vm) {
                 try self.compact_trace.append(self.alloc, .{
@@ -914,7 +918,7 @@ pub const Thread = struct {
     /// Unwind from `ctx` and release each frame.
     /// TODO: See if releaseFiberStack can resuse the same code.
     pub fn unwindStack(self: *cy.Thread, tstack: []Value, cx: PcFpOff) !PcFpOff {
-        log.tracev("panic unwind {*}", .{tstack.ptr + cx.fp});
+        logger.tracev("panic unwind {*}", .{tstack.ptr + cx.fp});
         var pc = cx.pc;
         var fp = cx.fp;
 
@@ -923,7 +927,7 @@ pub const Thread = struct {
         while (true) {
             const frame = getFrame(self, tstack, fp, pc);
             const frame_t = frame.frame_type();
-            log.tracev("unwind on frame pc={*}, fp={}, type={}", .{pc, fp, frame_t});
+            logger.tracev("unwind on frame pc={*}, fp={}, type={}", .{pc, fp, frame_t});
             if (frame_t == .init) {
                 try self.compact_trace.append(self.alloc, .{
                     .pc = @ptrCast(pc),
@@ -961,24 +965,50 @@ pub const Thread = struct {
         }
     }
 
-    /// TODO: Transitioning to cycle detection only.
-    /// Mark-sweep leveraging refcounts and deals only with cyclable objects.
-    /// 1. Looks at all root nodes from the stack and globals.
-    ///    Traverse the children and sets the mark flag to true.
-    ///    Only cyclable objects that aren't marked are visited.
-    /// 2. Sweep iterates all cyclable objects.
-    ///    If the mark flag is not set:
-    ///       - the object's children are released excluding confirmed child cyc objects.
-    ///       - the object is queued to be freed later.
-    ///    If the mark flag is set, reset the flag for the next gc run.
-    ///    TODO: Allocate using separate pages for cyclable and non-cyclable objects,
-    ///          so only cyclable objects are iterated.
-    pub fn detect_cycles(t: *cy.Thread) !c.GCResult {
-        log.tracev("detect cycles.", .{});
+    pub fn check_memory(self: *cy.Thread) !c.MemoryCheck {
+        self.log_tracev("check memory.", .{});
 
-        // Detect cycles from iterating heap.
+        // TODO: Detect cycles by iterating heap.
         // Mark-sweep isn't a good fit since in unsafe sections of code, stack pointers might not point to a rc object.
-        return try performSweep(t);
+        // TODO: Optimize by only looking at cyclable objects.
+        return c.MemoryCheck{
+            .num_cyc_objects = 0,
+        };
+    }
+
+    pub fn dump_stats(self: *const Thread) !void {
+        const S = struct {
+            fn opCountLess(_: void, a: vmc.OpCount, b: vmc.OpCount) bool {
+                return a.count > b.count;
+            }
+        };
+        var wa = std.Io.Writer.Allocating.init(self.alloc);
+        defer wa.deinit();
+        var w = &wa.writer;
+
+        try w.print("main ops evaled: {}\n", .{self.c.trace.totalOpCounts});
+        std.sort.pdq(vmc.OpCount, &self.c.trace.opCounts, {}, S.opCountLess);
+        var i: u32 = 0;
+
+        while (i < vmc.NumCodes) : (i += 1) {
+            if (self.c.trace.opCounts[i].count > 0) {
+                const op = std.meta.intToEnum(cy.OpCode, self.c.trace.opCounts[i].code) catch continue;
+                try w.print("\t{s} {}\n", .{@tagName(op), self.c.trace.opCounts[i].count});
+            }
+        }
+        self.c.vm.log(wa.written());
+    }
+
+    pub fn log(self: *cy.Thread, comptime format: []const u8, args: anytype) void {
+        const msg = std.fmt.allocPrint(self.alloc, format, args) catch @panic("error");
+        defer self.alloc.free(msg);
+        self.c.vm.log(msg);
+    }
+
+    pub fn log_tracev(self: *cy.Thread, comptime format: []const u8, args: anytype) void {
+        if (cy.Trace and c.verbose()) {
+            self.log(format, args);
+        }
     }
 };
 
@@ -1113,18 +1143,6 @@ var DummyPoolObject = cy.heap.PoolObject{
     .data = undefined,
 };
 
-// TODO: This should only be looking at cyclable objects.
-//       Cyclable objects should be allocated from separate heap pages.
-fn performSweep(t: *cy.Thread) !c.GCResult {
-    _ = t;
-    log.tracev("Perform sweep.", .{});
-    // Collect cyc nodes and release their children.
-    const res = c.GCResult{
-        .num_obj_freed = 0,
-    };
-    return res;
-}
-
 /// Assumes `v` is a cyclable pointer.
 fn markValue(t: *cy.Thread, v: cy.Value) void {
     const obj = v.asHeapObject();
@@ -1174,9 +1192,10 @@ fn HostFrame(comptime T: type) type {
 }
 
 pub fn print_thread_inst(t: *cy.Thread, pc: [*]const cy.Inst) !void {
-    const w = std.debug.lockStderrWriter(&cy.debug.print_buf);
-    defer std.debug.unlockStderrWriter();
-    try write_thread_inst(t, w, pc);
+    var buf: [256]u8 = undefined;
+    var w = std.Io.Writer.fixed(&buf);
+    cy.thread.write_thread_inst(t, &w, pc) catch @panic("error");
+    t.c.vm.log(w.buffered());
 }
 
 pub fn write_thread_inst(t: *cy.Thread, w: *std.Io.Writer, pc: [*]const cy.Inst) !void {

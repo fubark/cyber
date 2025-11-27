@@ -1,10 +1,9 @@
 const std = @import("std");
 const stdx = @import("stdx");
-const cy = @import("cyber.zig");
 
-const Request = if (cy.hasCLI) std.http.Client.Request else void;
-const StdResponse = if (cy.hasCLI) std.http.Client.Response else void;
-const Headers = if (cy.hasCLI) std.http.Client.Request.Headers else void;
+const Request = std.http.Client.Request;
+const StdResponse = std.http.Client.Response;
+const Headers = std.http.Client.Request.Headers;
 
 const MockError = enum {
     UnknownHostName,
@@ -84,7 +83,7 @@ pub const StdHttpClient = struct {
     }
 
     fn fetch(ptr: *anyopaque, alloc: std.mem.Allocator, method: std.http.Method, uri: std.Uri, headers: Headers) anyerror!Response {
-        const self = cy.ptrAlignCast(*StdHttpClient, ptr);
+        const self: *StdHttpClient = @ptrCast(@alignCast(ptr));
         var buf = try std.ArrayList(u8).initCapacity(alloc, 0);
         defer buf.deinit(alloc);
         const res = try self.client.fetch(.{
@@ -172,7 +171,7 @@ pub const MockHttpClient = struct {
         _ = method;
         _ = uri;
         _ = headers;
-        const self = cy.ptrAlignCast(*MockHttpClient, ptr);
+        const self: *MockHttpClient = @ptrCast(@alignCast(ptr));
         if (self.retReqError) |err| {
             switch (err) {
                 .UnknownHostName => return error.UnknownHostName,

@@ -56,7 +56,6 @@ pub const bindings = @import("builtins/bindings.zig");
 
 pub const hash = @import("hash.zig");
 pub const fmt = @import("fmt.zig");
-pub const http = @import("http.zig");
 
 pub const value = @import("value.zig");
 pub const Value = value.Value;
@@ -79,12 +78,11 @@ pub const worker = @import("worker.zig");
 pub const vmc = @import("vmc");
 pub const Fiber = vmc.Fiber;
 
-pub const fifo = @import("fifo.zig");
+// pub const fifo = @import("fifo.zig");
 pub const BoundedArray = @import("bounded_array.zig").BoundedArray;
 
 pub const debug = @import("debug.zig");
 pub const StackTrace = debug.StackTrace;
-pub const StackFrame = debug.StackFrame;
 
 pub const string = @import("string.zig");
 
@@ -101,19 +99,18 @@ pub const simd = @import("simd.zig");
 pub const isFreestanding = builtin.os.tag == .freestanding;
 pub const isWasm = builtin.cpu.arch.isWasm();
 pub const isWasmFreestanding = isWasm and builtin.os.tag == .freestanding;
-pub const is32Bit = build_options.is32Bit;
+pub const is32Bit = build_config.is32Bit;
 pub const hasStdFiles = !isWasm;
-pub const hasCYC = build_options.cyc;
-pub const hasFFI = build_options.ffi;
-pub const hasJIT = build_options.jit;
-pub const hasCLI = build_options.cli;
+pub const hasCYC = build_config.cyc;
+pub const hasFFI = build_config.ffi;
+pub const hasJIT = build_config.jit;
+pub const hasCLI = build_config.cli;
 
-const build_options = @import("build_options");
+const build_config = @import("build_config");
 pub var event_id: u64 = 1;
-pub const Trace = build_options.trace;
+pub const Trace = build_config.trace;
 pub const TraceRC = Trace and true;
-pub const TrackGlobalRC = build_options.trackGlobalRC;
-pub const Malloc = build_options.malloc;
+pub const Malloc = build_config.malloc;
 pub var tempBuf: [1000]u8 align(4) = undefined;
 
 const std = @import("std");
@@ -164,16 +161,4 @@ pub inline fn fatal() noreturn {
     panic("error");
 }
 
-pub fn fromTestBackend(backend: @TypeOf(build_options.testBackend)) C.Backend {
-    return switch (backend) {
-        .jit => C.BackendJIT,
-        .vm => C.BackendVM,
-        .tcc => C.BackendTCC,
-        .cc => C.BackendCC,
-    };
-}
-
 pub const C = @import("capi.zig");
-pub fn isAot(backend: C.Backend) bool {
-    return backend == C.BackendTCC or backend == C.BackendCC or backend == C.BackendLLVM;
-}

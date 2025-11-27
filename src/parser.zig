@@ -71,7 +71,7 @@ pub const Parser = struct {
     /// Variable dependencies.
     deps: std.StringHashMapUnmanaged(*ast.Node),
 
-    reportFn: *const fn (*anyopaque, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror,
+    reportFn: *const fn (*Parser, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror,
     tokenizerReportFn: *const fn (*anyopaque, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror!void,
     ctx: *anyopaque,
 
@@ -2774,7 +2774,7 @@ pub const Parser = struct {
 
     fn reportErrorAtSrc(self: *Parser, format: []const u8, args: []const fmt.FmtValue, srcPos: u32) anyerror {
         self.has_error = true;
-        return self.reportFn(self.ctx, format, args, srcPos);
+        return self.reportFn(self, format, args, srcPos);
     }
 
     fn consumeNewLineOrEnd(self: *Parser) !void {
@@ -4809,8 +4809,8 @@ fn isRecordKeyNodeType(node_t: ast.NodeType) bool {
     }
 }
 
-fn defaultReportFn(ctx: *anyopaque, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror {
-    _ = ctx;
+fn defaultReportFn(p: *cy.Parser, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror {
+    _ = p;
     _ = format;
     _ = args;
     _ = pos;

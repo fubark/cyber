@@ -659,7 +659,7 @@ const Feature = enum(u8) {
 };
 
 test "x64 encoding" {
-    var buf: std.ArrayListAlignedUnmanaged(u8, std.heap.page_size_min) = .{};
+    var buf: std.ArrayListAlignedUnmanaged(u8, .fromByteUnits(std.heap.page_size_min)) = .{};
     defer buf.deinit(t.alloc);
     const encoder = Encoder{ .alloc = t.alloc, .buf = &buf };
 

@@ -683,7 +683,7 @@ test "indexOfNewLineCpu()" {
     const str = "abcxyz\nfoobar\rdeadbeef\r\nzzz";
     try t.eq(indexOfNewLineCpu(str).?, 6);
     try t.eq(indexOfNewLineCpu(str[7..]).?, 6);
-    try t.eq(indexOfNewLineCpu(str[14..]).?, 9);
+    try t.eq(indexOfNewLineCpu(str[14..]).?, 8);
     try t.eq(indexOfNewLineCpu(str[24..]), null);
 }
 

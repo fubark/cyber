@@ -5,7 +5,7 @@ const sema = cy.sema;
 const tcc = @import("tcc");
 const C = @import("../capi.zig");
 const core = @import("../builtins/core.zig");
-const os_ffi = @import("../std/os_ffi.zig");
+const os = @import("../std/os.zig");
 const bc = @import("../bc_gen.zig");
 const os_mod = @import("../std/os.zig");
 
@@ -17,16 +17,16 @@ const types = [_]struct{[]const u8, C.BindType}{
 };
 
 comptime {
-    @export(&bind, .{ .name = "cl_mod_c", .linkage = .strong });
+    @export(&bind, .{ .name = "cl_mod_bind_c", .linkage = .strong });
 }
 
-pub fn bind(_: *cy.VM, mod: *cy.sym.Chunk) callconv(.c) void {
+pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
     for (funcs) |e| {
-        C.mod_add_func(@ptrCast(mod), e.@"0", e.@"1");
+        C.mod_add_func(mod, e.@"0", e.@"1");
     }
 
     for (types) |e| {
-        C.mod_add_type(@ptrCast(mod), e.@"0", e.@"1");
+        C.mod_add_type(mod, e.@"0", e.@"1");
     }
 }
 
@@ -44,26 +44,25 @@ fn getDynLib(vm: *cy.VM, c: *cy.Chunk) !*std.DynLib {
     const lib = try vm.alloc.create(std.DynLib);
     errdefer vm.alloc.destroy(lib);
     if (c.bind_lib) |path| {
-        if (std.mem.startsWith(u8, path, "https")) {
-            const final_path = try os_mod.allocCacheUrl(vm, path);
-            defer vm.alloc.free(final_path);
-            lib.* = try os_ffi.dlopen(final_path);
-        } else {
-            lib.* = os_ffi.dlopen(path) catch |err| {
-                std.debug.print("{s}\nCannot dlopen {s}.\n", .{c.srcUri, path});
-                return err;
-            };
+        var final_path: C.Bytes = undefined;
+        if (!vm.compiler.dl_resolver.?(@ptrCast(vm), C.to_bytes(path), &final_path)) {
+            @panic("Failed to load dynamic library.");
         }
+        defer C.vm_freeb(@ptrCast(vm), C.from_bytes(final_path));
+        lib.* = os.dlopen(C.from_bytes(final_path)) catch |err| {
+            std.debug.print("{s}\nCannot dlopen {s}.\n", .{c.srcUri, path});
+            return err;
+        };
     } else {
         if (builtin.os.tag == .macos) {
             const exe = try std.fs.selfExePathAlloc(vm.alloc);
             defer vm.alloc.free(exe);
-            lib.* = os_ffi.dlopen(exe) catch |err| {
+            lib.* = os.dlopen(exe) catch |err| {
                 std.debug.print("Cannot dlopen {s}.\n", .{exe});
                 return err;
             };
         } else {
-            lib.* = os_ffi.dlopen("") catch |err| {
+            lib.* = os.dlopen("") catch |err| {
                 std.debug.print("Cannot dlopen main.\n", .{});
                 return err;
             };
@@ -318,8 +317,8 @@ pub fn initBindLib(t: *cy.Thread) !C.Ret {
 
     // const __floatundisf = @extern(*anyopaque, .{ .name = "__floatundisf", .linkage = .Strong });
     if (builtin.cpu.arch != .aarch64) {
-        _ = tcc.tcc_add_symbol(state, "__fixunsdfdi", os_ffi.__fixunsdfdi);
-        _ = tcc.tcc_add_symbol(state, "__floatundidf", os_ffi.__floatundidf);
+        _ = tcc.tcc_add_symbol(state, "__fixunsdfdi", __fixunsdfdi);
+        _ = tcc.tcc_add_symbol(state, "__floatundidf", __floatundidf);
     }
     // _ = tcc.tcc_add_symbol(state, "__floatundisf", __floatundisf);
     // _ = tcc.tcc_add_symbol(state, "printf", std.c.printf);
@@ -468,3 +467,6 @@ pub fn flag(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     try c.compiler.c_flags.append(c.alloc, dupe);
     return cy.TypeValue.init(c.sema.void_t, cy.Value.Void);
 }
+
+pub extern fn __floatundidf(u64) f64;
+pub extern fn __fixunsdfdi(f64) u64;

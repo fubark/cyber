@@ -859,7 +859,7 @@ pub fn semaReturnExpr(c: *cy.Chunk, expr: ExprResult, node: *ast.Node) !void {
     try semaDestructBlock2(c, b);
 
     if (c.proc().func == null) {
-        try semaDeinitStatic(c);
+        try sema_program_deinit(c);
     }
 
     _ = try c.ir.pushStmt(.ret, node, .{
@@ -868,14 +868,13 @@ pub fn semaReturnExpr(c: *cy.Chunk, expr: ExprResult, node: *ast.Node) !void {
     c.block().endReachable = false;
 }
 
-fn semaDeinitStatic(c: *cy.Chunk) !void {
-    try semaNop(c, "Deinit static.", c.ast.null_node);
+// NOTE: This should only be inserted once since the main block will be wrapped in a main function.
+fn sema_program_deinit(c: *cy.Chunk) !void {
+    try semaNop(c, "program end.", c.ast.null_node);
     // Run static deinit for main func.
-    const func = c.sym.getMod().getSym("@main_deinit").?.cast(.func).first;
-    const call = try c.ir.newExpr(.call, c.sema.void_t, c.ast.null_node, .{ 
-        .func = func, .numArgs = 0, .args = undefined,
-    });
-    _ = try c.ir.pushStmt(.discard, c.ast.null_node, .{ .expr = call });
+    const func = c.sym.getMod().getSym("@program_deinit").?.cast(.func).first;
+    const expr = try sema.sema_call_ir(c, func, &.{}, c.ast.null_node);
+    try sema_discard(c, expr, c.ast.null_node);
 }
 
 fn semaReturn(c: *cy.Chunk, node: *ast.Node) !void {
@@ -888,7 +887,7 @@ fn semaReturn(c: *cy.Chunk, node: *ast.Node) !void {
         try semaDestructBlock2(c, b);
 
         if (c.proc().func == null) {
-            try semaDeinitStatic(c);
+            try sema_program_deinit(c);
         }
 
         _ = try c.ir.pushStmt(.ret, node, .{ .return_value = false });
@@ -2128,7 +2127,6 @@ fn build_move_access_path(c: *cy.Chunk, res: ExprResult, node: *ast.Node) !bool 
                 expr = expr.cast(.address_of).expr;
             },
             else => {
-                // std.debug.print("xx: {}\n", .{expr.code});
                 return c.reportError("Can only move a local or local member.", node);
             },
         }
@@ -3113,17 +3111,6 @@ pub fn resolveUserVar(c: *cy.Chunk, sym: *cy.sym.UserVar) !void {
     sym.resolving_init = false;
 }
 
-pub fn semaHostVarInit(c: *cy.Chunk, sym: *cy.sym.HostVar) !void {
-    if (!sym.isResolved()) {
-        const src_chunk = c.compiler.getSymChunk(@ptrCast(sym));
-        try resolveHostVar(src_chunk, sym);
-    }
-    _ = try c.ir.pushStmt(.set_global, @ptrCast(sym.decl.?), .{
-        .sym = @ptrCast(sym),
-        .expr = sym.ir.?,
-    });
-}
-
 pub fn semaUserVarInit(c: *cy.Chunk, sym: *cy.sym.UserVar, ref_node: ?*ast.Node) !void {
     if (sym.emitted) {
         return;
@@ -3215,16 +3202,10 @@ pub fn resolveHostVar(c: *cy.Chunk, sym: *cy.sym.HostVar) !void {
 
     // Value is consumed from loader.
     log.tracev("Invoke var loader for: {s}", .{bind_name});
-    const init_global = c.host_globals.get(bind_name) orelse {
+    const binding = c.host_globals.get(bind_name) orelse {
         return c.reportErrorFmt("Host var `{}` failed to load.", &.{v(bind_name)}, @ptrCast(decl));
     };
-    const val: cy.Value = @bitCast(init_global.?(@ptrCast(c.vm)));
-
-    // c.ast.node(node.data.staticDecl.varSpec).next = typeId;
-    defer c.heap.destructValue2(var_t, val);
-
-    const res = try ct_inline.value(c, TypeValue.init(var_t, val), null, @ptrCast(decl));
-    try c.resolveHostVar(sym, var_t, res.ir);
+    try c.resolveHostVar(sym, var_t, binding.ptr.?);
 }
 
 fn declareParam(c: *cy.Chunk, param: *ast.FuncParam, isSelf: bool, paramIdx: usize, declT: *cy.Type) !void {
@@ -3429,7 +3410,7 @@ fn localDecl(c: *cy.Chunk, node: *ast.VarDecl) !void {
         });
     }
 
-    if (c.vm.config.persist_main_locals) {
+    if (c.vm.config.persist_main) {
         if (c.proc().func == null and c.semaBlocks.items.len == 1) {
             // Main block.
             try semaTrackMainLocal(c, svar, @ptrCast(node));
@@ -4125,7 +4106,7 @@ pub fn getResolvedName(c: *cy.Chunk, name: []const u8, node: *ast.Node) !?NameRe
     while (i > 0) {
         i -= 1;
         const mod_sym = search_c.fallback_modules.items[i];
-        if (try c.getResolvedSym(@ptrCast(mod_sym), name, node)) |sym| {
+        if (try cy.module.get_pub_resolved_chunk_sym(c, mod_sym.cast(.chunk), name, node)) |sym| {
             return NameResult.initSym(sym);
         }
     }
@@ -4445,23 +4426,23 @@ pub fn pushFuncProc(c: *cy.Chunk, func: *cy.Func) !ProcId {
     return id;
 }
 
-pub fn semaMainBlock(c: *cy.Chunk, opt_main_func: ?*cy.Func) !*ir.Stmt {
-    const main_ir = try c.ir.newStmt(.mainBlock, @ptrCast(c.ast.root), undefined);
-    try c.ir.func_blocks.append(c.alloc, main_ir);
+pub fn sema_program(c: *cy.Chunk, opt_main_func: ?*cy.Func) !*ir.Stmt {
+    try sema.pushChunkResolveContext(c, null);
+    defer sema.popResolveContext(c);
+
+    const program_block = try c.ir.newStmt(.mainBlock, @ptrCast(c.ast.root), undefined);
+    try c.ir.func_blocks.append(c.alloc, program_block);
 
     const id = try pushProc(c, null);
     c.mainSemaProcId = id;
 
-    // Emit IR to invoke `@init` from the main chunk.
-    const func = c.sym.getMod().getSym("@main_init").?.cast(.func).first;
-    const exprLoc = try c.ir.newExpr(.call, c.sema.void_t, c.ast.null_node, .{ 
-        .func = func, .numArgs = 0, .args = undefined,
-    });
-    const expr = ExprResult.init(exprLoc, c.sema.void_t);
-    _ = try declareHiddenLocal(c, "_res", expr.type, expr, c.ast.null_node);
+    // Call `@program_init`.
+    const func = c.sym.getMod().getSym("@program_init").?.cast(.func).first;
+    const call = try sema_call_ir(c, func, &.{}, c.ast.null_node);
+    try sema_discard(c, call, c.ast.null_node);
 
     // For REPL, restore variables from previous evaluation.
-    if (c.vm.config.persist_main_locals) {
+    if (c.vm.config.persist_main) {
         for (c.vm.env_local_saves.items) |save| {
             {
                 return error.TODO;
@@ -4504,33 +4485,29 @@ pub fn semaMainBlock(c: *cy.Chunk, opt_main_func: ?*cy.Func) !*ir.Stmt {
         }
 
         // Invoke main function.
-        const call_main = try c.ir.newExpr(.call, main_func.sig.ret, c.ast.null_node, .{ 
-            .func = main_func, .numArgs = 0, .args = undefined,
-        });
-        const call_expr = ExprResult.init2(call_main);
-        const main_res = try declareHiddenLocal(c, "_main_res", call_expr.type, call_expr, c.ast.null_node);
+        const call_main = try sema_call_ir(c, main_func, &.{}, c.ast.null_node);
+        const main_res = try declareHiddenLocal(c, "_main_res", call_main.type, call_main, c.ast.null_node);
 
         // Skip deinit of main result.
         c.varStack.items[main_res.id].type = .dead;
 
-        try semaDeinitStatic(c);
+        try sema_program_deinit(c);
     } else {
         try semaStmts(c, c.ast.root.?.stmts.slice());
 
         if (c.block().endReachable) {
-            try semaDeinitStatic(c);
+            try sema_program_deinit(c);
         }
     }
 
-    // Pop block first to obtain the max locals.
     const stmtBlock = try popProc(c);
 
     log.tracev("pop main block", .{});
 
-    main_ir.cast(.mainBlock).* = .{
+    program_block.cast(.mainBlock).* = .{
         .bodyHead = stmtBlock.first,
     };
-    return main_ir;
+    return program_block;
 }
 
 pub fn pushProc(self: *cy.Chunk, func: ?*cy.Func) !ProcId {
@@ -4557,6 +4534,10 @@ pub fn pushProc(self: *cy.Chunk, func: ?*cy.Func) !ProcId {
 
     _ = try pushBlock(self, node);
     return @intCast(idx);
+}
+
+pub fn sema_discard(c: *cy.Chunk, expr: ExprResult, node: *ast.Node) !void {
+    _ = try c.ir.pushStmt(.discard, node, .{ .expr = expr.ir });
 }
 
 fn sema_call_partial_destruct_local(c: *cy.Chunk, local: *Local, node: *ast.Node) !void {
@@ -4694,7 +4675,7 @@ pub fn semaDestructBlock2(c: *cy.Chunk, b: *Block) !void {
 }
 
 pub fn shouldGenMainScopeReleaseOps(c: *cy.Compiler) bool {
-    return !c.vm.config.single_run and !c.vm.config.persist_main_locals;
+    return !c.vm.config.single_run and !c.vm.config.persist_main;
 }
 
 pub fn popBlock(c: *cy.Chunk) !cy.ir.StmtBlock {
@@ -5978,14 +5959,16 @@ pub fn semaCallFuncSymRec(c: *cy.Chunk, sym: *cy.sym.FuncSym, rec: *ast.Node, re
     }
 }
 
+pub fn sema_call_ir(c: *cy.Chunk, func: *cy.Func, args: []const *ir.Expr, node: *ast.Node) !ExprResult {
+    const expr = try c.ir.newExpr(.call, func.sig.ret, node, .{ 
+        .func = func, .numArgs = @intCast(args.len), .args = args.ptr,
+    });
+    return sema.ExprResult.initOwned(expr);
+}
+
 pub fn semaCallFuncResult(c: *cy.Chunk, res: sema_func.FuncResult, node: *ast.Node) !ExprResult {
     // try referenceSym(c, @ptrCast(matcher.sym), node);
-        const loc = try c.ir.newExpr(.call, res.func.sig.ret, node, .{
-        .func = res.func,
-        .numArgs = @as(u8, @intCast(res.data.rt.nargs)),
-        .args = res.data.rt.args,
-    });
-    return ExprResult.initOwned(loc);
+    return sema_call_ir(c, res.func, res.data.rt.args[0..res.data.rt.nargs], node);
 }
 
 pub fn semaCallValue(c: *cy.Chunk, callee: ExprResult, callee_n: *ast.Node, args: []*ast.Node, node: *ast.Node) !ExprResult {
@@ -7894,15 +7877,35 @@ pub fn semaUnExpr(c: *cy.Chunk, unary: *ast.Unary, expr: Cstr) !ExprResult {
                         const val = try std.fmt.parseFloat(f32, literal);
                         return c.semaConst32(@bitCast(-val), c.sema.f32_t, node);
                     } else if (target_t == c.sema.i32_t) {
-                        var val: i32 = @bitCast(try std.fmt.parseInt(u32, literal, 10));
-                        if (val != std.math.minInt(i32)) {
-                            if (val < 0) {
-                                return c.reportError("Invalid `i32` literal.", @ptrCast(unary.child));
-                            } else {
-                                val = -val;
-                            }
+                        var val: u64 = try std.fmt.parseInt(u64, literal, 10);
+                        const abs_min = 1 << 31;
+                        if (val > abs_min) {
+                            return c.reportError("Number literal is out of bounds.", @ptrCast(unary.child));
                         }
-                        return c.semaConst32(@bitCast(val), c.sema.i32_t, node);
+                        if (val > 0) {
+                            val = (abs_min - val) | abs_min;
+                        }
+                        return c.semaConst32(@truncate(val), c.sema.i32_t, node);
+                    } else if (target_t == c.sema.i16_t) {
+                        var val: u64 = try std.fmt.parseInt(u64, literal, 10);
+                        const abs_min = 1 << 15;
+                        if (val > abs_min) {
+                            return c.reportError("Number literal is out of bounds.", @ptrCast(unary.child));
+                        }
+                        if (val > 0) {
+                            val = (abs_min - val) | abs_min;
+                        }
+                        return c.semaConst16(@truncate(val), c.sema.i16_t, node);
+                    } else if (target_t == c.sema.i8_t) {
+                        var val: u64 = try std.fmt.parseInt(u64, literal, 10);
+                        const abs_min = 1 << 7;
+                        if (val > abs_min) {
+                            return c.reportError("Number literal is out of bounds.", @ptrCast(unary.child));
+                        }
+                        if (val > 0) {
+                            val = (abs_min - val) | abs_min;
+                        }
+                        return c.semaConst8(@truncate(val), c.sema.i8_t, node);
                     }
                 }
                 var val: i64 = @bitCast(try std.fmt.parseInt(u64, literal, 10));

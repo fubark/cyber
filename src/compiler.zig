@@ -18,6 +18,8 @@ const meta_mod = @import("builtins/meta.zig");
 const cy_mod = @import("builtins/cy.zig");
 const math_mod = @import("std/math.zig");
 const c_mod = @import("builtins/c.zig");
+const io_mod = @import("std/io.zig");
+const test_mod = @import("std/test.zig");
 const llvm_gen = @import("llvm_gen.zig");
 const cgen = cy.cgen;
 const bcgen = @import("bc_gen.zig");
@@ -57,10 +59,12 @@ pub const Compiler = struct {
     sema: sema.Sema,
 
     /// Determines how modules are loaded.
-    moduleLoader: C.ModuleLoaderFn,
+    loader: C.ModuleLoaderFn,
 
     /// Determines how module uris are resolved.
-    moduleResolver: C.ResolverFn,
+    resolver: C.ResolverFn,
+
+    dl_resolver: C.DlResolverFn,
 
     /// Compilation units for iteration.
     chunks: std.ArrayListUnmanaged(*cy.Chunk),
@@ -89,7 +93,7 @@ pub const Compiler = struct {
     main_chunk: *cy.Chunk,
     main_func: ?*cy.Func,
 
-    main_ir: *ir.Stmt,
+    program_ir: *ir.Stmt,
 
     /// A chunk is reserved for the libcyber API.
     api_chunk: *cy.Chunk,
@@ -119,8 +123,9 @@ pub const Compiler = struct {
             .jitBuf = jitgen.CodeBuffer.init(),
             .reports = .{},
             .sema = try sema.Sema.init(vm.alloc, self),
-            .moduleLoader = defaultModuleLoader,
-            .moduleResolver = defaultModuleResolver,
+            .loader = default_loader,
+            .resolver = default_resolver,
+            .dl_resolver = default_dl_resolver,
             .chunks = .{},
             .builtins_chunk = undefined,
             .chunk_map = .{},
@@ -131,7 +136,7 @@ pub const Compiler = struct {
             .apiError = "",
             .main_func = null,
             .main_chunk = undefined,
-            .main_ir = undefined,
+            .program_ir = undefined,
             .api_chunk = undefined,
             .cont = false,
             .chunk_start = 0,
@@ -153,7 +158,7 @@ pub const Compiler = struct {
     }
 
     pub fn deinit(self: *Compiler, comptime reset: bool) void {
-        log.tracev("Deinit compiler reset={}", .{reset});
+        self.vm.log_tracev("Deinit compiler reset={}", .{reset});
         self.clearReports();
         if (!reset) {
             self.reports.deinit(self.alloc);
@@ -185,11 +190,15 @@ pub const Compiler = struct {
             self.api_chunk.deinit();
             self.alloc.free(self.api_chunk.src);
             self.alloc.destroy(self.api_chunk);
+        } else {
+            self.api_chunk.fallback_modules.clearRetainingCapacity();
         }
 
         // Free chunk sources afterwards since syms may depend on them for debugging (type names).
         for (self.chunks.items) |chunk| {
-            chunk.alloc.free(chunk.src);
+            if (chunk.manage_src) {
+                chunk.alloc.free(chunk.src);
+            }
             self.alloc.destroy(chunk);
         }
 
@@ -308,13 +317,18 @@ pub const Compiler = struct {
         //       another for function bodies.
 
         const prev_main = self.main_chunk;
+        if (self.cont) {
+            // Evict the main chunk from cache so a new one can be created.
+            _ = self.chunk_map.remove(prev_main.srcUri);
+        }
+
         var mainChunk: *cy.Chunk = undefined;
+        var buf: [4096]u8 = undefined;
+        const r_uri = try resolveModuleUri(self, &buf, uri);
         if (src_opt) |src_temp| {
             const src_dup = try self.alloc.dupe(u8, src_temp);
-            mainChunk = try ensureModule2(self, uri, src_dup);
+            mainChunk = try ensureModule2(self, r_uri, src_dup);
         } else {
-            var buf: [4096]u8 = undefined;
-            const r_uri = try resolveModuleUri(self, &buf, uri);
             mainChunk = try ensureModule(self, r_uri);
         }
         self.main_chunk = mainChunk;
@@ -322,7 +336,6 @@ pub const Compiler = struct {
         // Load core module. Added as fallback module for each user module.
         if (self.importCore) {
             if (!self.cont) {
-                var buf: [4096]u8 = undefined;
                 const core_uri = try cy.compiler.resolveModuleUriFrom(mainChunk, &buf, "core", null);
                 self.builtins_chunk = try ensureModule(self, core_uri);
             }
@@ -330,40 +343,42 @@ pub const Compiler = struct {
         }
 
         if (self.cont) {
-            // Use all *resolved* top level syms from previous main.
-            // If a symbol wasn't resolved, it either failed during compilation or didn't end up getting used.
-            var iter = prev_main.sym.getMod().symMap.iterator();
-            while (iter.next()) |e| {
-                const name = e.key_ptr.*;
-                const sym = e.value_ptr.*;
+            if (config.persist_main) {
+                // Use all *resolved* top level syms from previous main.
+                // If a symbol wasn't resolved, it either failed during compilation or didn't end up getting used.
+                var iter = prev_main.sym.getMod().symMap.iterator();
+                while (iter.next()) |e| {
+                    const name = e.key_ptr.*;
+                    const sym = e.value_ptr.*;
 
-                const resolved = switch (sym.type) {
-                    .type => b: {
-                        const type_sym = sym.cast(.type);
-                        break :b type_sym.type.isResolved();
-                    },
-                    .func => b: {
-                        if (std.mem.eql(u8, sym.name(), "@main_init")) {
-                            continue;
-                        }
-                        if (std.mem.eql(u8, sym.name(), "@main_deinit")) {
-                            continue;
-                        }
-                        break :b sym.cast(.func).isResolved();
-                    },
-                    else => true,
-                };
-                if (!resolved) {
-                    continue;
-                }
+                    const resolved = switch (sym.type) {
+                        .type => b: {
+                            const type_sym = sym.cast(.type);
+                            break :b type_sym.type.isResolved();
+                        },
+                        .func => b: {
+                            if (std.mem.eql(u8, sym.name(), "@main_init")) {
+                                continue;
+                            }
+                            if (std.mem.eql(u8, sym.name(), "@main_deinit")) {
+                                continue;
+                            }
+                            break :b sym.cast(.func).isResolved();
+                        },
+                        else => true,
+                    };
+                    if (!resolved) {
+                        continue;
+                    }
 
-                const alias = try mainChunk.reserveUseAlias(@ptrCast(mainChunk.sym), name, null);
-                if (sym.type == .use_alias) {
-                    alias.sym = sym.cast(.use_alias).sym;
-                } else {
-                    alias.sym = sym;
+                    const alias = try mainChunk.reserveUseAlias(@ptrCast(mainChunk.sym), name, null);
+                    if (sym.type == .use_alias) {
+                        alias.sym = sym.cast(.use_alias).sym;
+                    } else {
+                        alias.sym = sym;
+                    }
+                    alias.resolved = true;
                 }
-                alias.resolved = true;
             }
         }
 
@@ -394,18 +409,22 @@ pub const Compiler = struct {
             self.main_func = sym.first;
         }
 
-        const init_func = try reserveMainInitFunc(mainChunk);
-        const deinit_func = try reserveMainDeinitFunc(mainChunk);
+        const program_init = try reserve_hidden_func(mainChunk, "@program_init");
+        const program_deinit = try reserve_hidden_func(mainChunk, "@program_deinit");
 
-        // Perform sema on static initializers.
-        log.tracev("Perform init sema.", .{});
-        try performChunkInitSema(self, mainChunk, init_func);
-        try emitDeinitStatic(mainChunk, deinit_func);
+        log.tracev("emit @program_init.", .{});
+        try emit_program_init_func(mainChunk, program_init);
+        log.tracev("emit @program_deinit.", .{});
+        try emit_program_deinit_func(mainChunk, program_deinit);
+
+        // Generate main first to expand any templates.
+        log.tracev("emit program.", .{});
+        self.program_ir = try sema.sema_program(mainChunk, self.main_func);
 
         // Perform sema on all chunks.
         log.tracev("Perform sema.", .{});
         for (self.newChunks()) |chunk| {
-            performChunkSema(self, chunk) catch |err| {
+            performChunkSema(chunk) catch |err| {
                 if (err == error.CompileError) {
                     return err;
                 } else {
@@ -586,8 +605,8 @@ pub fn performChunkParse(self: *Compiler, chunk: *cy.Chunk) !void {
     var tt = cy.debug.timer();
 
     const S = struct {
-        fn parserReport(ctx: *anyopaque, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror {
-            const c: *cy.Chunk = @ptrCast(@alignCast(ctx));
+        fn parserReport(p: *cy.Parser, format: []const u8, args: []const cy.fmt.FmtValue, pos: u32) anyerror {
+            const c: *cy.Chunk = @ptrCast(@alignCast(p.ctx));
             _ = try c.compiler.addReportFmt(.parse_err, format, args, c.id, pos);
             return error.ParseError;
         }
@@ -614,17 +633,19 @@ pub fn performChunkParse(self: *Compiler, chunk: *cy.Chunk) !void {
 
 /// Sema pass.
 /// Symbol resolving, type checking, and builds the model for codegen.
-fn performChunkSema(self: *Compiler, chunk: *cy.Chunk) !void {
-    if (chunk == self.main_chunk) {
-        try sema.pushChunkResolveContext(chunk, null);
-        defer sema.popResolveContext(chunk);
-        self.main_ir = try sema.semaMainBlock(chunk, self.main_func);
-        try semaChunkFuncs(chunk);
-    } else {
-        try sema.pushChunkResolveContext(chunk, null);
-        defer sema.popResolveContext(chunk);
-        try semaChunkFuncs(chunk);
+fn performChunkSema(c: *cy.Chunk) !void {
+    // try sema.pushChunkResolveContext(chunk, null);
+    // defer sema.popResolveContext(chunk);
+
+    if (c.has_static_init) {
+        const init = c.sym.getMod().getSym("@init").?.cast(.func).first;
+        try emit_chunk_init_func(c, init);
+
+        const deinit = c.sym.getMod().getSym("@deinit").?.cast(.func).first;
+        try emit_chunk_deinit_func(c, deinit);
     }
+
+    try semaChunkFuncs(c);
 }
 
 fn semaChunkFuncs(c: *cy.Chunk) !void {
@@ -664,12 +685,71 @@ fn semaChunkFuncs(c: *cy.Chunk) !void {
     }
 }
 
-fn reserveMainInitFunc(c: *cy.Chunk) !*cy.Func {
-    const funcSigId = try c.sema.ensureFuncSig(&.{}, c.sema.void_t);
+fn emit_chunk_init_func(c: *cy.Chunk, init: *cy.Func) !void {
+    log.tracev("emit @init.", .{});
 
-    const name = try c.parser.ast.genIdentNode(c.alloc, "@main_init");
+    try sema.pushChunkResolveContext(c, null);
+    defer sema.popResolveContext(c);
+
+    _ = try sema.pushFuncProc(c, init);
+
+    // Emit in correct dependency order.
+    for (0..c.syms.items.len) |i| {
+        const sym = c.syms.items[i];
+        switch (sym.type) {
+            .hostVar => {
+                try sema.semaTraceNopFmt(c, "init {s}", .{sym.name()}, init.decl.?);
+            },
+            .userVar => {
+                try sema.semaTraceNopFmt(c, "init {s}", .{sym.name()}, init.decl.?);
+                const user_var = sym.cast(.userVar);
+                try sema.semaUserVarInit(c, user_var, null);
+            },
+            else => {},
+        }
+    }
+
+    try sema.procPrologue(c);
+    try sema.popFuncBlock(c);
+}
+
+/// Invoke any chunk init functions.
+/// Invoke @initBindLib if necessary.
+fn emit_program_init_func(c: *cy.Chunk, start: *cy.Func) !void {
+    try sema.pushChunkResolveContext(c, null);
+    defer sema.popResolveContext(c);
+
+    _ = try sema.pushFuncProc(c, start);
+
+    var has_extern_func = false;
+    for (c.compiler.newChunks()) |chunk| {
+        if (chunk.has_extern_func) {
+            has_extern_func = true;
+        }
+        if (!chunk.has_static_init) {
+            continue;
+        }
+
+        const init = try reserve_hidden_func(chunk, "@init");
+
+        const call = try sema.sema_call_ir(c, init, &.{}, c.ast.null_node);
+        try sema.sema_discard(c, call, c.ast.null_node);
+    }
+
+    if (has_extern_func) {
+        const init_bind_lib = (try c.get_chunk_by_uri("c")).?.sym.getMod().getSym("@initBindLib").?.cast(.func).first;
+        const expr = try sema.sema_call_ir(c, init_bind_lib, &.{}, c.ast.null_node);
+        try sema.sema_discard(c, expr, c.ast.null_node);
+    }
+
+    try sema.procPrologue(c);
+    try sema.popFuncBlock(c);
+}
+
+fn reserve_hidden_func(c: *cy.Chunk, name: []const u8) !*cy.Func {
+    const name_n = try c.parser.ast.genIdentNode(c.alloc, name);
     const decl = try c.parser.ast.newNode(.funcDecl, .{
-        .name = @ptrCast(name),
+        .name = @ptrCast(name_n),
         .parent = null,
         .attrs = .{ .ptr = undefined, .len = 0 },
         .with = null,
@@ -687,86 +767,7 @@ fn reserveMainInitFunc(c: *cy.Chunk) !*cy.Func {
         .is_method = false,
         .extern_ = false,
     };
-    const func = try c.reserveUserFunc(@ptrCast(c.sym), "@main_init", config, decl);
-    try c.resolveUserFunc(func, funcSigId);
-
-    // Mark as emitted so `performChunkSema` doesn't try to emit the body.
-    func.info.emitted = true;
-
-    return func;
-}
-
-/// Main chunk emits static initializers for all chunks due to resolve dependencies.
-fn performChunkInitSema(self: *Compiler, c: *cy.Chunk, init: *cy.Func) !void {
-    log.tracev("Perform init sema.", .{});
-
-    try sema.pushChunkResolveContext(c, null);
-    defer sema.popResolveContext(c);
-
-    _ = try sema.pushFuncProc(c, init);
-
-    var has_extern_func = false;
-    for (self.newChunks()) |chunk| {
-        if (chunk.has_extern_func) {
-            has_extern_func = true;
-        }
-        if (!chunk.has_static_init) {
-            continue;
-        }
-
-        // Emit in correct dependency order.
-        for (0..chunk.syms.items.len) |i| {
-            const sym = chunk.syms.items[i];
-            switch (sym.type) {
-                .hostVar => {
-                    try sema.semaTraceNopFmt(c, "init {s}", .{sym.name()}, init.decl.?);
-                    const host_var = sym.cast(.hostVar);
-                    try sema.semaHostVarInit(c, host_var);
-                },
-                .userVar => {
-                    try sema.semaTraceNopFmt(c, "init {s}", .{sym.name()}, init.decl.?);
-                    const user_var = sym.cast(.userVar);
-                    try sema.semaUserVarInit(c, user_var, null);
-                },
-                else => {},
-            }
-        }
-    }
-
-    if (has_extern_func) {
-        const init_bind_lib = (try c.get_chunk_by_uri("c")).?.sym.getMod().getSym("@initBindLib").?.cast(.func).first;
-        const exprLoc = try c.ir.newExpr(.call, c.sema.void_t, c.ast.null_node, .{ 
-            .func = init_bind_lib, .numArgs = 0, .args = undefined,
-        });
-        const expr = sema.ExprResult.init(exprLoc, c.sema.void_t);
-        _ = try sema.declareHiddenLocal(c, "_res", expr.type, expr, c.ast.null_node);
-    }
-
-    try sema.procPrologue(c);
-    try sema.popFuncBlock(c);
-}
-
-fn reserveMainDeinitFunc(c: *cy.Chunk) !*cy.Func {
-    const name = try c.parser.ast.genIdentNode(c.alloc, "@main_deinit");
-    const decl = try c.parser.ast.newNode(.funcDecl, .{
-        .name = @ptrCast(name),
-        .parent = null,
-        .attrs = .{ .ptr = undefined, .len = 0 },
-        .with = null,
-        .params = .{ .ptr = undefined, .len = 0 },
-        .ret = null,
-        .stmts = .{ .ptr = undefined, .len = 0 },
-        .pos = cy.NullId,
-        .sig_t = .func,
-        .hidden = true,
-        .scope_ret = false,
-    });
-
-    const config = cy.sym.FuncConfig{
-        .is_method = false,
-        .extern_ = false,
-    };
-    const func = try c.reserveUserFunc(@ptrCast(c.sym), "@main_deinit", config, decl);
+    const func = try c.reserveUserFunc(@ptrCast(c.sym), name, config, decl);
 
     const sig_id = try c.sema.ensureFuncSig(&.{}, c.sema.void_t);
     try c.resolveUserFunc(func, sig_id);
@@ -777,62 +778,65 @@ fn reserveMainDeinitFunc(c: *cy.Chunk) !*cy.Func {
     return func;
 }
 
-fn emitDeinitStatic(c: *cy.Chunk, deinit: *cy.Func) !void {
+// Chunk destructor.
+fn emit_chunk_deinit_func(c: *cy.Chunk, deinit_fn: *cy.Func) !void {
     try sema.pushChunkResolveContext(c, null);
     defer sema.popResolveContext(c);
 
-    _ = try sema.pushFuncProc(c, deinit);
+    _ = try sema.pushFuncProc(c, deinit_fn);
+
+    for (0..c.syms.items.len) |i| {
+        const sym = c.syms.items[i];
+        switch (sym.type) {
+            .hostVar => {
+                // Binded globals are managed by the host. No destruction needed.
+                const host_var = sym.cast(.hostVar);
+                const node: *ast.Node = @ptrCast(host_var.decl.?);
+                try sema.semaTraceNopFmt(c, "deinit global {s} -- skip", .{host_var.head.name()}, node);
+            },
+            .userVar => {
+                const user_var = sym.cast(.userVar);
+                if (!user_var.type.isManaged()) {
+                    continue;
+                }
+
+                const node: *ast.Node = @ptrCast(user_var.decl.?);
+                try sema.semaNopFmt(c, "deinit global {s}", .{user_var.head.name()}, node);
+                const static = try sema.symbol(c, sym, false, node);
+                const ptr_t = try sema.getPtrType(c, user_var.type);
+                const addr = try sema.semaAddressOf(c, static, ptr_t, node);
+                const move_ir = try c.ir.newExpr(.deref, user_var.type, node, .{
+                    .expr = addr.ir,
+                });
+                const move = sema.ExprResult.init2(move_ir);
+                const temp_local = try sema.declareHiddenLocal(c, "_temp", user_var.type, move, node);
+                const temp = &c.varStack.items[temp_local.id];
+                try sema.semaDestructLocal(c, temp, node);
+                c.varStack.items[temp_local.id].type = .dead;
+            },
+            else => {},
+        }
+    }
+
+    try sema.procPrologue(c);
+    try sema.popFuncBlock(c);
+}
+
+fn emit_program_deinit_func(c: *cy.Chunk, end_fn: *cy.Func) !void {
+    try sema.pushChunkResolveContext(c, null);
+    defer sema.popResolveContext(c);
+
+    _ = try sema.pushFuncProc(c, end_fn);
     for (c.compiler.newChunks()) |chunk| {
         if (!chunk.has_static_init) {
             continue;
         }
 
-        for (0..chunk.syms.items.len) |i| {
-            const sym = chunk.syms.items[i];
-            switch (sym.type) {
-                .hostVar => {
-                    const host_var = sym.cast(.hostVar);
-                    if (!host_var.type.isManaged()) {
-                        continue;
-                    }
-                    const node: *ast.Node = @ptrCast(host_var.decl.?);
-                    try sema.semaTraceNopFmt(c, "deinit static {s}", .{host_var.head.name()}, node);
+        const deinit = try reserve_hidden_func(chunk, "@deinit");
 
-                    const static = try sema.symbol(c, sym, false, node);
-                    const ptr_t = try sema.getPtrType(c, host_var.type);
-                    const addr = try sema.semaAddressOf(c, static, ptr_t, node);
-                    const move_ir = try c.ir.newExpr(.deref, host_var.type, node, .{
-                        .expr = addr.ir,
-                    });
-                    const move = sema.ExprResult.init2(move_ir);
-                    const temp_local = try sema.declareHiddenLocal(c, "_temp", host_var.type, move, node);
-                    const temp = &c.varStack.items[temp_local.id];
-                    try sema.semaDestructLocal(c, temp, node);
-                    c.varStack.items[temp_local.id].type = .dead;
-                },
-                .userVar => {
-                    const user_var = sym.cast(.userVar);
-                    if (!user_var.type.isManaged()) {
-                        continue;
-                    }
-
-                    const node: *ast.Node = @ptrCast(user_var.decl.?);
-                    try sema.semaNopFmt(c, "deinit static {s}", .{user_var.head.name()}, node);
-                    const static = try sema.symbol(c, sym, false, node);
-                    const ptr_t = try sema.getPtrType(c, user_var.type);
-                    const addr = try sema.semaAddressOf(c, static, ptr_t, node);
-                    const move_ir = try c.ir.newExpr(.deref, user_var.type, node, .{
-                        .expr = addr.ir,
-                    });
-                    const move = sema.ExprResult.init2(move_ir);
-                    const temp_local = try sema.declareHiddenLocal(c, "_temp", user_var.type, move, node);
-                    const temp = &c.varStack.items[temp_local.id];
-                    try sema.semaDestructLocal(c, temp, node);
-                    c.varStack.items[temp_local.id].type = .dead;
-                },
-                else => {},
-            }
-        }
+        // Invoke chunk destructor.
+        const call = try sema.sema_call_ir(c, deinit, &.{}, c.ast.null_node);
+        try sema.sema_discard(c, call, c.ast.null_node);
     }
     
     try sema.procPrologue(c);
@@ -1032,8 +1036,11 @@ pub fn loadChunk(c: *cy.Chunk) !void {
         c.compiler.hasApiError = false;
         log.tracev("Invoke module loader: {s}", .{c.srcUri});
 
-        var src: C.Bytes = undefined;
-        if (!c.compiler.moduleLoader.?(@ptrCast(c.vm), @ptrCast(c.sym), C.to_bytes(c.srcUri), &src)) {
+        var res = C.LoaderResult{
+            .src = C.to_bytes(""),
+            .manage_src = false,
+        };
+        if (!c.compiler.loader.?(@ptrCast(c.vm), @ptrCast(c.sym), C.to_bytes(c.srcUri), &res)) {
             if (c.importer) |node| {
                 const from = c.compiler.chunks.items[node.src()];
                 if (c.compiler.hasApiError) {
@@ -1049,7 +1056,8 @@ pub fn loadChunk(c: *cy.Chunk) !void {
                 }
             }
         }
-        c.src = C.from_bytes(src);
+        c.src = C.from_bytes(res.src);
+        c.manage_src = res.manage_src;
         c.pending_load_src = false;
     }
 
@@ -1220,7 +1228,7 @@ fn reserveChunkSyms(c: *cy.Chunk) anyerror!void {
 /// Since core types are declared in the same builtins.cy,
 /// Reserve them upfront so that other types do not occupy them first.
 fn reserveCoreTypes(self: *Compiler) !void {
-    log.tracev("Reserve core types", .{});
+    self.vm.log_tracev("Reserve core types", .{});
 
     const type_ids = &[_]cy.TypeId{
         bt.Void,
@@ -1399,36 +1407,48 @@ pub fn initModuleCompat(comptime name: []const u8, comptime initFn: fn (vm: *Com
     }.initCompat;
 }
 
-pub fn defaultModuleResolver(_: ?*C.VM, params: C.ResolverParams, res_uri_len: ?*usize) callconv(.c) bool {
+pub fn default_dl_resolver(vm: ?*C.VM, uri: C.Bytes, out: [*c]C.Bytes) callconv(.c) bool {
+    const final_uri = C.vm_allocb(vm.?, uri.len);
+    @memcpy(final_uri, C.from_bytes(uri));
+    out[0] = C.to_bytes(final_uri);
+    return true;
+}
+
+pub fn default_resolver(_: ?*C.VM, params: C.ResolverParams, res_uri_len: ?*usize) callconv(.c) bool {
     @memcpy(params.buf[0..params.uri.len], params.uri.ptr[0..params.uri.len]);
     res_uri_len.?.* = params.uri.len;
     return true;
 }
 
-pub fn defaultModuleLoader(vm_: ?*C.VM, mod_: ?*C.Sym, spec: C.Bytes, out: ?*C.Bytes) callconv(.c) bool {
+const ModuleEntry = struct {
+    src: []const u8,
+    bind: *const fn(*C.VM, *C.Sym) callconv(.c) void,
+};
+
+const mods = std.StaticStringMap(ModuleEntry).initComptime(.{
+    .{"core", ModuleEntry{.src = core_mod.Src, .bind = &core_mod.bind}},
+    .{"meta", ModuleEntry{.src = meta_mod.Src, .bind = &meta_mod.bind}},
+    .{"math", ModuleEntry{.src = math_mod.Src, .bind = &math_mod.bind}},
+    .{"cy",   ModuleEntry{.src = cy_mod.Src, .bind = &cy_mod.bind}},
+    .{"c",    ModuleEntry{.src = c_mod.Src, .bind = &c_mod.bind}},
+    .{"io",   ModuleEntry{.src = io_mod.Src, .bind = &io_mod.bind}},
+    .{"test", ModuleEntry{.src = test_mod.Src, .bind = &test_mod.bind}},
+});
+
+pub fn default_loader(vm_: ?*C.VM, mod_: ?*C.Sym, spec: C.Bytes, res: [*c]C.LoaderResult) callconv(.c) bool {
     const vm: *cy.VM = @ptrCast(@alignCast(vm_));
-    const mod: *cy.sym.Chunk = @ptrCast(@alignCast(mod_));
     const name = C.from_bytes(spec);
     var src: []const u8 = undefined;
-    if (std.mem.eql(u8, name, "core")) {
-        src = vm.alloc.dupe(u8, core_mod.Src) catch @panic("error");
-        core_mod.bind(vm, mod_.?);
-    } else if (std.mem.eql(u8, name, "meta")) {
-        src = vm.alloc.dupe(u8, meta_mod.Src) catch @panic("error");
-        meta_mod.bind(vm, mod_.?);
-    } else if (std.mem.eql(u8, name, "math")) {
-        src = vm.alloc.dupe(u8, math_mod.Src) catch @panic("error");
-        math_mod.bind(vm, mod_.?);
-    } else if (std.mem.eql(u8, name, "cy")) {
-        src = vm.alloc.dupe(u8, cy_mod.Src) catch @panic("error");
-        cy_mod.bind(vm, mod_.?);
-    } else if (std.mem.eql(u8, name, "c")) {
-        src = vm.alloc.dupe(u8, c_mod.Src) catch @panic("error");
-        c_mod.bind(vm, mod);
+    if (mods.get(name)) |entry| {
+        src = vm.alloc.dupe(u8, entry.src) catch @panic("error");
+        entry.bind(vm_.?, mod_.?);
     } else {
         return false;
     }
-    out.?.* = C.to_bytes(src);
+    res[0] = .{
+        .src = C.to_bytes(src),
+        .manage_src = true,
+    };
     return true;
 }
 
@@ -1443,7 +1463,7 @@ pub fn resolveModuleUriFrom(self: *cy.Chunk, buf: []u8, uri: []const u8, node: ?
         .bufLen = buf.len,
     };
     var res_uri_len: usize = undefined;
-    if (!self.compiler.moduleResolver.?(@ptrCast(self.compiler.vm), params, &res_uri_len)) {
+    if (!self.compiler.resolver.?(@ptrCast(self.compiler.vm), params, &res_uri_len)) {
         if (self.compiler.hasApiError) {
             return self.reportErrorFmt(self.compiler.apiError, &.{}, node);
         } else {
@@ -1464,7 +1484,7 @@ pub fn resolveModuleUri(self: *cy.Compiler, buf: []u8, uri: []const u8) ![]const
         .bufLen = buf.len,
     };
     var res_uri_len: usize = undefined;
-    if (!self.moduleResolver.?(@ptrCast(self.vm), params, &res_uri_len)) {
+    if (!self.resolver.?(@ptrCast(self.vm), params, &res_uri_len)) {
         if (self.hasApiError) {
             _ = try self.addReport(.compile_err, self.apiError, null, 0);
             return error.CompileError;

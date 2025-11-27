@@ -11,7 +11,7 @@ const funcs = [_]struct{[]const u8, C.BindFunc}{
     .{"indexOfNewLine",    zErrFunc(indexOfNewLine)},
 };
 
-pub fn bind(_: *cy.VM, mod: *C.Sym) callconv(.c) void {
+pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
     for (funcs) |e| {
         C.mod_add_func(mod, e.@"0", e.@"1");
     }
@@ -27,4 +27,8 @@ fn indexOfNewLine(t: *cy.Thread) !C.Ret {
         ret.* = cy.value.Option(i64).none();
     }
     return C.RetOk;
+}
+
+comptime {
+    @export(&bind, .{ .name = "cl_mod_bind_io", .linkage = .strong });
 }

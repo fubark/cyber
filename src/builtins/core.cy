@@ -942,7 +942,7 @@ fn Slice[] :: @init_sequence(init [&]T) -> Self:
     elems_ptr := as[Ptr[T]] buf.elems_ptr()
     elems_ptr[0..init.length].init(as init)
     return {
-        buf    = buf,
+        buf    = move buf,
         ptr    = elems_ptr,
         _len   = init.length,
         header = cap,
@@ -952,7 +952,7 @@ fn new_slice_buffer(%T type, cap int) -> ^RawBuffer[byte]:
     ptr := @new_object_undef(type.id(RawBuffer[byte]), 8 + type.size(T) * cap)
     buf := as[^RawBuffer[byte]] ptr
     buf.length = type.size(T) * cap
-    return buf
+    return move buf
 
 --| Creates a `Slice` with initial length and capacity of `n` and values set to `val`.
 fn Slice[] :: @init(n int, val T) -> Self:
@@ -4109,10 +4109,6 @@ fn (&PtrSpan[]) set_backwards(o Self):
 
 -- --| Returns a slice with ends trimmed from `delims`. `mode` can be @left, @right, or @ends.
 -- #[bind] fn PtrSpan[].trim(self, mode symbol, delims PtrSpan[T]) PtrSpan[T]
-
--- TODO: These should be enabled by the trace flag.
-#[bind] fn traceRetains() -> int
-#[bind] fn traceReleases() -> int
 
 -- For REPL.
 #[bind] fn @trackMainLocal(name str, type_id int, addr Ptr[void])

@@ -41,8 +41,9 @@ pub const Chunk = struct {
     /// Heap for compile-time values.
     heap: *cy.Heap,
 
-    /// Source code. Owned.
+    /// Source code.
     src: []const u8,
+    manage_src: bool,
 
     /// Whether `src` needs to be loaded from `srcUri`.
     pending_load_src: bool,
@@ -192,6 +193,7 @@ pub const Chunk = struct {
             .cur_sema_proc = undefined,
             .vm = c.vm,
             .src = src orelse "",
+            .manage_src = true,
             .ast = undefined,
             .srcUri = srcUri,
             .sym = undefined,

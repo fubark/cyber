@@ -1,5 +1,6 @@
-/zig-cache/
+/.zig-cache/
 /zig-out/
+/graveyard/
 /notes.md
 /todo.md
 /site
@@ -11,6 +12,8 @@
 /test.txt
 /test/assets/write.txt
 /exts/vscode/cyber-0.0.1.vsix
+/examples/libcyber/bind_module
+/examples/libcyber/main
 /examples/libfoo.so
 /examples/libfoo.dylib
 /examples/foo.o

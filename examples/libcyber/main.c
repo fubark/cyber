@@ -31,7 +31,7 @@ int main() {
     } else { 
         CLBytes summary = cl_vm_error_summary(vm);
         printf("%.*s\n", (int)summary.len, summary.ptr);
-        cl_vm_free(vm, summary);
+        cl_vm_freeb(vm, summary);
     }
     cl_vm_deinit(vm);
     return 0;

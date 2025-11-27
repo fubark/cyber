@@ -597,7 +597,7 @@ pub const Call = struct {
     base: Expr = undefined,
     func: *cy.Func,
     numArgs: u8,
-    args: [*]*Expr,
+    args: [*]const *Expr,
 };
 
 pub const CallTrait = struct {

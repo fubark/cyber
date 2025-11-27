@@ -505,22 +505,21 @@ fn astringReplace(t: *cy.Thread, str: []const u8, needlev: cy.heap.Str, replacev
     const needle = needlev.slice();
     const replacement = replacev.slice();
 
-    const idxBuf = &t.c.vm.u8Buf;
-    idxBuf.clearRetainingCapacity();
-    defer if (idxBuf.capacity > 4096) idxBuf.clearAndFree(t.alloc);
-    const newLen = try string.prepReplacement(str, needle, replacement, idxBuf.writer(t.alloc));
-    const numIdxes = @divExact(idxBuf.items.len, 4);
+    var buf: std.ArrayListAligned(u8, .@"4") = .{};
+    defer buf.deinit(t.alloc);
+    const newLen = try string.prepReplacement(str, needle, replacement, buf.writer(t.alloc));
+    const numIdxes = buf.items.len / 4;
     if (numIdxes > 0) {
         if (replacev.ascii()) {
             const new = try t.heap.init_astr_undef(newLen);
             const newBuf = new.mutSlice();
-            const idxes = @as([*]const u32, @ptrCast(idxBuf.items.ptr))[0..numIdxes];
+            const idxes = @as([*]const u32, @ptrCast(buf.items.ptr))[0..numIdxes];
             string.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
             return new;
         } else {
             const new = try t.heap.init_ustr_undef(newLen);
             const newBuf = new.mutSlice();
-            const idxes = @as([*]const u32, @ptrCast(idxBuf.items.ptr))[0..numIdxes];
+            const idxes = @as([*]const u32, @ptrCast(buf.items.ptr))[0..numIdxes];
             string.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
             return new;
         }
@@ -533,15 +532,14 @@ fn ustringReplace(t: *cy.Thread, str: []const u8, needlev: cy.heap.Str, replacev
     const needle = needlev.slice();
     const replacement = replacev.slice();
 
-    const idxBuf = &t.c.vm.u8Buf;
-    idxBuf.clearRetainingCapacity();
-    defer if (idxBuf.capacity > 4096) { idxBuf.clearAndFree(t.alloc); };
-    const newLen = try string.prepReplacement(str, needle, replacement, idxBuf.writer(t.alloc));
-    const numIdxes = @divExact(idxBuf.items.len, 4);
+    var buf: std.ArrayListAligned(u8, .@"4") = .{};
+    defer buf.deinit(t.alloc);
+    const newLen = try string.prepReplacement(str, needle, replacement, buf.writer(t.alloc));
+    const numIdxes = buf.items.len / 4;
     if (numIdxes > 0) {
         const new = try t.heap.init_ustr_undef(newLen);
         const newBuf = new.mutSlice();
-        const idxes = @as([*]const u32, @ptrCast(idxBuf.items.ptr))[0..numIdxes];
+        const idxes = @as([*]const u32, @ptrCast(buf.items.ptr))[0..numIdxes];
         cy.string.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
         return new;
     } else {

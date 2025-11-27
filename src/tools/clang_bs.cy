@@ -8,8 +8,8 @@ type c_uint = c.c_uint
 -- Manual bindings for clang. This is used to bootstrap cbindgen.
 
 #if meta.is_vm_target():
-    -- #c.bindLib('/Library/Developer/CommandLineTools/usr/lib/libclang.dylib')
-    #c.bindLib('libclang.dylib')
+    -- #c.bind_lib('/Library/Developer/CommandLineTools/usr/lib/libclang.dylib')
+    #c.bind_lib('libclang.dylib')
 
 const CXEval_UnExposed i32 = 0
 const CXEval_Int i32 = 1

@@ -1,19 +1,16 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const build_config = @import("build_config");
 const stdx = @import("stdx");
-const cy = @import("cyber.zig");
+const app_debug = @import("app_debug.zig");
 const c = @import("capi.zig");
-const log = cy.log.scoped(.main);
+const log = std.log.scoped(.main);
 const cli = @import("cli.zig");
 const os_mod = @import("std/os.zig");
-const build_options = @import("build_options");
 const fmt = @import("fmt.zig");
 
-comptime {
-    const lib = @import("lib.zig");
-    for (std.meta.declarations(lib)) |decl| {
-        _ = &@field(lib, decl.name);
-    }
+test {
+    std.testing.refAllDecls(cli);
 }
 
 var verbose = false;
@@ -25,10 +22,10 @@ const CP_UTF8 = 65001;
 var prevWinConsoleOutputCP: u32 = undefined;
 
 // Default VM.
-var vm: cy.VM = undefined;
+var gvm: *c.VM = undefined;
 
 pub fn main() !void {
-    cy.debug.attachSegfaultHandler(sig_handler);
+    app_debug.attachSegfaultHandler(sig_handler);
 
     if (builtin.os.tag == .windows) {
         prevWinConsoleOutputCP = std.os.windows.kernel32.GetConsoleOutputCP();
@@ -40,8 +37,8 @@ pub fn main() !void {
         }
     }
 
-    const alloc = cy.heap.getAllocator();
-    defer cy.heap.deinitAllocator();
+    const alloc = cli.getAllocator();
+    defer cli.deinitAllocator();
 
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);
@@ -70,7 +67,7 @@ pub fn main() !void {
             } else if (std.mem.eql(u8, arg, "--help")) {
                 cmd = .help;
             } else {
-                if (cy.Trace) {
+                if (build_config.trace) {
                     if (std.mem.eql(u8, arg, "-stats")) {
                         dumpStats = true;
                         continue;
@@ -148,48 +145,49 @@ const Command = enum {
 fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     c.setVerbose(verbose);
 
-    const cvm: *c.VM = @ptrCast(&vm);
-    try vm.init(alloc);
-    cli.clInitCLI(&vm);
-    defer {
-        cli.clDeinitCLI(&vm);
-        vm.deinit(false);
-    }
+    const vm = c.vm_initx(alloc);
+    defer c.vm_deinit(vm);
+    gvm = vm;
+    try cli.init_cli(vm, alloc);
+    defer cli.deinit_cli(vm);
 
     var config = c.defaultCompileConfig();
     config.single_run = builtin.mode == .ReleaseFast;
-    config.file_modules = true;
     config.backend = backend;
-    _ = vm.compile(path, null, config) catch |err| {
-        if (err == error.CompileError) {
-            if (!c.silent()) {
-                const report = c.vm_compile_error_summary(cvm);
-                defer c.vm_free(cvm, report);
-                cy.debug.prints(report);
-            }
-            exit(1);
-        } else {
-            std.debug.panic("unexpected {}\n", .{err});
+    const res = c.vm_compile_path(vm, path, config);
+    if (res != c.Success) {
+        switch (res) {
+            c.ErrorCompile => {
+                if (!c.silent()) {
+                    const report = c.vm_compile_error_summary(vm);
+                    defer c.vm_freeb(vm, report);
+                    std.debug.print("{s}", .{report});
+                }
+                exit(1);
+            },
+            else => {
+                std.debug.panic("unexpected {}\n", .{res});
+            },
         }
-    };
-    try cy.debug.dumpBytecode(&vm, .{});
+    }
+    c.vm_dump_bytecode(vm);
 }
 
 fn repl(alloc: std.mem.Allocator) !void {
     c.setVerbose(verbose);
 
-    const cvm: *c.VM = @ptrCast(&vm);
-    try vm.init(alloc);
-    cli.clInitCLI(&vm);
-    defer {
-        cli.clDeinitCLI(&vm);
-        vm.deinit(false);
-    }
+    const vm: *c.VM = c.vm_initx(alloc);
+    defer c.vm_deinit(vm);
+    gvm = vm;
+
+    try cli.init_cli(vm, alloc);
+    defer cli.deinit_cli(vm);
+
+    const a: *cli.App = @ptrCast(@alignCast(c.vm_user_data(vm)));
+    a.config.reload = reload;
 
     var config = c.defaultEvalConfig();
     config.single_run = builtin.mode == .ReleaseFast;
-    config.file_modules = true;
-    config.reload = reload;
     config.backend = c.BackendVM;
     config.spawn_exe = false;
 
@@ -199,109 +197,121 @@ fn repl(alloc: std.mem.Allocator) !void {
         \\cli.repl()
         \\
         ;
-    _ = vm.eval("main", src, config) catch |err| {
-        const thread = c.vm_main_thread(cvm);
-        switch (err) {
-            error.Panic => {
+    var eval_res: c.EvalResult = undefined;
+    const res = c.vm_evalx(vm, "main", src, config, &eval_res);
+    if (res != c.Success) {
+        const thread = c.vm_main_thread(vm);
+        switch (res) {
+            c.ErrorPanic => {
                 if (!c.silent()) {
                     const report = c.thread_panic_summary(thread);
-                    defer c.vm_free(cvm, report);
-                    cy.debug.prints(report);
+                    defer c.vm_freeb(vm, report);
+                    std.debug.print("{s}", .{report});
                 }
             },
-            error.CompileError => {
+            c.ErrorCompile => {
                 if (!c.silent()) {
-                    const report = c.vm_compile_error_summary(cvm);
-                    defer c.vm_free(cvm, report);
-                    cy.debug.prints(report);
+                    const report = c.vm_compile_error_summary(vm);
+                    defer c.vm_freeb(vm, report);
+                    std.debug.print("{s}", .{report});
                 }
             },
             else => {
-                std.debug.print("unexpected {}\n", .{err});
+                std.debug.print("unexpected {}\n", .{res});
             },
         }
         if (builtin.mode == .Debug) {
-            // Report error trace.
-            return err;
+            return error.EvalError;
         } else {
-            // Exit early.
             exit(1);
         }
-    };
+    }
 
     if (verbose) {
-        std.debug.print("\n==VM Info==\n", .{});
-        try vm.dumpInfo();
+        // std.debug.print("\n==VM Info==\n", .{});
+        // try vm.dumpInfo();
     }
-    if (cy.Trace and dumpStats) {
-        vm.dumpStats();
+    const main_thread = c.vm_main_thread(vm);
+    if (build_config.trace and dumpStats) {
+        c.thread_dump_stats(main_thread);
     }
-    if (cy.TrackGlobalRC) {
-        try vm.main_thread.checkGlobalRC();
+    if (c.TRACE()) {
+        const grc = c.thread_rc(main_thread);
+        if (grc != 0) {
+            std.debug.print("unreleased refcount: {}\n", .{grc});
+            c.thread_dump_live_objects(main_thread);
+        }
     }
 }
 
 fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
     c.setVerbose(verbose);
 
-    const cvm: *c.VM = @ptrCast(&vm);
-    try vm.init(alloc);
-    cli.clInitCLI(&vm);
-    defer {
-        cli.clDeinitCLI(&vm);
-        vm.deinit(false);
-    }
+    const vm: *c.VM = c.vm_initx(alloc);
+    defer c.vm_deinit(vm);
+    gvm = vm;
+
+    try cli.init_cli(vm, alloc);
+    defer cli.deinit_cli(vm);
+
+    const a: *cli.App = @ptrCast(@alignCast(c.vm_user_data(vm)));
+    a.config.reload = reload;
 
     var config = c.defaultEvalConfig();
     config.single_run = builtin.mode == .ReleaseFast;
-    config.file_modules = true;
-    config.reload = reload;
     config.backend = backend;
     config.spawn_exe = true;
-    const res = vm.eval(path, null, config) catch |err| {
-        const thread = c.vm_main_thread(cvm);
-        switch (err) {
-            error.Panic => {
+
+    var eval_res: c.EvalResult = undefined;
+    const res = c.vm_eval_path(vm, path, config, &eval_res);
+    if (res != c.Success) {
+        switch (res) {
+            c.ErrorPanic => {
                 if (!c.silent()) {
+                    const thread = c.vm_main_thread(vm);
                     const report = c.thread_panic_summary(thread);
-                    defer c.vm_free(cvm, report);
-                    cy.debug.prints(report);
+                    defer c.vm_freeb(vm, report);
+                    std.debug.print("{s}", .{report});
                 }
             },
-            error.CompileError => {
+            c.ErrorCompile => {
                 if (!c.silent()) {
-                    const report = c.vm_compile_error_summary(cvm);
-                    defer c.vm_free(cvm, report);
-                    cy.debug.prints(report);
+                    const report = c.vm_compile_error_summary(vm);
+                    defer c.vm_freeb(vm, report);
+                    std.debug.print("{s}", .{report});
                 }
             },
             else => {
-                std.debug.print("unexpected {}\n", .{err});
+                std.debug.print("unexpected {}\n", .{res});
             },
         }
         if (builtin.mode == .Debug) {
-            // Report error trace.
-            return err;
+            return error.EvalError;
         } else {
-            // Exit early.
             exit(1);
         }
-    };
+    }
+
     if (verbose) {
-        if (res.res_t != cy.types.BuiltinTypes.Void) {
-            const val_s = try cy.debug.alloc_value_desc(&vm, res.res_t, @ptrCast(res.res));
-            defer vm.alloc.free(val_s);
+        if (eval_res.res_t != c.TypeVoid) {
+            const val_s = c.value_desc(vm, eval_res.res_t, eval_res.res);
+            defer c.vm_freeb(vm, val_s);
             std.debug.print("\nmain return: {s}", .{val_s});
         }
-        std.debug.print("\n==VM Info==\n", .{});
-        try vm.dumpInfo();
+        // std.debug.print("\n==VM Info==\n", .{});
+        // try c.vm_dump_info() vm.dumpInfo();
     }
-    if (cy.Trace and dumpStats) {
-        vm.dumpStats();
+    const main_thread = c.vm_main_thread(vm);
+    if (build_config.trace and dumpStats) {
+        c.thread_dump_stats(main_thread);
     }
-    if (cy.TrackGlobalRC) {
-        if (res.res_t == cy.types.BuiltinTypes.Void) {
-            try vm.main_thread.checkGlobalRC();
+    if (c.TRACE()) {
+        if (eval_res.res_t == c.TypeVoid) {
+            const grc = c.thread_rc(main_thread);
+            if (grc != 0) {
+                std.debug.print("unreleased refcount: {}\n", .{grc});
+                c.thread_dump_live_objects(main_thread);
+            }
         }
     }
 }
@@ -336,26 +346,26 @@ fn help() void {
         \\                            
         \\`cyber compile` options:
         \\
-    , .{build_options.version});
+    , .{c.version()});
 }
 
 fn version() void {
-    std.debug.print("{s}\n", .{build_options.full_version});
+    std.debug.print("{s}\n", .{c.full_version()});
 }
 
 pub fn panic(msg: []const u8, trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
     _ = trace;
     _ = ret_addr;
-    cy.debug.defaultPanic(msg, @returnAddress(), panic_handler);
+    app_debug.defaultPanic(msg, @returnAddress(), panic_handler);
 }
 
 fn panic_handler() !void {
-    try cy.debug.vm_panic_handler(@ptrCast(@alignCast(&vm)));
+    try app_debug.vm_panic_handler(gvm);
 }
 
 fn sig_handler(sig: i32, info: *const std.posix.siginfo_t, ctx_ptr: ?*anyopaque) callconv(.c) noreturn {
-    cy.debug.vm_segv_handler(@ptrCast(@alignCast(&vm))) catch |err| {
+    app_debug.vm_segv_handler(gvm) catch |err| {
         std.debug.panic("failed during segfault: {}", .{err});
     };
-    cy.debug.handleSegfaultPosix(sig, info, ctx_ptr);
+    app_debug.handleSegfaultPosix(sig, info, ctx_ptr);
 }

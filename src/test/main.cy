@@ -1,0 +1,1 @@
+-- Placeholder file for cli tests that run embedded src and require a valid uri.

@@ -191,16 +191,28 @@ pub fn genAll(c: *cy.Compiler) !void {
 fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
     log.tracev("prep sym: {s}", .{sym.name()});
     switch (sym.type) {
-        .extern_var,
-        .hostVar,
+        .hostVar => {
+            const id = c.vm.globals.items.len;
+            const global_sym = try c.alloc.create(cy.vm.GlobalSym);
+            var val: []align(8) u8 = &.{};
+            val.ptr = @ptrCast(@alignCast(sym.cast(.hostVar).val.?));
+            global_sym.* = .init(val, sym);
+            try c.vm.globals.append(c.alloc, global_sym);
+            try c.genSymMap.putNoClobber(c.alloc, sym, .{ .varSym = .{ .id = @intCast(id) }});
+        },
+        .extern_var => {
+            const id = c.vm.globals.items.len;
+            const global_sym = try c.alloc.create(cy.vm.GlobalSym);
+            // value ptr is relocated at runtime.
+            global_sym.* = .init(&.{}, sym);
+            try c.vm.globals.append(c.alloc, global_sym);
+            try c.genSymMap.putNoClobber(c.alloc, sym, .{ .varSym = .{ .id = @intCast(id) }});
+        },
         .userVar => {
             const id = c.vm.globals.items.len;
             const global_sym = try c.alloc.create(cy.vm.GlobalSym);
             const global_t = sym.getValueType().?;
-            var value: []align(8) u8 = &.{};
-            if (sym.type != .extern_var) {
-                value = try c.alloc.alignedAlloc(u8, .@"8", global_t.size());
-            }
+            const value = try c.alloc.alignedAlloc(u8, .@"8", global_t.size());
             global_sym.* = .init(value, sym);
             try c.vm.globals.append(c.alloc, global_sym);
             try c.genSymMap.putNoClobber(c.alloc, sym, .{ .varSym = .{ .id = @intCast(id) }});
@@ -405,7 +417,7 @@ fn genChunkInner(c: *Chunk) !void {
         }
     }
 
-    // Relocate func pcs after final buffer size.
+    // Get stable func pcs after final buffer size.
     for (c.ir.func_blocks.items) |block| {
         if (block.code == .funcBlock) {
             const func = block.cast(.funcBlock).func;
@@ -609,6 +621,7 @@ pub fn genFuncBlock(c: *Chunk, stmt: *ir.FuncBlock, node: *ast.Node) !void {
         c.compiler.genSymMap.getPtr(func).?.func.pc = @intCast(pc);
     }
     c.buf.setOpArgU32(header_pc + 1, id);
+    c.vm.log_tracev("gen {s} {}", .{stmt.func.name(), id});
     
     std.debug.assert(c.vm.funcSyms.items[id].type == .null);
 

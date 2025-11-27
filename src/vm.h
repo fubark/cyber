@@ -137,44 +137,6 @@ typedef struct IndexSlice {
 #define OBJ_TYPEID(o) (((ObjectHeader*)(((intptr_t)o) - 8))->meta & TYPE_MASK)
 #define OBJHEADER_TYPEID(o) (o->meta & TYPE_MASK)
 
-typedef enum {
-    FMT_TYPE_CHAR,
-    FMT_TYPE_STRING,
-    FMT_TYPE_I8,
-    FMT_TYPE_U8,
-    FMT_TYPE_I16,
-    FMT_TYPE_U16,
-    FMT_TYPE_U32,
-    FMT_TYPE_I32,
-    FMT_TYPE_I48,
-    FMT_TYPE_U64,
-    FMT_TYPE_U64_HEX,
-    FMT_TYPE_I64,
-    FMT_TYPE_F64,
-    FMT_TYPE_BOOL,
-    FMT_TYPE_PTR,
-    FMT_TYPE_ENUM,
-    FMT_TYPE_ERROR,
-} FmtValueType;
-
-typedef struct FmtValue {
-    union {
-        u8 u8;
-        u16 u16;
-        u32 u32;
-        u64 u64;
-        double f64;
-        const char* string;
-        u8 ch;
-        bool b;
-        void* ptr;
-    } data;
-    union {
-        u32 string;
-    } data2;
-    u8 type;
-} FmtValue;
-
 #define CALL_INST_LEN 9
 #define CALL_TRAIT_INST_LEN 5
 #define CALL_PTR_INST_LEN 3
@@ -755,9 +717,7 @@ typedef struct Heap {
 
     u32 numRetains;
     u32 numReleases;
-#if TRACK_GLOBAL_RC
     size_t refCounts;
-#endif
 
     u64 trace_event;
     u64 trace_panic_at_event;
@@ -811,8 +771,14 @@ typedef struct ZThread {
     ZHeap heap;
 } ZThread;
 
+extern __thread ZThread* cur_thread;
+
 typedef struct ZVM {
-    u8 padding[576];
+#if DEBUG
+    u8 padding[464];
+#else
+    u8 padding[456];
+#endif
     VM c;
 } ZVM;
 
@@ -928,15 +894,15 @@ HeapObjectResult zAllocPoolObject(ZThread* t, TypeId id);
 HeapObjectResult zAllocBigObject(ZThread* t, TypeId id, size_t size);
 ValueResult zAllocClosure(ZThread* t, Value* fp, Inst* func_pc, TypeId ptr_t, Inst* captures, u8 ncaptures, bool stack_func);
 ValueResult zAllocFuncUnion(ZThread* t, TypeId id, Value func_ptr);
-void zLog(const char* fmt, const FmtValue* vals, size_t len);
+void z_log(ZThread* t, const char* msg, size_t len);
 bool zCheckDoubleFree(ZThread* t, HeapObject* obj);
 bool zCheckRetainDanglingPointer(ZThread* t, HeapObject* obj);
-void zPanicFmt(ZThread* t, const char* format, FmtValue* args, size_t numArgs);
+void z_panic_unexpected_choice(ZThread* t, int64_t exp, int64_t act);
 void zFree(ZThread* t, Str bytes);
 Str zGetTypeName(ZVM* vm, TypeId id);
 ResultCode zEnsureListCap(ZVM* vm, ZList* list, size_t cap);
 void zTraceRetain(ZVM* vm, Value v);
 ValueResult zCopyStruct(ZVM* vm, HeapObject* obj);
-void zPrintTraceAtPc(ZVM* vm, u32 debugPc, Str title, Str msg);
+void zPrintTraceAtPc(ZThread* t, u32 debugPc, Str title, Str msg);
 void zDumpObjectTrace(ZThread* t, HeapObject* obj);
 void* zGetExternFunc(ZVM* vm, u32 func);

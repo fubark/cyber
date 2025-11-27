@@ -242,9 +242,13 @@ pub fn dlopen(path: []const u8) !std.DynLib {
         const path_c = try std.posix.toPosixPath(path);
         // Place the lookup scope of the symbols in this library ahead of the global scope.
         const RTLD_DEEPBIND = 0x00008;
+        var mode: u32 = @bitCast(std.c.RTLD{
+            .LAZY = true,
+        });
+        mode |= RTLD_DEEPBIND;
         return std.DynLib{
             .inner = .{
-                .handle = std.c.dlopen(&path_c, std.c.RTLD.LAZY | RTLD_DEEPBIND) orelse {
+                .handle = std.c.dlopen(&path_c, @bitCast(mode)) orelse {
                     return error.FileNotFound;
                 },
             },

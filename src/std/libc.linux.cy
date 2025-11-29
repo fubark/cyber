@@ -105,4 +105,4 @@ const DT_LNK     = byte(10)
 const DT_SOCK    = byte(12)
 
 #[extern]
-fn sched_getaffinity(pid pid_t, cpusetsize size_t, mask Ptr[cpu_set_t]) -> c_int
+fn sched_getaffinity(pid lc.pid_t, cpusetsize c.size_t, mask Ptr[cpu_set_t]) -> c.c_int

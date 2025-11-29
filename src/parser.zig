@@ -2044,6 +2044,7 @@ pub const Parser = struct {
         }
 
         const import = try self.ast.newNode(.import_stmt, .{
+            .attrs = .{ .ptr = config.attrs.ptr, .len = config.attrs.len },
             .name = name,
             .spec = spec,
             .pos = self.tokenPos(start),

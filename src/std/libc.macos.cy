@@ -91,3 +91,17 @@ type timespec cstruct:
     nsec ssize_t
 
 type uid_t = i32
+
+const CLOCK_REALTIME lc.clockid_t = 0
+const CLOCK_MONOTONIC lc.clockid_t = 6
+const CLOCK_MONOTONIC_RAW lc.clockid_t = 4
+const CLOCK_MONOTONIC_RAW_APPROX lc.clockid_t = 5
+const CLOCK_UPTIME_RAW lc.clockid_t = 8
+const CLOCK_UPTIME_RAW_APPROX lc.clockid_t = 9
+const CLOCK_PROCESS_CPUTIME_ID lc.clockid_t = 12
+const CLOCK_THREAD_CPUTIME_ID lc.clockid_t = 16
+
+const F_GETPATH = c_int(50)
+
+#[extern]
+fn sysctlbyname(name Ptr[byte], oldp Ptr[void], oldlenp Ptr[size_t], newp Ptr[void], newlen size_t) -> c_int

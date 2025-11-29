@@ -207,6 +207,7 @@ const MoveExpr = struct {
 };
 
 pub const ImportStmt = extern struct {
+    attrs: Slice(*Attribute),
     name: *Node,
     spec: ?*Node,
     pos: u32,

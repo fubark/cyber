@@ -508,7 +508,7 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
         },
         .call_host => {
             const base = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const ptr_int = @as(*const align(1) u48, @ptrCast(pc + 3)).*;
+            const ptr_int = std.mem.readInt(u48, @ptrCast(pc + 3), .little);
             if (ptr_int == 0) {
                 try w.print("?..%{} = <placeholder>(%{}..?)", .{
                     base, base + 4,

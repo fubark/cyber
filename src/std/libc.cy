@@ -30,91 +30,90 @@ type FILE = void
 #[cond=meta.system() == .macos]
 use macos 'libc.macos.cy'
 
+#[cond=meta.system() == .linux]
+use linux 'libc.linux.cy'
+
 type clockid_t = switch meta.system():
     case .macos => i32
+    case .linux => r32
     else => void
-
-const CLOCK_REALTIME = switch meta.system():
-    case .macos => clockid_t(0)
-    else => meta.unsupported()
-const CLOCK_MONOTONIC = switch meta.system():
-    case .macos => clockid_t(6)
-    else => meta.unsupported()
-const CLOCK_MONOTONIC_RAW = switch meta.system():
-    case .macos => clockid_t(4)
-    else => meta.unsupported()
-const CLOCK_MONOTONIC_RAW_APPROX = switch meta.system():
-    case .macos => clockid_t(5)
-    else => meta.unsupported()
-const CLOCK_UPTIME_RAW = switch meta.system():
-    case .macos => clockid_t(8)
-    else => meta.unsupported()
-const CLOCK_UPTIME_RAW_APPROX = switch meta.system():
-    case .macos => clockid_t(9)
-    else => meta.unsupported()
-const CLOCK_PROCESS_CPUTIME_ID = switch meta.system():
-    case .macos => clockid_t(12)
-    else => meta.unsupported()
-const CLOCK_THREAD_CPUTIME_ID = switch meta.system():
-    case .macos => clockid_t(16)
-    else => meta.unsupported()
 
 type fd_t = switch meta.system():
     case .macos => i32
+    case .linux => i32
     else => void
 
-const F_GETPATH = switch meta.system():
-    case .macos => c_int(50)
-    else => meta.unsupported()
+type pid_t = switch meta.system():
+    case .macos => i32
+    case .linux => i32
+    else => void
+
+type cpu_set_t = switch meta.system():
+    case .linux => linux.cpu_set_t
+    else => void
 
 type mode_t = switch meta.system():
     case .macos => i16
+    case .linux => r32
     else => void
 
 type O = switch meta.system():
     case .macos => i32
+    case .linux => r32
     else => void
 
 -- TODO: packed structs would improve ergonomics of many of these system config types.
-const O_RDONLY = switch meta.system():
-    case .macos => O(0x0000)
+const O_RDONLY O = switch meta.system():
+    case .macos => 0x0000
+    case .linux => 0x0000
     else => meta.unsupported()
-const O_WRONLY = switch meta.system():
-    case .macos => O(0x0001)
+const O_WRONLY O = switch meta.system():
+    case .macos => 0x0001
+    case .linux => 0x0001
     else => meta.unsupported()
-const O_RDWR   = switch meta.system():
-    case .macos => O(0x0002)
+const O_RDWR O = switch meta.system():
+    case .macos => 0x0002
+    case .linux => 0x0002
     else => meta.unsupported()
-const O_NONBLOCK = switch meta.system():
-    case .macos => O(0x0004)
+const O_NONBLOCK O = switch meta.system():
+    case .macos => 0x0004
+    case .linux => 0x0800
     else => meta.unsupported()
-const O_CREAT  = switch meta.system():
-    case .macos => O(0x0200)
+const O_CREAT O = switch meta.system():
+    case .macos => 0x0200
+    case .linux => 0x0040
     else => meta.unsupported()
 const O_TRUNC  = switch meta.system():
-    case .macos => O(0x0400)
+    case .macos => 0x0400
+    case .linux => 0x0200
     else => meta.unsupported()
-const O_CLOEXEC = switch meta.system():
-    case .macos => O(0x1000000)
+const O_CLOEXEC O = switch meta.system():
+    case .macos => 0x1000000
+    case .linux => 0x80000
     else => meta.unsupported()
-const O_DIRECTORY = switch meta.system():
-    case .macos => O(0x100000)
+const O_DIRECTORY O = switch meta.system():
+    case .macos => 0x100000
+    case .linux => 0x10000
     else => meta.unsupported()
 
 type off_t = switch meta.system():
     case .macos => i64
+    case .linux => i64
     else => void
 
 const PATH_MAX = switch meta.system():
     case .macos => 1024
+    case .linux => 4096
     else => meta.unsupported()
 
 type Stat = switch meta.system():
     case .macos => macos.Stat
+    case .linux => linux.Stat
     else => void
 
 type timespec = switch meta.system():
     case .macos => macos.timespec
+    case .linux => linux.timespec
     else => void
 
 #[extern]
@@ -201,16 +200,19 @@ fn printf(format Ptr[byte], args c.variadic) -> c_int
 fn read(fd fd_t, buf Ptr[void], count size_t) -> ssize_t
 
 #[extern]
+fn readlink(path Ptr[byte], buf Ptr[byte], bufsiz size_t) -> ssize_t
+
+#[extern]
 fn rmdir(pathname Ptr[byte]) -> c_int
+
+#[extern]
+fn sched_getaffinity(pid pid_t, cpusetsize size_t, mask Ptr[cpu_set_t]) -> c_int
 
 #[extern]
 fn setenv(name Ptr[byte], value Ptr[byte], overwrite c_int) -> c_int
 
 #[extern]
 fn stat(pathname Ptr[byte], statbuf Ptr[Stat]) -> c_int
-
-#[extern]
-fn sysctlbyname(name Ptr[byte], oldp Ptr[void], oldlenp Ptr[size_t], newp Ptr[void], newlen size_t) -> c_int
 
 #[extern]
 fn unlink(pathname Ptr[byte]) -> c_int

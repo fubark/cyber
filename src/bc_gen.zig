@@ -130,16 +130,18 @@ pub fn genAll(c: *cy.Compiler) !void {
     // Perform static relocations.
     for (c.newChunks()) |chunk| {
         for (chunk.relocations.items) |rel| {
-            const ptr: *align(1) u48 = @ptrCast(&chunk.buf.ops.items[rel.pc]);
+            const ptr: *align(1) [6]u8 = @ptrCast(&chunk.buf.ops.items[rel.pc]);
             switch (rel.kind) {
                 .extern_func_ptr => {
                     return error.Unexpected;
                 },
                 .func => {
-                    ptr.* = @intCast(@intFromPtr(c.genSymMap.get(rel.data.func).?.func.static_pc));
+                    const addr: u48 = @intCast(@intFromPtr(c.genSymMap.get(rel.data.func).?.func.static_pc));
+                    std.mem.writeInt(u48, ptr, addr, .little);
                 },
                 .global => {
-                    ptr.* = @intCast(@intFromPtr(c.vm.globals.items[rel.data.global].value.ptr));
+                    const addr: u48 = @intCast(@intFromPtr(c.vm.globals.items[rel.data.global].value.ptr));
+                    std.mem.writeInt(u48, ptr, addr, .little);
                 },
             }
         }

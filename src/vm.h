@@ -774,10 +774,10 @@ typedef struct ZThread {
 extern __thread ZThread* cur_thread;
 
 typedef struct ZVM {
-#if DEBUG
-    u8 padding[464];
-#else
+#if !(DEBUG) || defined(__linux__)
     u8 padding[456];
+#else
+    u8 padding[464];
 #endif
     VM c;
 } ZVM;

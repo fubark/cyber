@@ -752,6 +752,7 @@ type BinaryExprOp enum:
     case dummy
 
 type ImportStmt:
+    attrs []^Node
     name ^Node
     spec ?^Node
     pos  i32

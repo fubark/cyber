@@ -158,7 +158,7 @@ const funcs = [_]struct{[]const u8, C.BindFunc}{
     .{"Int[].+",      zErrCtFunc(bindings.Int_add, bindings.Int_add_eval)},
     .{"Int[].-",      zErrCtFunc(bindings.Int_sub, bindings.Int_sub_eval)},
     .{"Int[].*",      zErrCtFunc(bindings.Int_mul, bindings.Int_mul_eval)},
-    .{"Int[]./",      zErrCtFunc(bindings.Int_div, null)},
+    .{"Int[]./",      zErrCtFunc(bindings.Int_div, bindings.Int_div_eval)},
     .{"Int[].%",      zErrCtFunc(bindings.Int_mod, null)},
     .{"Int[].&&",     zErrCtFunc(bindings.Int_and, null)},
     .{"Int[].||",     zErrCtFunc(bindings.Int_or, null)},

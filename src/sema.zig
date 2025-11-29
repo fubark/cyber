@@ -2383,6 +2383,16 @@ pub fn resolveUseAlias(c: *cy.Chunk, sym: *cy.sym.UseAlias) anyerror!void {
 }
 
 pub fn declareUseImport(c: *cy.Chunk, node: *ast.ImportStmt) !void {
+    for (node.attrs.slice()) |attr| {
+        if (attr.type == .cond) {
+            const res = try cte.evalCheck(c, attr.value.?, c.sema.bool_t);
+            if (!res.value.asBool()) {
+                // Skip import.
+                return;
+            }
+        }
+    }
+
     var specPath: []const u8 = undefined;
     if (node.spec) |spec| {
         if (spec.type() != .sq_string_lit) {

@@ -360,32 +360,37 @@ pub fn initBindLib(t: *cy.Thread) !C.Ret {
     // Perform runtime relocations.
     for (t.c.vm.compiler.chunks.items) |c| {
         for (c.rt_relocations.items) |rel| {
-            const ptr: *align(1) u48 = @ptrCast(&c.buf.ops.items[rel.pc]);
+            const ptr: *align(1) [6]u8 = @ptrCast(&c.buf.ops.items[rel.pc]);
             switch (rel.kind) {
                 .extern_func_ptr => {
                     const rt_id = c.compiler.genSymMap.get(rel.data.extern_func_ptr).?.func.id;
                     const func_ptr = c.vm.funcSyms.items[rt_id].data.host_func;
-                    ptr.* = @intCast(@intFromPtr(func_ptr));
+                    const addr: u48 = @intCast(@intFromPtr(func_ptr));
+                    std.mem.writeInt(u48, ptr, addr, .little);
                 },
                 .func => {
                     if (rel.data.func.type == .extern_) {
                         if (rel.data.func.data.extern_.has_impl) {
                             const id = c.compiler.genSymMap.get(rel.data.func).?.extern_func.id;
                             const func_ptr = c.vm.funcSyms.items[id].data.host_func;
-                            ptr.* = @intCast(@intFromPtr(func_ptr));
+                            const addr: u48 = @intCast(@intFromPtr(func_ptr));
+                            std.mem.writeInt(u48, ptr, addr, .little);
                         } else {
                             const id = c.compiler.genSymMap.get(rel.data.func).?.extern_func.vm_id;
                             const func_ptr = c.vm.funcSyms.items[id].data.host_func;
-                            ptr.* = @intCast(@intFromPtr(func_ptr));
+                            const addr: u48 = @intCast(@intFromPtr(func_ptr));
+                            std.mem.writeInt(u48, ptr, addr, .little);
                         }
                     } else {
                         const id = c.compiler.genSymMap.get(rel.data.func).?.func.id;
                         const func_ptr = c.vm.funcSyms.items[id].data.host_func;
-                        ptr.* = @intCast(@intFromPtr(func_ptr));
+                        const addr: u48 = @intCast(@intFromPtr(func_ptr));
+                        std.mem.writeInt(u48, ptr, addr, .little);
                     }
                 },
                 .global => {
-                    ptr.* = @intCast(@intFromPtr(c.vm.globals.items[rel.data.global].value.ptr));
+                    const addr: u48 = @intCast(@intFromPtr(c.vm.globals.items[rel.data.global].value.ptr));
+                    std.mem.writeInt(u48, ptr, addr, .little);
                 },
             }
         }

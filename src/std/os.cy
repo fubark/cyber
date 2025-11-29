@@ -16,6 +16,9 @@ use meta
 #[cond=meta.system() == .macos]
 use macos 'os.macos.cy'
 
+#[cond=meta.system() == .linux]
+use linux 'os.linux.cy'
+
 type c_int = c.c_int
 
 --| Default SIMD vector bit size.
@@ -163,17 +166,20 @@ fn fileExists(path str) -> bool:
 
 fn fileInfo(path str) -> !FileInfo:
     cpath := str.initz(path)
-    cstat := lc.Stat{}
-    if lc.stat(cpath.ptr, &cstat) != 0:
-        return fromErrno()
-    return fileInfo(&cstat)
+    #if meta.system() == .linux:
+        return linux.file_info(cpath.ptr)
+    #else:
+        cstat := lc.Stat{}
+        if lc.stat(cpath.ptr, &cstat) != 0:
+            return fromErrno()
+        return fileInfo(&cstat)
 
 fn fileInfo(stat Ptr[lc.Stat]) -> FileInfo:
     var res FileInfo = undef
     #if meta.system() == .macos:
         res = macos.fromStat(stat)
     #else:
-        meta.unsupported()
+        panic('unsupported')
     return res
 
 --| Frees the memory located at `ptr`.
@@ -216,10 +222,19 @@ fn num_cpus() -> int:
     #if meta.system() == .macos:
         var count c.c_int = 0
         var count_len c.size_t = type.size(c.c_int)
-        res := lc.sysctlbyname('hw.logicalcpu', &count, &count_len, none, 0)
+        res := lc.macos.sysctlbyname('hw.logicalcpu', &count, &count_len, none, 0)
         if res == -1:
             return fromErrno()
         return count
+    #else meta.system() == .linux:
+        var cpu_set lc.cpu_set_t = undef
+        if lc.sched_getaffinity(0, type.size(lc.cpu_set_t), *cpu_set) != 0:
+            return fromErrno()
+        sum := 0
+        for cpu_set |x|:
+            --sum += @pop_count(x)
+            panic('TODO: pop_count')
+        return sum
     #else:
         meta.unsupported()
 
@@ -237,15 +252,28 @@ fn open_dir(path str, iterable bool) -> !Dir:
 --| Returns the current time in nanoseconds since the Epoch.
 fn nanoTime() -> !int:
     tp := lc.timespec{}
-    if lc.clock_gettime(lc.CLOCK_REALTIME, *tp) != 0:
-        return fromErrno()
+    -- TODO: simplify with a custom `clockid_t` type to lc.clock_gettime(.CLOCK_REALTIME, *tp)
+    #if meta.system() == .macos:
+        if lc.clock_gettime(lc.macos.CLOCK_REALTIME, *tp) != 0:
+            return fromErrno()
+    #else meta.system() == .linux:
+        if lc.clock_gettime(lc.linux.CLOCK_REALTIME, *tp) != 0:
+            return fromErrno() 
+    #else:
+        panic('unsupported')
     return tp.sec * ns_per_s + tp.nsec
 
 --| High resolution timestamp. Returns a relative up-time in nanoseconds.
 fn now() -> !int:
     tp := lc.timespec{}
-    if lc.clock_gettime(lc.CLOCK_UPTIME_RAW, *tp) != 0:
-        return fromErrno()
+    #if meta.system() == .macos:
+        if lc.clock_gettime(lc.macos.CLOCK_UPTIME_RAW, *tp) != 0:
+            return fromErrno()
+    #else meta.system() == .linux:
+        if lc.clock_gettime(lc.linux.CLOCK_BOOTTIME, *tp) != 0:
+            return fromErrno()
+    #else:
+        panic('unsupported')
     return tp.sec * ns_per_s + tp.nsec
 
 fn open_file(path str) -> !File:
@@ -335,9 +363,18 @@ fn resolve_path(path str) -> !str:
         return fromErrno()
     file := File{fd=fd}
 
-    if lc.fcntl(file.fd, lc.F_GETPATH, *buf[0]) != 0:
-        return fromErrno()
-    return c.from_strz(*buf[0])
+    #if meta.system() == .macos:
+        if lc.fcntl(file.fd, lc.F_GETPATH, *buf[0]) != 0:
+            return fromErrno()
+        return c.from_strz(*buf[0])
+    #else meta.system() == .linux:
+        proc_path := str.initz('/proc/self/fd/%{fd}')
+        len := lc.readlink(proc_path.ptr, *buf[0], lc.PATH_MAX)
+        if len < 0:
+            return fromErrno()
+        return str(buf[0..len])
+    #else:
+        panic('unsupported')
 
 --| Sets an environment variable by key.
 fn set_env(key str, val str) -> !void:
@@ -424,9 +461,12 @@ fn (&File) close() -> void:
 --| Returns info about the file.
 fn (&File) info() -> !FileInfo:
     cstat := lc.Stat{}
-    if lc.fstat($fd, &cstat) != 0:
-        return fromErrno()
-    return fileInfo(&cstat)
+    #if meta.system() == .linux:
+        return linux.file_info($fd)
+    #else:
+        if lc.fstat($fd, &cstat) != 0:
+            return fromErrno()
+        return fileInfo(&cstat)
 
 --| Returns number of bytes read. If 0 is returned, then the file has reached the end.
 fn (&File) read(buf [&]byte) -> !int:
@@ -532,9 +572,13 @@ fn (&Dir) close():
 --| Returns info about the directory.
 fn (&Dir) info() -> !FileInfo:
     cstat := lc.Stat{}
-    if lc.fstat($fd, &cstat) != 0:
-        return fromErrno()
-    return fileInfo(&cstat)
+
+    #if meta.system() == .linux:
+        return linux.file_info($fd)
+    #else:
+        if lc.fstat($fd, &cstat) != 0:
+            return fromErrno()
+        return fileInfo(&cstat)
 
 --| Returns a new iterator over the directory entries.
 --| If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.
@@ -542,6 +586,8 @@ fn (&Dir) iterator() -> DirIterator:
     var new DirIterator = undef
     #if meta.system() == .macos:
         new = {impl = macos.DirIteratorImpl()}
+    #else meta.system() == .linux:
+        new = {impl = linux.DirIteratorImpl()}
     #else:
         meta.unsupported()
     return new
@@ -559,6 +605,7 @@ fn (&DirIterator) next(dir &Dir) -> !?DirEntry:
 
 type DirIteratorImpl = switch meta.system():
     case .macos => macos.DirIteratorImpl
+    case .linux => linux.DirIteratorImpl
     else => void
 
 type DirEntry:

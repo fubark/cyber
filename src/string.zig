@@ -268,41 +268,43 @@ fn indexOfCharSimdFixed4(comptime VecSize: usize, buf: []const u8, needle: u8) ?
         while (i + VecSize * 4 <= buf.len) : (i += VecSize * 4) {
             // Inline asm to avoid extra vpmovmskb.
             // TODO: There is a slight perf gain to be had when using 32-byte aligned memory.
-            const hitMask = asm (
-                \\vpcmpeqb (%rsi, %r8), %%ymm0, %%ymm1
-                \\vpcmpeqb 32(%rsi, %r8), %%ymm0, %%ymm2
-                \\vpcmpeqb 64(%rsi, %r8), %%ymm0, %%ymm3
-                \\vpcmpeqb 96(%rsi, %r8), %%ymm0, %%ymm4
+            const hitMask = asm volatile (
+                \\vpcmpeqb %[v0], %[needle], %%ymm1
+                \\vpcmpeqb %[v1], %[needle], %%ymm2
+                \\vpcmpeqb %[v2], %[needle], %%ymm3
+                \\vpcmpeqb %[v3], %[needle], %%ymm4
                 \\vpor %%ymm1, %%ymm2, %%ymm5
                 \\vpor %%ymm3, %%ymm4, %%ymm6
                 \\vpor %%ymm5, %%ymm6, %%ymm5
-                \\vpmovmskb %%ymm5, %eax 
-                : [ret] "={eax}" (-> u32)
-                : [needle] "{ymm0}" (vneedle),
-                  [buf] "{rsi}" (buf.ptr),
-                  [i] "{r8}" (i),
-            );
+                \\vpmovmskb %%ymm5, %[ret]
+                : [ret] "={eax}" (-> u32),
+                : [needle] "x" (vneedle),
+                  [v0] "x" (@as(@Vector(VecSize, u8), @as(*align(1) const @Vector(VecSize, u8), @ptrCast(&buf[0])).*)),
+                  [v1] "x" (@as(@Vector(VecSize, u8), @as(*align(1) const @Vector(VecSize, u8), @ptrCast(&buf[VecSize])).*)),
+                  [v2] "x" (@as(@Vector(VecSize, u8), @as(*align(1) const @Vector(VecSize, u8), @ptrCast(&buf[VecSize * 2])).*)),
+                  [v3] "x" (@as(@Vector(VecSize, u8), @as(*align(1) const @Vector(VecSize, u8), @ptrCast(&buf[VecSize * 3])).*)),
+                : .{ .ymm1 = true, .ymm2 = true, .ymm3 = true, .ymm4 = true, .ymm5 = true, .ymm6 = true });
             if (hitMask > 0) {
                 // Find out which one contains the result.
                 var mask = asm (
-                    \\vpmovmskb %%ymm1, %eax
-                    : [ret] "={eax}" (-> u32)
+                    \\vpmovmskb %%ymm1, %[ret]
+                    : [ret] "={eax}" (-> u32),
                 );
                 if (mask > 0) {
                     const bitIdx = @ctz(mask);
                     return i + bitIdx;
                 }
                 mask = asm (
-                    \\vpmovmskb %%ymm2, %eax
-                    : [ret] "={eax}" (-> u32)
+                    \\vpmovmskb %%ymm2, %[ret]
+                    : [ret] "={eax}" (-> u32),
                 );
                 if (mask > 0) {
                     const bitIdx = @ctz(mask);
                     return i + bitIdx + 32;
                 }
                 mask = asm (
-                    \\vpmovmskb %%ymm3, %eax
-                    : [ret] "={eax}" (-> u32)
+                    \\vpmovmskb %%ymm3, %[ret]
+                    : [ret] "={eax}" (-> u32),
                 );
                 if (mask > 0) {
                     const bitIdx = @ctz(mask);

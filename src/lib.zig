@@ -747,6 +747,20 @@ comptime {
     @export(&cy.compiler.default_loader, .{ .name = "cl_default_loader", .linkage = .strong });
 }
 
+fn test_logger(_: ?*C.VM, str: C.Bytes) callconv(.c) void {
+    std.debug.print("{s}\n", .{C.from_bytes(str)});
+}
+
+fn test_global_logger(str: C.Bytes) callconv(.c) void {
+    std.debug.print("{s}\n", .{C.from_bytes(str)});
+}
+
+fn debug(vm: ?*C.VM) void {
+    C.setVerbose(true);
+    C.vm_set_logger(vm, &test_logger);
+    C.set_logger(&test_global_logger);
+}
+
 test "Return from main." {
     const vm = C.vm_init();
     defer C.vm_deinit(vm);
@@ -764,7 +778,7 @@ test "Bind functions." {
     defer C.vm_deinit(vm);
 
     const S = struct {
-        fn mod_test(t_: *C.Thread) C.Ret {
+        fn mod_test(t_: *C.Thread) callconv(.c) C.Ret {
             const ret: *i64 = C.thread_ret(t_, i64);
             const a = C.thread_int(t_);
             ret.* = a + 1;

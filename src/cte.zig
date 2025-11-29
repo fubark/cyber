@@ -2062,6 +2062,7 @@ fn eval_bin_expr(c: *cy.Chunk, left_n: *ast.Node, op: ast.BinaryExprOp, right_n:
             return TypeValue.init(c.sema.bool_t, Value.initBool(res));
         },
         .star,
+        .slash,
         .pow,
         .less,
         .greater,

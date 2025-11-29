@@ -311,6 +311,17 @@ pub fn Int_mul_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     }
 }
 
+pub fn Int_div_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+    const arg_t = ctx.func.sig.params_ptr[0].get_type();
+    if (arg_t.id() == bt.I64) {
+        const left = ctx.args[0].asInt();
+        const right = ctx.args[1].asInt();
+        return cy.TypeValue.init(c.sema.i64_t, Value.initInt(@divTrunc(left, right)));
+    } else {
+        return c.reportErrorFmt("TODO: `{}`", &.{cy.fmt.v(arg_t.name())}, ctx.node);
+    }
+}
+
 pub fn Int_add_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     const arg_t = ctx.func.sig.params_ptr[0].get_type();
     if (arg_t.id() == bt.I64) {

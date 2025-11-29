@@ -125,9 +125,15 @@ pub fn build(b: *std.Build) !void {
             step.dependOn(&b.addInstallFile(b.path("src/std/math.cy"), "bin/src/std/math.cy").step);
             step.dependOn(&b.addInstallFile(b.path("src/std/os.cy"), "bin/src/std/os.cy").step);
             step.dependOn(&b.addInstallFile(b.path("src/std/io.cy"), "bin/src/std/io.cy").step);
+            step.dependOn(&b.addInstallFile(b.path("src/std/cli.cy"), "bin/src/std/cli.cy").step);
+            step.dependOn(&b.addInstallFile(b.path("src/std/test.cy"), "bin/src/std/test.cy").step);
             step.dependOn(&b.addInstallFile(b.path("src/std/os.macos.cy"), "bin/src/std/os.macos.cy").step);
+            step.dependOn(&b.addInstallFile(b.path("src/std/os.linux.cy"), "bin/src/std/os.linux.cy").step);
+            step.dependOn(&b.addInstallFile(b.path("src/std/os.windows.cy"), "bin/src/std/os.windows.cy").step);
+            step.dependOn(&b.addInstallFile(b.path("src/std/win32.cy"), "bin/src/std/win32.cy").step);
             step.dependOn(&b.addInstallFile(b.path("src/std/libc.cy"), "bin/src/std/libc.cy").step);
             step.dependOn(&b.addInstallFile(b.path("src/std/libc.macos.cy"), "bin/src/std/libc.macos.cy").step);
+            step.dependOn(&b.addInstallFile(b.path("src/std/libc.linux.cy"), "bin/src/std/libc.linux.cy").step);
         }
     }
 
@@ -198,7 +204,6 @@ pub fn build(b: *std.Build) !void {
     //     main_step.dependOn(&b.addInstallArtifact(lib, .{}).step);
     // }
 
-
     {
         const main_step = b.step("build-test", "Build tests.");
 
@@ -229,7 +234,7 @@ pub fn build(b: *std.Build) !void {
         lib_test_cmd.dependOn(&run.step);
     }
 
-    const cli_test_cmd = b.step("cli-test", "Run cli tests.");  
+    const cli_test_cmd = b.step("cli-test", "Run cli tests.");
     {
         var run = b.addRunArtifact(cli_test);
         run.has_side_effects = no_cache;
@@ -612,10 +617,7 @@ pub fn buildCVM(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
     lib.root_module.sanitize_c = .off;
 
     lib.addIncludePath(b.path("src"));
-    lib.addCSourceFile(.{
-        .file = b.path("src/vm.c"),
-        .flags = cflags.items
-    });
+    lib.addCSourceFile(.{ .file = b.path("src/vm.c"), .flags = cflags.items });
     for (isystem) |path| {
         lib.addSystemIncludePath(.{ .cwd_relative = path });
     }
@@ -684,7 +686,7 @@ fn create_lib_module(b: *std.Build, opts: Options) !*std.Build.Module {
         // step.addIncludePath(.{ .path = "/opt/homebrew/Cellar/llvm/17.0.1/include" });
         // step.addLibraryPath(.{ .path = "/opt/homebrew/Cellar/llvm/17.0.1/lib" });
         // step.linkSystemLibrary("LLVM-17");
-    } 
+    }
     return mod;
 }
 

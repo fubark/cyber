@@ -389,15 +389,17 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           LD_LIBRARY_PATH=`pwd`/md4c/build/src zig-out/bin/cyber docs/gen-docs.cy -version v${{ env.SHORT_VERSION }}
-          mv docs/docs-modules.md docs.md
+          mv docs/docs.md docs.md
           mv docs/docs.html docs.html
+          mv docs/api.html api.html
 
       - name: Generate docs. (Dev)
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: |
           LD_LIBRARY_PATH=`pwd`/md4c/build/src zig-out/bin/cyber docs/gen-docs.cy -version "${{ format('v{0}-DEV {1}-{2}', env.SHORT_VERSION, env.BUILD, env.COMMIT) }}"
-          mv docs/docs-modules.md docs.md
+          mv docs/docs.md docs.md
           mv docs/docs.html docs.html
+          mv docs/api.html api.html
 
       - name: Save artifact.
         uses: actions/upload-artifact@v4
@@ -406,6 +408,7 @@ jobs:
           path: |
             docs.html
             docs.md
+            api.html
 
   release:
     needs: [build, docs]
@@ -441,6 +444,7 @@ jobs:
             cyber-wasi.wasm
             docs.html
             docs.md
+            api.html
 
       # Auto dispatch.
       - name: Github Release.
@@ -463,3 +467,4 @@ jobs:
             cyber-wasi.wasm
             docs.html
             docs.md
+            api.html

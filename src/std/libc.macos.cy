@@ -104,4 +104,4 @@ const CLOCK_THREAD_CPUTIME_ID lc.clockid_t = 16
 const F_GETPATH = c_int(50)
 
 #[extern]
-fn sysctlbyname(name Ptr[byte], oldp Ptr[void], oldlenp Ptr[size_t], newp Ptr[void], newlen size_t) -> c_int
+fn sysctlbyname(name Ptr[byte], oldp Ptr[void], oldlenp Ptr[c.size_t], newp Ptr[void], newlen c.size_t) -> c.c_int

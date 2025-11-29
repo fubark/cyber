@@ -228,7 +228,7 @@ fn num_cpus() -> int:
         return count
     #else meta.system() == .linux:
         var cpu_set lc.cpu_set_t = undef
-        if lc.sched_getaffinity(0, type.size(lc.cpu_set_t), *cpu_set) != 0:
+        if lc.linux.sched_getaffinity(0, type.size(lc.cpu_set_t), *cpu_set) != 0:
             return fromErrno()
         sum := 0
         for cpu_set |x|:
@@ -364,7 +364,7 @@ fn resolve_path(path str) -> !str:
     file := File{fd=fd}
 
     #if meta.system() == .macos:
-        if lc.fcntl(file.fd, lc.F_GETPATH, *buf[0]) != 0:
+        if lc.fcntl(file.fd, lc.macos.F_GETPATH, *buf[0]) != 0:
             return fromErrno()
         return c.from_strz(*buf[0])
     #else meta.system() == .linux:

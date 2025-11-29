@@ -103,3 +103,6 @@ const DT_BLK     = byte(6)
 const DT_REG     = byte(8)
 const DT_LNK     = byte(10)
 const DT_SOCK    = byte(12)
+
+#[extern]
+fn sched_getaffinity(pid pid_t, cpusetsize size_t, mask Ptr[cpu_set_t]) -> c_int

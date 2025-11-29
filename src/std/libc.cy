@@ -206,9 +206,6 @@ fn readlink(path Ptr[byte], buf Ptr[byte], bufsiz size_t) -> ssize_t
 fn rmdir(pathname Ptr[byte]) -> c_int
 
 #[extern]
-fn sched_getaffinity(pid pid_t, cpusetsize size_t, mask Ptr[cpu_set_t]) -> c_int
-
-#[extern]
 fn setenv(name Ptr[byte], value Ptr[byte], overwrite c_int) -> c_int
 
 #[extern]

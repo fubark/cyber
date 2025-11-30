@@ -1,5 +1,6 @@
 use lc 'libc.cy'
 use c
+use meta
 
 #if meta.is_vm_target():
     #c.bind_lib(none)

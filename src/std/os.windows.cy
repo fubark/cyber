@@ -1,6 +1,10 @@
 use os
-use win32 'win32.cy'
 use c
+use meta
+
+-- Import win32 only on Windows to prevent extern function processing on other platforms
+#[cond=meta.system() == .windows]
+use win32 'win32.cy'
 
 --| Windows-specific OS implementations.
 --|

@@ -3798,7 +3798,7 @@ fn (&Vector[]) `**`(%M int) -> Vector[T, N * M]:
     #if meta.is_inline_eval():
         return $ct_repeat(M)
     #else:
-        new := as[Vector[T, N * M]] undef
+        var new Vector[T, N*M] = undef
         #if !type.managed(T):
             @memset(as *new[0], as *$[0], type.size(T) * N, M)
         #else:

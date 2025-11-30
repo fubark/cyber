@@ -846,7 +846,6 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
             try w.print(" | {s}", .{extra});
         }
     }
-    try w.writeByte('\n');
 }
 
 pub const StringIndexContext = struct {

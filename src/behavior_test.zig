@@ -384,7 +384,7 @@ if (!aot) {
     defer std.debug.print("Tests passed: {}/{}, skipped: {}\n", .{numPassed, run.cases.items.len, skipped});
     for (run.cases.items) |run_case| {
         if (caseFilter) |filter| {
-            if (std.mem.indexOf(u8, run_case.path, filter) == null) {
+            if (std.mem.indexOf(u8, run_case.config.uri, filter) == null) {
                 continue;
             }
         }

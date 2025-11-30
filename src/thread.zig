@@ -71,7 +71,7 @@ pub fn patch_frame_ptrs(t: *cy.Thread, fp: usize, layout: []bool, new_stack: [*]
 
         const ptr: usize = @intCast(t.c.stack_ptr[fp + i].val);
         const stack_start = @intFromPtr(t.c.stack_ptr);
-        if (ptr >= stack_start and ptr < stack_start + t.c.stack_len) {
+        if (ptr >= stack_start and ptr < stack_start + t.c.stack_len*8) {
             const byte_off = ptr - stack_start;
             new_stack[fp + i] = cy.Value.initRaw(@intFromPtr(new_stack) + byte_off);
         }

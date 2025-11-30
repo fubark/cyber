@@ -609,7 +609,6 @@ pub fn genFuncBlock(c: *Chunk, stmt: *ir.FuncBlock, node: *ast.Node) !void {
     try c.buf.pushOpSlice(.nop32, &.{0, 0, 0, 0});
 
     const pc = c.buf.ops.items.len;
-    try c.buf.func_table.append(c.alloc, pc);
     try c.buf.markers.put(c.alloc, @intCast(pc), func);
 
     var id: u32 = undefined;
@@ -631,14 +630,16 @@ pub fn genFuncBlock(c: *Chunk, stmt: *ir.FuncBlock, node: *ast.Node) !void {
 
     try pushFuncBlock(c, stmt, params, node);
 
+    const chk_stk_pc = c.buf.ops.items.len;
+    try c.buf.func_table.append(c.alloc, chk_stk_pc);
     try c.pushFCode(.chk_stk, &.{ 0, 0, 0, 0 }, node);
 
     try genStmts(c, stmt.bodyHead);
 
-    c.buf.setOpArgU16(pc + 1, c.cur_proc.ret_size);
+    c.buf.setOpArgU16(chk_stk_pc + 1, c.cur_proc.ret_size);
 
     const stack_size = c.getMaxUsedRegisters();
-    c.buf.setOpArgU16(pc + 3, stack_size);
+    c.buf.setOpArgU16(chk_stk_pc + 3, stack_size);
 
     const rt_func = cy.vm.FuncSymbol.initFunc(undefined);
     completeFunc(c.compiler, id, func, rt_func);
@@ -2135,6 +2136,12 @@ fn reserve_reg(c: *Chunk, local_t: *cy.Type) !Reg {
     if (local_t.is_stack_ptr()) {
         c.buf.ptr_layout_builder.items[reg] = true;
         c.cur_proc.num_ptr_locals += 1;
+        // Dump where ptr regs are reserved on the stack.
+        // if (cy.Trace) {
+        //     const buf = try std.fmt.allocPrint(c.alloc, "ptr reg {}", .{reg});
+        //     defer c.alloc.free(buf);
+        //     try genNopLabel2(c, buf, c.ast.null_node);
+        // }
     } else {
         if (reg_size == 1) {
             c.buf.ptr_layout_builder.items[reg] = false;

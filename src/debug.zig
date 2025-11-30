@@ -684,7 +684,10 @@ pub fn dumpBytecode(vm: *cy.VM, opts: DumpBytecodeOptions) !void {
             }
             const code = pc[0].opcode();
             const len = bytecode.getInstLenAt(pc);
+            // std.debug.print("{}\n", .{code});
+            // try dumpInst(vm, code, chunk_id, pc_off, pc, c, 0, null);
             try bytecode.write_inst(vm, w, code, chunk_id, pc_off, pc, .{});
+            try w.writeByte('\n');
             pc += len;
             pc_off += len;
             instIdx += 1;

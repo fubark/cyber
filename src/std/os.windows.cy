@@ -16,8 +16,6 @@ use c
 --|
 --| ## Design Pattern:
 --| Follows the same pattern as os.macos.cy - uses os types as parameters/returns
---| but does NOT define method extensions on os types (to avoid circular dependency).
---| See CIRCULAR_DEPENDENCY_ANALYSIS.md for details.
 --|
 --| ## Circular Dependency Fix:
 --| All file operations are standalone functions (e.g., readFileWindows(file, buf))
@@ -409,7 +407,6 @@ fn accessFileWindows(path str) -> !void:
 --| Read bytes from file into buffer.
 --| Returns number of bytes actually read.
 --| Returns 0 when end of file is reached.
---| Note: Standalone function to avoid circular dependency (see CIRCULAR_DEPENDENCY_ANALYSIS.md)
 fn readFileWindows(file &os.File, buf [&]byte) -> !int:
     handle := as[win32.HANDLE] file.fd
     var bytes_read win32.DWORD = 0
@@ -429,7 +426,6 @@ fn readFileWindows(file &os.File, buf [&]byte) -> !int:
 
 --| Write bytes from buffer to file.
 --| Returns number of bytes actually written.
---| Note: Standalone function to avoid circular dependency (see CIRCULAR_DEPENDENCY_ANALYSIS.md)
 fn writeFileWindows(file &os.File, buf []byte) -> !int:
     handle := as[win32.HANDLE] file.fd
     var bytes_written win32.DWORD = 0
@@ -448,7 +444,6 @@ fn writeFileWindows(file &os.File, buf []byte) -> !int:
     return as[int] bytes_written
 
 --| Write string to file (convenience wrapper).
---| Note: Standalone function to avoid circular dependency (see CIRCULAR_DEPENDENCY_ANALYSIS.md)
 fn writeFileStrWindows(file &os.File, val str) -> !int:
     handle := as[win32.HANDLE] file.fd
     var bytes_written win32.DWORD = 0
@@ -458,13 +453,11 @@ fn writeFileStrWindows(file &os.File, val str) -> !int:
     return as[int] bytes_written
 
 --| Seek to position relative to current location.
---| Note: Standalone function to avoid circular dependency (see CIRCULAR_DEPENDENCY_ANALYSIS.md)
 fn seekFileWindows(file &os.File, offset int) -> !void:
     return seekFileWindowsInternal(file, offset, win32.FILE_CURRENT)
 
 --| Seek to absolute position from start.
 --| Negative offset is invalid.
---| Note: Standalone function to avoid circular dependency (see CIRCULAR_DEPENDENCY_ANALYSIS.md)
 fn seekFileFromStartWindows(file &os.File, offset int) -> !void:
     if offset < 0:
         return error.InvalidArgument
@@ -472,14 +465,12 @@ fn seekFileFromStartWindows(file &os.File, offset int) -> !void:
 
 --| Seek to position relative to end.
 --| Positive offset is invalid.
---| Note: Standalone function to avoid circular dependency (see CIRCULAR_DEPENDENCY_ANALYSIS.md)
 fn seekFileFromEndWindows(file &os.File, offset int) -> !void:
     if offset > 0:
         return error.InvalidArgument
     return seekFileWindowsInternal(file, offset, win32.FILE_END)
 
 --| Internal seek implementation using SetFilePointerEx.
---| Note: Standalone function to avoid circular dependency (see CIRCULAR_DEPENDENCY_ANALYSIS.md)
 fn seekFileWindowsInternal(file &os.File, offset int, whence win32.DWORD) -> !void:
     handle := as[win32.HANDLE] file.fd
     
@@ -501,7 +492,6 @@ fn seekFileWindowsInternal(file &os.File, offset int, whence win32.DWORD) -> !vo
 
 --| Close file handle and mark as closed.
 --| Subsequent operations will fail.
---| Note: Standalone function to avoid circular dependency (see CIRCULAR_DEPENDENCY_ANALYSIS.md)
 fn closeFileWindows(file &os.File) -> !void:
     if file.closed:
         return
@@ -607,5 +597,3 @@ fn openDirWindows(path str, iterable bool) -> !os.Dir:
         path = path,
     }
 
--- Note: Windows-specific FileInfo implementation would go here
--- This requires BY_HANDLE_FILE_INFORMATION conversion (deferred to post-MVP)

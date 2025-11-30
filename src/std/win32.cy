@@ -25,11 +25,10 @@ use meta
 #if meta.system() == .windows:
     #c.include('<windows.h>')
 
-#if meta.is_vm_target() and meta.system() == .windows:
-    #c.bind_lib('kernel32.dll')
-
-#if meta.is_vm_target() and meta.system() != .windows:
-    #c.bind_lib(none)
+-- Library binding: kernel32.dll on Windows, none on other platforms
+-- Uses inline conditional to avoid nested #if blocks
+#if meta.is_vm_target():
+    #c.bind_lib(if (meta.system() == .windows) 'kernel32.dll' else none)
 
 -- Basic Windows types (available on all platforms for type introspection)
 type HANDLE = switch meta.system():

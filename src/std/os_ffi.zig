@@ -77,9 +77,9 @@ pub const FFI = struct {
                 log.tracev("CStruct not declared for: {s}", .{name});
                 return error.InvalidArgument;
             }
-        // } else if (spec.isSymbol()) {
-        //     const sym = try std.meta.intToEnum(Symbol, spec.asSymbol());
-        //     return CType{ .sym = sym };
+            // } else if (spec.isSymbol()) {
+            //     const sym = try std.meta.intToEnum(Symbol, spec.asSymbol());
+            //     return CType{ .sym = sym };
         }
         return error.InvalidArgument;
     }
@@ -186,19 +186,19 @@ pub const CGen = struct {
         const ffi = self.ffi;
         for (ffi.cstructs.items) |cstruct| {
             // Generate to C struct conv.
-            try w.print("Struct{} toStruct{}(VM* vm, u8* src) {{\n", .{cstruct.type.id(), cstruct.type.id()});
+            try w.print("Struct{} toStruct{}(VM* vm, u8* src) {{\n", .{ cstruct.type.id(), cstruct.type.id() });
             // Get pointer to first cyber object field.
             try w.print("  Struct{} res;\n", .{cstruct.type.id()});
             var offset: usize = 0;
             for (cstruct.fields, 0..) |field, i| {
                 switch (field) {
                     .struct_t => |struct_t| {
-                        try w.print("  res.f{} = toStruct{}(vm, src + {});\n", .{i, struct_t.id(), offset});
+                        try w.print("  res.f{} = toStruct{}(vm, src + {});\n", .{ i, struct_t.id(), offset });
                         offset += struct_t.size();
                     },
                     .arr => |arr| {
                         const elemName = try fmtBaseTypeName(&cy.tempBuf, arr.child.*);
-                        try w.print("  writeToArray{s}(vm, &res.f{}[0], src + {}, {});", .{elemName, i, offset, arr.n});
+                        try w.print("  writeToArray{s}(vm, &res.f{}[0], src + {}, {});", .{ elemName, i, offset, arr.n });
                         offset += field.size();
                     },
                     .sym => |sym| {
@@ -209,26 +209,26 @@ pub const CGen = struct {
                         // try writeToCValue(w, val, field, false);
                         try w.print(";\n", .{});
                         offset += 1;
-                    }
+                    },
                 }
             }
             try w.print("  return res;\n", .{});
             try w.print("}}\n", .{});
 
             // Generate from C struct conv.
-            try w.print("void writeFromStruct{}(VM* vm, u8* dst, Struct{} val) {{\n", .{cstruct.type.id(), cstruct.type.id()});
+            try w.print("void writeFromStruct{}(VM* vm, u8* dst, Struct{} val) {{\n", .{ cstruct.type.id(), cstruct.type.id() });
             var buf: [8]u8 = undefined;
             offset = 0;
             for (cstruct.fields, 0..) |field, i| {
                 const from_field = try std.fmt.bufPrint(&buf, "val.f{}", .{i});
                 switch (field) {
                     .struct_t => |struct_t| {
-                        try w.print("  writeFromStruct{}(vm, dst + {}, {s});\n", .{struct_t.id(), offset, from_field});
+                        try w.print("  writeFromStruct{}(vm, dst + {}, {s});\n", .{ struct_t.id(), offset, from_field });
                         offset += struct_t.size();
                     },
                     .arr => |arr| {
                         const elemName = try fmtBaseTypeName(&cy.tempBuf, arr.child.*);
-                        try w.print("  writeFromArray{s}(vm, dst + {}, &{s}[0], {});\n", .{elemName, offset, from_field, arr.n});
+                        try w.print("  writeFromArray{s}(vm, dst + {}, &{s}[0], {});\n", .{ elemName, offset, from_field, arr.n });
                         offset += field.size();
                     },
                     .sym => |sym| {
@@ -241,7 +241,7 @@ pub const CGen = struct {
                 }
             }
             try w.print("}}\n", .{});
-            try w.print("Value newFromStruct{}(VM* vm, Struct{} val) {{\n", .{cstruct.type.id(), cstruct.type.id()});
+            try w.print("Value newFromStruct{}(VM* vm, Struct{} val) {{\n", .{ cstruct.type.id(), cstruct.type.id() });
             try w.print("  Value obj = icyAllocObject(vm, {});\n", .{cstruct.type.id()});
             try w.print("  Value* dst = (Value*)(obj & ~PointerMask) + 1;\n", .{});
             try w.print("  writeFromStruct{}(vm, dst, val);\n", .{cstruct.type.id()});
@@ -264,11 +264,11 @@ pub const CGen = struct {
             try w.print("  for (int i = 0; i < n; i += 1) {{\n", .{});
             switch (elem_type) {
                 .struct_t => |struct_t| {
-                    try w.print("    dst[i] = toStruct{}(vm, src + (i * {}));\n", .{struct_t.id(), elem_type.wordSize()});
+                    try w.print("    dst[i] = toStruct{}(vm, src + (i * {}));\n", .{ struct_t.id(), elem_type.wordSize() });
                 },
                 .arr => |arr| {
                     const child_name = try fmtBaseTypeName(&cy.tempBuf, arr.child.*);
-                    try w.print("    writeToArray{s}(vm, ({s}*)(dst + i), src + (i * {}), {});\n", .{child_name, child_name, elem_type.wordSize(), arr.n});
+                    try w.print("    writeToArray{s}(vm, ({s}*)(dst + i), src + (i * {}), {});\n", .{ child_name, child_name, elem_type.wordSize(), arr.n });
                 },
                 .sym => |sym| {
                     try w.print("    dst[i] = ", .{});
@@ -286,11 +286,11 @@ pub const CGen = struct {
             try w.print("  for (int i = 0; i < n; i += 1) {{\n", .{});
             switch (elem_type) {
                 .struct_t => |struct_t| {
-                    try w.print("    writeFromStruct{}(vm, dst + (i * {}), *(src + i));\n", .{struct_t.id(), elem_type.wordSize()});
+                    try w.print("    writeFromStruct{}(vm, dst + (i * {}), *(src + i));\n", .{ struct_t.id(), elem_type.wordSize() });
                 },
                 .arr => |arr| {
                     const child_name = try fmtBaseTypeName(&cy.tempBuf, arr.child.*);
-                    try w.print("    writeFromArray{s}(vm, dst + (i * {}), ({s}*)(src + i));\n", .{child_name, elem_type.wordSize(), child_name});
+                    try w.print("    writeFromArray{s}(vm, dst + (i * {}), ({s}*)(src + i));\n", .{ child_name, elem_type.wordSize(), child_name });
                 },
                 .sym => |sym| {
                     try w.print("    dst[i] = ", .{});
@@ -305,7 +305,7 @@ pub const CGen = struct {
             try w.print("* src, int n) {{\n", .{});
 
             const cy_type = try toCyType(vm, elem_type);
-            try w.print("  Value obj = icyAllocArrayEmpty(vm, {}, n, n * {});\n", .{cy_type.id(), elem_type.wordSize()});
+            try w.print("  Value obj = icyAllocArrayEmpty(vm, {}, n, n * {});\n", .{ cy_type.id(), elem_type.wordSize() });
             try w.print("  Value* dst = (Value*)(obj & ~PointerMask) + 1;\n", .{});
             try w.print("  writeFromArray{s}(vm, dst, src, n);\n", .{elemName});
             try w.print("  return obj;\n", .{});
@@ -338,7 +338,7 @@ fn fmtBaseTypeName(buf: []u8, ctype: CType) ![]const u8 {
                 .charPtr => "CharPtr",
                 .voidPtr => "VoidPtr",
                 else => {
-                    std.debug.print("Unsupported arg type: {s}\n", .{ @tagName(sym) });
+                    std.debug.print("Unsupported arg type: {s}\n", .{@tagName(sym)});
                     return error.InvalidArgument;
                 },
             };
@@ -389,7 +389,7 @@ fn writeCType(w: anytype, type_: *cy.Type) !void {
                     try w.print("{s}", .{type_.name()});
                 },
             }
-        }
+        },
     }
 }
 
@@ -438,23 +438,18 @@ fn writeToCValueForSym(w: anytype, val: []const u8, sym: Symbol, unbox: bool) !v
             try w.print("(void*){s}", .{val});
         },
         else => {
-            std.debug.print("Unsupported arg type: {s}\n", .{ @tagName(sym) });
+            std.debug.print("Unsupported arg type: {s}\n", .{@tagName(sym)});
             return error.InvalidArgument;
-        }
+        },
     }
 }
 
 fn writeToCyValueForSym(w: anytype, cval: []const u8, ctype: Symbol) !void {
     switch (ctype) {
-        .char,
-        .short,
-        .uchar,
-        .ushort,
-        .usize => {
+        .char, .short, .uchar, .ushort, .usize => {
             try w.print("((uint64_t){s})", .{cval});
         },
-        .float,
-        .double => {
+        .float, .double => {
             // Assumes cval is already converted to double.
             try w.print("*(uint64_t*)&{s}", .{cval});
         },
@@ -471,8 +466,8 @@ fn writeToCyValueForSym(w: anytype, cval: []const u8, ctype: Symbol) !void {
             try w.print("{s}", .{cval});
         },
         else => {
-            cy.panicFmt("Unsupported arg type: {s}", .{ @tagName(ctype) });
-        }
+            cy.panicFmt("Unsupported arg type: {s}", .{@tagName(ctype)});
+        },
     }
 }
 
@@ -495,7 +490,7 @@ fn writeCTypeForCSym(w: anytype, ctype: Symbol) !void {
         .funcPtr => "void*",
         .void => "void",
         else => {
-            std.debug.print("Unsupported arg type: {s}\n", .{ @tagName(ctype) });
+            std.debug.print("Unsupported arg type: {s}\n", .{@tagName(ctype)});
             return error.InvalidArgument;
         },
     };
@@ -520,9 +515,9 @@ fn sizeOf(ctype: Symbol) !usize {
         .voidPtr => 8,
         .funcPtr => 8,
         else => {
-            std.debug.print("Unsupported type: {s}\n", .{ @tagName(ctype) });
+            std.debug.print("Unsupported type: {s}\n", .{@tagName(ctype)});
             return error.InvalidArgument;
-        }
+        },
     };
 }
 
@@ -547,19 +542,17 @@ fn toCyType(vm: *cy.VM, ctype: CType) !*cy.Type {
                 .usize => return vm.sema.int_t,
                 .float => return vm.sema.float_t,
                 .double => return vm.sema.float_t,
-                .funcPtr,
-                .charPtr,
-                .voidPtr => {
+                .funcPtr, .charPtr, .voidPtr => {
                     const data = vm.getData(*cy.builtins.BuiltinsData, "builtins");
                     return data.PtrVoid;
                 },
                 .void => return vm.sema.void_t,
                 else => {
-                    std.debug.print("Unsupported val type: {s}\n", .{ @tagName(sym) });
+                    std.debug.print("Unsupported val type: {s}\n", .{@tagName(sym)});
                     return error.InvalidArgument;
-                }
+                },
             }
-        }
+        },
     }
 }
 
@@ -586,6 +579,13 @@ pub fn ffiBindLib(t: *cy.Thread, config: BindLibConfig, _: *DynLib) !c.Ret {
             const exe = try std.fs.selfExePathAlloc(t.alloc);
             defer t.alloc.free(exe);
             lib.* = try dlopen(exe);
+        } else if (builtin.os.tag == .windows) {
+            // On Windows, load the C runtime library
+            if (dlopen("ucrtbase.dll")) |ucrt_lib| {
+                lib.* = ucrt_lib;
+            } else |_| {
+                lib.* = try dlopen("msvcrt.dll");
+            }
         } else {
             lib.* = try dlopen("");
         }

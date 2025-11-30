@@ -2,11 +2,11 @@ use os
 use meta
 use t 'test'
 
-if meta.system() != .windows:
-    os.set_env('testfoo', 'testbar')!
-    t.eq(os.get_env('testfoo').?, 'testbar')
-    os.unset_env('testfoo')!
-    t.assert(os.get_env('testfoo') == none)
+-- Environment variable tests (work on all platforms)
+os.set_env('testfoo', 'testbar')!
+t.eq(os.get_env('testfoo').?, 'testbar')
+os.unset_env('testfoo')!
+t.assert(os.get_env('testfoo') == none)
 
 -- accessFile()
 t.eq(error.FileNotFound, os.accessFile('src/test/assets/missing.txt', os.AccessExists).unwrapError())

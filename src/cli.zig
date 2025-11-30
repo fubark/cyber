@@ -459,7 +459,13 @@ test "Stack traces." {
             const report = C.thread_panic_summary(thread);
             defer C.vm_freeb(vm, report);
 
-            const root = build_config.mod_root.?;
+            const root_raw = build_config.mod_root.?;
+            const root = if (builtin.os.tag == .windows)
+                try std.mem.replaceOwned(u8, zt.alloc, root_raw, "\\", "/")
+            else
+                try zt.alloc.dupe(u8, root_raw);
+            defer zt.alloc.free(root);
+
             const exp = try std.fmt.allocPrint(zt.alloc,
                 \\panic: boom
                 \\
@@ -469,9 +475,16 @@ test "Stack traces." {
                 \\{s}/src/test/main.cy: @program_init
                 \\{s}/src/test/main.cy: main
                 \\
-            , .{root, root, root});
+            , .{ root, root, root });
             defer zt.alloc.free(exp);
-            try zt.eqStr(exp, report);
+
+            const normalized_report = if (builtin.os.tag == .windows)
+                try std.mem.replaceOwned(u8, zt.alloc, report, "\\", "/")
+            else
+                try zt.alloc.dupe(u8, report);
+            defer zt.alloc.free(normalized_report);
+
+            try zt.eqStr(exp, normalized_report);
         }
 
         const trace = C.thread_panic_trace(thread);

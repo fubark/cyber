@@ -82,7 +82,7 @@ jobs:
           mkdir -p docs/public
           mv docs/docs.html docs/public/docs.html
           mv docs/api.html docs/public/api.html
-          ln -f docs.html docs/public/index.html
+          ln -sf docs.html docs/public/index.html
 
       - name: Deploy.
         uses: peaceiris/actions-gh-pages@v3

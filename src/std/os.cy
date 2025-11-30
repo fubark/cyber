@@ -6,16 +6,12 @@ use win32 'win32.cy'
 
 --| Contains system level functions.
 --|
---| ## Platform Support:
---| - **macOS**: Full POSIX support via libc
---| - **Linux**: Full POSIX support (future)
---| - **Windows**: Win32 API support
---|
 --| ## Architecture:
 --| This module provides a cross-platform API for OS operations.
 --| Platform-specific implementations are in separate modules:
 --| - os.macos.cy: macOS-specific implementations
 --| - os.windows.cy: Windows-specific implementations
+--| - os.linux.cy: Linux-specific implementations
 --|
 --| Sample usage:
 --| ```cy
@@ -42,13 +38,6 @@ type c_int = c.c_int
 type FileDescriptor = switch meta.system():
     case .macos => lc.fd_t
     else => int  -- Windows stores HANDLE as int
-
--- ============================================================================
--- Windows Helper Functions
--- ============================================================================
--- Core Windows helper functions (fromWin32Error, utf8ToUtf16Le, utf16LeToUtf8,
--- fileKindFromAttributes) are now in os.windows_impl.cy to avoid duplication.
--- Use windows.functionName() to call them.
 
 -- Windows file/directory helper functions
 #[cond=meta.system() == .windows]

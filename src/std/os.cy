@@ -40,157 +40,7 @@ type FileDescriptor = switch meta.system():
     case .linux => lc.fd_t
     else => int  -- Windows stores HANDLE as int
 
--- Windows file/directory helper functions
-#[cond=meta.system() == .windows]
-fn createFileWindows(path str, truncate bool) -> !File:
-    path16 := windows.utf8ToUtf16Le(path)!
-    access := win32.GENERIC_READ || win32.GENERIC_WRITE
-    share := win32.FILE_SHARE_READ || win32.FILE_SHARE_WRITE
-    disposition := if (truncate) win32.CREATE_ALWAYS else win32.OPEN_ALWAYS
-    handle := win32.CreateFileW(path16.ptr, access, share, none, disposition, win32.FILE_ATTRIBUTE_NORMAL, none)
-    -- INVALID_HANDLE_VALUE is (HANDLE)-1, check by casting to int
-    if as[int] handle == -1:
-        return windows.fromWin32Error()
-    return File{fd=as[int] handle}
-
-#[cond=meta.system() == .windows]
-fn openFileWindows(path str) -> !File:
-    path16 := windows.utf8ToUtf16Le(path)!
-    share := win32.FILE_SHARE_READ || win32.FILE_SHARE_WRITE
-    handle := win32.CreateFileW(path16.ptr, win32.GENERIC_READ, share, none, win32.OPEN_EXISTING, win32.FILE_ATTRIBUTE_NORMAL, none)
-    -- INVALID_HANDLE_VALUE is (HANDLE)-1, check by casting to int
-    if as[int] handle == -1:
-        return windows.fromWin32Error()
-    return File{fd=as[int] handle}
-
-#[cond=meta.system() == .windows]
-fn createDirWindows(path str) -> !void:
-    path16 := windows.utf8ToUtf16Le(path)!
-    if win32.CreateDirectoryW(path16.ptr, none) == win32.FALSE:
-        return windows.fromWin32Error()
-
-#[cond=meta.system() == .windows]
-fn removeDirWindows(path str) -> !void:
-    path16 := windows.utf8ToUtf16Le(path)!
-    if win32.RemoveDirectoryW(path16.ptr) == win32.FALSE:
-        return windows.fromWin32Error()
-
-#[cond=meta.system() == .windows]
-fn removeFileWindows(path str) -> !void:
-    path16 := windows.utf8ToUtf16Le(path)!
-    if win32.DeleteFileW(path16.ptr) == win32.FALSE:
-        return windows.fromWin32Error()
-
-#[cond=meta.system() == .windows]
-fn getCwdWindows() -> !str:
-    size := win32.GetCurrentDirectoryW(0, none)
-    if size == 0:
-        return windows.fromWin32Error()
-    buf := []win32.WCHAR(size, 0)
-    result := win32.GetCurrentDirectoryW(size, buf.ptr)
-    if result == 0 or result > size:
-        return windows.fromWin32Error()
-    return windows.utf16LeToUtf8(buf)
-
-#[cond=meta.system() == .windows]
-fn setCwdWindows(path str) -> !void:
-    path16 := windows.utf8ToUtf16Le(path)!
-    if win32.SetCurrentDirectoryW(path16.ptr) == win32.FALSE:
-        return windows.fromWin32Error()
-
-#[cond=meta.system() == .windows]
-fn getExePathWindows() -> !str:
-    buf := []win32.WCHAR(32768, 0)
-    size := win32.GetModuleFileNameW(none, buf.ptr, win32.DWORD(buf.len()))
-    if size == 0:
-        return windows.fromWin32Error()
-    return windows.utf16LeToUtf8(buf)
-
-#[cond=meta.system() == .windows]
-fn accessFileWindows(path str) -> !void:
-    path16 := windows.utf8ToUtf16Le(path)!
-    attrs := win32.GetFileAttributesW(path16.ptr)
-    if attrs == win32.DWORD(4294967295):
-        return windows.fromWin32Error()
-
-#[cond=meta.system() == .windows]
-fn getEnvWindows(key str) -> ?str:
-    -- Simple ASCII-only implementation using byte arrays
-    -- Convert key to UTF-16LE using bytes (2 bytes per char)
-    key_len := key.len()
-    key_bytes := []byte((key_len + 1) * 2, 0)
-    for 0..key_len |i|:
-        key_bytes[i * 2] = key[i]
-        key_bytes[i * 2 + 1] = 0
-    -- Null terminator already set by initialization
-    
-    -- First call to get required buffer size
-    size := win32.GetEnvironmentVariableW(as key_bytes.ptr, none, 0)
-    if size == 0:
-        return none  -- Variable not found
-    
-    -- Allocate buffer for value (2 bytes per WCHAR)
-    val_bytes := []byte(size * 2, 0)
-    result := win32.GetEnvironmentVariableW(as key_bytes.ptr, as val_bytes.ptr, size)
-    if result == 0:
-        return none
-    
-    -- Convert result back to UTF-8 (ASCII only)
-    -- Find actual length (look for null terminator)
-    var val_len int = 0
-    while val_len < size and (val_bytes[val_len * 2] != 0 or val_bytes[val_len * 2 + 1] != 0):
-        val_len += 1
-    
-    -- Extract ASCII characters
-    result_bytes := []byte(val_len, 0)
-    for 0..val_len |i|:
-        result_bytes[i] = val_bytes[i * 2]
-    return str(result_bytes)
-
-#[cond=meta.system() == .windows]
-fn getEnvAllWindows() -> ^Map[str, str]:
-    env_block := win32.GetEnvironmentStringsW()
-    if env_block == none:
-        return ^Map[str, str]{}
-    
-    result := ^Map[str, str]{}
-    var offset int = 0
-    
-    -- Environment block is double-null-terminated list of null-terminated strings
-    -- Each string is in format "KEY=VALUE"
-    while env_block[offset] != 0:
-        -- Find end of current string (null terminator)
-        var str_end int = offset
-        while env_block[str_end] != 0:
-            str_end += 1
-        
-        -- Create a slice from offset to str_end for utf16LeToUtf8
-        str_len := str_end - offset
-        slice := []win32.WCHAR(str_len, 0)
-        for 0..str_len |i|:
-            slice[i] = env_block[offset + i]
-        
-        -- Convert UTF-16LE to UTF-8 string
-        entry := windows.utf16LeToUtf8(slice) !else:
-            -- Skip invalid entries
-            offset = str_end + 1
-            continue
-        
-        -- Find '=' separator
-        var eq_pos int = 0
-        while eq_pos < entry.len() and entry[eq_pos] != '=':
-            eq_pos += 1
-        
-        if eq_pos < entry.len():
-            key := entry[0..eq_pos]
-            val := entry[(eq_pos + 1)..]
-            result[key] = val
-        
-        -- Move to next string (past null terminator)
-        offset = str_end + 1
-    
-    _ = win32.FreeEnvironmentStringsW(env_block)
-    return result
+-- Windows helper functions are in os.windows.cy and called via windows.functionName()
 
 --| Default SIMD vector bit size.
 #[bind] global vecBitSize int
@@ -232,7 +82,7 @@ const ns_per_s = 1000 * ns_per_ms
 --| Attempts to access a file at the given `path` with `mode`.
 fn accessFile(path str, mode AccessMode) -> !void:
     #if meta.system() == .windows:
-        return accessFileWindows(path)
+        return windows.accessFileWindows(path)
     #else:
         cpath := str.initz(path)
         code := lc.access(cpath.ptr, mode)
@@ -274,7 +124,7 @@ fn copy_file(src_path str, dst_path str) -> !void:
 --| Creates the directory at `path`.
 fn createDir(path str) -> !void:
     #if meta.system() == .windows:
-        return createDirWindows(path)
+        return windows.createDirWindows(path)
     #else:
         cpath := str.initz(path)
         if lc.mkdir(cpath.ptr, DefaultDirMode) != 0:
@@ -286,7 +136,7 @@ fn createFile(path str) -> !File:
 --| Creates and opens the file at `path`. If `truncate` is true, an existing file will be truncated.
 fn createFile(path str, truncate bool) -> !File:
     #if meta.system() == .windows:
-        return createFileWindows(path, truncate)
+        return windows.createFileWindows(path, truncate)
     #else:
         flags := lc.O_WRONLY || lc.O_CREAT || lc.O_CLOEXEC
         if truncate:
@@ -300,7 +150,7 @@ fn createFile(path str, truncate bool) -> !File:
 --| Returns the current working directory.
 fn cwd() -> !str:
     #if meta.system() == .windows:
-        return getCwdWindows()
+        return windows.getCwdWindows()
     #else:
         buf := [lc.PATH_MAX]byte(0)
         if lc.getcwd(*buf[0], as buf.len()) == none:
@@ -310,7 +160,7 @@ fn cwd() -> !str:
 --| Change the current working directory.
 fn chdir(path str) -> !void:
     #if meta.system() == .windows:
-        return setCwdWindows(path)
+        return windows.setCwdWindows(path)
     #else:
         cpath := str.initz(path)
         if lc.chdir(cpath.ptr) == -1:
@@ -384,7 +234,7 @@ fn fileInfo(path str) -> !FileInfo:
             }
             if win32.GetFileAttributesExW(path16.ptr, win32.DWORD(win32.GetFileExInfoStandard), &data) == win32.FALSE:
                 return windows.fromWin32Error()
-            return fileInfoFromWin32Attr(&data)
+            return windows.fileInfoFromWin32Attr(&data)
         #else:
             panic('fileInfo not supported on this platform')
 
@@ -397,58 +247,7 @@ fn fileInfo(stat Ptr[lc.Stat]) -> FileInfo:
         panic('fileInfo not supported on this platform')
     return res
 
---| Convert Windows file attributes to FileInfo.
-#[cond=meta.system() == .windows]
-fn fileInfoFromWin32Attr(data Ptr[win32.WIN32_FILE_ATTRIBUTE_DATA]) -> FileInfo:
-    size := (as[int] data.nFileSizeHigh << 32) || as[int] data.nFileSizeLow
-    is_dir := (as[int] data.dwFileAttributes && as[int] win32.FILE_ATTRIBUTE_DIRECTORY) != 0
-    kind := if (is_dir) FileKind.directory else FileKind.file
-    -- Convert FILETIME to Unix timestamp
-    mtime_ns := fileTimeToNanos(&data.ftLastWriteTime)
-    atime_ns := fileTimeToNanos(&data.ftLastAccessTime)
-    ctime_ns := fileTimeToNanos(&data.ftCreationTime)
-    return FileInfo{
-        inode = 0,  -- Windows doesn't have inodes
-        size = size,
-        mode = 0,   -- Windows doesn't have Unix mode
-        kind = kind,
-        atime_sec = atime_ns / 1000000000,
-        atime_nsec = atime_ns % 1000000000,
-        mtime_sec = mtime_ns / 1000000000,
-        mtime_nsec = mtime_ns % 1000000000,
-        ctime_sec = ctime_ns / 1000000000,
-        ctime_nsec = ctime_ns % 1000000000,
-    }
-
---| Convert Windows FILETIME to nanoseconds since Unix epoch.
-#[cond=meta.system() == .windows]
-fn fileTimeToNanos(ft Ptr[win32.FILETIME]) -> int:
-    intervals := (as[int] ft.dwHighDateTime << 32) || as[int] ft.dwLowDateTime
-    unix_intervals := intervals - 116444736000000000
-    return unix_intervals * 100
-
---| Convert Windows BY_HANDLE_FILE_INFORMATION to FileInfo.
-#[cond=meta.system() == .windows]
-fn fileInfoFromHandle(info Ptr[win32.BY_HANDLE_FILE_INFORMATION]) -> FileInfo:
-    size := (as[int] info.nFileSizeHigh << 32) || as[int] info.nFileSizeLow
-    is_dir := (as[int] info.dwFileAttributes && as[int] win32.FILE_ATTRIBUTE_DIRECTORY) != 0
-    kind := if (is_dir) FileKind.directory else FileKind.file
-    -- Convert FILETIME to Unix timestamp
-    mtime_ns := fileTimeToNanos(&info.ftLastWriteTime)
-    atime_ns := fileTimeToNanos(&info.ftLastAccessTime)
-    ctime_ns := fileTimeToNanos(&info.ftCreationTime)
-    return FileInfo{
-        inode = 0,  -- Windows doesn't have inodes
-        size = size,
-        mode = 0,   -- Windows doesn't have Unix mode
-        kind = kind,
-        atime_sec = atime_ns / 1000000000,
-        atime_nsec = atime_ns % 1000000000,
-        mtime_sec = mtime_ns / 1000000000,
-        mtime_nsec = mtime_ns % 1000000000,
-        ctime_sec = ctime_ns / 1000000000,
-        ctime_nsec = ctime_ns % 1000000000,
-    }
+-- Windows file info helper functions are in os.windows.cy
 
 --| Frees the memory located at `ptr`.
 fn free(ptr Ptr[void]):
@@ -486,14 +285,14 @@ fn get_env(key str) -> ?str:
         return c.from_strz(cval)
     #else:
         #if meta.system() == .windows:
-            return getEnvWindows(key)
+            return windows.getEnvWindows(key)
         #else:
             panic('get_env not supported on this platform')
 
 --| Returns all environment variables as a map.
 fn getEnvAll() -> ^Map[str, str]:
     #if meta.system() == .windows:
-        return getEnvAllWindows()
+        return windows.getEnvAllWindows()
     #else:
         panic('getEnvAll not yet implemented on this platform')
 
@@ -694,7 +493,7 @@ fn read_file_str(path str) -> !str:
 --| Removes an empty directory at `path`.
 fn removeDir(path str) -> !void:
     #if meta.system() == .windows:
-        return removeDirWindows(path)
+        return windows.removeDirWindows(path)
     #else:
         cpath := str.initz(path)
         if lc.rmdir(cpath.ptr) != 0:
@@ -703,7 +502,7 @@ fn removeDir(path str) -> !void:
 --| Removes the file at `path`.
 fn removeFile(path str) -> !void:
     #if meta.system() == .windows:
-        return removeFileWindows(path)
+        return windows.removeFileWindows(path)
     #else:
         cpath := str.initz(path)
         if lc.unlink(cpath.ptr) != 0:
@@ -720,7 +519,7 @@ fn resolve_exe_path() -> !str:
         return resolve_path(path)
     #else:
         #if meta.system() == .windows:
-            return getExePathWindows()
+            return windows.getExePathWindows()
         #else:
             panic('Unsupported')
 
@@ -905,7 +704,7 @@ fn (&File) info() -> !FileInfo:
             }
             if win32.GetFileInformationByHandle(handle, &info) == win32.FALSE:
                 return windows.fromWin32Error()
-            return fileInfoFromHandle(&info)
+            return windows.fileInfoFromHandle(&info)
         #else:
             panic('File.info not supported on this platform')
 

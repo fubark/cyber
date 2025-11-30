@@ -303,13 +303,14 @@ fn utf16LeToUtf8(utf16 []win32.WCHAR) -> !str:
 fn createFileWindows(path str, truncate bool) -> !os.File:
     path16 := utf8ToUtf16Le(path)!
     
-    access := win32.GENERIC_WRITE
+    access := win32.GENERIC_READ || win32.GENERIC_WRITE
+    share := win32.FILE_SHARE_READ || win32.FILE_SHARE_WRITE
     disposition := if (truncate) win32.CREATE_ALWAYS else win32.OPEN_ALWAYS
     
     handle := win32.CreateFileW(
         path16.ptr,
         access,
-        0,  -- No sharing
+        share,
         none,
         disposition,
         win32.FILE_ATTRIBUTE_NORMAL,
@@ -319,16 +320,17 @@ fn createFileWindows(path str, truncate bool) -> !os.File:
     if handle == none:
         return fromWin32Error()
     
-    return os.File{fd=as[int] handle}  -- Store handle as fd (will need proper abstraction)
+    return os.File{fd=as[int] handle}
 
 -- Open existing file for reading
 fn openFileWindows(path str) -> !os.File:
     path16 := utf8ToUtf16Le(path)!
+    share := win32.FILE_SHARE_READ || win32.FILE_SHARE_WRITE
     
     handle := win32.CreateFileW(
         path16.ptr,
         win32.GENERIC_READ,
-        win32.FILE_SHARE_READ,
+        share,
         none,
         win32.OPEN_EXISTING,
         win32.FILE_ATTRIBUTE_NORMAL,
@@ -597,3 +599,113 @@ fn openDirWindows(path str, iterable bool) -> !os.Dir:
         path = path,
     }
 
+-- File info helper functions
+--| Convert Windows file attributes to FileInfo.
+fn fileInfoFromWin32Attr(data Ptr[win32.WIN32_FILE_ATTRIBUTE_DATA]) -> os.FileInfo:
+    size := (as[int] data.nFileSizeHigh << 32) || as[int] data.nFileSizeLow
+    is_dir := (as[int] data.dwFileAttributes && as[int] win32.FILE_ATTRIBUTE_DIRECTORY) != 0
+    kind := if (is_dir) os.FileKind.directory else os.FileKind.file
+    mtime_ns := fileTimeToNanos(&data.ftLastWriteTime)
+    atime_ns := fileTimeToNanos(&data.ftLastAccessTime)
+    ctime_ns := fileTimeToNanos(&data.ftCreationTime)
+    return os.FileInfo{
+        inode = 0,
+        size = size,
+        mode = 0,
+        kind = kind,
+        atime_sec = atime_ns / 1000000000,
+        atime_nsec = atime_ns % 1000000000,
+        mtime_sec = mtime_ns / 1000000000,
+        mtime_nsec = mtime_ns % 1000000000,
+        ctime_sec = ctime_ns / 1000000000,
+        ctime_nsec = ctime_ns % 1000000000,
+    }
+
+--| Convert Windows FILETIME to nanoseconds since Unix epoch.
+fn fileTimeToNanos(ft Ptr[win32.FILETIME]) -> int:
+    intervals := (as[int] ft.dwHighDateTime << 32) || as[int] ft.dwLowDateTime
+    unix_intervals := intervals - 116444736000000000
+    return unix_intervals * 100
+
+--| Convert Windows BY_HANDLE_FILE_INFORMATION to FileInfo.
+fn fileInfoFromHandle(info Ptr[win32.BY_HANDLE_FILE_INFORMATION]) -> os.FileInfo:
+    size := (as[int] info.nFileSizeHigh << 32) || as[int] info.nFileSizeLow
+    is_dir := (as[int] info.dwFileAttributes && as[int] win32.FILE_ATTRIBUTE_DIRECTORY) != 0
+    kind := if (is_dir) os.FileKind.directory else os.FileKind.file
+    mtime_ns := fileTimeToNanos(&info.ftLastWriteTime)
+    atime_ns := fileTimeToNanos(&info.ftLastAccessTime)
+    ctime_ns := fileTimeToNanos(&info.ftCreationTime)
+    return os.FileInfo{
+        inode = 0,
+        size = size,
+        mode = 0,
+        kind = kind,
+        atime_sec = atime_ns / 1000000000,
+        atime_nsec = atime_ns % 1000000000,
+        mtime_sec = mtime_ns / 1000000000,
+        mtime_nsec = mtime_ns % 1000000000,
+        ctime_sec = ctime_ns / 1000000000,
+        ctime_nsec = ctime_ns % 1000000000,
+    }
+
+-- Environment variable functions
+fn getEnvWindows(key str) -> ?str:
+    key_len := key.len()
+    key_bytes := []byte((key_len + 1) * 2, 0)
+    for 0..key_len |i|:
+        key_bytes[i * 2] = key[i]
+        key_bytes[i * 2 + 1] = 0
+    
+    size := win32.GetEnvironmentVariableW(as key_bytes.ptr, none, 0)
+    if size == 0:
+        return none
+    
+    val_bytes := []byte(size * 2, 0)
+    result := win32.GetEnvironmentVariableW(as key_bytes.ptr, as val_bytes.ptr, size)
+    if result == 0:
+        return none
+    
+    var val_len int = 0
+    while val_len < size and (val_bytes[val_len * 2] != 0 or val_bytes[val_len * 2 + 1] != 0):
+        val_len += 1
+    
+    result_bytes := []byte(val_len, 0)
+    for 0..val_len |i|:
+        result_bytes[i] = val_bytes[i * 2]
+    return str(result_bytes)
+
+fn getEnvAllWindows() -> ^Map[str, str]:
+    env_block := win32.GetEnvironmentStringsW()
+    if env_block == none:
+        return ^Map[str, str]{}
+    
+    result := ^Map[str, str]{}
+    var offset int = 0
+    
+    while env_block[offset] != 0:
+        var str_end int = offset
+        while env_block[str_end] != 0:
+            str_end += 1
+        
+        str_len := str_end - offset
+        slice := []win32.WCHAR(str_len, 0)
+        for 0..str_len |i|:
+            slice[i] = env_block[offset + i]
+        
+        entry := utf16LeToUtf8(slice) !else:
+            offset = str_end + 1
+            continue
+        
+        var eq_pos int = 0
+        while eq_pos < entry.len() and entry[eq_pos] != '=':
+            eq_pos += 1
+        
+        if eq_pos < entry.len():
+            key := entry[0..eq_pos]
+            val := entry[(eq_pos + 1)..]
+            result[key] = val
+        
+        offset = str_end + 1
+    
+    _ = win32.FreeEnvironmentStringsW(env_block)
+    return result

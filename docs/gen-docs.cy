@@ -29,7 +29,7 @@ if !import_style:
     user_css = '<style>%{css}</style>'
 
 if !skip_api:
-    gen_api_docs()!
+    gen_api_docs(version)!
 
 src := str(os.read_file('%{curDir}/docs.md')!)
 csrc := str.initz(src)
@@ -717,7 +717,7 @@ fn gen_mods_content(cur_dir str, mods []ModulePair) -> !str:
         res += gen
     return res 
 
-fn gen_api_docs() -> !void:
+fn gen_api_docs(version str) -> !void:
     core_mods := []ModulePair{
         {path='../src/builtins/core.cy', section='core'},
         {path='../src/builtins/c.cy', section='c'},
@@ -753,6 +753,7 @@ fn gen_api_docs() -> !void:
     html := template.replace('<!--NAV-->', nav)
     html = html.replace('<!--HEAD-->', head)
     html = html.replace('<!--CONTENT-->', content)
+    html = html.replace('<!--VERSION-->', version)
 
     os.write_file('%{cur_dir}/api.html', html)!
 

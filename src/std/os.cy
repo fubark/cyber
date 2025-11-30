@@ -37,6 +37,7 @@ type c_int = c.c_int
 --| Platform-specific file descriptor type
 type FileDescriptor = switch meta.system():
     case .macos => lc.fd_t
+    case .linux => lc.fd_t
     else => int  -- Windows stores HANDLE as int
 
 -- Windows file/directory helper functions
@@ -215,11 +216,13 @@ type AccessMode = c_int
 --| Default mode when creating a directory.
 const DefaultDirMode = switch meta.system():
     case .macos => lc.mode_t(0o755)
+    case .linux => lc.mode_t(0o755)
     else => 0  -- Windows doesn't use POSIX mode_t
 
 --| Default mode when creating a file.
 const DefaultFileMode = switch meta.system():
     case .macos => lc.mode_t(0o666)
+    case .linux => lc.mode_t(0o666)
     else => 0  -- Windows doesn't use POSIX mode_t
 
 const ns_per_us = 1000

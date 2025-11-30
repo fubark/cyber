@@ -2,6 +2,8 @@
 use lc 'libc.cy'
 use c
 use meta
+
+#[cond=meta.system() == .windows]
 use win32 'win32.cy'
 
 --| Contains system level functions.

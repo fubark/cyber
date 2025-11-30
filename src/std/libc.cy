@@ -77,7 +77,7 @@ type fd_t = switch meta.system():
     case .linux => i32
     else => void
 
--- Linux-specific types (preserved from HEAD)
+-- Linux-specific types
 type pid_t = switch meta.system():
     case .macos => i32
     case .linux => i32
@@ -103,7 +103,6 @@ type O = switch meta.system():
     else => void
 
 -- TODO: packed structs would improve ergonomics of many of these system config types.
--- O_* constants with Linux support preserved from HEAD, Windows uses 0 (dummy)
 const O_RDONLY = switch meta.system():
     case .macos => O(0x0000)
     case .linux => O(0x0000)

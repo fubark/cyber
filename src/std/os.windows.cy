@@ -1,6 +1,8 @@
 use os
 use c
 use meta
+
+#[cond=meta.system() == .windows]
 use kernel32 'windows/kernel32.cy'
 
 --| Windows-specific OS implementations.

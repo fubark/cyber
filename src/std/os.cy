@@ -4,7 +4,7 @@ use c
 use meta
 
 #[cond=meta.system() == .windows]
-use win32 'win32.cy'
+use kernel32 'windows/kernel32.cy'
 
 --| Contains system level functions.
 --|
@@ -118,7 +118,7 @@ fn copy_file(src_path str, dst_path str) -> !void:
         #if meta.system() == .windows:
             src16 := windows.utf8ToUtf16Le(src_path)!
             dst16 := windows.utf8ToUtf16Le(dst_path)!
-            if win32.CopyFileW(src16.ptr, dst16.ptr, win32.FALSE) == win32.FALSE:
+            if kernel32.CopyFileW(src16.ptr, dst16.ptr, kernel32.FALSE) == kernel32.FALSE:
                 return windows.fromWin32Error()
         #else:
             panic('copy_file not supported on this platform')
@@ -204,7 +204,7 @@ type ExecResult:
 --| Exits the program with a status code.
 fn exit(status int) -> never:
     #if meta.system() == .windows:
-        win32.ExitProcess(r32(status))
+        kernel32.ExitProcess(r32(status))
     #else:
         lc.exit(c_int(status))
 
@@ -229,12 +229,12 @@ fn fileInfo(path str) -> !FileInfo:
     #else:
         #if meta.system() == .windows:
             path16 := windows.utf8ToUtf16Le(path)!
-            data := win32.WIN32_FILE_ATTRIBUTE_DATA{
+            data := kernel32.WIN32_FILE_ATTRIBUTE_DATA{
                 dwFileAttributes=undef, ftCreationTime=undef,
                 ftLastAccessTime=undef, ftLastWriteTime=undef,
                 nFileSizeHigh=undef, nFileSizeLow=undef,
             }
-            if win32.GetFileAttributesExW(path16.ptr, win32.DWORD(win32.GetFileExInfoStandard), &data) == win32.FALSE:
+            if kernel32.GetFileAttributesExW(path16.ptr, kernel32.DWORD(kernel32.GetFileExInfoStandard), &data) == kernel32.FALSE:
                 return windows.fromWin32Error()
             return windows.fileInfoFromWin32Attr(&data)
         #else:
@@ -257,8 +257,8 @@ fn free(ptr Ptr[void]):
         lc.free(ptr)
     #else:
         #if meta.system() == .windows:
-            heap := win32.GetProcessHeap()
-            _ = win32.HeapFree(heap, 0, ptr)
+            heap := kernel32.GetProcessHeap()
+            _ = kernel32.HeapFree(heap, 0, ptr)
         #else:
             panic('free not supported on this platform')
 
@@ -307,8 +307,8 @@ fn malloc(size int) -> !Ptr[void]:
         return ptr
     #else:
         #if meta.system() == .windows:
-            heap := win32.GetProcessHeap()
-            ptr := win32.HeapAlloc(heap, 0, size)
+            heap := kernel32.GetProcessHeap()
+            ptr := kernel32.HeapAlloc(heap, 0, size)
             if ptr == none:
                 return windows.fromWin32Error()
             return ptr
@@ -335,14 +335,14 @@ fn num_cpus() -> int:
         return sum
     #else:
         #if meta.system() == .windows:
-            info := win32.SYSTEM_INFO{
+            info := kernel32.SYSTEM_INFO{
                 wProcessorArchitecture=undef, wReserved=undef, dwPageSize=undef,
                 lpMinimumApplicationAddress=undef, lpMaximumApplicationAddress=undef,
                 dwActiveProcessorMask=undef, dwNumberOfProcessors=undef,
                 dwProcessorType=undef, dwAllocationGranularity=undef,
                 wProcessorLevel=undef, wProcessorRevision=undef,
             }
-            win32.GetSystemInfo(&info)
+            kernel32.GetSystemInfo(&info)
             return as[int] info.dwNumberOfProcessors
         #else:
             panic('num_cpus not supported on this platform')
@@ -362,8 +362,8 @@ fn open_dir(path str, iterable bool) -> !Dir:
         #if meta.system() == .windows:
             -- Verify directory exists
             path16 := windows.utf8ToUtf16Le(path)!
-            attrs := win32.GetFileAttributesW(path16.ptr)
-            if attrs == win32.DWORD(4294967295):  -- INVALID_FILE_ATTRIBUTES
+            attrs := kernel32.GetFileAttributesW(path16.ptr)
+            if attrs == kernel32.DWORD(4294967295):  -- INVALID_FILE_ATTRIBUTES
                 return windows.fromWin32Error()
             -- On Windows, fd_t is void. We must provide fd field but it's unused.
             -- Return Dir directly (no local var) since Dir has NoCopy trait
@@ -385,8 +385,8 @@ fn nanoTime() -> !int:
         return tp.sec * ns_per_s + tp.nsec
     #else:
         #if meta.system() == .windows:
-            ft := win32.FILETIME{dwLowDateTime=undef, dwHighDateTime=undef}
-            win32.GetSystemTimeAsFileTime(&ft)
+            ft := kernel32.FILETIME{dwLowDateTime=undef, dwHighDateTime=undef}
+            kernel32.GetSystemTimeAsFileTime(&ft)
             -- FILETIME is 100-nanosecond intervals since Jan 1, 1601
             -- Unix epoch is Jan 1, 1970 = 116444736000000000 intervals
             intervals := (as[int] ft.dwHighDateTime << 32) || as[int] ft.dwLowDateTime
@@ -409,11 +409,11 @@ fn now() -> !int:
         return tp.sec * ns_per_s + tp.nsec
     #else:
         #if meta.system() == .windows:
-            counter := win32.LARGE_INTEGER{QuadPart=0}
-            freq := win32.LARGE_INTEGER{QuadPart=0}
-            if win32.QueryPerformanceCounter(&counter) == win32.FALSE:
+            counter := kernel32.LARGE_INTEGER{QuadPart=0}
+            freq := kernel32.LARGE_INTEGER{QuadPart=0}
+            if kernel32.QueryPerformanceCounter(&counter) == kernel32.FALSE:
                 return windows.fromWin32Error()
-            if win32.QueryPerformanceFrequency(&freq) == win32.FALSE:
+            if kernel32.QueryPerformanceFrequency(&freq) == kernel32.FALSE:
                 return windows.fromWin32Error()
             -- Convert to nanoseconds avoiding overflow:
             -- Instead of (counter * ns_per_s) / freq which overflows,
@@ -433,11 +433,11 @@ fn open_file(path str, mode OpenMode) -> !File:
     #if meta.system() == .windows:
         path16 := windows.utf8ToUtf16Le(path)!
         access := switch mode:
-            case .read       => win32.GENERIC_READ
-            case .write      => win32.GENERIC_WRITE
-            case .read_write => win32.GENERIC_READ || win32.GENERIC_WRITE
-        share := win32.FILE_SHARE_READ || win32.FILE_SHARE_WRITE
-        handle := win32.CreateFileW(path16.ptr, access, share, none, win32.OPEN_EXISTING, win32.FILE_ATTRIBUTE_NORMAL, none)
+            case .read       => kernel32.GENERIC_READ
+            case .write      => kernel32.GENERIC_WRITE
+            case .read_write => kernel32.GENERIC_READ || kernel32.GENERIC_WRITE
+        share := kernel32.FILE_SHARE_READ || kernel32.FILE_SHARE_WRITE
+        handle := kernel32.CreateFileW(path16.ptr, access, share, none, kernel32.OPEN_EXISTING, kernel32.FILE_ATTRIBUTE_NORMAL, none)
         -- INVALID_HANDLE_VALUE is (HANDLE)-1, check by casting to int
         if as[int] handle == -1:
             return windows.fromWin32Error()
@@ -553,12 +553,12 @@ fn resolve_path(path str) -> !str:
         #if meta.system() == .windows:
             path16 := windows.utf8ToUtf16Le(path)!
             -- First call to get required buffer size
-            size := win32.GetFullPathNameW(path16.ptr, 0, none, none)
+            size := kernel32.GetFullPathNameW(path16.ptr, 0, none, none)
             if size == 0:
                 return windows.fromWin32Error()
             -- Allocate buffer and get full path
-            buf := []win32.WCHAR(size, 0)
-            result := win32.GetFullPathNameW(path16.ptr, size, buf.ptr, none)
+            buf := []kernel32.WCHAR(size, 0)
+            result := kernel32.GetFullPathNameW(path16.ptr, size, buf.ptr, none)
             if result == 0:
                 return windows.fromWin32Error()
             return windows.utf16LeToUtf8(buf)
@@ -577,7 +577,7 @@ fn set_env(key str, val str) -> !void:
         #if meta.system() == .windows:
             key16 := windows.utf8ToUtf16Le(key)!
             val16 := windows.utf8ToUtf16Le(val)!
-            if win32.SetEnvironmentVariableW(key16.ptr, val16.ptr) == win32.FALSE:
+            if kernel32.SetEnvironmentVariableW(key16.ptr, val16.ptr) == kernel32.FALSE:
                 return windows.fromWin32Error()
         #else:
             panic('set_env not supported on this platform')
@@ -600,7 +600,7 @@ fn sleep(nsecs int) -> !void:
             ms := nsecs / 1000000
             if ms == 0 and nsecs > 0:
                 ms = 1  -- Minimum 1ms for non-zero sleep
-            win32.Sleep(win32.DWORD(ms))
+            kernel32.Sleep(kernel32.DWORD(ms))
         #else:
             panic('sleep not supported on this platform')
 
@@ -614,7 +614,7 @@ fn unset_env(key str) -> !void:
         #if meta.system() == .windows:
             key16 := windows.utf8ToUtf16Le(key)!
             -- Setting value to none removes the variable
-            _ = win32.SetEnvironmentVariableW(key16.ptr, none)
+            _ = kernel32.SetEnvironmentVariableW(key16.ptr, none)
             -- Ignore errors - variable may not exist
         #else:
             panic('unset_env not supported on this platform')
@@ -678,8 +678,8 @@ fn (&File) close() -> void:
         $closed = true
     #else:
         #if meta.system() == .windows:
-            handle := as[win32.HANDLE] $fd
-            if win32.CloseHandle(handle) == win32.FALSE:
+            handle := as[kernel32.HANDLE] $fd
+            if kernel32.CloseHandle(handle) == kernel32.FALSE:
                 panic("Unexpected. %{windows.fromWin32Error()}")
             $closed = true
         #else:
@@ -696,15 +696,15 @@ fn (&File) info() -> !FileInfo:
         return fileInfo(&cstat)
     #else:
         #if meta.system() == .windows:
-            handle := as[win32.HANDLE] $fd
-            info := win32.BY_HANDLE_FILE_INFORMATION{
+            handle := as[kernel32.HANDLE] $fd
+            info := kernel32.BY_HANDLE_FILE_INFORMATION{
                 dwFileAttributes=undef, ftCreationTime=undef,
                 ftLastAccessTime=undef, ftLastWriteTime=undef,
                 dwVolumeSerialNumber=undef, nFileSizeHigh=undef,
                 nFileSizeLow=undef, nNumberOfLinks=undef,
                 nFileIndexHigh=undef, nFileIndexLow=undef,
             }
-            if win32.GetFileInformationByHandle(handle, &info) == win32.FALSE:
+            if kernel32.GetFileInformationByHandle(handle, &info) == kernel32.FALSE:
                 return windows.fromWin32Error()
             return windows.fileInfoFromHandle(&info)
         #else:
@@ -719,10 +719,10 @@ fn (&File) read(buf [&]byte) -> !int:
         return read
     #else:
         #if meta.system() == .windows:
-            handle := as[win32.HANDLE] $fd
-            var bytes_read win32.DWORD = 0
-            result := win32.ReadFile(handle, as buf.base, win32.DWORD(buf.length), &bytes_read, none)
-            if result == win32.FALSE:
+            handle := as[kernel32.HANDLE] $fd
+            var bytes_read kernel32.DWORD = 0
+            result := kernel32.ReadFile(handle, as buf.base, kernel32.DWORD(buf.length), &bytes_read, none)
+            if result == kernel32.FALSE:
                 return windows.fromWin32Error()
             return as[int] bytes_read
         #else:
@@ -774,12 +774,12 @@ fn (&File) seek(n int) -> !void:
             return fromErrno()
     #else:
         #if meta.system() == .windows:
-            handle := as[win32.HANDLE] $fd
-            var distance win32.LARGE_INTEGER = undef
+            handle := as[kernel32.HANDLE] $fd
+            var distance kernel32.LARGE_INTEGER = undef
             distance.QuadPart = n
-            var new_pos win32.LARGE_INTEGER = undef
-            result := win32.SetFilePointerEx(handle, distance, &new_pos, win32.FILE_CURRENT)
-            if result == win32.FALSE:
+            var new_pos kernel32.LARGE_INTEGER = undef
+            result := kernel32.SetFilePointerEx(handle, distance, &new_pos, kernel32.FILE_CURRENT)
+            if result == kernel32.FALSE:
                 return windows.fromWin32Error()
         #else:
             panic('File.seek not supported on this platform')
@@ -792,12 +792,12 @@ fn (&File) seekFromEnd(n int) -> !void:
             return fromErrno()
     #else:
         #if meta.system() == .windows:
-            handle := as[win32.HANDLE] $fd
-            var distance win32.LARGE_INTEGER = undef
+            handle := as[kernel32.HANDLE] $fd
+            var distance kernel32.LARGE_INTEGER = undef
             distance.QuadPart = n
-            var new_pos win32.LARGE_INTEGER = undef
-            result := win32.SetFilePointerEx(handle, distance, &new_pos, win32.FILE_END)
-            if result == win32.FALSE:
+            var new_pos kernel32.LARGE_INTEGER = undef
+            result := kernel32.SetFilePointerEx(handle, distance, &new_pos, kernel32.FILE_END)
+            if result == kernel32.FALSE:
                 return windows.fromWin32Error()
         #else:
             panic('File.seekFromEnd not supported on this platform')
@@ -813,12 +813,12 @@ fn (&File) seekFromStart(n int) -> !void:
             -- Validate negative position before calling Windows API
             if n < 0:
                 return error.InvalidArgument
-            handle := as[win32.HANDLE] $fd
-            var distance win32.LARGE_INTEGER = undef
+            handle := as[kernel32.HANDLE] $fd
+            var distance kernel32.LARGE_INTEGER = undef
             distance.QuadPart = n
-            var new_pos win32.LARGE_INTEGER = undef
-            result := win32.SetFilePointerEx(handle, distance, &new_pos, win32.FILE_BEGIN)
-            if result == win32.FALSE:
+            var new_pos kernel32.LARGE_INTEGER = undef
+            result := kernel32.SetFilePointerEx(handle, distance, &new_pos, kernel32.FILE_BEGIN)
+            if result == kernel32.FALSE:
                 return windows.fromWin32Error()
         #else:
             panic('File.seekFromStart not supported on this platform')
@@ -832,10 +832,10 @@ fn (&File) write(val str) -> !int:
         return written
     #else:
         #if meta.system() == .windows:
-            handle := as[win32.HANDLE] $fd
-            var bytes_written win32.DWORD = 0
-            result := win32.WriteFile(handle, as val.ptr, win32.DWORD(val.len()), &bytes_written, none)
-            if result == win32.FALSE:
+            handle := as[kernel32.HANDLE] $fd
+            var bytes_written kernel32.DWORD = 0
+            result := kernel32.WriteFile(handle, as val.ptr, kernel32.DWORD(val.len()), &bytes_written, none)
+            if result == kernel32.FALSE:
                 return windows.fromWin32Error()
             return as[int] bytes_written
         #else:
@@ -850,10 +850,10 @@ fn (&File) write(buf []byte) -> !int:
         return written
     #else:
         #if meta.system() == .windows:
-            handle := as[win32.HANDLE] $fd
-            var bytes_written win32.DWORD = 0
-            result := win32.WriteFile(handle, as buf.ptr, win32.DWORD(buf.len()), &bytes_written, none)
-            if result == win32.FALSE:
+            handle := as[kernel32.HANDLE] $fd
+            var bytes_written kernel32.DWORD = 0
+            result := kernel32.WriteFile(handle, as buf.ptr, kernel32.DWORD(buf.len()), &bytes_written, none)
+            if result == kernel32.FALSE:
                 return windows.fromWin32Error()
             return as[int] bytes_written
         #else:

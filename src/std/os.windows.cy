@@ -1,10 +1,7 @@
 use os
 use c
 use meta
-
--- Import win32 only on Windows to prevent extern function processing on other platforms
-#[cond=meta.system() == .windows]
-use win32 'win32.cy'
+use kernel32 'windows/kernel32.cy'
 
 --| Windows-specific OS implementations.
 --|
@@ -28,17 +25,17 @@ use win32 'win32.cy'
 
 -- Convert Windows error codes to Cyber errors
 fn fromWin32Error() -> error:
-    err := win32.GetLastError()
+    err := kernel32.GetLastError()
     return switch err:
-        case win32.ERROR_SUCCESS => error.Unknown  -- Should not happen
-        case win32.ERROR_FILE_NOT_FOUND => error.FileNotFound
-        case win32.ERROR_PATH_NOT_FOUND => error.FileNotFound
-        case win32.ERROR_ACCESS_DENIED => error.AccessDenied
-        case win32.ERROR_INVALID_HANDLE => error.BadFile
-        case win32.ERROR_NOT_ENOUGH_MEMORY => error.OutOfMemory
-        case win32.ERROR_INVALID_PARAMETER => error.InvalidArgument
-        case win32.ERROR_SHARING_VIOLATION => error.AccessDenied
-        case win32.ERROR_ALREADY_EXISTS => error.FileExists
+        case kernel32.ERROR_SUCCESS => error.Unknown  -- Should not happen
+        case kernel32.ERROR_FILE_NOT_FOUND => error.FileNotFound
+        case kernel32.ERROR_PATH_NOT_FOUND => error.FileNotFound
+        case kernel32.ERROR_ACCESS_DENIED => error.AccessDenied
+        case kernel32.ERROR_INVALID_HANDLE => error.BadFile
+        case kernel32.ERROR_NOT_ENOUGH_MEMORY => error.OutOfMemory
+        case kernel32.ERROR_INVALID_PARAMETER => error.InvalidArgument
+        case kernel32.ERROR_SHARING_VIOLATION => error.AccessDenied
+        case kernel32.ERROR_ALREADY_EXISTS => error.FileExists
         else => error.Unknown
 
 -- Convert UTF-8 string to UTF-16LE for Windows APIs
@@ -55,17 +52,17 @@ fn fromWin32Error() -> error:
 -- BMP (U+0000 to U+D7FF, U+E000 to U+FFFF): Single 16-bit code unit
 -- Supplementary (U+10000 to U+10FFFF): Surrogate pair (high + low)
 -- High surrogate: 0xD800-0xDBFF, Low surrogate: 0xDC00-0xDFFF
-fn utf8ToUtf16Le(utf8 str) -> ![]win32.WCHAR:
+fn utf8ToUtf16Le(utf8 str) -> ![]kernel32.WCHAR:
     utf8_len := utf8.len()
     if utf8_len == 0:
         -- Empty string - just null terminator
-        return []win32.WCHAR{0}
+        return []kernel32.WCHAR{0}
     
     -- Estimate buffer size (worst case: all ASCII = same length, +1 for null)
     -- For non-ASCII, we may need less space (multi-byte UTF-8 → single UTF-16)
     -- or more space (characters outside BMP need surrogate pairs)
     estimated_size := utf8_len + 1
-    buf := []win32.WCHAR(estimated_size, 0)
+    buf := []kernel32.WCHAR(estimated_size, 0)
     
     var utf8_idx int = 0
     var utf16_idx int = 0
@@ -147,17 +144,17 @@ fn utf8ToUtf16Le(utf8 str) -> ![]win32.WCHAR:
             -- Ensure buffer has space
             if utf16_idx >= buf.len():
                 -- Grow buffer (double size for efficiency)
-                new_buf := []win32.WCHAR(buf.len() * 2, 0)
+                new_buf := []kernel32.WCHAR(buf.len() * 2, 0)
                 for 0..buf.len() |i|:
                     new_buf[i] = buf[i]
                 buf = new_buf
-            buf[utf16_idx] = win32.WCHAR(codepoint)
+            buf[utf16_idx] = kernel32.WCHAR(codepoint)
             utf16_idx += 1
         else:
             -- Supplementary character - surrogate pair needed
             -- Ensure buffer has space for 2 code units
             while utf16_idx + 1 >= buf.len():
-                new_buf := []win32.WCHAR(buf.len() * 2, 0)
+                new_buf := []kernel32.WCHAR(buf.len() * 2, 0)
                 for 0..buf.len() |i|:
                     new_buf[i] = buf[i]
                 buf = new_buf
@@ -167,8 +164,8 @@ fn utf8ToUtf16Le(utf8 str) -> ![]win32.WCHAR:
             -- High surrogate: 0xD800 + (high 10 bits)
             -- Low surrogate:  0xDC00 + (low 10 bits)
             adjusted := codepoint - 0x10000
-            high_surrogate := win32.WCHAR(0xD800 + (adjusted >> 10))      -- Extract high 10 bits
-            low_surrogate := win32.WCHAR(0xDC00 + (adjusted && 0x3FF))    -- Extract low 10 bits
+            high_surrogate := kernel32.WCHAR(0xD800 + (adjusted >> 10))      -- Extract high 10 bits
+            low_surrogate := kernel32.WCHAR(0xDC00 + (adjusted && 0x3FF))    -- Extract low 10 bits
             
             buf[utf16_idx] = high_surrogate
             buf[utf16_idx + 1] = low_surrogate
@@ -178,14 +175,14 @@ fn utf8ToUtf16Le(utf8 str) -> ![]win32.WCHAR:
     
     -- Add null terminator (Windows APIs expect null-terminated strings)
     if utf16_idx >= buf.len():
-        new_buf := []win32.WCHAR(utf16_idx + 1, 0)
+        new_buf := []kernel32.WCHAR(utf16_idx + 1, 0)
         for 0..utf16_idx |i|:
             new_buf[i] = buf[i]
         buf = new_buf
-    buf[utf16_idx] = win32.WCHAR(0)
+    buf[utf16_idx] = kernel32.WCHAR(0)
     
     -- Return exact-sized buffer (copy to avoid wasted space)
-    result := []win32.WCHAR(utf16_idx + 1, 0)
+    result := []kernel32.WCHAR(utf16_idx + 1, 0)
     for 0..(utf16_idx + 1) |i|:
         result[i] = buf[i]
     
@@ -205,7 +202,7 @@ fn utf8ToUtf16Le(utf8 str) -> ![]win32.WCHAR:
 -- 2-byte: 110xxxxx 10xxxxxx (U+0080 to U+07FF)
 -- 3-byte: 1110xxxx 10xxxxxx 10xxxxxx (U+0800 to U+FFFF)
 -- 4-byte: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx (U+10000 to U+10FFFF)
-fn utf16LeToUtf8(utf16 []win32.WCHAR) -> !str:
+fn utf16LeToUtf8(utf16 []kernel32.WCHAR) -> !str:
     -- Find null terminator (Windows APIs return null-terminated strings)
     var utf16_len int = 0
     while utf16_len < utf16.len() and utf16[utf16_len] != 0:
@@ -307,17 +304,17 @@ fn utf16LeToUtf8(utf16 []win32.WCHAR) -> !str:
 fn createFileWindows(path str, truncate bool) -> !os.File:
     path16 := utf8ToUtf16Le(path)!
     
-    access := win32.GENERIC_READ || win32.GENERIC_WRITE
-    share := win32.FILE_SHARE_READ || win32.FILE_SHARE_WRITE
-    disposition := if (truncate) win32.CREATE_ALWAYS else win32.OPEN_ALWAYS
+    access := kernel32.GENERIC_READ || kernel32.GENERIC_WRITE
+    share := kernel32.FILE_SHARE_READ || kernel32.FILE_SHARE_WRITE
+    disposition := if (truncate) kernel32.CREATE_ALWAYS else kernel32.OPEN_ALWAYS
     
-    handle := win32.CreateFileW(
+    handle := kernel32.CreateFileW(
         path16.ptr,
         access,
         share,
         none,
         disposition,
-        win32.FILE_ATTRIBUTE_NORMAL,
+        kernel32.FILE_ATTRIBUTE_NORMAL,
         none  -- hTemplateFile (no template)
     )
     
@@ -329,15 +326,15 @@ fn createFileWindows(path str, truncate bool) -> !os.File:
 -- Open existing file for reading
 fn openFileWindows(path str) -> !os.File:
     path16 := utf8ToUtf16Le(path)!
-    share := win32.FILE_SHARE_READ || win32.FILE_SHARE_WRITE
+    share := kernel32.FILE_SHARE_READ || kernel32.FILE_SHARE_WRITE
     
-    handle := win32.CreateFileW(
+    handle := kernel32.CreateFileW(
         path16.ptr,
-        win32.GENERIC_READ,
+        kernel32.GENERIC_READ,
         share,
         none,
-        win32.OPEN_EXISTING,
-        win32.FILE_ATTRIBUTE_NORMAL,
+        kernel32.OPEN_EXISTING,
+        kernel32.FILE_ATTRIBUTE_NORMAL,
         none  -- hTemplateFile (no template)
     )
     
@@ -350,33 +347,33 @@ fn openFileWindows(path str) -> !os.File:
 fn createDirWindows(path str) -> !void:
     path16 := utf8ToUtf16Le(path)!
     
-    if win32.CreateDirectoryW(path16.ptr, none) == win32.FALSE:
+    if kernel32.CreateDirectoryW(path16.ptr, none) == kernel32.FALSE:
         return fromWin32Error()
 
 -- Remove directory on Windows
 fn removeDirWindows(path str) -> !void:
     path16 := utf8ToUtf16Le(path)!
     
-    if win32.RemoveDirectoryW(path16.ptr) == win32.FALSE:
+    if kernel32.RemoveDirectoryW(path16.ptr) == kernel32.FALSE:
         return fromWin32Error()
 
 -- Remove file on Windows
 fn removeFileWindows(path str) -> !void:
     path16 := utf8ToUtf16Le(path)!
     
-    if win32.DeleteFileW(path16.ptr) == win32.FALSE:
+    if kernel32.DeleteFileW(path16.ptr) == kernel32.FALSE:
         return fromWin32Error()
 
 -- Get current directory on Windows
 fn getCwdWindows() -> !str:
     -- First call to get required buffer size
-    size := win32.GetCurrentDirectoryW(0, none)
+    size := kernel32.GetCurrentDirectoryW(0, none)
     if size == 0:
         return fromWin32Error()
     
     -- Allocate buffer and get actual path
-    buf := []win32.WCHAR(size, 0)
-    result := win32.GetCurrentDirectoryW(size, buf.ptr)
+    buf := []kernel32.WCHAR(size, 0)
+    result := kernel32.GetCurrentDirectoryW(size, buf.ptr)
     if result == 0 or result > size:
         return fromWin32Error()
     
@@ -386,15 +383,15 @@ fn getCwdWindows() -> !str:
 fn setCwdWindows(path str) -> !void:
     path16 := utf8ToUtf16Le(path)!
     
-    if win32.SetCurrentDirectoryW(path16.ptr) == win32.FALSE:
+    if kernel32.SetCurrentDirectoryW(path16.ptr) == kernel32.FALSE:
         return fromWin32Error()
 
 -- Get executable path on Windows
 fn getExePathWindows() -> !str:
     -- Windows MAX_PATH is 260, but we use larger buffer for long paths
-    buf := []win32.WCHAR(32768, 0)
+    buf := []kernel32.WCHAR(32768, 0)
     
-    size := win32.GetModuleFileNameW(none, buf.ptr, win32.DWORD(buf.len()))
+    size := kernel32.GetModuleFileNameW(none, buf.ptr, kernel32.DWORD(buf.len()))
     if size == 0:
         return fromWin32Error()
     
@@ -404,28 +401,28 @@ fn getExePathWindows() -> !str:
 fn accessFileWindows(path str) -> !void:
     path16 := utf8ToUtf16Le(path)!
     
-    attrs := win32.GetFileAttributesW(path16.ptr)
+    attrs := kernel32.GetFileAttributesW(path16.ptr)
     -- GetFileAttributesW returns INVALID_FILE_ATTRIBUTES (0xFFFFFFFF) on error
     -- Compare directly with the constant value as DWORD
-    if attrs == win32.DWORD(4294967295):  -- 0xFFFFFFFF as decimal
+    if attrs == kernel32.DWORD(4294967295):  -- 0xFFFFFFFF as decimal
         return fromWin32Error()
 
 --| Read bytes from file into buffer.
 --| Returns number of bytes actually read.
 --| Returns 0 when end of file is reached.
 fn readFileWindows(file &os.File, buf [&]byte) -> !int:
-    handle := as[win32.HANDLE] file.fd
-    var bytes_read win32.DWORD = 0
+    handle := as[kernel32.HANDLE] file.fd
+    var bytes_read kernel32.DWORD = 0
     
-    result := win32.ReadFile(
+    result := kernel32.ReadFile(
         handle,
         as buf.base,
-        win32.DWORD(buf.length),
+        kernel32.DWORD(buf.length),
         &bytes_read,
         none  -- No overlapped I/O
     )
     
-    if result == win32.FALSE:
+    if result == kernel32.FALSE:
         return fromWin32Error()
     
     return as[int] bytes_read
@@ -433,67 +430,67 @@ fn readFileWindows(file &os.File, buf [&]byte) -> !int:
 --| Write bytes from buffer to file.
 --| Returns number of bytes actually written.
 fn writeFileWindows(file &os.File, buf []byte) -> !int:
-    handle := as[win32.HANDLE] file.fd
-    var bytes_written win32.DWORD = 0
+    handle := as[kernel32.HANDLE] file.fd
+    var bytes_written kernel32.DWORD = 0
     
-    result := win32.WriteFile(
+    result := kernel32.WriteFile(
         handle,
         as buf.ptr,
-        win32.DWORD(buf.len()),
+        kernel32.DWORD(buf.len()),
         &bytes_written,
         none
     )
     
-    if result == win32.FALSE:
+    if result == kernel32.FALSE:
         return fromWin32Error()
     
     return as[int] bytes_written
 
 --| Write string to file (convenience wrapper).
 fn writeFileStrWindows(file &os.File, val str) -> !int:
-    handle := as[win32.HANDLE] file.fd
-    var bytes_written win32.DWORD = 0
-    result := win32.WriteFile(handle, as val.ptr, win32.DWORD(val.len()), &bytes_written, none)
-    if result == win32.FALSE:
+    handle := as[kernel32.HANDLE] file.fd
+    var bytes_written kernel32.DWORD = 0
+    result := kernel32.WriteFile(handle, as val.ptr, kernel32.DWORD(val.len()), &bytes_written, none)
+    if result == kernel32.FALSE:
         return fromWin32Error()
     return as[int] bytes_written
 
 --| Seek to position relative to current location.
 fn seekFileWindows(file &os.File, offset int) -> !void:
-    return seekFileWindowsInternal(file, offset, win32.FILE_CURRENT)
+    return seekFileWindowsInternal(file, offset, kernel32.FILE_CURRENT)
 
 --| Seek to absolute position from start.
 --| Negative offset is invalid.
 fn seekFileFromStartWindows(file &os.File, offset int) -> !void:
     if offset < 0:
         return error.InvalidArgument
-    return seekFileWindowsInternal(file, offset, win32.FILE_BEGIN)
+    return seekFileWindowsInternal(file, offset, kernel32.FILE_BEGIN)
 
 --| Seek to position relative to end.
 --| Positive offset is invalid.
 fn seekFileFromEndWindows(file &os.File, offset int) -> !void:
     if offset > 0:
         return error.InvalidArgument
-    return seekFileWindowsInternal(file, offset, win32.FILE_END)
+    return seekFileWindowsInternal(file, offset, kernel32.FILE_END)
 
 --| Internal seek implementation using SetFilePointerEx.
-fn seekFileWindowsInternal(file &os.File, offset int, whence win32.DWORD) -> !void:
-    handle := as[win32.HANDLE] file.fd
+fn seekFileWindowsInternal(file &os.File, offset int, whence kernel32.DWORD) -> !void:
+    handle := as[kernel32.HANDLE] file.fd
     
     -- Create LARGE_INTEGER for 64-bit offset
-    var distance win32.LARGE_INTEGER = undef
+    var distance kernel32.LARGE_INTEGER = undef
     distance.QuadPart = offset
     
-    var new_pos win32.LARGE_INTEGER = undef
+    var new_pos kernel32.LARGE_INTEGER = undef
     
-    result := win32.SetFilePointerEx(
+    result := kernel32.SetFilePointerEx(
         handle,
         distance,
         &new_pos,
         whence
     )
     
-    if result == win32.FALSE:
+    if result == kernel32.FALSE:
         return fromWin32Error()
 
 --| Close file handle and mark as closed.
@@ -502,9 +499,9 @@ fn closeFileWindows(file &os.File) -> !void:
     if file.closed:
         return
     
-    handle := as[win32.HANDLE] file.fd
+    handle := as[kernel32.HANDLE] file.fd
     
-    if win32.CloseHandle(handle) == win32.FALSE:
+    if kernel32.CloseHandle(handle) == kernel32.FALSE:
         return fromWin32Error()
     
     file.closed = true
@@ -514,8 +511,8 @@ fn closeFileWindows(file &os.File) -> !void:
 --| Note: We don't store dir_path here to avoid string reference counting issues.
 --| Instead, we access dir.path directly in next() since Dir is passed by reference.
 type DirIteratorImpl:
-    handle win32.HANDLE = none
-    find_data win32.WIN32_FIND_DATAW
+    handle kernel32.HANDLE = none
+    find_data kernel32.WIN32_FIND_DATAW
     first_call bool = true
 
 --| Get next directory entry.
@@ -527,22 +524,22 @@ fn (&DirIteratorImpl) next(dir &os.Dir) -> !?os.DirEntry:
         -- Use dir.path directly to avoid string copy/double-free issues
         pattern := dir.path + "\\*"
         pattern16 := utf8ToUtf16Le(pattern)!
-        $handle = win32.FindFirstFileW(pattern16.ptr, &$find_data)
+        $handle = kernel32.FindFirstFileW(pattern16.ptr, &$find_data)
         if $handle == none:
             return fromWin32Error()
         $first_call = false
     else:
         -- Subsequent calls - use FindNextFileW
-        if win32.FindNextFileW($handle, &$find_data) == win32.FALSE:
-            err := win32.GetLastError()
+        if kernel32.FindNextFileW($handle, &$find_data) == kernel32.FALSE:
+            err := kernel32.GetLastError()
             -- Close handle when iteration completes (defense in depth)
             if $handle != none:
-                _ = win32.FindClose($handle)
+                _ = kernel32.FindClose($handle)
                 $handle = none
-            if err == win32.ERROR_NO_MORE_FILES:
+            if err == kernel32.ERROR_NO_MORE_FILES:
                 return none
             else:
-                win32.SetLastError(err)
+                kernel32.SetLastError(err)
                 return fromWin32Error()
     
     -- Skip "." and ".." entries
@@ -559,7 +556,7 @@ fn (&DirIteratorImpl) next(dir &os.Dir) -> !?os.DirEntry:
     while name_len < 260 and $find_data.cFileName[name_len] != 0:
         name_len += 1
     -- Create a slice from the fixed array
-    name_slice := []win32.WCHAR(name_len, 0)
+    name_slice := []kernel32.WCHAR(name_len, 0)
     for 0..name_len |i|:
         name_slice[i] = $find_data.cFileName[i]
     name := utf16LeToUtf8(name_slice)!
@@ -573,11 +570,11 @@ fn (&DirIteratorImpl) next(dir &os.Dir) -> !?os.DirEntry:
     }
 
 --| Map Windows file attributes to FileKind enum.
-fn fileKindFromAttributes(attrs win32.DWORD) -> os.FileKind:
-    if (attrs && win32.FILE_ATTRIBUTE_DIRECTORY) != 0:
+fn fileKindFromAttributes(attrs kernel32.DWORD) -> os.FileKind:
+    if (attrs && kernel32.FILE_ATTRIBUTE_DIRECTORY) != 0:
         return .directory
     else:
-        if (attrs && win32.FILE_ATTRIBUTE_REPARSE_POINT) != 0:
+        if (attrs && kernel32.FILE_ATTRIBUTE_REPARSE_POINT) != 0:
             return .sym_link
         else:
             return .file
@@ -587,12 +584,12 @@ fn fileKindFromAttributes(attrs win32.DWORD) -> os.FileKind:
 fn openDirWindows(path str, iterable bool) -> !os.Dir:
     -- Verify directory exists
     path16 := utf8ToUtf16Le(path)!
-    attrs := win32.GetFileAttributesW(path16.ptr)
+    attrs := kernel32.GetFileAttributesW(path16.ptr)
     
-    if attrs == win32.DWORD(4294967295):  -- INVALID_FILE_ATTRIBUTES
+    if attrs == kernel32.DWORD(4294967295):  -- INVALID_FILE_ATTRIBUTES
         return fromWin32Error()
     
-    if (attrs && win32.FILE_ATTRIBUTE_DIRECTORY) == 0:
+    if (attrs && kernel32.FILE_ATTRIBUTE_DIRECTORY) == 0:
         return error.NotADirectory
     
     -- Return Dir with path stored for iterator
@@ -605,9 +602,9 @@ fn openDirWindows(path str, iterable bool) -> !os.Dir:
 
 -- File info helper functions
 --| Convert Windows file attributes to FileInfo.
-fn fileInfoFromWin32Attr(data Ptr[win32.WIN32_FILE_ATTRIBUTE_DATA]) -> os.FileInfo:
+fn fileInfoFromWin32Attr(data Ptr[kernel32.WIN32_FILE_ATTRIBUTE_DATA]) -> os.FileInfo:
     size := (as[int] data.nFileSizeHigh << 32) || as[int] data.nFileSizeLow
-    is_dir := (as[int] data.dwFileAttributes && as[int] win32.FILE_ATTRIBUTE_DIRECTORY) != 0
+    is_dir := (as[int] data.dwFileAttributes && as[int] kernel32.FILE_ATTRIBUTE_DIRECTORY) != 0
     kind := if (is_dir) os.FileKind.directory else os.FileKind.file
     mtime_ns := fileTimeToNanos(&data.ftLastWriteTime)
     atime_ns := fileTimeToNanos(&data.ftLastAccessTime)
@@ -626,15 +623,15 @@ fn fileInfoFromWin32Attr(data Ptr[win32.WIN32_FILE_ATTRIBUTE_DATA]) -> os.FileIn
     }
 
 --| Convert Windows FILETIME to nanoseconds since Unix epoch.
-fn fileTimeToNanos(ft Ptr[win32.FILETIME]) -> int:
+fn fileTimeToNanos(ft Ptr[kernel32.FILETIME]) -> int:
     intervals := (as[int] ft.dwHighDateTime << 32) || as[int] ft.dwLowDateTime
     unix_intervals := intervals - 116444736000000000
     return unix_intervals * 100
 
 --| Convert Windows BY_HANDLE_FILE_INFORMATION to FileInfo.
-fn fileInfoFromHandle(info Ptr[win32.BY_HANDLE_FILE_INFORMATION]) -> os.FileInfo:
+fn fileInfoFromHandle(info Ptr[kernel32.BY_HANDLE_FILE_INFORMATION]) -> os.FileInfo:
     size := (as[int] info.nFileSizeHigh << 32) || as[int] info.nFileSizeLow
-    is_dir := (as[int] info.dwFileAttributes && as[int] win32.FILE_ATTRIBUTE_DIRECTORY) != 0
+    is_dir := (as[int] info.dwFileAttributes && as[int] kernel32.FILE_ATTRIBUTE_DIRECTORY) != 0
     kind := if (is_dir) os.FileKind.directory else os.FileKind.file
     mtime_ns := fileTimeToNanos(&info.ftLastWriteTime)
     atime_ns := fileTimeToNanos(&info.ftLastAccessTime)
@@ -660,12 +657,12 @@ fn getEnvWindows(key str) -> ?str:
         key_bytes[i * 2] = key[i]
         key_bytes[i * 2 + 1] = 0
     
-    size := win32.GetEnvironmentVariableW(as key_bytes.ptr, none, 0)
+    size := kernel32.GetEnvironmentVariableW(as key_bytes.ptr, none, 0)
     if size == 0:
         return none
     
     val_bytes := []byte(size * 2, 0)
-    result := win32.GetEnvironmentVariableW(as key_bytes.ptr, as val_bytes.ptr, size)
+    result := kernel32.GetEnvironmentVariableW(as key_bytes.ptr, as val_bytes.ptr, size)
     if result == 0:
         return none
     
@@ -679,7 +676,7 @@ fn getEnvWindows(key str) -> ?str:
     return str(result_bytes)
 
 fn getEnvAllWindows() -> ^Map[str, str]:
-    env_block := win32.GetEnvironmentStringsW()
+    env_block := kernel32.GetEnvironmentStringsW()
     if env_block == none:
         return ^Map[str, str]{}
     
@@ -692,7 +689,7 @@ fn getEnvAllWindows() -> ^Map[str, str]:
             str_end += 1
         
         str_len := str_end - offset
-        slice := []win32.WCHAR(str_len, 0)
+        slice := []kernel32.WCHAR(str_len, 0)
         for 0..str_len |i|:
             slice[i] = env_block[offset + i]
         
@@ -711,5 +708,5 @@ fn getEnvAllWindows() -> ^Map[str, str]:
         
         offset = str_end + 1
     
-    _ = win32.FreeEnvironmentStringsW(env_block)
+    _ = kernel32.FreeEnvironmentStringsW(env_block)
     return result

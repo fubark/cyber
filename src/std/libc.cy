@@ -1,31 +1,23 @@
 use c
 use meta
 
---| POSIX/Unix libc bindings - Cross-platform C library abstraction.
---|
---| ## Usage:
---| For cross-platform file operations, use the `os` module instead.
---| This module is primarily for low-level system programming.
+-- `fopen`, `fread`, `fwrite`, etc.
+#c.include('<stdio.h>')
 
--- C header includes (only on Unix platforms)
-#if meta.system() != .windows:
-    -- `fopen`, `fread`, `fwrite`, etc.
-    #c.include('<stdio.h>')
+-- `open`, `fcntl`
+#c.include('<fcntl.h>')
 
-    -- `open`, `fcntl`
-    #c.include('<fcntl.h>')
+-- `access`, `rmdir`, `read`, `write`, `unlink`
+#c.include('<unistd.h>')
 
-    -- `access`, `rmdir`, `read`, `write`, `unlink`
-    #c.include('<unistd.h>')
+-- `setenv`, `unsetenv`, `malloc`, `free`, `exit`
+#c.include('<stdlib.h>')
 
-    -- `setenv`, `unsetenv`, `malloc`, `free`, `exit`
-    #c.include('<stdlib.h>')
+-- `nanosleep`, `clock_gettime`
+#c.include('<time.h>')
 
-    -- `nanosleep`, `clock_gettime`
-    #c.include('<time.h>')
-
-    -- `sysctlbyname`
-    #c.include('<sys/sysctl.h>')
+-- `sysctlbyname`
+#c.include('<sys/sysctl.h>')
 
 #if meta.is_vm_target():
     #c.bind_lib(none)
@@ -46,38 +38,11 @@ type clockid_t = switch meta.system():
     case .linux => r32
     else => void
 
--- CLOCK_* constants for time functions
-const CLOCK_REALTIME = switch meta.system():
-    case .macos => clockid_t(0)
-    else => 0  -- Dummy value for unsupported platforms
-const CLOCK_MONOTONIC = switch meta.system():
-    case .macos => clockid_t(6)
-    else => 0
-const CLOCK_MONOTONIC_RAW = switch meta.system():
-    case .macos => clockid_t(4)
-    else => 0
-const CLOCK_MONOTONIC_RAW_APPROX = switch meta.system():
-    case .macos => clockid_t(5)
-    else => 0
-const CLOCK_UPTIME_RAW = switch meta.system():
-    case .macos => clockid_t(8)
-    else => 0
-const CLOCK_UPTIME_RAW_APPROX = switch meta.system():
-    case .macos => clockid_t(9)
-    else => 0
-const CLOCK_PROCESS_CPUTIME_ID = switch meta.system():
-    case .macos => clockid_t(12)
-    else => 0
-const CLOCK_THREAD_CPUTIME_ID = switch meta.system():
-    case .macos => clockid_t(16)
-    else => 0
-
 type fd_t = switch meta.system():
     case .macos => i32
     case .linux => i32
     else => void
 
--- Linux-specific types
 type pid_t = switch meta.system():
     case .macos => i32
     case .linux => i32
@@ -86,11 +51,6 @@ type pid_t = switch meta.system():
 type cpu_set_t = switch meta.system():
     case .linux => linux.cpu_set_t
     else => void
-
--- macOS-specific fcntl constant
-const F_GETPATH = switch meta.system():
-    case .macos => c_int(50)
-    else => c_int(-1)
 
 type mode_t = switch meta.system():
     case .macos => i16
@@ -144,7 +104,7 @@ type off_t = switch meta.system():
 const PATH_MAX = switch meta.system():
     case .macos => 1024
     case .linux => 4096
-    else => 0  -- Windows uses different API
+    else => 0
 
 type Stat = switch meta.system():
     case .macos => macos.Stat
@@ -156,9 +116,8 @@ type timespec = switch meta.system():
     case .linux => linux.timespec
     else => void
 
---| Note: errno global and all function declarations removed for Windows compatibility.
---| Cyber does not support conditional function/global declarations.
---| On Windows, use os.windows module for file operations.
+#[extern]
+global errno c_int
 
 const EPERM  = c_int(1)
 const ENOENT = c_int(2)
@@ -171,8 +130,6 @@ const SEEK_SET = c_int(0)
 const SEEK_CUR = c_int(1)
 const SEEK_END = c_int(2)
 
--- POSIX extern function declarations (needed for macOS/Linux)
--- Windows uses Win32 API via os.windows module
 #[extern]
 fn access(pathname Ptr[byte], mode c_int) -> c_int
 

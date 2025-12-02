@@ -62,17 +62,14 @@ fn getDynLib(vm: *cy.VM, c: *cy.Chunk) !*std.DynLib {
                 return err;
             };
         } else if (builtin.os.tag == .windows) {
-            // Windows: Load C runtime library for standard C functions
-            // Try Universal C Runtime first (Windows 10+)
-            if (os.dlopen("ucrtbase.dll")) |ucrt_lib| {
-                lib.* = ucrt_lib;
-            } else |_| {
-                // Fallback to older C runtime (Windows 7/8)
-                lib.* = os.dlopen("msvcrt.dll") catch |err| {
-                    std.debug.print("Cannot load Windows C runtime.\n", .{});
-                    std.debug.print("Tried: ucrtbase.dll, msvcrt.dll\n", .{});
-                    return err;
-                };
+            // Windows: GetModuleHandleW(null) returns handle to current executable
+            // This is equivalent to dlopen(NULL) on Unix systems
+            const handle = std.os.windows.kernel32.GetModuleHandleW(null);
+            if (handle) |h| {
+                lib.* = std.DynLib{ .inner = .{ .dll = h } };
+            } else {
+                std.debug.print("Cannot get module handle for self exe.\n", .{});
+                return error.FileNotFound;
             }
         } else {
             lib.* = os.dlopen("") catch |err| {
@@ -211,10 +208,7 @@ pub fn initBindLib(t: *cy.Thread) !C.Ret {
         if (!c.has_extern_func) {
             continue;
         }
-
-        // Platform-specific binding check:
-        // - has_bind_lib=false, bind_lib=null: Never called -> PROCESS (fallback)
-        // - has_bind_lib=true, bind_lib=null: Called bind_lib(none) -> SKIP
+        // Skip chunks with bind_lib(none) - these explicitly opt out of extern loading
         if (c.has_bind_lib and c.bind_lib == null) {
             continue;
         }
@@ -292,10 +286,7 @@ pub fn initBindLib(t: *cy.Thread) !C.Ret {
         if (!c.has_extern_func) {
             continue;
         }
-
-        // Platform-specific binding check:
-        // - has_bind_lib=false, bind_lib=null: Never called -> PROCESS (fallback)
-        // - has_bind_lib=true, bind_lib=null: Called bind_lib(none) -> SKIP
+        // Skip chunks with bind_lib(none) - these explicitly opt out of extern loading
         if (c.has_bind_lib and c.bind_lib == null) {
             continue;
         }

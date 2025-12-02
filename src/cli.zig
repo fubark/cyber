@@ -17,8 +17,8 @@ const mi = @import("mimalloc");
 
 pub const Src = @embedFile("std/cli.cy");
 
-const funcs = [_]struct{[]const u8, C.BindFunc}{
-    .{"replReadLine", zErrFunc(replReadLine)},
+const funcs = [_]struct { []const u8, C.BindFunc }{
+    .{ "replReadLine", zErrFunc(replReadLine) },
 };
 
 pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
@@ -84,19 +84,19 @@ pub fn init_cli(vm: *C.VM, alloc: std.mem.Allocator) !void {
         bind_fn: C.ModuleBindFn,
     };
     const mods = [_]ModInfo{
-        .{.name="core", .uri = "src/builtins/core.cy", .bind_fn = C.mod_bind_core },
-        .{.name="meta", .uri = "src/builtins/meta.cy", .bind_fn = C.mod_bind_meta },
-        .{.name="math", .uri = "src/std/math.cy", .bind_fn = C.mod_bind_math },
-        .{.name="cy", .uri = "src/builtins/cy.cy", .bind_fn = C.mod_bind_cy },
-        .{.name="c", .uri = "src/builtins/c.cy", .bind_fn = C.mod_bind_c },
-        .{.name="libc", .uri = "src/std/libc.cy", .bind_fn = null },
-        .{.name="os", .uri = "src/std/os.cy", .bind_fn = @ptrCast(&os_mod.bind) },
-        .{.name="io", .uri = "src/std/io.cy", .bind_fn = C.mod_bind_io },
-        .{.name="cli", .uri = "src/std/cli.cy", .bind_fn = @ptrCast(&bind) },
-        .{.name="test", .uri = "src/std/test.cy", .bind_fn = C.mod_bind_test },
+        .{ .name = "core", .uri = "src/builtins/core.cy", .bind_fn = C.mod_bind_core },
+        .{ .name = "meta", .uri = "src/builtins/meta.cy", .bind_fn = C.mod_bind_meta },
+        .{ .name = "math", .uri = "src/std/math.cy", .bind_fn = C.mod_bind_math },
+        .{ .name = "cy", .uri = "src/builtins/cy.cy", .bind_fn = C.mod_bind_cy },
+        .{ .name = "c", .uri = "src/builtins/c.cy", .bind_fn = C.mod_bind_c },
+        .{ .name = "libc", .uri = "src/std/libc.cy", .bind_fn = null },
+        .{ .name = "os", .uri = "src/std/os.cy", .bind_fn = @ptrCast(&os_mod.bind) },
+        .{ .name = "io", .uri = "src/std/io.cy", .bind_fn = C.mod_bind_io },
+        .{ .name = "cli", .uri = "src/std/cli.cy", .bind_fn = @ptrCast(&bind) },
+        .{ .name = "test", .uri = "src/std/test.cy", .bind_fn = C.mod_bind_test },
     };
     for (mods) |mod| {
-        const abs_path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{app.mod_root, mod.uri});
+        const abs_path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ app.mod_root, mod.uri });
         try app.mod_uris.putNoClobber(alloc, mod.name, abs_path);
         try app.mod_bindings.putNoClobber(alloc, abs_path, mod.bind_fn);
     }
@@ -246,7 +246,7 @@ fn resolver(vm_: ?*C.VM, params: C.ResolverParams, res_uri_len: ?*usize) callcon
         if (e == error.HandledError) {
             return false;
         } else {
-            const msg = std.fmt.allocPrint(app.alloc, "Resolve module `{s}`, error: `{}`", .{uri, e}) catch return false;
+            const msg = std.fmt.allocPrint(app.alloc, "Resolve module `{s}`, error: `{}`", .{ uri, e }) catch return false;
             defer app.alloc.free(msg);
             C.reportApiError(@ptrCast(vm), C.to_bytes(msg));
             return false;
@@ -336,7 +336,7 @@ fn loadUrl(vm: *C.VM, alloc: std.mem.Allocator, url: []const u8) ![]const u8 {
                 if (C.verbose()) {
                     const cachePath = try cache.allocSpecFilePath(alloc, entry);
                     defer alloc.free(cachePath);
-                    std.debug.print("Using cached `{s}` at `{s}`.\n", .{url, cachePath});
+                    std.debug.print("Using cached `{s}` at `{s}`.\n", .{ url, cachePath });
                 }
                 return src;
             }
@@ -459,32 +459,20 @@ test "Stack traces." {
             const report = C.thread_panic_summary(thread);
             defer C.vm_freeb(vm, report);
 
-            const root_raw = build_config.mod_root.?;
-            const root = if (builtin.os.tag == .windows)
-                try std.mem.replaceOwned(u8, zt.alloc, root_raw, "\\", "/")
-            else
-                try zt.alloc.dupe(u8, root_raw);
-            defer zt.alloc.free(root);
-
+            const root = build_config.mod_root.?;
+            const sep = if (builtin.os.tag == .windows) "\\" else "/";
             const exp = try std.fmt.allocPrint(zt.alloc,
                 \\panic: boom
                 \\
-                \\{s}/src/test/modules/test_mods/init_panic_error.cy:1:18 @init:
+                \\{s}{s}src{s}test{s}modules{s}test_mods{s}init_panic_error.cy:1:18 @init:
                 \\global foo int = panic('boom')
                 \\                 ^
-                \\{s}/src/test/main.cy: @program_init
-                \\{s}/src/test/main.cy: main
+                \\{s}{s}src{s}test{s}main.cy: @program_init
+                \\{s}{s}src{s}test{s}main.cy: main
                 \\
-            , .{ root, root, root });
+            , .{ root, sep, sep, sep, sep, sep, root, sep, sep, sep, root, sep, sep, sep });
             defer zt.alloc.free(exp);
-
-            const normalized_report = if (builtin.os.tag == .windows)
-                try std.mem.replaceOwned(u8, zt.alloc, report, "\\", "/")
-            else
-                try zt.alloc.dupe(u8, report);
-            defer zt.alloc.free(normalized_report);
-
-            try zt.eqStr(exp, normalized_report);
+            try zt.eqStr(exp, report);
         }
 
         const trace = C.thread_panic_trace(thread);
@@ -594,7 +582,7 @@ pub fn zErrFunc(comptime f: fn (t: *C.Thread) anyerror!C.Ret) C.BindFunc {
     const S = struct {
         pub fn genFunc(t: *C.Thread) callconv(.c) C.Ret {
             return @call(.always_inline, f, .{t}) catch |err| {
-                return @call(.never_inline, prepPanicZError, .{t, err, @errorReturnTrace()});
+                return @call(.never_inline, prepPanicZError, .{ t, err, @errorReturnTrace() });
             };
         }
     };

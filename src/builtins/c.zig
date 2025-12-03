@@ -40,13 +40,18 @@ const funcs = [_]struct { []const u8, C.BindFunc }{
 };
 
 /// Cached process library for looking up symbols from the main executable/libc.
-/// Used for vm_extern_variant functions whose underlying extern func is from a skipped chunk.
+/// Used on Unix for vm_extern_variant functions that wrap variadic extern funcs.
+///
+/// Note: This is part of the Windows compatibility layer. On Windows, bind_lib(none)
+/// chunks are skipped entirely because Windows uses Win32 APIs (kernel32.cy) instead
+/// of POSIX libc. The Cyber stdlib follows the platform-specific
+/// implementations behind a unified interface, similar to Zig's std.DynLib pattern.
 var cached_process_lib: ?*std.DynLib = null;
 
 /// Get or create a library handle for looking up symbols from the process itself.
-/// On Linux, this opens "" which gives access to libc symbols.
-/// On macOS, this opens the self executable.
-/// On Windows, this should NOT be called (Windows doesn't have libc in the process).
+/// - Linux: dlopen("") gives access to libc symbols
+/// - macOS: dlopen(self_exe) gives access to exported symbols
+/// - Windows: Should NOT be called - bind_lib(none) chunks are skipped entirely
 fn getProcessLib(vm: *cy.VM) !*std.DynLib {
     if (cached_process_lib) |lib| {
         return lib;
@@ -271,11 +276,16 @@ pub fn initBindLib(t: *cy.Thread) !C.Ret {
         if (!c.has_extern_func) {
             continue;
         }
-        // Skip chunks with bind_lib(none) on Windows only.
-        // On Windows, self-exe doesn't have libc symbols, so we must skip.
-        // On Linux/macOS, bind_lib(none) means "load from process" which works fine.
-        // vm_extern_variant functions that reference skipped chunks will register
-        // their underlying extern funcs on-demand in genFunc.
+        // Windows compatibility: Skip bind_lib(none) chunks on Windows.
+        //
+        // Cyber's stdlib uses platform-specific implementations:
+        // - Windows: Win32 APIs via kernel32.cy (no libc dependency)
+        // - Unix: POSIX libc via libc.cy with bind_lib(none)
+        //
+        // On Unix, bind_lib(none) loads symbols from the process via dlopen("").
+        // On Windows, the process doesn't export libc symbols, so we skip these
+        // chunks entirely. The os.cy module handles this by using #[cond=...] to
+        // conditionally import the appropriate platform module.
         if (builtin.os.tag == .windows and c.has_bind_lib and c.bind_lib == null) {
             continue;
         }
@@ -353,9 +363,7 @@ pub fn initBindLib(t: *cy.Thread) !C.Ret {
         if (!c.has_extern_func) {
             continue;
         }
-        // Skip chunks with bind_lib(none) on Windows only.
-        // On Windows, self-exe doesn't have libc symbols, so we must skip.
-        // On Linux/macOS, bind_lib(none) means "load from process" which works fine.
+        // Windows compatibility: Skip bind_lib(none) chunks (see comment above for details).
         if (builtin.os.tag == .windows and c.has_bind_lib and c.bind_lib == null) {
             continue;
         }
@@ -428,9 +436,7 @@ pub fn initBindLib(t: *cy.Thread) !C.Ret {
         if (!c.has_extern_func) {
             continue;
         }
-        // Skip chunks with bind_lib(none) on Windows only.
-        // On Windows, self-exe doesn't have libc symbols, so we must skip.
-        // On Linux/macOS, bind_lib(none) means "load from process" which works fine.
+        // Windows compatibility: Skip bind_lib(none) chunks (see comment above for details).
         if (builtin.os.tag == .windows and c.has_bind_lib and c.bind_lib == null) {
             continue;
         }
@@ -463,9 +469,8 @@ pub fn initBindLib(t: *cy.Thread) !C.Ret {
                 },
                 .func => {
                     if (rel.data.func.type == .extern_) {
-                        // Skip relocations for extern funcs from chunks with bind_lib(none) on Windows only.
-                        // These are variadic extern funcs called through vm_extern_variant.
-                        // On Linux/macOS, bind_lib(none) works fine so no skip needed.
+                        // Windows compatibility: Skip relocations for variadic extern funcs from
+                        // bind_lib(none) chunks. On Unix, bind_lib(none) resolves normally.
                         const func_chunk = rel.data.func.parent.getRootChunk();
                         if (builtin.os.tag == .windows and func_chunk.has_bind_lib and func_chunk.bind_lib == null) {
                             continue;

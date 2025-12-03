@@ -11,20 +11,17 @@ use core
 --| print(math.pi * r**2)
 --| ```
 
+#if meta.system() == .windows:
+    #c.bind_lib('msvcrt.dll')
+
 #c.include('<math.h>')
 #c.flag('-lm')
 
 #[extern='acos']
 -fn c_acos(a float) -> float
 
-#[extern='acosh']
--fn c_acosh(a float) -> float
-
 #[extern='asin']
 -fn c_asin(a float) -> float
-
-#[extern='asinh']
--fn c_asinh(a float) -> float
 
 #[extern='atan']
 -fn c_atan(a float) -> float
@@ -32,17 +29,8 @@ use core
 #[extern='atan2']
 -fn c_atan2(y float, x float) -> float
 
-#[extern='atanh']
--fn c_atanh(a float) -> float
-
-#[extern='cbrt']
--fn c_cbrt(a float) -> float
-
 #[extern='ceil']
 -fn c_ceil(a float) -> float
-
-#[extern='copysign']
--fn c_copysign(a float, b float) -> float
 
 #[bind, extern='cos']
 -fn c_cos(a float) -> float
@@ -56,23 +44,11 @@ use core
 #[extern='exp']
 -fn c_exp(a float) -> float
 
-#[extern='expm1']
--fn c_expm1(a float) -> float
-
 #[extern='fabs']
 -fn c_fabs(a float) -> float
 
 #[extern='floor']
 -fn c_floor(a float) -> float
-
-#[extern='fmax']
--fn c_fmax(a float, b float) -> float
-
-#[extern='fmin']
--fn c_fmin(a float, b float) -> float
-
-#[extern='hypot']
--fn c_hypot(a float, b float) -> float
 
 #[extern='log']
 -fn c_log(a float) -> float
@@ -80,20 +56,11 @@ use core
 #[extern='log10']
 -fn c_log10(a float) -> float
 
-#[extern='log1p']
--fn c_log1p(a float) -> float
-
-#[extern='log2']
--fn c_log2(a float) -> float
-
 #[extern='modf']
 -fn c_modf(a float, i Ptr[float]) -> float
 
 #[extern='pow']
 -fn c_pow(a float, b float) -> float
-
-#[extern='round']
--fn c_round(a float) -> float
 
 #[bind, extern='sin']
 -fn c_sin(a float) -> float
@@ -115,9 +82,6 @@ use core
 
 #[extern='tanh']
 -fn c_tanh(a float) -> float
-
-#[extern='trunc']
--fn c_trunc(a float) -> float
 
 --| Euler's number and the base of natural logarithms; approximately 2.718.
 const e = 2.71828182845904523536028747135266249775724709369995
@@ -176,7 +140,14 @@ fn acos(a float) -> float:
 --| Returns the hyperbolic arccosine of x.
 #[bind]
 fn acosh(a float) -> float:
-    return c_acosh(a)
+    u := @bitCast(r64, a)
+    e := (u >> 52) && 0x7ff
+    if e < 0x3ff + 1:
+        return log1p(x - 1 + sqrt((x-1)**2 + 2*(x-1)))
+    else e < 0x3ff + 26:
+        return log(2 * x - 1 / (x + sqrt(x*x - 1)))
+    else:
+        return log(x) + ln2
 
 --| Returns the arcsine of x.
 #[bind]
@@ -186,7 +157,20 @@ fn asin(a float) -> float:
 --| Returns the hyperbolic arcsine of a number.
 #[bind]
 fn asinh(a float) -> float:
-    return c_asinh(a)
+    u := @bitCast(r64. a)
+    e := (u >> 52) && 0x7ff
+    s := u >> 63
+
+    rx := @bitCast(float, u && (r64.max >> 1))
+
+    if e >= 0x3ff + 26:
+        rx = log(rx) + ln2
+    else e >= 0x3ff + 1:
+        rx = log(2 * rx + 1 / (sqrt(rx*rx + 1) + rx))
+    else e >= 0x3ff - 26:
+        rx = log1p(rx + rx*rx / (sqrt(rx*rx + 1) + 1))
+
+    return if (s != 0) -rx else rx
 
 --| Returns the arctangent of x.
 #[bind]
@@ -201,12 +185,80 @@ fn atan2(y float, x float) -> float:
 --| Returns the hyperbolic arctangent of x.
 #[bind]
 fn atanh(a float) -> float:
-    return c_atanh(a)
+    u := @bitCast(r64, x)
+    e := (u >> 52) && 0x7ff
+    s := u >> 63
+
+    y := @bitCast(float, u && (r64.max >> 1))
+
+    if y == 1.0:
+        return copysign(inf, x)
+
+    if e < 0x3ff - 1:
+        if e < 0x3ff - 32:
+            pass
+        else:
+            y = 0.5 * log1p(2*y + 2*y*y / (1-y))
+    else:
+        y = 0.5 * log1p(2 * (y / (1-y)))
+
+    return if (s != 0) -y else y
 
 --| Returns the cube root of x.
 #[bind]
 fn cbrt(a float) -> float:
-    return c_cbrt(a)
+    var B1 r32 = 715094163
+    var B2 r32 = 696219795
+
+    -- |1 / cbrt(x) - p(x)| < 2^(23.5)
+    P0 := 1.87595182427177009643
+    P1 := -1.88497979543377169875
+    P2 := 1.621429720105354466140
+    P3 := -0.758397934778766047437
+    P4 := 0.145996192886612446982
+
+    u := @bitCast(r64, a)
+    hx := (as[r32] (u >> 32)) && 0x7FFFFFFF
+
+    -- cbrt(nan, inf) = itself
+    if hx >= 0x7FF00000:
+        return x + x
+
+    -- cbrt to ~5bits
+    if hx < 0x00100000:
+        panic('TODO')
+        --u = @bitCast(r64, x * 0x1.0p54));
+        --hx = @as(u32, @intCast(u >> 32)) & 0x7FFFFFFF;
+
+        ---- cbrt(+-0) = itself
+        --if (hx == 0) {
+        --    return x;
+        --}
+        --hx = hx / 3 + B2;
+    else:
+        hx = hx / 3 + B1
+
+    u &&= 1 << 63
+    u ||= (as[r64] hx) << 32
+    t := @bitCast(f64, u)
+
+    -- cbrt to 23 bits
+    -- cbrt(x) = t * cbrt(x / t^3) ~= t * P(t^3 / x)
+    r := (t * t) * (t / x)
+    t = t * ((P0 + r * (P1 + r * P2)) + ((r * r) * r) * (P3 + r * P4))
+
+    -- Round t away from 0 to 23 bits
+    u = @bitCast(r64, t)
+    u = (u + 0x80000000) && 0xFFFFFFFFC0000000
+    t = @bitCast(f64, u)
+
+    -- one step newton to 53 bits
+    s := t * t
+    q := x / s
+    w := t + t
+    q = (q - t) / (w + q)
+
+    return t + t * q
 
 --| Returns the smallest integer greater than or equal to x.
 #[bind]
@@ -217,6 +269,12 @@ fn ceil(a float) -> float:
 #[bind]
 fn clz32(a float) -> float:
     panic('TODO')
+
+fn copysign(mag float, sign float) -> float:
+    sign_bit_mask := 1 << 63
+    a := @bitCast(r64, mag) && ~sign_bit_mask
+    b := @bitCast(r64, sign) && sign_bit_mask
+    return @bitCast(float, a || b)
 
 --| Returns the cosine of x.
 fn cos(x int) -> float:
@@ -243,7 +301,7 @@ fn exp(a float) -> float:
 --| Returns subtracting 1 from exp(x).
 #[bind]
 fn expm1(a float) -> float:
-    return c_expm1(a)
+    @panic('TODO')
 
 --| Returns the largest integer less than or equal to x.
 #[bind]
@@ -259,7 +317,7 @@ fn frac(a float) -> float:
 --| Returns the square root of the sum of squares of its arguments.
 #[bind]
 fn hypot(a float, b float) -> float:
-    return c_hypot(a, b)
+    @panic('TODO')
 
 fn isInf(a float) -> bool:
     return (@bitCast(int, a) && (~0 >> 1)) == @bitCast(int, inf)
@@ -294,12 +352,12 @@ fn log10(a float) -> float:
 --| Returns the natural logarithm (㏒e; also ㏑) of 1 + x for the number x.
 #[bind]
 fn log1p(a float) -> float:
-    return c_log1p(a)
+    panic('TODO')
 
 --| Returns the base-2 logarithm of x.
 #[bind]
 fn log2(a float) -> float:
-    return c_log2(a)
+    panic('TODO')
 
 --| Returns the largest of two numbers.
 fn max(a %T, b T) -> T:
@@ -307,7 +365,9 @@ fn max(a %T, b T) -> T:
 
 #[bind]
 fn max_f64(a float, b float) -> float:
-    return c_fmax(a, b)
+    if isNaN(a): return b
+    if isNaN(b): return a
+    return if (a > b) a else b
 
 --| Returns the smallest of two numbers.
 fn min(a %T, b T) -> T:
@@ -315,7 +375,9 @@ fn min(a %T, b T) -> T:
 
 #[bind]
 fn min_f64(a float, b float) -> float:
-    return c_fmin(a, b)
+    if isNaN(a): return b
+    if isNaN(b): return a
+    return if (a < b) a else b
 
 --| Returns the result of the 32-bit integer multiplication of x and y. Integer overflow is allowed.
 #[bind]
@@ -335,14 +397,14 @@ fn random() -> float:
 --| Returns the value of the number x rounded to the nearest integer.
 #[bind]
 fn round(a float) -> float:
-    return c_round(a)
+    panic('TODO')
 
 --| Returns the sign of the x, indicating whether x is positive, negative, or zero.
 #[bind]
 fn sign(a float) -> float:
     if a == 0:
         return 0
-    return c_copysign(1.0, a)
+    return copysign(1.0, a)
 
 --| Returns the sine of x.
 fn sin(x int) -> float:
@@ -380,7 +442,7 @@ fn tanh(a float) -> float:
 --| Returns the integer portion of x, removing any fractional digits.
 #[bind]
 fn trunc(a float) -> float:
-    return c_trunc(a)
+    panic('TODO')
 
 -- Row-major order.
 type Mat1x3[T Any]:

@@ -1181,14 +1181,25 @@ pub fn bitCast(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResult) !voi
             out.* = try sema.semaBitcast2(c, src, target_t, ctx.node);
             return;
         }
+
+        if (src.type.kind() == .float and src.type.cast(.float).bits == target_raw_t.bits) {
+            out.* = try sema.semaBitcast2(c, src, target_t, ctx.node);
+            return;
+        }
     }
 
     // Cast to float.
     if (target_t.kind() == .float) {
         const target_float_t = target_t.cast(.float);
         if (src.type.kind() == .int and src.type.cast(.int).bits == target_float_t.bits) {
-            // i32/u32 -> f32
-            // i64/u64 -> f64
+            // i32 -> f32
+            // i64 -> f64
+            out.* = try sema.semaBitcast2(c, src, target_t, ctx.node);
+            return;
+        }
+        if (src.type.kind() == .raw and src.type.cast(.raw).bits == target_float_t.bits) {
+            // r32 -> f32
+            // r64 -> f64
             out.* = try sema.semaBitcast2(c, src, target_t, ctx.node);
             return;
         }

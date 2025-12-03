@@ -39,6 +39,41 @@ const funcs = [_]struct { []const u8, C.BindFunc }{
     .{ "to_strz", core.zErrFunc(to_strz) },
 };
 
+/// Cached process library for looking up symbols from the main executable/libc.
+/// Used for vm_extern_variant functions whose underlying extern func is from a skipped chunk.
+var cached_process_lib: ?*std.DynLib = null;
+
+/// Get or create a library handle for looking up symbols from the process itself.
+/// On Linux, this opens "" which gives access to libc symbols.
+/// On macOS, this opens the self executable.
+/// On Windows, this should NOT be called (Windows doesn't have libc in the process).
+fn getProcessLib(vm: *cy.VM) !*std.DynLib {
+    if (cached_process_lib) |lib| {
+        return lib;
+    }
+    const lib = try vm.alloc.create(std.DynLib);
+    errdefer vm.alloc.destroy(lib);
+    if (builtin.os.tag == .macos) {
+        const exe = try std.fs.selfExePathAlloc(vm.alloc);
+        defer vm.alloc.free(exe);
+        lib.* = os.dlopen(exe) catch |err| {
+            std.debug.print("Cannot dlopen {s}.\n", .{exe});
+            return err;
+        };
+    } else if (builtin.os.tag == .windows) {
+        // Windows: should not reach here - bind_lib(none) chunks are skipped entirely
+        @panic("getProcessLib should not be called on Windows");
+    } else {
+        lib.* = os.dlopen("") catch |err| {
+            std.debug.print("Cannot dlopen main.\n", .{});
+            return err;
+        };
+    }
+    try vm.dyn_libs.append(vm.alloc, lib);
+    cached_process_lib = lib;
+    return lib;
+}
+
 /// Call `dlopen` for each chunk that needs it and assume `dlopen` caches duplicate libraries.
 fn getDynLib(vm: *cy.VM, c: *cy.Chunk) !*std.DynLib {
     const lib = try vm.alloc.create(std.DynLib);
@@ -116,8 +151,32 @@ fn genFunc(c: *cy.cgen.Chunk, lib: *std.DynLib, state: *tcc.TCCState, w: anytype
             }
         }
     } else if (func.type == .vm_extern_variant) {
-        try cy.cgen.genFuncForwardDecl(c, w, func.data.vm_extern_variant.extern_func);
-        try cy.cgen.genVmToExternFunc(c, w, func, func.data.vm_extern_variant.extern_func, @ptrCast(func.decl));
+        const extern_func = func.data.vm_extern_variant.extern_func;
+        const extern_name = extern_func.data.extern_.externName();
+        const extern_namez = try c.alloc.dupeZ(u8, extern_name);
+        defer c.alloc.free(extern_namez);
+
+        // The underlying extern func may be from a chunk that was skipped due to bind_lib(none).
+        // Ensure it's registered before generating the forward declaration.
+        if (c.syms.getPtr(extern_func) == null) {
+            try c.compiler.createSymExact(extern_func, extern_name, false);
+        }
+
+        // If underlying extern func's chunk was skipped (bind_lib(none)), we need to
+        // add the symbol to TCC by looking it up from the process's linked libraries.
+        const extern_chunk = extern_func.parent.getRootChunk();
+        if (extern_chunk.has_bind_lib and extern_chunk.bind_lib == null) {
+            // On Linux/macOS, look up from process (libc). On Windows, this path shouldn't be hit.
+            const process_lib = try getProcessLib(c.vm);
+            const ptr = process_lib.lookup(*anyopaque, extern_namez) orelse {
+                std.debug.print("Missing symbol `{s}` from process.\n", .{extern_name});
+                return error.MissingSymbol;
+            };
+            _ = tcc.tcc_add_symbol(state, extern_namez, ptr);
+        }
+
+        try cy.cgen.genFuncForwardDecl(c, w, extern_func);
+        try cy.cgen.genVmToExternFunc(c, w, func, extern_func, @ptrCast(func.decl));
     } else {
         return;
     }
@@ -161,6 +220,10 @@ fn bindFunc(c: *cy.cgen.Compiler, state: *tcc.TCCState, func: *cy.Func) !void {
             try c.base.vm.host_funcs.put(c.alloc, @ptrCast(@alignCast(vm_func_ptr)), entry.vm_id);
         }
     } else if (func.type == .vm_extern_variant) {
+        // Note: The underlying extern func is variadic (vm_variadic=true), so it doesn't
+        // have a VM wrapper to bind. It's only called through this vm_extern_variant.
+        // We don't need to bind the underlying extern func here.
+
         const csym = c.syms.get(func).?;
         const vm_func_name = try std.fmt.allocPrintSentinel(c.alloc, "{s}", .{csym.name()}, 0);
         defer c.alloc.free(vm_func_name);
@@ -208,8 +271,12 @@ pub fn initBindLib(t: *cy.Thread) !C.Ret {
         if (!c.has_extern_func) {
             continue;
         }
-        // Skip chunks with bind_lib(none) - these explicitly opt out of extern loading
-        if (c.has_bind_lib and c.bind_lib == null) {
+        // Skip chunks with bind_lib(none) on Windows only.
+        // On Windows, self-exe doesn't have libc symbols, so we must skip.
+        // On Linux/macOS, bind_lib(none) means "load from process" which works fine.
+        // vm_extern_variant functions that reference skipped chunks will register
+        // their underlying extern funcs on-demand in genFunc.
+        if (builtin.os.tag == .windows and c.has_bind_lib and c.bind_lib == null) {
             continue;
         }
 
@@ -286,8 +353,10 @@ pub fn initBindLib(t: *cy.Thread) !C.Ret {
         if (!c.has_extern_func) {
             continue;
         }
-        // Skip chunks with bind_lib(none) - these explicitly opt out of extern loading
-        if (c.has_bind_lib and c.bind_lib == null) {
+        // Skip chunks with bind_lib(none) on Windows only.
+        // On Windows, self-exe doesn't have libc symbols, so we must skip.
+        // On Linux/macOS, bind_lib(none) means "load from process" which works fine.
+        if (builtin.os.tag == .windows and c.has_bind_lib and c.bind_lib == null) {
             continue;
         }
 
@@ -359,11 +428,10 @@ pub fn initBindLib(t: *cy.Thread) !C.Ret {
         if (!c.has_extern_func) {
             continue;
         }
-
-        // Platform-specific binding check:
-        // - has_bind_lib=false, bind_lib=null: Never called -> PROCESS (fallback)
-        // - has_bind_lib=true, bind_lib=null: Called bind_lib(none) -> SKIP
-        if (c.has_bind_lib and c.bind_lib == null) {
+        // Skip chunks with bind_lib(none) on Windows only.
+        // On Windows, self-exe doesn't have libc symbols, so we must skip.
+        // On Linux/macOS, bind_lib(none) means "load from process" which works fine.
+        if (builtin.os.tag == .windows and c.has_bind_lib and c.bind_lib == null) {
             continue;
         }
 
@@ -395,6 +463,13 @@ pub fn initBindLib(t: *cy.Thread) !C.Ret {
                 },
                 .func => {
                     if (rel.data.func.type == .extern_) {
+                        // Skip relocations for extern funcs from chunks with bind_lib(none) on Windows only.
+                        // These are variadic extern funcs called through vm_extern_variant.
+                        // On Linux/macOS, bind_lib(none) works fine so no skip needed.
+                        const func_chunk = rel.data.func.parent.getRootChunk();
+                        if (builtin.os.tag == .windows and func_chunk.has_bind_lib and func_chunk.bind_lib == null) {
+                            continue;
+                        }
                         if (rel.data.func.data.extern_.has_impl) {
                             const id = c.compiler.genSymMap.get(rel.data.func).?.extern_func.id;
                             const func_ptr = c.vm.funcSyms.items[id].data.host_func;

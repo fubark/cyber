@@ -499,41 +499,19 @@ fn removeFile(path str) -> !void:
 fn resolve_exe_path() -> !str:
     #if meta.system() == .windows:
         return windows.getExePathWindows()
-    #else:
+    #else meta.system() == .macos:
         buf := [lc.PATH_MAX]byte(0)
         len := i32(buf.len())
         if lc.macos._NSGetExecutablePath(*buf[0], *len) != 0:
             return fromErrno()
         path := c.from_strz(*buf[0])
         return resolve_path(path)
+    #else:
+        panic('unsupported')
 
 --| Returns the absolute path of the given path.
 fn resolve_path(path str) -> !str:
-    #if meta.system() == .macos:
-        buf := [lc.PATH_MAX]byte(0)
-        pathz := str.initz(path)
-        fd := lc.open(pathz.ptr, lc.O_RDONLY || lc.O_CLOEXEC || lc.O_NONBLOCK, lc.mode_t(0))
-        if fd == -1:
-            return fromErrno()
-        file := File{fd=fd}
-
-        if lc.fcntl(file.fd, lc.F_GETPATH, *buf[0]) != 0:
-            return fromErrno()
-        return c.from_strz(*buf[0])
-
-    #else meta.system() == .linux:
-        buf := [lc.PATH_MAX]byte(0)
-        pathz := str.initz(path)
-        fd := lc.open(pathz.ptr, lc.O_RDONLY || lc.O_CLOEXEC || lc.O_NONBLOCK, lc.mode_t(0))
-        if fd == -1:
-            return fromErrno()
-        proc_path := str.initz('/proc/self/fd/%{fd}')
-        len := lc.readlink(proc_path.ptr, *buf[0], lc.PATH_MAX)
-        if len < 0:
-            return fromErrno()
-        return str(buf[0..len])
-
-    #else meta.system() == .windows:
+    #if meta.system() == .windows:
         path16 := windows.utf8ToUtf16Le(path)!
         -- First call to get required buffer size
         size := kernel32.GetFullPathNameW(path16.ptr, 0, none, none)
@@ -546,6 +524,24 @@ fn resolve_path(path str) -> !str:
             return windows.fromWin32Error()
         return windows.utf16LeToUtf8(buf)
 
+    #else:
+        buf := [lc.PATH_MAX]byte(0)
+        pathz := str.initz(path)
+        fd := lc.open(pathz.ptr, lc.O_RDONLY || lc.O_CLOEXEC || lc.O_NONBLOCK, lc.mode_t(0))
+        if fd == -1:
+            return fromErrno()
+
+        #if meta.system() == .macos:
+            file := File{fd=fd}
+            if lc.fcntl(file.fd, lc.macos.F_GETPATH, *buf[0]) != 0:
+                return fromErrno()
+            return c.from_strz(*buf[0])
+        #else meta.system() == .linux:
+            proc_path := str.initz('/proc/self/fd/%{fd}')
+            len := lc.readlink(proc_path.ptr, *buf[0], lc.PATH_MAX)
+            if len < 0:
+                return fromErrno()
+            return str(buf[0..len])
     #else:
         panic('resolve_path not supported on this platform')
 

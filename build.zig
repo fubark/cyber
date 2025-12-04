@@ -130,7 +130,8 @@ pub fn build(b: *std.Build) !void {
             step.dependOn(&b.addInstallFile(b.path("src/std/os.macos.cy"), "bin/src/std/os.macos.cy").step);
             step.dependOn(&b.addInstallFile(b.path("src/std/os.linux.cy"), "bin/src/std/os.linux.cy").step);
             step.dependOn(&b.addInstallFile(b.path("src/std/os.windows.cy"), "bin/src/std/os.windows.cy").step);
-            step.dependOn(&b.addInstallFile(b.path("src/std/win32.cy"), "bin/src/std/win32.cy").step);
+            step.dependOn(&b.addInstallFile(b.path("src/std/windows/windows.cy"), "bin/src/std/windows/windows.cy").step);
+            step.dependOn(&b.addInstallFile(b.path("src/std/windows/kernel32.cy"), "bin/src/std/windows/kernel32.cy").step);
             step.dependOn(&b.addInstallFile(b.path("src/std/libc.cy"), "bin/src/std/libc.cy").step);
             step.dependOn(&b.addInstallFile(b.path("src/std/libc.macos.cy"), "bin/src/std/libc.macos.cy").step);
             step.dependOn(&b.addInstallFile(b.path("src/std/libc.linux.cy"), "bin/src/std/libc.linux.cy").step);

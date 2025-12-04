@@ -1,5 +1,9 @@
 use lc 'libc.cy'
 use c
+use meta
+
+#if meta.is_vm_target():
+    #c.bind_lib(none)
 
 const CLOCK_REALTIME lc.clockid_t = 0
 const CLOCK_MONOTONIC lc.clockid_t = 1

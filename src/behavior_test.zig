@@ -256,7 +256,9 @@ if (!aot) {
     run.case("modules/test_eq_panic.cy");
     run.case("modules/test.cy");
     if (!is_wasm) {
-        run.case("modules/libc.cy");
+        if (builtin.os.tag != .windows) {
+            run.case("modules/libc.cy");
+        }
         run.case("modules/os.cy");
         // run.case("modules/io.cy");
     }

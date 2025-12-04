@@ -11,9 +11,9 @@ const os_mod = @import("../std/os.zig");
 
 pub const Src = @embedFile("c.cy");
 
-const types = [_]struct{[]const u8, C.BindType}{
-    .{"u32", C.TYPE_CREATE(createU32Type)},
-    .{"variadic", C.TYPE_CREATE(createVariadicType)},
+const types = [_]struct { []const u8, C.BindType }{
+    .{ "u32", C.TYPE_CREATE(createU32Type) },
+    .{ "variadic", C.TYPE_CREATE(createVariadicType) },
 };
 
 comptime {
@@ -30,13 +30,13 @@ pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
     }
 }
 
-const funcs = [_]struct{[]const u8, C.BindFunc}{
-    .{"@initBindLib", core.zErrFunc(initBindLib)},
-    .{"include",  core.zErrCtFunc(null, import)},
-    .{"flag",     core.zErrCtFunc(null, flag)},
-    .{"bind_lib",  core.zErrCtFunc(null, bind_lib)},
-    .{"from_strz", core.zErrFunc(from_strz)},
-    .{"to_strz",   core.zErrFunc(to_strz)},
+const funcs = [_]struct { []const u8, C.BindFunc }{
+    .{ "@initBindLib", core.zErrFunc(initBindLib) },
+    .{ "include", core.zErrCtFunc(null, import) },
+    .{ "flag", core.zErrCtFunc(null, flag) },
+    .{ "bind_lib", core.zErrCtFunc(null, bind_lib) },
+    .{ "from_strz", core.zErrFunc(from_strz) },
+    .{ "to_strz", core.zErrFunc(to_strz) },
 };
 
 /// Call `dlopen` for each chunk that needs it and assume `dlopen` caches duplicate libraries.
@@ -50,7 +50,7 @@ fn getDynLib(vm: *cy.VM, c: *cy.Chunk) !*std.DynLib {
         }
         defer C.vm_freeb(@ptrCast(vm), C.from_bytes(final_path));
         lib.* = os.dlopen(C.from_bytes(final_path)) catch |err| {
-            std.debug.print("{s}\nCannot dlopen {s}.\n", .{c.srcUri, path});
+            std.debug.print("{s}\nCannot dlopen {s}.\n", .{ c.srcUri, path });
             return err;
         };
     } else {
@@ -61,6 +61,16 @@ fn getDynLib(vm: *cy.VM, c: *cy.Chunk) !*std.DynLib {
                 std.debug.print("Cannot dlopen {s}.\n", .{exe});
                 return err;
             };
+        } else if (builtin.os.tag == .windows) {
+            // Windows: GetModuleHandleW(null) returns handle to current executable
+            // This is equivalent to dlopen(NULL) on Unix systems
+            const handle = std.os.windows.kernel32.GetModuleHandleW(null);
+            if (handle) |h| {
+                lib.* = std.DynLib{ .inner = .{ .dll = h } };
+            } else {
+                std.debug.print("Cannot get module handle for self exe.\n", .{});
+                return error.FileNotFound;
+            }
         } else {
             lib.* = os.dlopen("") catch |err| {
                 std.debug.print("Cannot dlopen main.\n", .{});
@@ -222,7 +232,7 @@ pub fn initBindLib(t: *cy.Thread) !C.Ret {
     const w = csrc.writer(t.alloc);
 
     try cy.cgen.genVmHeaders(w);
-    
+
     // const builtins_c = vm.compiler.chunk_map.get("core").?;
     // const core_sym: *cy.Sym = @ptrCast(builtins_c.sym);
     // _ = core_sym;

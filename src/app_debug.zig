@@ -4,17 +4,16 @@ const C = @import("capi.zig");
 const vmc = @import("vmc");
 
 /// NOTE: Dupe Zig segfault handler to wrap a custom user handler.
-
-var windows_segfault_handle: ?std.windows.HANDLE = null;
+var windows_segfault_handle: ?std.os.windows.HANDLE = null;
 
 /// Attaches a global SIGSEGV handler which calls `@panic("segmentation fault");`
-const SigactionFn = std.posix.Sigaction.sigaction_fn;
+const SigactionFn = if (builtin.os.tag == .windows) *const fn (i32, *const void, ?*anyopaque) callconv(.c) noreturn else std.posix.Sigaction.sigaction_fn;
 pub fn attachSegfaultHandler(handler: SigactionFn) void {
     if (!std.debug.have_segfault_handling_support) {
         @compileError("segfault handler not supported for this target");
     }
     if (builtin.os.tag == .windows) {
-        windows_segfault_handle = std.windows.kernel32.AddVectoredExceptionHandler(0, handleSegfaultWindows);
+        windows_segfault_handle = std.os.windows.kernel32.AddVectoredExceptionHandler(0, handleSegfaultWindows);
         return;
     }
     const act = std.posix.Sigaction{
@@ -28,7 +27,7 @@ pub fn attachSegfaultHandler(handler: SigactionFn) void {
 fn resetSegfaultHandler() void {
     if (builtin.os.tag == .windows) {
         if (windows_segfault_handle) |handle| {
-            std.debug.assert(std.windows.kernel32.RemoveVectoredExceptionHandler(handle) != 0);
+            std.debug.assert(std.os.windows.kernel32.RemoveVectoredExceptionHandler(handle) != 0);
             windows_segfault_handle = null;
         }
         return;
@@ -54,7 +53,7 @@ pub threadlocal var panic_stage: usize = 0;
 pub fn defaultPanic(
     msg: []const u8,
     first_trace_addr: ?usize,
-    handler: *const fn() anyerror!void,
+    handler: *const fn () anyerror!void,
 ) noreturn {
     @branchHint(.cold);
 
@@ -226,24 +225,24 @@ pub fn handleSegfaultPosix(sig: i32, info: *const std.posix.siginfo_t, ctx_ptr: 
     std.posix.abort();
 }
 
-fn handleSegfaultWindows(info: *std.windows.EXCEPTION_POINTERS) callconv(.winapi) c_long {
+fn handleSegfaultWindows(info: *std.os.windows.EXCEPTION_POINTERS) callconv(.winapi) c_long {
     switch (info.ExceptionRecord.ExceptionCode) {
-        std.windows.EXCEPTION_DATATYPE_MISALIGNMENT => handleSegfaultWindowsExtra(info, 0, "Unaligned Memory Access"),
-        std.windows.EXCEPTION_ACCESS_VIOLATION => handleSegfaultWindowsExtra(info, 1, null),
-        std.windows.EXCEPTION_ILLEGAL_INSTRUCTION => handleSegfaultWindowsExtra(info, 2, null),
-        std.windows.EXCEPTION_STACK_OVERFLOW => handleSegfaultWindowsExtra(info, 0, "Stack Overflow"),
-        else => return std.windows.EXCEPTION_CONTINUE_SEARCH,
+        std.os.windows.EXCEPTION_DATATYPE_MISALIGNMENT => handleSegfaultWindowsExtra(info, 0, "Unaligned Memory Access"),
+        std.os.windows.EXCEPTION_ACCESS_VIOLATION => handleSegfaultWindowsExtra(info, 1, null),
+        std.os.windows.EXCEPTION_ILLEGAL_INSTRUCTION => handleSegfaultWindowsExtra(info, 2, null),
+        std.os.windows.EXCEPTION_STACK_OVERFLOW => handleSegfaultWindowsExtra(info, 0, "Stack Overflow"),
+        else => return std.os.windows.EXCEPTION_CONTINUE_SEARCH,
     }
 }
 
-fn handleSegfaultWindowsExtra(info: *std.windows.EXCEPTION_POINTERS, msg: u8, label: ?[]const u8) noreturn {
+fn handleSegfaultWindowsExtra(info: *std.os.windows.EXCEPTION_POINTERS, msg: u8, label: ?[]const u8) noreturn {
     // For backends that cannot handle the language features used by this segfault handler, we have a simpler one,
     switch (builtin.zig_backend) {
         .stage2_x86_64 => if (builtin.target.ofmt == .coff) @trap(),
         else => {},
     }
 
-    comptime std.debug.assert(std.windows.CONTEXT != void);
+    comptime std.debug.assert(std.os.windows.CONTEXT != void);
     nosuspend switch (panic_stage) {
         0 => {
             panic_stage = 1;
@@ -325,7 +324,7 @@ fn dumpSegfaultInfoPosix(sig: i32, code: i32, addr: usize, ctx_ptr: ?*anyopaque)
     }
 }
 
-fn dumpSegfaultInfoWindows(info: *std.windows.EXCEPTION_POINTERS, msg: u8, label: ?[]const u8, stderr: *std.io.Writer) void {
+fn dumpSegfaultInfoWindows(info: *std.os.windows.EXCEPTION_POINTERS, msg: u8, label: ?[]const u8, stderr: *std.io.Writer) void {
     _ = switch (msg) {
         0 => stderr.print("{s}\n", .{label.?}),
         1 => stderr.print("Segmentation fault at address 0x{x}\n", .{info.ExceptionRecord.ExceptionInformation[1]}),

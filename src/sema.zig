@@ -3045,14 +3045,28 @@ pub fn reserveConst(c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *ast.
     }
 }
 
-pub fn reserveGlobal(c: *cy.Chunk, decl: *ast.GlobalDecl) !*Sym {
+pub fn reserveGlobal(c: *cy.Chunk, decl: *ast.GlobalDecl) !?*Sym {
     const decl_path = try ensureDeclNamePath(c, @ptrCast(c.sym), decl.parent, decl.name);
     if (decl.right == null) {
         // No initializer.
-        if (ast.findAttr(decl.attrs.slice(), .bind) != null) {
+        var has_bind = false;
+        var has_extern = false;
+        for (decl.attrs.slice()) |attr| {
+            if (attr.type == .bind) {
+                has_bind = true;
+            } else if (attr.type == .extern_) {
+                has_extern = true;
+            } else if (attr.type == .cond) {
+                const res = try cte.evalCheck(c, attr.value.?, c.sema.bool_t);
+                if (!res.value.asBool()) {
+                    return null;
+                }
+            }
+        }
+        if (has_bind) {
             return @ptrCast(try c.reserveHostVar(decl_path.parent, decl_path.name.name, decl));
         }
-        if (ast.findAttr(decl.attrs.slice(), .extern_) != null) {
+        if (has_extern) {
             return @ptrCast(try c.reserveExternVar(decl_path.parent, decl_path.name.name, decl));
         }
         return c.reportErrorFmt("`{}` does not have an initializer.", &.{v(decl_path.name.name)}, @ptrCast(decl));

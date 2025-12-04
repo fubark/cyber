@@ -1351,6 +1351,18 @@ pub fn evalExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: ExprCstr) anyerror!E
                     }
                 }
             }
+            if (target_t.isPointer()) {
+                if (expr.type.kind() == .int) {
+                    if (expr.type.cast(.int).bits == 64) {
+                        return Expr.initValue2(target_t, expr.value);
+                    }
+                }
+                if (expr.type.kind() == .raw) {
+                    if (expr.type.cast(.raw).bits == 64) {
+                        return Expr.initValue2(target_t, expr.value);
+                    }
+                }
+            }
             return c.reportError("Unsupported auto cast.", node);
         },
         .if_expr => {

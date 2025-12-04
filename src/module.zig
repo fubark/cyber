@@ -393,7 +393,7 @@ pub fn reserveTemplateFunc(
 
 pub fn reserveFunc(
     c: *cy.Chunk, parent: *cy.Sym, name: []const u8, decl: *ast.FuncDecl,
-) !*cy.Func {
+) !?*cy.Func {
     const mod = parent.getMod().?;
     const sym = try prepareFuncSym(c, parent, mod, name, decl);
 
@@ -404,6 +404,12 @@ pub fn reserveFunc(
             extern_ = true;
         } else if (attr.type == .global_init) {
             global_init = true;
+        } else if (attr.type == .cond) {
+            const res = try cy.cte.evalCheck(c, attr.value.?, c.sema.bool_t);
+            if (!res.value.asBool()) {
+                // Skip.
+                return null;
+            }
         }
     }
 
@@ -551,7 +557,7 @@ pub fn getResolvedSym(c: *cy.Chunk, modSym: *cy.Sym, name: []const u8, node: *as
                 if (func_sym.decl.with_cstrs.len > 0) {
                     try sema.check_instance_func_cstr(c, variant, &func_sym.decl, node);
                 }
-                var func = try c.reserveFunc(modSym, sym.name(), func_sym.decl.decl);
+                var func = (try c.reserveFunc(modSym, sym.name(), func_sym.decl.decl)) orelse return null;
                 try sema.ensure_resolved_func(c, func, true, node);
 
                 for (func_sym.rest().items) |*decl| {
@@ -559,7 +565,7 @@ pub fn getResolvedSym(c: *cy.Chunk, modSym: *cy.Sym, name: []const u8, node: *as
                     if (func_sym.decl.with_cstrs.len > 0) {
                         try sema.check_instance_func_cstr(c, variant, decl, node);
                     }
-                    func = try c.reserveFunc(modSym, sym.name(), decl.decl);
+                    func = (try c.reserveFunc(modSym, sym.name(), decl.decl)) orelse continue;
                     try sema.ensure_resolved_func(c, func, true, node);
                 }
                 return mod.getSym(name).?;

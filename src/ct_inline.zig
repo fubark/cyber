@@ -149,10 +149,8 @@ pub fn value(c: *cy.Chunk, val_: cy.TypeValue, target_opt: ?*cy.Type, node: *ast
                     }
                 },
                 .pointer => {
-                    // Only emit if address is 0.
-                    if (val.value.val == 0) {
-                        return c.semaConst(0, val.type, node);
-                    }
+                    // Should be ok to allow pointer as const as long as pointers are forbidden in sandbox mode.
+                    return c.semaConst(@intFromPtr(val.value.ptr), val.type, node);
                 },
                 .func_ptr => {
                     if (val.type.cast(.func_ptr).sig.extern_) {
@@ -237,7 +235,6 @@ pub fn evalStmts(c: *cy.Chunk, stmts: []const *ast.Node) anyerror!void {
                 .struct_decl,
                 .cstruct_decl,
                 .cunion_decl,
-                .passStmt,
                 .const_decl,
                 .global_decl,
                 .custom_type_decl,

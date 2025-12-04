@@ -1,7 +1,18 @@
 ﻿use io
-use lc 'libc.cy'
-use c
 use meta
+use c
+
+#[cond=meta.system() == .macos]
+use macos 'os.macos.cy'
+
+#[cond=meta.system() == .linux]
+use linux 'os.linux.cy'
+
+#[cond=meta.system() != .windows]
+use lc 'libc.cy'
+
+#[cond=meta.system() == .windows]
+use windows 'os.windows.cy'
 
 #[cond=meta.system() == .windows]
 use kernel32 'windows/kernel32.cy'
@@ -24,25 +35,12 @@ use kernel32 'windows/kernel32.cy'
 --|     print('%{e.key} -> %{e.value}')
 --| ```
 
--- Conditional platform-specific imports
-#[cond=meta.system() == .macos]
-use macos 'os.macos.cy'
-
-#[cond=meta.system() == .linux]
-use linux 'os.linux.cy'
-
-#[cond=meta.system() == .windows]
-use windows 'os.windows.cy'
-
 type c_int = c.c_int
 
 --| Platform-specific file descriptor type
-type FileDescriptor = switch meta.system():
-    case .macos => lc.fd_t
-    case .linux => lc.fd_t
-    else => int  -- Windows stores HANDLE as int
-
--- Windows helper functions are in os.windows.cy and called via windows.functionName()
+type FileHandle = switch meta.system():
+    case .windows => Ptr[void]
+    else => lc.fd_t
 
 --| Default SIMD vector bit size.
 #[bind] global vecBitSize int
@@ -84,7 +82,7 @@ const ns_per_s = 1000 * ns_per_ms
 --| Attempts to access a file at the given `path` with `mode`.
 fn accessFile(path str, mode AccessMode) -> !void:
     #if meta.system() == .windows:
-        return windows.accessFileWindows(path)
+        return windows.access_file(path)
     #else:
         cpath := str.initz(path)
         code := lc.access(cpath.ptr, mode)
@@ -114,19 +112,22 @@ fn copy_file(src_path str, dst_path str) -> !void:
         dst := createFile(dst_path)!
         if lc.macos.fcopyfile(src.fd, dst.fd, none, lc.macos.COPYFILE_DATA) != 0:
             return fromErrno()
+
+    #else meta.system() == .windows:
+        src16 := windows.utf8ToUtf16Le(src_path)!
+        dst16 := windows.utf8ToUtf16Le(dst_path)!
+        if kernel32.CopyFileW(src16.ptr, dst16.ptr, windows.FALSE) == windows.FALSE:
+            return windows.fromWin32Error()
+
     #else:
-        #if meta.system() == .windows:
-            src16 := windows.utf8ToUtf16Le(src_path)!
-            dst16 := windows.utf8ToUtf16Le(dst_path)!
-            if kernel32.CopyFileW(src16.ptr, dst16.ptr, kernel32.FALSE) == kernel32.FALSE:
-                return windows.fromWin32Error()
-        #else:
-            panic('copy_file not supported on this platform')
+        panic('copy_file not supported on this platform')
 
 --| Creates the directory at `path`.
 fn createDir(path str) -> !void:
     #if meta.system() == .windows:
-        return windows.createDirWindows(path)
+        path16 := windows.utf8ToUtf16Le(path)!
+        if kernel32.CreateDirectoryW(path16.ptr, none) == windows.FALSE:
+            return windows.fromWin32Error()
     #else:
         cpath := str.initz(path)
         if lc.mkdir(cpath.ptr, DefaultDirMode) != 0:
@@ -138,7 +139,7 @@ fn createFile(path str) -> !File:
 --| Creates and opens the file at `path`. If `truncate` is true, an existing file will be truncated.
 fn createFile(path str, truncate bool) -> !File:
     #if meta.system() == .windows:
-        return windows.createFileWindows(path, truncate)
+        return windows.create_file(path, truncate)
     #else:
         flags := lc.O_WRONLY || lc.O_CREAT || lc.O_CLOEXEC
         if truncate:
@@ -152,7 +153,7 @@ fn createFile(path str, truncate bool) -> !File:
 --| Returns the current working directory.
 fn cwd() -> !str:
     #if meta.system() == .windows:
-        return windows.getCwdWindows()
+        return windows.cwd()
     #else:
         buf := [lc.PATH_MAX]byte(0)
         if lc.getcwd(*buf[0], as buf.len()) == none:
@@ -162,7 +163,7 @@ fn cwd() -> !str:
 --| Change the current working directory.
 fn chdir(path str) -> !void:
     #if meta.system() == .windows:
-        return windows.setCwdWindows(path)
+        return windows.set_cwd(path)
     #else:
         cpath := str.initz(path)
         if lc.chdir(cpath.ptr) == -1:
@@ -221,26 +222,28 @@ fn fileInfo(path str) -> !FileInfo:
     cpath := str.initz(path)
     #if meta.system() == .linux:
         return linux.file_info(cpath.ptr)
+
     #else meta.system() == .macos:
         cstat := lc.Stat{}
         if lc.stat(cpath.ptr, &cstat) != 0:
             return fromErrno()
         return fileInfo(&cstat)
+
+    #else meta.system() == .windows:
+        path16 := windows.utf8ToUtf16Le(path)!
+        data := kernel32.WIN32_FILE_ATTRIBUTE_DATA{
+            dwFileAttributes=undef, ftCreationTime=undef,
+            ftLastAccessTime=undef, ftLastWriteTime=undef,
+            nFileSizeHigh=undef, nFileSizeLow=undef,
+        }
+        if kernel32.GetFileAttributesExW(path16.ptr, kernel32.DWORD(kernel32.GetFileExInfoStandard), &data) == windows.FALSE:
+            return windows.fromWin32Error()
+        return windows.fileInfoFromWin32Attr(&data)
+
     #else:
-        #if meta.system() == .windows:
-            path16 := windows.utf8ToUtf16Le(path)!
-            data := kernel32.WIN32_FILE_ATTRIBUTE_DATA{
-                dwFileAttributes=undef, ftCreationTime=undef,
-                ftLastAccessTime=undef, ftLastWriteTime=undef,
-                nFileSizeHigh=undef, nFileSizeLow=undef,
-            }
-            if kernel32.GetFileAttributesExW(path16.ptr, kernel32.DWORD(kernel32.GetFileExInfoStandard), &data) == kernel32.FALSE:
-                return windows.fromWin32Error()
-            return windows.fileInfoFromWin32Attr(&data)
-        #else:
-            panic('fileInfo not supported on this platform')
+        panic('fileInfo not supported on this platform')
 
-
+#[cond=meta.system() != .windows]
 fn fileInfo(stat Ptr[lc.Stat]) -> FileInfo:
     var res FileInfo = undef
     #if meta.system() == .macos:
@@ -249,21 +252,18 @@ fn fileInfo(stat Ptr[lc.Stat]) -> FileInfo:
         panic('fileInfo not supported on this platform')
     return res
 
--- Windows file info helper functions are in os.windows.cy
-
 --| Frees the memory located at `ptr`.
 fn free(ptr Ptr[void]):
-    #if meta.system() == .macos:
-        lc.free(ptr)
+    #if meta.system() == .windows:
+        heap := kernel32.GetProcessHeap()
+        _ = kernel32.HeapFree(heap, 0, ptr)
     #else:
-        #if meta.system() == .windows:
-            heap := kernel32.GetProcessHeap()
-            _ = kernel32.HeapFree(heap, 0, ptr)
-        #else:
-            panic('free not supported on this platform')
+        lc.free(ptr)
 
 fn fromErrno() -> error:
-    #if meta.system() == .macos:
+    #if meta.system() == .windows:
+        panic('unsupported')
+    #else:
         switch lc.errno:
             case lc.EPERM : return error.OperationDenied
             case lc.ENOENT: return error.FileNotFound
@@ -274,22 +274,17 @@ fn fromErrno() -> error:
             else:
                 eprint("errno: %{lc.errno}")
                 return error.Unknown
-    #else:
-        return error.Unknown
 
 --| Returns an environment variable by key.
 fn get_env(key str) -> ?str:
-    #if meta.system() == .macos:
+    #if meta.system() == .windows:
+        return windows.getEnvWindows(key)
+    #else:
         ckey := str.initz(key)
         cval := lc.getenv(ckey.ptr)
         if cval == none:
             return none
         return c.from_strz(cval)
-    #else:
-        #if meta.system() == .windows:
-            return windows.getEnvWindows(key)
-        #else:
-            panic('get_env not supported on this platform')
 
 --| Returns all environment variables as a map.
 fn getEnvAll() -> ^Map[str, str]:
@@ -300,20 +295,17 @@ fn getEnvAll() -> ^Map[str, str]:
 
 --| Allocates `size` bytes of memory and returns a pointer.
 fn malloc(size int) -> !Ptr[void]:
-    #if meta.system() == .macos:
+    #if meta.system() == .windows:
+        heap := kernel32.GetProcessHeap()
+        ptr := kernel32.HeapAlloc(heap, 0, size)
+        if ptr == none:
+            return windows.fromWin32Error()
+        return ptr
+    #else:
         ptr := lc.malloc(size)
         if ptr == none:
             return fromErrno()
         return ptr
-    #else:
-        #if meta.system() == .windows:
-            heap := kernel32.GetProcessHeap()
-            ptr := kernel32.HeapAlloc(heap, 0, size)
-            if ptr == none:
-                return windows.fromWin32Error()
-            return ptr
-        #else:
-            panic('malloc not supported on this platform')
 
 --| Returns the number of CPU cores on the current machine.
 fn num_cpus() -> int:
@@ -333,43 +325,41 @@ fn num_cpus() -> int:
             --sum += @pop_count(x)
             panic('TODO: pop_count')
         return sum
+    #else meta.system() == .windows:
+        info := kernel32.SYSTEM_INFO{
+            wProcessorArchitecture=undef, wReserved=undef, dwPageSize=undef,
+            lpMinimumApplicationAddress=undef, lpMaximumApplicationAddress=undef,
+            dwActiveProcessorMask=undef, dwNumberOfProcessors=undef,
+            dwProcessorType=undef, dwAllocationGranularity=undef,
+            wProcessorLevel=undef, wProcessorRevision=undef,
+        }
+        kernel32.GetSystemInfo(&info)
+        return as[int] info.dwNumberOfProcessors
     #else:
-        #if meta.system() == .windows:
-            info := kernel32.SYSTEM_INFO{
-                wProcessorArchitecture=undef, wReserved=undef, dwPageSize=undef,
-                lpMinimumApplicationAddress=undef, lpMaximumApplicationAddress=undef,
-                dwActiveProcessorMask=undef, dwNumberOfProcessors=undef,
-                dwProcessorType=undef, dwAllocationGranularity=undef,
-                wProcessorLevel=undef, wProcessorRevision=undef,
-            }
-            kernel32.GetSystemInfo(&info)
-            return as[int] info.dwNumberOfProcessors
-        #else:
-            panic('num_cpus not supported on this platform')
+        panic('num_cpus not supported on this platform')
 
 fn open_dir(path str) -> !Dir:
     return open_dir(path, true)
 
 --| Opens a directory at the given `path`. `iterable` indicates that the directory's entries can be iterated.
 fn open_dir(path str, iterable bool) -> !Dir:
-    #if meta.system() == .macos:
+    #if meta.system() == .windows:
+        -- Verify directory exists
+        path16 := windows.utf8ToUtf16Le(path)!
+        attrs := kernel32.GetFileAttributesW(path16.ptr)
+        if attrs == kernel32.DWORD(4294967295):  -- INVALID_FILE_ATTRIBUTES
+            return windows.fromWin32Error()
+
+        -- On Windows, fd_t is void. We must provide fd field but it's unused.
+        -- Return Dir directly (no local var) since Dir has NoCopy trait
+        return Dir{fd=undef, path=path}
+
+    #else:
         cpath := str.initz(path)
         fd := lc.open(cpath.ptr, lc.O_RDONLY || lc.O_DIRECTORY || lc.O_CLOEXEC, lc.mode_t(0))
         if fd == -1:
             return fromErrno()
         return {fd=fd}
-    #else:
-        #if meta.system() == .windows:
-            -- Verify directory exists
-            path16 := windows.utf8ToUtf16Le(path)!
-            attrs := kernel32.GetFileAttributesW(path16.ptr)
-            if attrs == kernel32.DWORD(4294967295):  -- INVALID_FILE_ATTRIBUTES
-                return windows.fromWin32Error()
-            -- On Windows, fd_t is void. We must provide fd field but it's unused.
-            -- Return Dir directly (no local var) since Dir has NoCopy trait
-            return Dir{fd=undef, path=path}
-        #else:
-            panic('open_dir not supported on this platform')
 
 --| Returns the current time in nanoseconds since the Epoch.
 fn nanoTime() -> !int:
@@ -383,17 +373,16 @@ fn nanoTime() -> !int:
         if lc.clock_gettime(lc.linux.CLOCK_REALTIME, *tp) != 0:
             return fromErrno() 
         return tp.sec * ns_per_s + tp.nsec
+    #else meta.system() == .windows:
+        ft := kernel32.FILETIME{dwLowDateTime=undef, dwHighDateTime=undef}
+        kernel32.GetSystemTimeAsFileTime(&ft)
+        -- FILETIME is 100-nanosecond intervals since Jan 1, 1601
+        -- Unix epoch is Jan 1, 1970 = 116444736000000000 intervals
+        intervals := (as[int] ft.dwHighDateTime << 32) || as[int] ft.dwLowDateTime
+        unix_intervals := intervals - 116444736000000000
+        return unix_intervals * 100  -- Convert to nanoseconds
     #else:
-        #if meta.system() == .windows:
-            ft := kernel32.FILETIME{dwLowDateTime=undef, dwHighDateTime=undef}
-            kernel32.GetSystemTimeAsFileTime(&ft)
-            -- FILETIME is 100-nanosecond intervals since Jan 1, 1601
-            -- Unix epoch is Jan 1, 1970 = 116444736000000000 intervals
-            intervals := (as[int] ft.dwHighDateTime << 32) || as[int] ft.dwLowDateTime
-            unix_intervals := intervals - 116444736000000000
-            return unix_intervals * 100  -- Convert to nanoseconds
-        #else:
-            panic('nanoTime not supported on this platform')
+        panic('nanoTime not supported on this platform')
 
 --| High resolution timestamp. Returns a relative up-time in nanoseconds.
 fn now() -> !int:
@@ -402,27 +391,29 @@ fn now() -> !int:
         if lc.clock_gettime(lc.macos.CLOCK_UPTIME_RAW, *tp) != 0:
             return fromErrno()
         return tp.sec * ns_per_s + tp.nsec
+
     #else meta.system() == .linux:
         tp := lc.timespec{}
         if lc.clock_gettime(lc.linux.CLOCK_BOOTTIME, *tp) != 0:
             return fromErrno()
         return tp.sec * ns_per_s + tp.nsec
+
+    #else meta.system() == .windows:
+        counter := windows.LARGE_INTEGER{QuadPart=0}
+        freq := windows.LARGE_INTEGER{QuadPart=0}
+        if kernel32.QueryPerformanceCounter(&counter) == windows.FALSE:
+            return windows.fromWin32Error()
+        if kernel32.QueryPerformanceFrequency(&freq) == windows.FALSE:
+            return windows.fromWin32Error()
+        -- Convert to nanoseconds avoiding overflow:
+        -- Instead of (counter * ns_per_s) / freq which overflows,
+        -- compute: secs * ns_per_s + (remainder * ns_per_s) / freq
+        secs := counter.QuadPart / freq.QuadPart
+        remainder := counter.QuadPart % freq.QuadPart
+        return secs * ns_per_s + (remainder * ns_per_s) / freq.QuadPart
+
     #else:
-        #if meta.system() == .windows:
-            counter := kernel32.LARGE_INTEGER{QuadPart=0}
-            freq := kernel32.LARGE_INTEGER{QuadPart=0}
-            if kernel32.QueryPerformanceCounter(&counter) == kernel32.FALSE:
-                return windows.fromWin32Error()
-            if kernel32.QueryPerformanceFrequency(&freq) == kernel32.FALSE:
-                return windows.fromWin32Error()
-            -- Convert to nanoseconds avoiding overflow:
-            -- Instead of (counter * ns_per_s) / freq which overflows,
-            -- compute: secs * ns_per_s + (remainder * ns_per_s) / freq
-            secs := counter.QuadPart / freq.QuadPart
-            remainder := counter.QuadPart % freq.QuadPart
-            return secs * ns_per_s + (remainder * ns_per_s) / freq.QuadPart
-        #else:
-            panic('now not supported on this platform')
+        panic('now not supported on this platform')
 
 
 fn open_file(path str) -> !File:
@@ -431,17 +422,7 @@ fn open_file(path str) -> !File:
 --| Opens a file at the given `path` with an `OpenMode`.
 fn open_file(path str, mode OpenMode) -> !File:
     #if meta.system() == .windows:
-        path16 := windows.utf8ToUtf16Le(path)!
-        access := switch mode:
-            case .read       => kernel32.GENERIC_READ
-            case .write      => kernel32.GENERIC_WRITE
-            case .read_write => kernel32.GENERIC_READ || kernel32.GENERIC_WRITE
-        share := kernel32.FILE_SHARE_READ || kernel32.FILE_SHARE_WRITE
-        handle := kernel32.CreateFileW(path16.ptr, access, share, none, kernel32.OPEN_EXISTING, kernel32.FILE_ATTRIBUTE_NORMAL, none)
-        -- INVALID_HANDLE_VALUE is (HANDLE)-1, check by casting to int
-        if as[int] handle == -1:
-            return windows.fromWin32Error()
-        return File{fd=as[int] handle}
+        return windows.open_file(path, mode)
     #else:
         pathz := str.initz(path)
         access := switch mode:
@@ -495,7 +476,9 @@ fn read_file_str(path str) -> !str:
 --| Removes an empty directory at `path`.
 fn removeDir(path str) -> !void:
     #if meta.system() == .windows:
-        return windows.removeDirWindows(path)
+        path16 := windows.utf8ToUtf16Le(path)!
+        if kernel32.RemoveDirectoryW(path16.ptr) == windows.FALSE:
+            return windows.fromWin32Error()
     #else:
         cpath := str.initz(path)
         if lc.rmdir(cpath.ptr) != 0:
@@ -504,7 +487,9 @@ fn removeDir(path str) -> !void:
 --| Removes the file at `path`.
 fn removeFile(path str) -> !void:
     #if meta.system() == .windows:
-        return windows.removeFileWindows(path)
+        path16 := windows.utf8ToUtf16Le(path)!
+        if kernel32.DeleteFileW(path16.ptr) == windows.FALSE:
+            return windows.fromWin32Error()
     #else:
         cpath := str.initz(path)
         if lc.unlink(cpath.ptr) != 0:
@@ -512,18 +497,15 @@ fn removeFile(path str) -> !void:
 
 --| Returns the current executable's path.
 fn resolve_exe_path() -> !str:
-    #if meta.system() == .macos:
+    #if meta.system() == .windows:
+        return windows.getExePathWindows()
+    #else:
         buf := [lc.PATH_MAX]byte(0)
         len := i32(buf.len())
         if lc.macos._NSGetExecutablePath(*buf[0], *len) != 0:
             return fromErrno()
         path := c.from_strz(*buf[0])
         return resolve_path(path)
-    #else:
-        #if meta.system() == .windows:
-            return windows.getExePathWindows()
-        #else:
-            panic('Unsupported')
 
 --| Returns the absolute path of the given path.
 fn resolve_path(path str) -> !str:
@@ -538,6 +520,7 @@ fn resolve_path(path str) -> !str:
         if lc.fcntl(file.fd, lc.F_GETPATH, *buf[0]) != 0:
             return fromErrno()
         return c.from_strz(*buf[0])
+
     #else meta.system() == .linux:
         buf := [lc.PATH_MAX]byte(0)
         pathz := str.initz(path)
@@ -549,42 +532,48 @@ fn resolve_path(path str) -> !str:
         if len < 0:
             return fromErrno()
         return str(buf[0..len])
+
+    #else meta.system() == .windows:
+        path16 := windows.utf8ToUtf16Le(path)!
+        -- First call to get required buffer size
+        size := kernel32.GetFullPathNameW(path16.ptr, 0, none, none)
+        if size == 0:
+            return windows.fromWin32Error()
+        -- Allocate buffer and get full path
+        buf := []windows.WCHAR(size, 0)
+        result := kernel32.GetFullPathNameW(path16.ptr, size, buf.ptr, none)
+        if result == 0:
+            return windows.fromWin32Error()
+        return windows.utf16LeToUtf8(buf)
+
     #else:
-        #if meta.system() == .windows:
-            path16 := windows.utf8ToUtf16Le(path)!
-            -- First call to get required buffer size
-            size := kernel32.GetFullPathNameW(path16.ptr, 0, none, none)
-            if size == 0:
-                return windows.fromWin32Error()
-            -- Allocate buffer and get full path
-            buf := []kernel32.WCHAR(size, 0)
-            result := kernel32.GetFullPathNameW(path16.ptr, size, buf.ptr, none)
-            if result == 0:
-                return windows.fromWin32Error()
-            return windows.utf16LeToUtf8(buf)
-        #else:
-            panic('resolve_path not supported on this platform')
+        panic('resolve_path not supported on this platform')
 
 
 --| Sets an environment variable by key.
 fn set_env(key str, val str) -> !void:
-    #if meta.system() == .macos:
+    #if meta.system() == .windows:
+        key16 := windows.utf8ToUtf16Le(key)!
+        val16 := windows.utf8ToUtf16Le(val)!
+        if kernel32.SetEnvironmentVariableW(key16.ptr, val16.ptr) == windows.FALSE:
+            return windows.fromWin32Error()
+
+    #else:
         ckey := str.initz(key)
         cval := str.initz(val)
         if lc.setenv(ckey.ptr, cval.ptr, 1) != 0:
             return fromErrno()
-    #else:
-        #if meta.system() == .windows:
-            key16 := windows.utf8ToUtf16Le(key)!
-            val16 := windows.utf8ToUtf16Le(val)!
-            if kernel32.SetEnvironmentVariableW(key16.ptr, val16.ptr) == kernel32.FALSE:
-                return windows.fromWin32Error()
-        #else:
-            panic('set_env not supported on this platform')
 
 --| Pauses the current thread for `nsecs` nanoseconds.
 fn sleep(nsecs int) -> !void:
-    #if meta.system() == .macos:
+    #if meta.system() == .windows:
+        -- Windows Sleep takes milliseconds
+        ms := nsecs / 1000000
+        if ms == 0 and nsecs > 0:
+            ms = 1  -- Minimum 1ms for non-zero sleep
+        kernel32.Sleep(kernel32.DWORD(ms))
+
+    #else:
         s := nsecs / ns_per_s
         ns := nsecs % ns_per_s
         req := lc.timespec{
@@ -594,30 +583,19 @@ fn sleep(nsecs int) -> !void:
         rem := lc.timespec{}
         if lc.nanosleep(*req, *rem) != 0:
             return fromErrno()
-    #else:
-        #if meta.system() == .windows:
-            -- Windows Sleep takes milliseconds
-            ms := nsecs / 1000000
-            if ms == 0 and nsecs > 0:
-                ms = 1  -- Minimum 1ms for non-zero sleep
-            kernel32.Sleep(kernel32.DWORD(ms))
-        #else:
-            panic('sleep not supported on this platform')
 
 --| Removes an environment variable by key.
 fn unset_env(key str) -> !void:
-    #if meta.system() == .macos:
+    #if meta.system() == .windows:
+        key16 := windows.utf8ToUtf16Le(key)!
+        -- Setting value to none removes the variable
+        _ = kernel32.SetEnvironmentVariableW(key16.ptr, none)
+        -- Ignore errors - variable may not exist
+    
+    #else:
         ckey := str.initz(key)
         if lc.unsetenv(ckey.ptr) != 0:
             return fromErrno()
-    #else:
-        #if meta.system() == .windows:
-            key16 := windows.utf8ToUtf16Le(key)!
-            -- Setting value to none removes the variable
-            _ = kernel32.SetEnvironmentVariableW(key16.ptr, none)
-            -- Ignore errors - variable may not exist
-        #else:
-            panic('unset_env not supported on this platform')
 
 --| Writes `contents` as a string or bytes to a file.
 fn write_file(path str, contents str) -> !void:
@@ -661,7 +639,7 @@ type File:
     with io.Reader
     with io.Writer
     with NoCopy
-    fd     FileDescriptor
+    fd     FileHandle
     closed bool = false
 
 fn (&File) @deinit():
@@ -672,18 +650,14 @@ fn (&File) close() -> void:
     if $closed:
         return
 
-    #if meta.system() == .macos:
+    #if meta.system() == .windows:
+        if kernel32.CloseHandle($fd) == windows.FALSE:
+            panic("Unexpected. %{windows.fromWin32Error()}")
+    #else:
         if lc.close($fd) != 0:
             panic("Unexpected. %{fromErrno()}")
-        $closed = true
-    #else:
-        #if meta.system() == .windows:
-            handle := as[kernel32.HANDLE] $fd
-            if kernel32.CloseHandle(handle) == kernel32.FALSE:
-                panic("Unexpected. %{windows.fromWin32Error()}")
-            $closed = true
-        #else:
-            panic('File.close not supported on this platform')
+
+    $closed = true
 
 --| Returns info about the file.
 fn (&File) info() -> !FileInfo:
@@ -694,39 +668,33 @@ fn (&File) info() -> !FileInfo:
         if lc.fstat($fd, &cstat) != 0:
             return fromErrno()
         return fileInfo(&cstat)
+    #else meta.system() == .windows:
+        info := kernel32.BY_HANDLE_FILE_INFORMATION{
+            dwFileAttributes=undef, ftCreationTime=undef,
+            ftLastAccessTime=undef, ftLastWriteTime=undef,
+            dwVolumeSerialNumber=undef, nFileSizeHigh=undef,
+            nFileSizeLow=undef, nNumberOfLinks=undef,
+            nFileIndexHigh=undef, nFileIndexLow=undef,
+        }
+        if kernel32.GetFileInformationByHandle($fd, &info) == windows.FALSE:
+            return windows.fromWin32Error()
+        return windows.fileInfoFromHandle(&info)
     #else:
-        #if meta.system() == .windows:
-            handle := as[kernel32.HANDLE] $fd
-            info := kernel32.BY_HANDLE_FILE_INFORMATION{
-                dwFileAttributes=undef, ftCreationTime=undef,
-                ftLastAccessTime=undef, ftLastWriteTime=undef,
-                dwVolumeSerialNumber=undef, nFileSizeHigh=undef,
-                nFileSizeLow=undef, nNumberOfLinks=undef,
-                nFileIndexHigh=undef, nFileIndexLow=undef,
-            }
-            if kernel32.GetFileInformationByHandle(handle, &info) == kernel32.FALSE:
-                return windows.fromWin32Error()
-            return windows.fileInfoFromHandle(&info)
-        #else:
-            panic('File.info not supported on this platform')
+        panic('File.info not supported on this platform')
 
 --| Returns number of bytes read. If 0 is returned, then the file has reached the end.
 fn (&File) read(buf [&]byte) -> !int:
-    #if meta.system() == .macos:
+    #if meta.system() == .windows:
+        var bytes_read windows.DWORD = 0
+        result := kernel32.ReadFile($fd, as buf.base, windows.DWORD(buf.length), &bytes_read, none)
+        if result == windows.FALSE:
+            return windows.fromWin32Error()
+        return as[int] bytes_read
+    #else:
         read := lc.read($fd, as buf.base, buf.length)
         if read == -1:
             return fromErrno()
         return read
-    #else:
-        #if meta.system() == .windows:
-            handle := as[kernel32.HANDLE] $fd
-            var bytes_read kernel32.DWORD = 0
-            result := kernel32.ReadFile(handle, as buf.base, kernel32.DWORD(buf.length), &bytes_read, none)
-            if result == kernel32.FALSE:
-                return windows.fromWin32Error()
-            return as[int] bytes_read
-        #else:
-            panic('File.read not supported on this platform')
 
 fn (&File) read(bytes int) -> ![]byte:
     buf := []byte(bytes, 0)
@@ -768,96 +736,60 @@ fn (&File) readLine() -> !str:
 
 --| Seeks the read/write position by `pos` bytes from the current position.
 fn (&File) seek(n int) -> !void:
-    #if meta.system() == .macos:
+    #if meta.system() == .windows:
+        windows.seek_file($fd, n, windows.core.FILE_CURRENT)!
+    #else:
         res := lc.lseek($fd, lc.off_t(n), lc.SEEK_CUR)
         if res == -1:
             return fromErrno()
-    #else:
-        #if meta.system() == .windows:
-            handle := as[kernel32.HANDLE] $fd
-            var distance kernel32.LARGE_INTEGER = undef
-            distance.QuadPart = n
-            var new_pos kernel32.LARGE_INTEGER = undef
-            result := kernel32.SetFilePointerEx(handle, distance, &new_pos, kernel32.FILE_CURRENT)
-            if result == kernel32.FALSE:
-                return windows.fromWin32Error()
-        #else:
-            panic('File.seek not supported on this platform')
 
 --| Seeks the read/write position by `pos` bytes from the end. Positive `pos` is invalid.
 fn (&File) seekFromEnd(n int) -> !void:
-    #if meta.system() == .macos:
+    #if meta.system() == .windows:
+        windows.seek_file_from_end($fd, n)!
+    #else:
         res := lc.lseek($fd, lc.off_t(n), lc.SEEK_END)
         if res == -1:
             return fromErrno()
-    #else:
-        #if meta.system() == .windows:
-            handle := as[kernel32.HANDLE] $fd
-            var distance kernel32.LARGE_INTEGER = undef
-            distance.QuadPart = n
-            var new_pos kernel32.LARGE_INTEGER = undef
-            result := kernel32.SetFilePointerEx(handle, distance, &new_pos, kernel32.FILE_END)
-            if result == kernel32.FALSE:
-                return windows.fromWin32Error()
-        #else:
-            panic('File.seekFromEnd not supported on this platform')
 
 --| Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid.
 fn (&File) seekFromStart(n int) -> !void:
-    #if meta.system() == .macos:
+    #if meta.system() == .windows:
+        windows.seek_file_from_start($fd, n)!
+    #else:
         res := lc.lseek($fd, lc.off_t(n), lc.SEEK_SET)
         if res == -1:
             return fromErrno()
-    #else:
-        #if meta.system() == .windows:
-            -- Validate negative position before calling Windows API
-            if n < 0:
-                return error.InvalidArgument
-            handle := as[kernel32.HANDLE] $fd
-            var distance kernel32.LARGE_INTEGER = undef
-            distance.QuadPart = n
-            var new_pos kernel32.LARGE_INTEGER = undef
-            result := kernel32.SetFilePointerEx(handle, distance, &new_pos, kernel32.FILE_BEGIN)
-            if result == kernel32.FALSE:
-                return windows.fromWin32Error()
-        #else:
-            panic('File.seekFromStart not supported on this platform')
 
 --| Writes a string to the current file position.
 fn (&File) write(val str) -> !int:
-    #if meta.system() == .macos:
+    #if meta.system() == .windows:
+        var bytes_written windows.DWORD = 0
+        result := kernel32.WriteFile($fd, as val.ptr, windows.DWORD(val.len()), &bytes_written, none)
+        if result == windows.FALSE:
+            return windows.fromWin32Error()
+        return as[int] bytes_written
+        
+    #else:
         written := lc.write($fd, as val.ptr, val.len())
         if written == -1:
             return fromErrno()
         return written
-    #else:
-        #if meta.system() == .windows:
-            handle := as[kernel32.HANDLE] $fd
-            var bytes_written kernel32.DWORD = 0
-            result := kernel32.WriteFile(handle, as val.ptr, kernel32.DWORD(val.len()), &bytes_written, none)
-            if result == kernel32.FALSE:
-                return windows.fromWin32Error()
-            return as[int] bytes_written
-        #else:
-            panic('File.write not supported on this platform')
 
 --| Writes `buf` to the file and returns the number of bytes written.
 fn (&File) write(buf []byte) -> !int:
-    #if meta.system() == .macos:
+    #if meta.system() == .windows:
+        var bytes_written windows.DWORD = 0
+        result := kernel32.WriteFile($fd, as buf.ptr, windows.DWORD(buf.len()), &bytes_written, none)
+        if result == windows.FALSE:
+            return windows.fromWin32Error()
+        return as[int] bytes_written
+
+    #else:
         written := lc.write($fd, as buf.ptr, buf.len())
         if written == -1:
             return fromErrno()
         return written
-    #else:
-        #if meta.system() == .windows:
-            handle := as[kernel32.HANDLE] $fd
-            var bytes_written kernel32.DWORD = 0
-            result := kernel32.WriteFile(handle, as buf.ptr, kernel32.DWORD(buf.len()), &bytes_written, none)
-            if result == kernel32.FALSE:
-                return windows.fromWin32Error()
-            return as[int] bytes_written
-        #else:
-            panic('File.write not supported on this platform')
 
 fn (&File) write_all(val str) -> !void:
     slice := val.ptr[0..val.len()]
@@ -877,9 +809,9 @@ fn (&File) write_all(as_val AsSpan[byte]) -> !void:
 
 type Dir:
     with NoCopy
-    fd     lc.fd_t
+    fd     FileHandle
     closed bool = false
-    path str = ''  -- Store path for FindFirstFileW on Windows
+    path str = '' -- TODO: Required by AI DirIterator implementation. Replace with NtQueryDirectoryFile.
 
 fn (&Dir) @deinit():
     $close()
@@ -888,17 +820,15 @@ fn (&Dir) close():
     if $closed:
         return
 
-    #if meta.system() == .macos:
+    #if meta.system() == .windows:
+        -- Windows Dir doesn't use fd directly, iterator handles are closed separately
+        pass
+    #else:
         res := lc.close($fd)
         if res != 0:
             panic("Unexpected. %{fromErrno()}")
-        $closed = true
-    #else:
-        #if meta.system() == .windows:
-            -- Windows Dir doesn't use fd directly, iterator handles are closed separately
-            $closed = true
-        #else:
-            panic('Dir.close not supported on this platform')
+
+    $closed = true
 
 --| Returns info about the directory.
 fn (&Dir) info() -> !FileInfo:
@@ -909,12 +839,11 @@ fn (&Dir) info() -> !FileInfo:
         if lc.fstat($fd, &cstat) != 0:
             return fromErrno()
         return fileInfo(&cstat)
+    #else meta.system() == .windows:
+        -- Use path to get directory info
+        return fileInfo($path)
     #else:
-        #if meta.system() == .windows:
-            -- Use path to get directory info
-            return fileInfo($path)
-        #else:
-            panic('Dir.info not supported on this platform')
+        panic('Dir.info not supported on this platform')
 
 --| Returns a new iterator over the directory entries.
 --| If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead.
@@ -924,13 +853,12 @@ fn (&Dir) iterator() -> DirIterator:
         new = {impl = macos.DirIteratorImpl()}
     #else meta.system() == .linux:
         new = {impl = linux.DirIteratorImpl()}
+    #else meta.system() == .windows:
+        -- Initialize with struct literal, find_data will be filled by FindFirstFileW
+        -- Note: We don't store dir_path to avoid string reference counting issues
+        new = {impl = windows.DirIteratorImpl{find_data=undef}}
     #else:
-        #if meta.system() == .windows:
-            -- Initialize with struct literal, find_data will be filled by FindFirstFileW
-            -- Note: We don't store dir_path to avoid string reference counting issues
-            new = {impl = windows.DirIteratorImpl{find_data=undef}}
-        #else:
-            panic('DirIterator not supported on this platform')
+        panic('DirIterator not supported on this platform')
     return new
 
 --| Returns a new iterator over the directory recursive entries.
@@ -943,15 +871,7 @@ type DirIterator:
 
 --| Returns the next directory entry.
 fn (&DirIterator) next(dir &Dir) -> !?DirEntry:
-    #if meta.system() == .macos:
-        return $impl.next(dir)
-    #else:
-        #if meta.system() == .windows:
-            impl := as[&windows.DirIteratorImpl] &$impl
-            return impl.next(dir)
-        #else:
-            panic('DirIterator.next not supported on this platform')
-
+    return $impl.next(dir)
 
 type DirIteratorImpl = switch meta.system():
     case .macos => macos.DirIteratorImpl

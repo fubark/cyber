@@ -1,3 +1,8 @@
+#if defined(_WIN32)
+    // Declare dependencies so they are automatically linked when consuming libcyber.
+    #pragma comment(lib, "ntdll.lib")
+#endif
+
 #include <stdarg.h>
 #include <string.h>
 #include <stdio.h>

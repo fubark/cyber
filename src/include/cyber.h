@@ -308,6 +308,7 @@ typedef struct CLCompileConfig {
 
 typedef struct CLValidateConfig {
     /// Compiler options.
+    bool stub;
 } CLValidateConfig;
 
 typedef struct CLAllocator {

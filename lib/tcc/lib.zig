@@ -29,14 +29,13 @@ pub fn buildAndLink(b: *std.Build, mod: *std.Build.Module, opts: BuildOptions) !
         .target = opts.target,
         .optimize = opts.optimize,
     });
-    const lib = b.addLibrary(.{
-        .linkage = .static,
+    const obj = b.addObject(.{
         .name = "tcc",
         .root_module = root,
     });
-    lib.addIncludePath(b.path("lib/tcc/vendor"));
-    lib.linkLibC();
-    lib.root_module.sanitize_c = .off;
+    obj.addIncludePath(b.path("lib/tcc/vendor"));
+    obj.linkLibC();
+    obj.root_module.sanitize_c = .off;
 
     var c_flags = try std.ArrayList([]const u8).initCapacity(b.allocator, 0);
     if (opts.selinux) {
@@ -54,13 +53,14 @@ pub fn buildAndLink(b: *std.Build, mod: *std.Build.Module, opts: BuildOptions) !
         "lib/tcc/vendor/libtcc.c",
         // "/vendor/lib/libtcc1.c",
     });
+
     for (sources.items) |src| {
-        lib.addCSourceFile(.{
+        obj.addCSourceFile(.{
             .file = b.path(src),
             .flags = c_flags.items,
         });
     }
-    mod.linkLibrary(lib);
+    mod.addObject(obj);
 }
 
 inline fn thisDir() []const u8 {

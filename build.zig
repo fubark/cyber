@@ -235,7 +235,20 @@ pub fn build(b: *std.Build) !void {
         lib_test_cmd.dependOn(&run.step);
     }
 
-    const cli_test_cmd = b.step("cli-test", "Run cli tests.");
+    // Test the library as a standalone static library.
+    const lib_standalone_test_cmd = b.step("lib-standalone-test", "Run lib tests.");
+    {
+        const artifact = b.addInstallArtifact(lib, .{});
+        lib_standalone_test_cmd.dependOn(&artifact.step);
+
+        const lib_bin = artifact.emitted_bin.?;
+        var test1 = run_lib_standalone_test(b, "examples/libcyber/main.c", lib_bin);
+        var test2 = run_lib_standalone_test(b, "examples/libcyber/bind_module.c", lib_bin);
+        lib_standalone_test_cmd.dependOn(&test1.step);
+        lib_standalone_test_cmd.dependOn(&test2.step);
+    }
+
+    const cli_test_cmd = b.step("cli-test", "Run cli tests.");  
     {
         var run = b.addRunArtifact(cli_test);
         run.has_side_effects = no_cache;
@@ -252,6 +265,7 @@ pub fn build(b: *std.Build) !void {
     {
         const main_step = b.step("test", "Run all tests.");
         main_step.dependOn(lib_test_cmd);
+        main_step.dependOn(lib_standalone_test_cmd);
         main_step.dependOn(cli_test_cmd);
         main_step.dependOn(trace_test_cmd);
         main_step.dependOn(behavior_test_cmd);
@@ -260,6 +274,26 @@ pub fn build(b: *std.Build) !void {
     const printStep = b.allocator.create(PrintStep) catch unreachable;
     printStep.* = PrintStep.init(b, Version);
     b.step("version", "Get the short version.").dependOn(&printStep.step);
+}
+
+fn run_lib_standalone_test(b: *std.Build, path: []const u8, lib_bin: std.Build.LazyPath) *std.Build.Step.Run {
+    const main_mod = b.createModule(.{
+        .target = rtarget,
+        .optimize = optimize,
+    });
+    main_mod.addIncludePath(b.path("src/include"));
+    main_mod.addCSourceFile(.{
+        .file = b.path(path),
+    });
+    const main = b.addExecutable(.{
+        .name = "lib_standalone_test",
+        .root_module = main_mod,
+    });
+    main.addObjectFile(lib_bin);
+
+    var run = b.addRunArtifact(main);
+    run.has_side_effects = no_cache;
+    return run;
 }
 
 fn link_cli_deps(b: *std.Build, cli: *std.Build.Module, vmc: *std.Build.Module, config: CliConfig) !void {

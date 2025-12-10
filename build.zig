@@ -159,9 +159,19 @@ pub fn build(b: *std.Build) !void {
     //     step.dependOn(&b.addInstallArtifact(lib, .{}).step);
     // }
 
+    var standalone_lib_artifact: *std.Build.Step.InstallArtifact = undefined;
     {
         const step = b.step("lib", "Build as a library.");
-        step.dependOn(&b.addInstallArtifact(lib, .{}).step);
+
+        var standalone_opts = opts;
+        // Default FFI to false for better compatibility (excludes libtcc which currently doesn't compile on MSVC).
+        standalone_opts.ffi = false;
+        standalone_opts.applyOverrides();
+
+        const standalone_lib_mod = try create_lib_module(b, standalone_opts);
+        const standalone_lib = try buildLib(b, standalone_lib_mod, opts);
+        standalone_lib_artifact = b.addInstallArtifact(standalone_lib, .{});
+        step.dependOn(&standalone_lib_artifact.step);
     }
 
     // {
@@ -238,10 +248,9 @@ pub fn build(b: *std.Build) !void {
     // Test the library as a standalone static library.
     const lib_standalone_test_cmd = b.step("lib-standalone-test", "Run lib tests.");
     {
-        const artifact = b.addInstallArtifact(lib, .{});
-        lib_standalone_test_cmd.dependOn(&artifact.step);
+        lib_standalone_test_cmd.dependOn(&standalone_lib_artifact.step);
 
-        const lib_bin = artifact.emitted_bin.?;
+        const lib_bin = standalone_lib_artifact.emitted_bin.?;
         var test1 = run_lib_standalone_test(b, "examples/libcyber/main.c", lib_bin);
         var test2 = run_lib_standalone_test(b, "examples/libcyber/bind_module.c", lib_bin);
         lib_standalone_test_cmd.dependOn(&test1.step);

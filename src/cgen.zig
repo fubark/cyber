@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const build_config = @import("build_config");
 const cy = @import("cyber.zig");
 const cc = @import("capi.zig");
 const ir = cy.ir;
@@ -697,6 +698,10 @@ pub fn gen(self: *cy.Compiler) !cy.compiler.AotCompileResult {
     errdefer self.alloc.free(exePath);
 
     if (self.config.backend == cc.BackendTCC) {
+        if (!build_config.ffi) {
+            return error.TCCError;
+        }
+
         // const src = try std.fs.cwd().readFileAllocOptions(self.alloc, outPath, 1e9, null, @alignOf(u8), 0);
         // defer self.alloc.free(src);
 

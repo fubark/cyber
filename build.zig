@@ -290,6 +290,7 @@ fn run_lib_standalone_test(b: *std.Build, path: []const u8, lib_bin: std.Build.L
         .root_module = main_mod,
     });
     main.addObjectFile(lib_bin);
+    main.linkLibC();
 
     var run = b.addRunArtifact(main);
     run.has_side_effects = no_cache;

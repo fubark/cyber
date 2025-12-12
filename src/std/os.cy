@@ -441,12 +441,12 @@ fn parseArgs(opts []str) -> ArgsResult:
                 val = name_pair[ii+1..]
             name := name_pair[0..name_end]
             if !opts.contains(name):
-                rest <<= arg
+                rest += arg
                 continue
 
-            arg_opts <<= {name=name, value=val}
+            arg_opts += {name=name, value=val}
         else:
-            rest <<= arg
+            rest += arg
 
     return ArgsResult{
         opts = arg_opts,
@@ -615,7 +615,7 @@ fn (&ArgsResult) getAll(name str) -> []str:
     res := []str{}
     for $opts |opt|:
         if opt.name == name:
-            res <<= opt.value
+            res += opt.value
     return res
     
 type File:
@@ -691,7 +691,7 @@ fn (&File) read_all() -> ![]byte:
     buf := [4096]byte(0)
     while:
         read := $read_fill(buf[..])!
-        res <<= buf[0..read]
+        res += buf[0..read]
         if read < buf.len():
             break
     return res

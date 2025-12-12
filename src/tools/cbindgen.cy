@@ -161,7 +161,7 @@ fn getClangArgs() -> []str:
     while i < args.rest.len():
         if args.rest[i] == '-clang':
             i += 1
-            clang_args <<= args.rest[i]
+            clang_args += args.rest[i]
         i += 1
     return clang_args
 
@@ -275,7 +275,7 @@ fn visitor(cursor, parent clang.CXCursor, data Ptr[void]) -> i32:
             state := Struct{}
             _ = clang.visitChildren(cursor, structVisitor, as &state)
             structMap[effName] = state
-            structs <<= effName
+            structs += effName
 
             skip_children := false
             if skipMap.contains(effName):
@@ -351,7 +351,7 @@ fn visitor(cursor, parent clang.CXCursor, data Ptr[void]) -> i32:
                 if i < numParams-1:
                     outFunc += ', '
 
-                fnParamTypes <<= paramT
+                fnParamTypes += paramT
 
             outFunc += ') -> '
 
@@ -364,7 +364,7 @@ fn visitor(cursor, parent clang.CXCursor, data Ptr[void]) -> i32:
 
             func.params = fnParamTypes
             func.ret = retT
-            funcs <<= func
+            funcs += func
 
         case clang.CXCursor_VarDecl:
             cx_name := clang.getCursorSpelling(cursor)
@@ -395,8 +395,8 @@ fn unionVisitor(cursor, parent clang.CXCursor, data Ptr[void]) -> i32:
         case clang.CXCursor_FieldDecl:
             -- print 'field %{cursor.kind} %{name}'
             case_t := clang.getCursorType(cursor)
-            state.cases <<= name
-            state.case_types <<= fromCType(case_t)
+            state.cases += name
+            state.case_types += fromCType(case_t)
         else: 
             panic('unsupported %{cursor.kind} %{name}')
     return clang.CXChildVisit_Continue
@@ -415,8 +415,8 @@ fn structVisitor(cursor, parent clang.CXCursor, data Ptr[void]) -> i32:
             ftype := clang.getCursorType(cursor)
             fsym := fromCType(ftype)
 
-            state.fieldTypes <<= fsym
-            state.fieldNames <<= name
+            state.fieldTypes += fsym
+            state.fieldNames += name
         else: 
             panic('unsupported %{cursor.kind} %{name}')
     return clang.CXChildVisit_Continue
@@ -459,7 +459,7 @@ fn initListExpr(cursor, parent clang.CXCursor, data Ptr[void]) -> i32:
         case clang.CXCursor_IntegerLiteral:
             eval := clang.Cursor_Evaluate(cursor)
             val := clang.EvalResult_getAsLongLong(eval)
-            state.args <<= str(val)
+            state.args += str(val)
         else:
             panic('visitor invoked %{cursor.kind}')
 
@@ -569,7 +569,7 @@ fn evalVarInit(cursor clang.CXCursor) -> ?EvalResult:
                     struct := getStruct(state.type).?
                     kvs := []str{}
                     for struct.fieldNames |i, fieldn|:
-                        kvs <<= '%{fieldn}=%{state.args[i]}'
+                        kvs += '%{fieldn}=%{state.args[i]}'
                     return {init_t='%{state.type}', init='{%{kvs.join(', ')}}'}
 
                 case clang.CXCursor_CStyleCastExpr:
@@ -657,7 +657,7 @@ fn fromCType(cxType clang.CXType) -> str:
             nparams := clang.getNumArgTypes(cxType)
             params := []str{}
             for 0..nparams |i|:
-                params <<= fromCType(clang.getArgType(cxType, i))
+                params += fromCType(clang.getArgType(cxType, i))
             ret := fromCType(clang.getResultType(cxType))
             return '#[extern] fn(%{params.join(', ')})->%{ret}'
 

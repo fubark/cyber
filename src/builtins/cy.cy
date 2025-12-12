@@ -1006,7 +1006,7 @@ type ZNodes:
 fn from_znodes(znodes ZNodes) -> []^Node:
     nodes := []^Node{}
     for 0..znodes.len |i|:
-        nodes = nodes << from_znode(znodes.ptr[i]).?
+        nodes += from_znode(znodes.ptr[i]).?
     return nodes
 
 fn from_znode(znode Ptr[ZNode]) -> ?^Node:

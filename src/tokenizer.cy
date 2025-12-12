@@ -4,7 +4,7 @@ src := ```
 use math
 
 nouns := []str{'World', '世界', 'दुनिया', 'mundo'}
-nouns <<= math.random().fmt()
+nouns += math.random().fmt()
 for nouns |n|:
     print('Hello, %{n}!')
 ```
@@ -427,14 +427,14 @@ fn (&Tokenizer) tokenizeOne(state TokenizeState) -> !TokenizeState:
                 while !$isAtEnd():
                     if $peek() == '\n':
                         if $parse_comments:
-                            $comments = $comments << $src[start..$next_pos]
+                            $comments = $comments + $src[start..$next_pos]
 
                         -- Don't consume new line or the current indentation could augment with the next line.
                         return $tokenizeOne(state)
                     $advance()
 
                 if $parse_comments:
-                    $comments = $comments << $src[start..$next_pos]
+                    $comments = $comments + $src[start..$next_pos]
                 return {tag=.end}
             else next == '>':
                 $advance()
@@ -1028,13 +1028,13 @@ fn (&Tokenizer) tokenizeNumber(start int) -> !void:
     return
 
 fn (&Tokenizer) pushIndentToken(count int, start_pos int, spaces bool):
-    $tokens = $tokens << Token.indent(i32(start_pos), if (spaces) i32(count) else i32(count) || 0x80000000)
+    $tokens = $tokens + Token.indent(i32(start_pos), if (spaces) i32(count) else i32(count) || 0x80000000)
 
 fn (&Tokenizer) pushToken(token_t TokenType, start_pos int):
-    $tokens = $tokens << Token(token_t, i32(start_pos), i32($next_pos))
+    $tokens = $tokens + Token(token_t, i32(start_pos), i32($next_pos))
 
 fn (&Tokenizer) pushToken2(token_t TokenType, start_pos int, end_pos int):
-    $tokens = $tokens << Token(token_t, i32(start_pos), i32(end_pos))
+    $tokens = $tokens + Token(token_t, i32(start_pos), i32(end_pos))
 
 fn (&Tokenizer) reportError(msg str) -> error:
     return $reportErrorAt(msg, $next_pos)

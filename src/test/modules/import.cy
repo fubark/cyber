@@ -10,7 +10,7 @@ fn check_int(a int) -> int:
 t.eq_slice([]int{1, 2, 3}, a.g_slice)
 
 -- Invoke function on Root.g_slice.
-a.g_slice = a.g_slice << 4
+a.g_slice = a.g_slice + 4
 t.eq_slice([]int{1, 2, 3, 4}, a.g_slice)
 
 -- Access Root.g_arr.

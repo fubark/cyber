@@ -1177,15 +1177,15 @@ fn (&Slice[]) set(o Self):
     $span().set(o.span())
 
 --| Alias for `append`.
-fn (&Slice[]) `<<`(val T) -> Self:
+fn (&Slice[]) `+`(val T) -> Self:
     return Self.append[0]($, val)
 
 --| Alias for `append`.
-fn (&Slice[]) `<<`(slice [&]T) -> Self:
+fn (&Slice[]) `+`(slice [&]T) -> Self:
     return Self.append[1]($, slice)
 
 --| Alias for `append`.
-fn (&Slice[]) `<<`(arr AsSpan[T]) -> Self:
+fn (&Slice[]) `+`(arr AsSpan[T]) -> Self:
     return Self.append[2]($, arr)
 
 --| Appends a value to the end of the `Slice`.
@@ -3750,16 +3750,16 @@ fn (&str) set(idx int, x byte) -> str:
 fn (&str) split(sep str) -> []str:
     res := []str{}
     if $len() == 0:
-        res <<= ''
+        res += ''
         return res
 
     i := 0
     while $[i..].index(sep) |found_idx|:
-        res <<= $[i..i+found_idx]
+        res += $[i..i+found_idx]
         i += found_idx + sep.len()
 
     if i < $len():
-        res <<= $[i..]
+        res += $[i..]
 
     return res
 

@@ -75,10 +75,10 @@ fn (&Scanner[]) next(next_fn ScannerNextFn) -> !?[]byte:
         if next_fn($buf.span()[$cur..$end])! |range|:
             slice := $buf[$cur+range.start..$cur+range.end]
             $cur += range.advance_end
-            return res << slice
+            return res + slice
 
         -- Save partial.
-        res <<= $buf[$cur..$end]
+        res += $buf[$cur..$end]
         $cur = $end
     return none
 

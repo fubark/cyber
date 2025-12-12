@@ -40,7 +40,7 @@ Here is a simple example that offers a sneak peek into the language:
 use math
 
 nouns := []str{'World', '世界', 'दुनिया', 'mundo'}
-nouns <<= math.random().fmt()
+nouns += math.random().fmt()
 for nouns |n|:
     print('Hello, %{n}!')
 ```
@@ -879,11 +879,6 @@ The intializer literal can infer the target slice type:
 var a []int = {1, 2, 3}
 ```
 
-The first element of an initializer literal can infer the slice type.
-```cy
-arr := {1, 2, 3}
-```
-
 The first element of the slice starts at index 0.
 ```cy
 print(arr[0])    --> 1
@@ -892,7 +887,7 @@ print(arr[0])    --> 1
 ### Sub-slices.
 Slices can be sliced into smaller sub-slices. Sub-slices share the same underlying element buffer as the original slice which enables read/write access to the same elements:
 ```cy
-arr := {1, 2, 3, 4, 5}
+arr := []int{1, 2, 3, 4, 5}
 print(arr[0..0])    --> {}
 print(arr[0..3])    --> {1, 2, 3}
 print(arr[3..])     --> {4, 5}
@@ -901,12 +896,12 @@ print(arr[3..])     --> {4, 5}
 A sub-slice will clone the underlying buffer upon any resize operation such as `append`, `insert`, `remove`, etc.
 Once cloned, the slice will no longer point to the same elements as the original slice:
 ```cy
-arr := {1, 2, 3}
+arr := []int{1, 2, 3}
 slice := arr[0..1]
 slice[0] = 100
 print('%{arr[0]} %{slice[0]')   --> 100 100
 
-slice <<= 4
+slice += 4
 slice[0] = 101
 print('%{arr[0]} %{slice[0]')   --> 100 101
 ```
@@ -914,17 +909,17 @@ print('%{arr[0]} %{slice[0]')   --> 100 101
 The `+..` invokes the slice operator with an end position that is an increment from the start: *Planned Feature*
 
 ```cy
-arr := {1, 2, 3, 4, 5}
+arr := []int{1, 2, 3, 4, 5}
 print(arr[2+..2])   --> {3, 4}
 ```
 
 ### Slice operations.
 Here are some common slice operations:
 ```cy
-arr := {234}
+arr := []int{234}
 
 -- Append a value.
-arr <<= 123
+arr += 123
 
 -- Alternative way to append.
 arr = arr.append(123)
@@ -958,11 +953,6 @@ map := Map[str, int]{a=123, b=234}
 The initializer literal can infer the target map type:
 ```cy
 var map Map[str, int] = {a=123, b=234}
-```
-
-The first record pair of an initializer literal can infer the map type.
-```cy
-map := {a=123, b=234}
 ```
 
 ### Map operations.

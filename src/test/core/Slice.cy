@@ -41,15 +41,15 @@ a = a.size_up(3, 0)
 a[2] = 3
 t.eq(a[2], 3)
 
--- <<, append()
+-- +, append()
 a = {}
-a = a << 1
+a = a + 1
 t.eq(a.len(), 1)
 t.eq(a[0], 1)
 
--- <<, append([]T)
+-- +, append([]T)
 a = {1, 2, 3}
-a = a << {4, 5, 6}
+a = a + {4, 5, 6}
 t.eq_slice([]int{1, 2, 3, 4, 5, 6}, a)
 
 -- insert() in empty
@@ -189,6 +189,6 @@ t.eq(true, a3[0] == a3[1])
 -- Growing array destructs managed elements.
 grow_arr := []str{}
 for 0..100 |i|:
-    grow_arr = grow_arr << str(i)
+    grow_arr = grow_arr + str(i)
 
 --cytest: pass

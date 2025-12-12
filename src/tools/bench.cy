@@ -25,10 +25,10 @@ for 0..max_runs:
     endIdx := out.index('\n').?
     msStr := out[0..endIdx].trim(' \t')
     ms := float(msStr)
-    times <<= ms
+    times += ms
 
     total_time := (os.now()! - start) * 1000
-    total_times <<= total_time
+    total_times += total_time
 
 sum := 0.0
 for times |time|:

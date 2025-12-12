@@ -50,7 +50,7 @@ if res != 0:
 
 tocLinksHtml := []str{}
 for tocLinks |link|:
-    tocLinksHtml = tocLinksHtml << '<li><a href="%{link.href}">%{link.text}</a></li>'
+    tocLinksHtml = tocLinksHtml + '<li><a href="%{link.href}">%{link.text}</a></li>'
 
 hljsJS := str(os.read_file('%{curDir}/highlight.min.js')!)
 
@@ -356,7 +356,7 @@ fn enterSpan(span_t md.SPANTYPE, detail_p Ptr[void], userdata Ptr[void]) -> i32:
             title := get_attr_text(detail.title)
 
             if parsing_toc:
-                tocLinks <<= {href=href, title=title, text=''}
+                tocLinks += {href=href, title=title, text=''}
                 textContent = ''
                 bufContent = true
                 return 0
@@ -423,7 +423,7 @@ fn func_params_text(parse_res &cy.ParseResult, param_nodes []^cy.Node) -> str:
 
         scope_s := if (param.scope_param) '<span class="keyword">scope</span> ' else ''
         name := '%{scope_s}%{parse_res.node_text(param.name_type)}'
-        params <<= '%{name}%{param_t}'
+        params += '%{name}%{param_t}'
     return params.join(', ')
 
 fn gen_func_decl(parse_res &cy.ParseResult, id str, decl cy.FuncDecl, tparams_s str, docs str) -> str:
@@ -570,73 +570,73 @@ fn gen_mods_content(cur_dir str, mods []ModulePair) -> !str:
                         rec_t = get_base_type(rec_t)
                         entry_id := type_to_entry.get(rec_t.name()) ?else:
                             panic('Missing type entry. %{rec_t.name()}')
-                        index_entries[entry_id].children <<= base_stmt
+                        index_entries[entry_id].children += base_stmt
                         continue
 
                     if decl.parent |parent|:
                         parent = get_base_type(parent)
                         entry_id := type_to_entry.get(parent.name()) ?else:
                             panic('Missing type entry. %{parent.name()}')
-                        index_entries[entry_id].children <<= base_stmt
+                        index_entries[entry_id].children += base_stmt
                         continue
 
-                    index_entries <<= {stmt=stmt, name=decl.name.name()}
+                    index_entries += {stmt=stmt, name=decl.name.name()}
 
                 case .const_decl |decl|:
                     if decl.parent |parent|:
                         parent = get_base_type(parent)
                         entry_id := type_to_entry.get(parent.name()) ?else:
                             panic('Missing type entry. %{parent.name()}')
-                        index_entries[entry_id].children <<= base_stmt
+                        index_entries[entry_id].children += base_stmt
                         continue
-                    index_entries <<= {stmt=stmt, name=decl.name.name()}
+                    index_entries += {stmt=stmt, name=decl.name.name()}
 
                 case .global_decl |decl|:
                     if decl.parent |parent|:
                         parent = get_base_type(parent)
                         entry_id := type_to_entry.get(parent.name()) ?else:
                             panic('Missing type entry. %{parent.name()}')
-                        index_entries[entry_id].children <<= base_stmt
+                        index_entries[entry_id].children += base_stmt
                         continue
-                    index_entries <<= {stmt=stmt, name=decl.name.name()}
+                    index_entries += {stmt=stmt, name=decl.name.name()}
 
                 case .type_alias_decl |decl|:
                     if decl.parent |parent|:
                         parent = get_base_type(parent)
                         entry_id := type_to_entry.get(parent.name()) ?else:
                             panic('Missing type entry. %{parent.name()}')
-                        index_entries[entry_id].children <<= base_stmt
+                        index_entries[entry_id].children += base_stmt
                         continue
-                    index_entries <<= {stmt=stmt, name=decl.name.name()}
+                    index_entries += {stmt=stmt, name=decl.name.name()}
 
                 case .cunion_decl |decl|:
                     entry_id := index_entries.len()
-                    index_entries <<= {stmt=stmt, name=decl.name.name()}
+                    index_entries += {stmt=stmt, name=decl.name.name()}
                     type_to_entry[decl.name.name()] = entry_id
 
                 case .type_const_decl |decl|:
                     entry_id := index_entries.len()
-                    index_entries <<= {stmt=stmt, name=decl.name.name()}
+                    index_entries += {stmt=stmt, name=decl.name.name()}
                     type_to_entry[decl.name.name()] = entry_id
 
                 case .enum_decl |decl|:
                     entry_id := index_entries.len()
-                    index_entries <<= {stmt=stmt, name=decl.name.name()}
+                    index_entries += {stmt=stmt, name=decl.name.name()}
                     type_to_entry[decl.name.name()] = entry_id
 
                 case .trait_decl |decl|:
                     entry_id := index_entries.len()
-                    index_entries <<= {stmt=stmt, name=decl.name.name()}
+                    index_entries += {stmt=stmt, name=decl.name.name()}
                     type_to_entry[decl.name.name()] = entry_id
 
                 case .custom_type_decl |decl|:
                     entry_id := index_entries.len()
-                    index_entries <<= {stmt=stmt, name=decl.name.name()}
+                    index_entries += {stmt=stmt, name=decl.name.name()}
                     type_to_entry[decl.name.name()] = entry_id
 
                 case .struct_decl |decl|:
                     entry_id := index_entries.len()
-                    index_entries <<= {stmt=stmt, name=decl.name.name()}
+                    index_entries += {stmt=stmt, name=decl.name.name()}
                     type_to_entry[decl.name.name()] = entry_id
 
                 else:

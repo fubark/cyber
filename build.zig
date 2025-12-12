@@ -86,7 +86,7 @@ pub fn build(b: *std.Build) !void {
     const vmc = try create_vmc_mod(b, opts);
 
     var cli_config = CliConfig.default();
-    if (optimize == .Debug) {
+    if (optimize == .Debug or target.os.tag == .wasi) {
         // Dev build looks at `@root`, release build uses the exe dir as root.
         cli_config = cli_config.with_mod_root(abs_root_path);
     }

@@ -63,18 +63,6 @@ const AccessWrite   = c_int(2)  -- W_OK
 const AccessExecute = c_int(1)  -- X_OK
 type AccessMode = c_int
 
---| Default mode when creating a directory.
-const DefaultDirMode lc.mode_t = switch meta.system():
-    case .macos => 0o755
-    case .linux => 0o755
-    else => 0  -- Windows doesn't use POSIX mode_t
-
---| Default mode when creating a file.
-const DefaultFileMode = switch meta.system():
-    case .macos => lc.mode_t(0o666)
-    case .linux => lc.mode_t(0o666)
-    else => 0  -- Windows doesn't use POSIX mode_t
-
 const ns_per_us = 1000
 const ns_per_ms = 1000 * ns_per_us
 const ns_per_s = 1000 * ns_per_ms
@@ -130,7 +118,7 @@ fn createDir(path str) -> !void:
             return windows.fromWin32Error()
     #else:
         cpath := str.initz(path)
-        if lc.mkdir(cpath.ptr, DefaultDirMode) != 0:
+        if lc.mkdir(cpath.ptr, lc.DefaultDirMode) != 0:
             return fromErrno()
 
 fn createFile(path str) -> !File:
@@ -145,7 +133,7 @@ fn createFile(path str, truncate bool) -> !File:
         if truncate:
             flags ||= lc.O_TRUNC
         cpath := str.initz(path)
-        fd := lc.open(cpath.ptr, flags, DefaultFileMode)
+        fd := lc.open(cpath.ptr, flags, lc.DefaultFileMode)
         if fd == -1:
             return fromErrno()
         return {fd=fd}

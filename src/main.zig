@@ -8,6 +8,7 @@ const log = std.log.scoped(.main);
 const cli = @import("cli.zig");
 const os_mod = @import("std/os.zig");
 const fmt = @import("fmt.zig");
+const is_wasi = builtin.os.tag == .wasi;
 
 test {
     std.testing.refAllDecls(cli);
@@ -25,7 +26,9 @@ var prevWinConsoleOutputCP: u32 = undefined;
 var gvm: *c.VM = undefined;
 
 pub fn main() !void {
-    app_debug.attachSegfaultHandler(sig_handler);
+    if (!is_wasi) {
+        app_debug.attachSegfaultHandler(sig_handler);
+    }
 
     if (builtin.os.tag == .windows) {
         prevWinConsoleOutputCP = std.os.windows.kernel32.GetConsoleOutputCP();

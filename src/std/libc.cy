@@ -59,6 +59,18 @@ type mode_t = switch meta.system():
     case .wasi => r32
     else => void
 
+--| Default mode when creating a directory.
+const DefaultDirMode mode_t = switch meta.system():
+    case .macos => 0o755
+    case .linux => 0o755
+    else => 0
+
+--| Default mode when creating a file.
+const DefaultFileMode mode_t = switch meta.system():
+    case .macos => 0o666
+    case .linux => 0o666
+    else => 0
+
 type O = switch meta.system():
     case .macos => i32
     case .linux => r32

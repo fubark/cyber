@@ -151,12 +151,4 @@ fn foo2() -> int:
         else      : return -1
 t.eq(1, foo2())
 
--- switch: borrow copyable control expression
-res = 0
-c := 123
-switch &c:
-    case 123: res = 1
-    else: pass
-t.eq(1, res)
-
 --cytest: pass

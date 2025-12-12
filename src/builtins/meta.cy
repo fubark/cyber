@@ -1,5 +1,5 @@
 --| Access a receiver with a given field as a string.
-#[bind] fn access(rec Code, field str) -> Any
+#[bind] fn access(rec Code, field EvalStr) -> Any
 
 --| Returns whether a build flag is set.
 #[bind] fn build_flag(name str) -> bool
@@ -9,14 +9,14 @@
 --| Returns a build option's value.
 #[bind] fn build_option(name str) -> ?str
 
---| TODO: Remove redundant `T` param.
-#[bind] fn choice_tag(%T type, choice &T) -> T.Tag
+--| Returns the tag of a choice value.
+#[bind] fn choice_tag(choice %T) -> T.Tag
 
 --| The current build's target cpu arch.
-#[bind] fn cpu() -> str
+#[bind] fn cpu() -> EvalStr
 
 --| Returns the version of the Cyber compiler.
-#[bind] fn cy_full_version() -> str
+#[bind] fn full_version() -> EvalStr
 
 #[bind] fn dump_frame()
 
@@ -25,7 +25,9 @@
 
 #[bind] fn enum_case(enum_value %T) -> EnumCase
 
-#[bind] fn enum_int_values(%T type) -> Buffer[int]
+#[bind] fn enum_int_values(%T type) -> EvalBuffer[int]
+
+#[bind] fn enum_name_eval(enum_value %T) -> EvalStr
 
 fn enum_name(enum_value %T) -> str:
     -- if meta.is_inline_eval():
@@ -36,10 +38,10 @@ fn enum_name(enum_value %T) -> str:
             case Tag:
                 return #{enum_case(Tag).name}
 
-#[bind] fn enum_values(%T type) -> Buffer[T]
+#[bind] fn enum_values(%T type) -> EvalBuffer[T]
 
 --| Raise compile-time error.
-#[bind] fn error(msg str) -> never
+#[bind] fn error(msg EvalStr) -> never
 
 --| Equivalent to the compile-time expression `#{}`.
 #[bind] fn eval(code Code) -> Any
@@ -56,7 +58,7 @@ fn get_closure_data(func Ptr[void]) -> ?Ptr[ClosureData]:
         return none
 
 --| Returns whether a type has a `name` declaration.
-#[bind] fn has_decl(parent Code, name str) -> bool
+#[bind] fn has_decl(parent Code, name EvalStr) -> bool
 
 #[bind] fn init_choice(%T type, Tag T.Tag, payload Code) -> T
 
@@ -76,12 +78,12 @@ fn get_closure_data(func Ptr[void]) -> ?Ptr[ClosureData]:
 
 --| Load a file relative to the project root (main source file).
 --| TODO: This should restrict loading files above the project root.
-#[bind] fn load(path str) -> str
+#[bind] fn load(path str) -> EvalStr
 
 --| Log to stderr at compile-time.
 #[bind] fn log(x %T)
 
-#[bind] fn mod_uri() -> str
+#[bind] fn mod_uri() -> EvalStr
 
 type StructConfig:
     tuple bool = false
@@ -98,18 +100,24 @@ type StructConfig:
 --| The current build's target operating system.
 #[bind] fn system() -> SystemKind
 
+--| Whether the compiler was built with `Trace`.
+#[bind] fn trace_enabled() -> bool
+
+--| Returns the target arch pointer bit width.
+#[bind] fn pointer_width() -> int
+
 #[bind, unsafe]
-fn access_choice_case(%T type, rec Code, %Tag T.Tag) -> CasePayload[T, Tag]
+fn access_choice_case(choice %T, %Tag T.Tag) -> CasePayload[T, Tag]
 
 --| Unwraps an option type without runtime checks.
 #[bind, unsafe]
-fn access_option_payload(%T type, rec Code) -> OptionChild[T]
+fn access_option_payload(opt ?%T) -> T
 
 #[bind, unsafe]
-fn access_result_payload(%T type, rec Code) -> ResultChild[T]
+fn access_result_payload(res !%T) -> T
 
 #[bind, unsafe]
-fn access_result_error(rec Code) -> error
+fn access_result_error(res !%T) -> error
 
 -- TODO: These should be enabled by the trace flag.
 #[bind] fn trace_retains() -> int
@@ -130,33 +138,33 @@ type BuildMode enum:
 #[bind] type CasePayload[ChoiceT Any, const Tag ChoiceT.Tag] = _
 
 type ChoiceCase:
-    name str
+    name EvalStr
     type type
 
 type ChoiceInfo:
-    name  ?str
-    cases ^Buffer[ChoiceCase]
+    name  ?EvalStr
+    cases EvalBuffer[ChoiceCase]
 
 #[bind] type Code _
 
 type CStructInfo:
-    name   ?str
-    fields ^Buffer[StructField]
+    name   ?EvalStr
+    fields EvalBuffer[StructField]
 
 type CUnionCase:
-    name str
+    name EvalStr
     type type
 
 type CUnionInfo:
-    name  ?str
-    cases ^Buffer[CUnionCase]
+    name  ?EvalStr
+    cases EvalBuffer[CUnionCase]
 
 type EnumCase:
-    name str
+    name EvalStr
 
 type EnumInfo:
-    name  ?str
-    cases ^Buffer[EnumCase]
+    name  ?EvalStr
+    cases EvalBuffer[EnumCase]
 
 type VectorInfo:
     len  int
@@ -167,7 +175,7 @@ type FloatInfo:
 
 type FuncInfo:
     kind   FuncKind
-    params ^Buffer[FuncParam]
+    params EvalBuffer[FuncParam]
     ret    type
 
 type FuncKind enum:
@@ -184,38 +192,32 @@ type IntInfo:
 type RawInfo:
     bits   int
 
-#[bind]
-type OptionChild[OptionT Any] = _
-
 type OptionInfo:
     child type
 
 type PointerInfo:
     child type
 
-#[bind]
-type ResultChild[Result Any] = _
-
 type ResultInfo:
     child type
 
 type StructField:
-    name   str
+    name   EvalStr
     type   type
     offset int
 
     state_offset int
 
 type StructInfo:
-    name   ?str
-    fields ^Buffer[StructField]
+    name   ?EvalStr
+    fields EvalBuffer[StructField]
     -- funcs  []funcsym_t
 
 type BorrowTraitInfo:
     child type
 
 type TraitInfo:
-    name str
+    name EvalStr
     -- funcs []funcsym_t
 
 type RefTraitInfo:
@@ -273,11 +275,11 @@ fn type :: is_const(T type) -> bool
 #[bind]
 fn type :: of(expr Code) -> type
 
-fn type :: offset(T type, s str) -> int_lit:
+fn type :: offset(T type, s str) -> int:
     return type.field(T, s).offset
 
 #[bind]
-fn type :: struct_state_len(T type) -> int_lit
+fn type :: struct_state_len(T type) -> int
 
 --| Returns whether the type is managed.
 --| Managed types either have a builtin destructor or a custom `T.$deinit`.
@@ -285,7 +287,7 @@ fn type :: struct_state_len(T type) -> int_lit
 fn type :: managed(T type) -> bool
 
 #[bind]
-fn type :: name(T type) -> str
+fn type :: name(T type) -> EvalStr
 
 --| Returns the runtime type name. This is only available in trace mode.
 #[bind]
@@ -293,7 +295,7 @@ fn type :: name_rt(id int) -> str
 
 --| Returns the number of bytes that the type occupies.
 #[bind]
-fn type :: size(T type) -> int_lit
+fn type :: size(T type) -> int
 
 type TypeInfo enum:
     case int         IntInfo

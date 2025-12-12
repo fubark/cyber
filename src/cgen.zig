@@ -1621,13 +1621,13 @@ fn genCall(c: *Chunk, expr: *ir.Call, cstr: Cstr, node: *ast.Node) !GenValue {
 fn genString(c: *Chunk, expr: *ir.String, cstr: Cstr, node: *ast.Node) !GenValue {
     _ = cstr;
     _ = node;
-    if (cy.string.isAstring(expr.raw)) {
+    if (cy.string.isAstring(expr.raw())) {
         try c.pushSpan("cbi_astr_static(ctx, \"");
     } else {
         try c.pushSpan("cbi_ustr_static(ctx, \"");
     }
-    try writeEscaped(c.outw, expr.raw);
-    try c.pushSpanFmt("\", {})", .{expr.raw.len});
+    try writeEscaped(c.outw, expr.raw());
+    try c.pushSpanFmt("\", {})", .{expr.raw().len});
     return GenValue{};
 }
 
@@ -1829,8 +1829,8 @@ fn genForRangeStmt(c: *Chunk, stmt: *ir.ForRangeStmt, node: *ast.Node) !void {
         try c.pushSpanFmt("; {s} -= 1) {{\n", .{counter});
     }
 
-    if (stmt.eachLocal) |var_id| {
-        try reserveLocal(c, var_id, counter, c.sema.i64_t);
+    if (stmt.has_each_local) {
+        try reserveLocal(c, stmt.eachLocal, counter, c.sema.i64_t);
     } else {
         c.alloc.free(counter);
     }

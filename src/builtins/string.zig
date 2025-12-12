@@ -16,7 +16,8 @@ pub fn initPtrSpan(t: *cy.Thread) !Ret {
         ret.* = try t.heap.init_str("");
         return RetOk;
     } else {
-        const ptr: [*]const u8 = @ptrFromInt(span.ptr);
+        const addr: usize = @intCast(span.ptr);
+        const ptr: [*]const u8 = @ptrFromInt(addr);
         ret.* = try t.heap.init_str(ptr[0..@intCast(span.len)]);
         return RetOk;
     }
@@ -39,21 +40,11 @@ fn concat2(heap: *cy.Heap, left: *cy.heap.Str, right: *const cy.heap.Str) !cy.he
     }
 }
 
-pub fn concat_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
-    const left = ctx.args[0].asPtr(*cy.heap.Str);
-    const right = ctx.args[1].asPtr(*cy.heap.Str);
-    defer c.heap.releaseObject(@ptrCast(right));
-
-    const res = try concat2(c.heap, left, right);
-    const boxed = try c.heap.lift(bt.Str, res);
-    return cy.TypeValue.init(c.sema.str_t, boxed);
-}
-
 pub fn sliceFn(t: *cy.Thread) callconv(.c) Ret {
     const ret = t.ret(cy.heap.Str);
     const obj = t.param(*cy.heap.Str);
     const str = obj.slice();
-    const buf = obj.buf();
+    const buf = obj.buf;
 
     const start: usize = @intCast(t.param(u64));
     const end = str.len;
@@ -86,7 +77,7 @@ pub fn slice2(t: *cy.Thread) callconv(.c) Ret {
     const ret = t.ret(cy.heap.Str);
     const obj = t.param(*cy.heap.Str);
     const str = obj.slice();
-    const buf = obj.buf();
+    const buf = obj.buf;
 
     const start: usize = @intCast(t.param(u64));
     const end: usize = @intCast(t.param(u64));
@@ -461,11 +452,11 @@ pub fn runeStrAt(t: *cy.Thread) anyerror!Ret {
             // TODO: If single ascii runes are interned by default,
             //       it's better to fetch that instead to reduce dependency on parent.
             _ = try t.heap.copy_str(obj.*);
-            ret.* = try t.heap.init_astr_slice(slice, obj.buf());
+            ret.* = try t.heap.init_astr_slice(slice, obj.buf);
             return RetOk;
         } else {
             _ = try t.heap.copy_str(obj.*);
-            ret.* = try t.heap.init_ustr_slice(slice, obj.buf());
+            ret.* = try t.heap.init_ustr_slice(slice, obj.buf);
             return RetOk;
         }
     }

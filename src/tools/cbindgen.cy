@@ -323,12 +323,14 @@ fn visitor(cursor, parent clang.CXCursor, data Ptr[void]) -> i32:
             cxRet := clang.getResultType(cxFunc)
 
             api_name := getApiName(funcName)
+            has_override := func_overrides.contains(api_name)
+
             outFunc := ''
-            if api_name != funcName:
+            if api_name != funcName or has_override:
                 outFunc = "#[extern='%{funcName}']\n"
             else:
                 outFunc = "#[extern]\n"
-            if func_overrides.contains(api_name):
+            if has_override:
                 outFunc += 'fn c%{api_name}('
             else:
                 outFunc += 'fn %{api_name}('
@@ -603,7 +605,7 @@ fn evalVarInit(cursor clang.CXCursor) -> ?EvalResult:
             strz := clang.EvalResult_getAsStr(eval)
             str := c.from_strz(strz)
             clang.EvalResult_dispose(eval)
-            return {init_t='str_lit', init='"%{str}"' }
+            return {init_t='EvalStr', init='"%{str}"' }
 
         else:
             clang.EvalResult_dispose(eval)

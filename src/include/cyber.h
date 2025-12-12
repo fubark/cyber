@@ -1,7 +1,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
-#include <string.h>
 
 #ifndef CYBER_H
 #define CYBER_H
@@ -101,7 +100,7 @@ typedef struct CLBytes {
 // Type layout of a Cyber `str` at runtime.
 typedef struct CLstr {
     void* buf;
-    const char* ptr;
+    uint8_t* ptr;
     uint64_t header;
 } CLstr;
 
@@ -115,22 +114,22 @@ typedef struct CLSlice {
 // A host function is bound to a runtime function symbol declared with `#[bind]`.
 typedef CLRet (*CLHostFn)(CLThread* t);
 
-typedef struct CLSemaFuncContext {
-    CLFunc* func;
-    size_t expr_start;
-    CLNode* node;
-} CLSemaFuncContext;
-
-typedef bool (*CLSemaFn)(CLUnit* unit, CLSemaFuncContext* ctx, CLExprResult* res);
-
-typedef struct CLCtFuncContext {
+typedef struct CLConstEvalContext {
     CLFunc* func;
     CLValue* args;
     CLNode* node;
-} CLCtFuncContext;
+} CLConstEvalContext;
 
-typedef bool (*CLCtFn)(CLUnit* unit, CLCtFuncContext* ctx, CLExprResult* res);
-typedef CLTypeValue (*CLCtEvalFn)(CLUnit* unit, CLCtFuncContext* ctx);
+typedef CLTypeValue (*CLConstEvalFn)(CLUnit* unit, CLConstEvalContext* ctx);
+
+typedef struct CLBuiltinContext {
+    CLFunc* func;
+    CLNode* args;
+    CLNode* node;
+} CLBuiltinContext;
+
+typedef bool (*CLBuiltinFn)(CLUnit* unit, CLBuiltinContext* ctx, CLExprResult* res);
+typedef CLTypeValue (*CLBuiltinEvalFn)(CLUnit* unit, CLBuiltinContext* ctx);
 
 typedef struct CLResolverParams {
     /// Chunk that invoked the resolver.
@@ -169,9 +168,14 @@ typedef void (*CLModuleOnLoadFn)(CLVM* vm, CLSym* mod);
 typedef void (*CLModuleOnDestroyFn)(CLVM* vm, CLSym* mod);
 
 typedef enum {
+    // Invokes a runtime VM host function.
     CL_BIND_FUNC_VM,
-    CL_BIND_FUNC_CT,
-    CL_BIND_FUNC_SEMA,
+
+    // Parameters are const evaluated and returns a const value.
+    CL_BIND_FUNC_CONST_EVAL,
+
+    // Matching and sema is done by a compiler hook.
+    CL_BIND_FUNC_BUILTIN,
 
     // Compile the function with the declaration body.
     CL_BIND_FUNC_DECL,
@@ -220,8 +224,10 @@ typedef struct CLBindType {
     uint8_t type;
 } CLBindType;
 
+size_t cl_strlen(const char* s);
+
 #define CL_BITCAST(type, x) (((union {typeof(x) src; type dst;})(x)).dst)
-#define CL_BYTES(str) ((CLBytes){ .ptr = str, .len = strlen(str) })
+#define CL_BYTES(str) ((CLBytes){ .ptr = str, .len = cl_strlen(str) })
 // #define CL_CORE_TYPE(t) ((CLHostType){ .data = { .core_custom = { .type_id = t, .get_children = NULL, .finalizer = NULL }}, .type = CL_BIND_TYPE_CORE_CUSTOM })
 // #define CL_CORE_TYPE_EXT(t, gc, f) ((CLHostType){ .data = { .core_custom = { .type_id = t, .get_children = gc, .finalizer = f }}, .type = CL_BIND_TYPE_CORE_CUSTOM })
 // #define CL_CORE_TYPE_DECL(t) ((CLHostType){ .data = { .core_decl = { .type_id = t }}, .type = CL_BIND_TYPE_CORE_DECL })
@@ -365,6 +371,7 @@ CLPrintFn cl_vm_printer(CLVM* vm);
 void cl_vm_set_printer(CLVM* vm, CLPrintFn print);
 CLPrintErrorFn cl_vm_eprinter(CLVM* vm);
 void cl_vm_set_eprinter(CLVM* vm, CLPrintErrorFn print);
+CLLogFn cl_vm_logger(CLVM* vm);
 void cl_vm_set_logger(CLVM* vm, CLLogFn log);
 
 CLEvalConfig clDefaultEvalConfig(void);
@@ -573,7 +580,7 @@ CLBytes cl_object_string(CLThread* t, CLValue val);  // Conversion from value to
 CLSlice cl_slice_init(CLThread* t, CLTypeId byte_buffer_t, size_t num_elems, size_t elem_size);
 
 // Functions.
-CLFuncSig* clGetFuncSig(CLVM* vm, const CLType* params, size_t nparams, CLType* ret_t);
+CLFuncSig* cl_vm_ensure_func_sig(CLVM* vm, const CLType* params, size_t nparams, CLType* ret_t);
 CLValue cl_new_func_union(CLThread* t, CLType* union_t, CLHostFn func);
 
 // Types.

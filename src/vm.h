@@ -17,10 +17,10 @@ typedef float f32;
 #define LIKELY(x)   __builtin_expect(!!(x), 1)
 #define UNLIKELY(x) __builtin_expect(!!(x), 0)
 
-typedef struct Str {
-    const char* ptr;
+typedef struct Bytes {
+    char* ptr;
     size_t len;
-} Str;
+} Bytes;
 
 typedef struct IndexSlice {
     u32 start;
@@ -296,6 +296,7 @@ typedef enum {
     CodeNOP32,
     CodeNOPS,
     CodeTRAP,
+    CodeTRAP_DEBUG,
     CodeEND,
     NumCodes,
 } OpCode;
@@ -310,7 +311,7 @@ enum {
     TYPE_I16 = 4,
     TYPE_I32 = 5,
     TYPE_I64 = 6,
-    TYPE_INT_LIT = 7,
+    TYPE_EVAL_INT = 7,
     TYPE_R8 = 8,
     TYPE_R16 = 9,
     TYPE_R32 = 10,
@@ -328,7 +329,7 @@ enum {
     TYPE_PARTIAL_STRUCT_LAYOUT = 22,
     TYPE_STR = 23,
     TYPE_STR_BUFFER = 24,
-    TYPE_STR_LIT = 25,
+    TYPE_EVAL_STR = 25,
     TYPE_NEVER = 26,
     TYPE_INFER = 27,
     TYPE_DEPENDENT = 28,
@@ -452,8 +453,8 @@ typedef struct Map {
 } Map;
 
 typedef struct String {
-    u64 buf;
-    u64 ptr;
+    void* buf;
+    u8* ptr;
     u64 len;
 } String;
 
@@ -480,6 +481,24 @@ typedef struct ObjectHeader {
     u32 rc;
 } ObjectHeader;
 
+typedef struct Slice {
+    u64 buf;
+    void* ptr;
+    u64 len;
+    u64 header;
+} Slice;
+
+typedef struct Generator {
+    Value* frame_ptr;
+    u32 frame_len;
+    Inst* resume_pc;
+    Inst* deinit_pc;
+    Value* prev_fp;
+    bool running;
+    bool done;
+} Generator;
+
+// Unused members are declared for debugging.
 typedef union HeapObject {
     Object object;
     Trait trait;
@@ -492,6 +511,8 @@ typedef union HeapObject {
     Pointer pointer;
     Int integer;
     String string;
+    Slice slice;
+    Generator generator;
 } HeapObject;
 
 typedef struct ZSlice {
@@ -544,11 +565,12 @@ typedef struct ZList {
 #define TYPE_KIND_GENERIC_VECTOR 22
 #define TYPE_KIND_NEVER 23
 #define TYPE_KIND_CVARIADIC 24
-#define TYPE_KIND_INT_LIT 25
+#define TYPE_KIND_EVAL_INT 25
 #define TYPE_KIND_CUNION 26
 #define TYPE_KIND_PARTIAL_VECTOR 27
 #define TYPE_KIND_EXBORROW 28
 #define TYPE_KIND_DYN_TRAIT 29
+#define TYPE_KIND_EVAL_REF 30
 
 typedef struct TypeBase {
     u8 kind;
@@ -665,13 +687,10 @@ typedef enum {
 
 typedef struct FuncSymbol {
     u8 type;
-    u8 nparams;
-    u32 sig;
     union {
         void* host_func;
         struct {
-            u32 pc;
-            u16 stackSize;
+            void* pc;
         } func;
     } data;
 } FuncSymbol;
@@ -697,6 +716,7 @@ typedef struct TypeInfo {
     size_t name_len;
 } TypeInfo;
 
+typedef struct ZVM ZVM;
 typedef struct VM {
     // Not protected for incremental compilation.
     Const* consts_ptr;
@@ -709,7 +729,10 @@ typedef struct VM {
     size_t types_len;
 } VM;
 
+typedef struct ZThread ZThread;
 typedef struct Heap {
+    ZVM* vm;
+    ZThread* thread;
     // Used to record the current context when tracing object allocations/frees.
     // e.g. The current PC for the VM.
     // The VM updates this before each instruction is interpreted.
@@ -721,14 +744,15 @@ typedef struct Heap {
 
     u64 trace_event;
     u64 trace_panic_at_event;
+    u64 trace_track_object_event;
 } Heap;
 
 typedef struct ZHeap {
+#if !defined(__wasm__)
     u64 padding[14];
+#endif
     Heap c;
 } ZHeap;
-
-typedef struct ZVM ZVM;
 
 typedef struct Thread {
     size_t id;
@@ -766,7 +790,9 @@ typedef struct Thread {
 } Thread;
 
 typedef struct ZThread {
+#if !defined(__wasm__)
     u8 padding[16];
+#endif
     Thread c;
     ZHeap heap;
 } ZThread;
@@ -774,23 +800,15 @@ typedef struct ZThread {
 extern __thread ZThread* cur_thread;
 
 typedef struct ZVM {
-#if !(DEBUG) || defined(__linux__)
+#if defined(__wasm__)
+    u8 padding[184];
+#elif !(DEBUG) || defined(__linux__)
     u8 padding[456];
 #else
     u8 padding[464];
 #endif
     VM c;
 } ZVM;
-
-typedef struct Generator {
-    Value* frame_ptr;
-    u32 frame_len;
-    Inst* resume_pc;
-    Inst* deinit_pc;
-    Value* prev_fp;
-    bool running;
-    bool done;
-} Generator;
 
 typedef struct Fiber {
     struct Fiber* prevFiber;
@@ -898,11 +916,14 @@ void z_log(ZThread* t, const char* msg, size_t len);
 bool zCheckDoubleFree(ZThread* t, HeapObject* obj);
 bool zCheckRetainDanglingPointer(ZThread* t, HeapObject* obj);
 void z_panic_unexpected_choice(ZThread* t, int64_t exp, int64_t act);
-void zFree(ZThread* t, Str bytes);
-Str zGetTypeName(ZVM* vm, TypeId id);
+void zFree(ZThread* t, Bytes bytes);
+Bytes zGetTypeName(ZVM* vm, TypeId id);
 ResultCode zEnsureListCap(ZVM* vm, ZList* list, size_t cap);
 void zTraceRetain(ZVM* vm, Value v);
 ValueResult zCopyStruct(ZVM* vm, HeapObject* obj);
-void zPrintTraceAtPc(ZThread* t, u32 debugPc, Str title, Str msg);
+void zPrintTraceAtPc(ZThread* t, u32 debugPc, Bytes title, Bytes msg);
+void z_dump_stack_trace(ZThread* t);
 void zDumpObjectTrace(ZThread* t, HeapObject* obj);
 void* zGetExternFunc(ZVM* vm, u32 func);
+size_t z_write_ptr(Bytes buf, void* ptr);
+size_t z_write_u64(Bytes buf, u64 x);

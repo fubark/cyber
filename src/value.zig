@@ -65,7 +65,7 @@ pub const Value = packed union {
     /// Returned from native funcs.
     pub const Interrupt = Value{ .val = ErrorMask | (@as(u32, 0xFF) << 8) | std.math.maxInt(u8) };
 
-    pub inline fn as_int_lit(self: *const Value) i64 {
+    pub inline fn as_eval_int(self: *const Value) i64 {
         return @bitCast(self.val);
     }
 
@@ -79,6 +79,16 @@ pub const Value = packed union {
 
     pub inline fn asUint(self: *const Value) u64 {
         return self.val;
+    }
+
+    pub inline fn as_raw_lit(self: *const Value, bits: usize) u64 {
+        switch (bits) {
+            8 => return self.asByte(),
+            16 => return self.asU16(),
+            32 => return self.asU32(),
+            64 => return self.asUint(),
+            else => @panic("unexpected"),
+        }
     }
 
     pub inline fn asRefByte(self: *const Value) u8 {
@@ -118,12 +128,12 @@ pub const Value = packed union {
     }
 
     pub inline fn asPtr(self: *const Value, comptime Ptr: type) Ptr {
-        return @ptrFromInt(self.val);
+        // NOTE: Access `ptr` since the upper bits may be undefined for 32-bit pointers.
+        return @ptrCast(@alignCast(self.ptr));
     }
 
     pub inline fn asAnyPtr(self: *const Value) ?*anyopaque {
-        const addr: usize = @intCast(self.val);
-        return @ptrFromInt(addr);
+        return @ptrCast(self.ptr);
     }
 
     pub inline fn asF64toI32(self: *const Value) i32 {
@@ -178,8 +188,8 @@ pub const Value = packed union {
         return @bitCast(self.asHeapObject().integer.val);
     }
 
-    pub fn as_str_lit(val: Value) []const u8 {
-        return val.asPtr(*cy.heap.StrLit).slice();
+    pub fn as_eval_str(val: Value) []const u8 {
+        return val.asPtr(*cy.heap.EvalStr).slice();
     }
 
     pub fn asString(val: Value) []const u8 {
@@ -248,15 +258,12 @@ pub const Value = packed union {
     }
 
     pub inline fn asHeapObject(self: *const Value) *cy.HeapObject {
-        return @ptrFromInt(self.val);
+        // NOTE: Access `ptr` since the upper bits may be undefined for 32-bit pointers.
+        return @ptrCast(@alignCast(self.ptr));
     }
 
     pub inline fn asBytes(self: *const Value) [*]u8 {
-        return @ptrFromInt(self.val);
-    }
-
-    pub inline fn asValues(self: *const Value) [*]Value {
-        return @ptrFromInt(self.val);
+        return @ptrCast(self.ptr);
     }
 
     pub inline fn asBool(self: *const Value) bool {
@@ -463,4 +470,8 @@ pub fn Option(T: type) type {
             };
         }
     };
+}
+
+pub fn ones(bits: usize) u64 {
+    return if (bits == 64) std.math.maxInt(u64) else (@as(u64, 1) << @intCast(bits)) - 1;
 }

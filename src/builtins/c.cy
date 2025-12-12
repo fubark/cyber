@@ -5,17 +5,17 @@
 --| Declares that the extern declarations in the current source file is to be binded at runtime
 --| to a dynamic library. When `path == none`, the symbols will be searched from the host exe.
 #[bind]
-#fn bind_lib(path ?str)
+#fn bind_lib(path ?EvalStr)
 
 #[bind]
-#fn flag(s str) -> void
+#fn flag(s EvalStr) -> void
 
 --| Returns a `str` from a null terminated C string.
 #[bind]
 fn from_strz(ptr Ptr[byte]) -> str
 
 #[bind]
-#fn include(spec str) -> void
+#fn include(spec EvalStr) -> void
 
 --| Returns an allocated null terminated C string.
 #[bind]

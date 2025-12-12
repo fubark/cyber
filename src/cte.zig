@@ -139,23 +139,15 @@ pub fn switchStmt(c: *cy.Chunk, switch_stmt: *ast.SwitchBlock, req_ct_case: bool
                             return c.reportErrorFmt("Expected valid case.", &.{}, @ptrCast(cond));
                         };
                         if (tag == choice_case.val) {
+                            const local_start = push_ct_block(c);
+
                             if (case.data.case.capture) |capture| {
                                 if (capture.type() != .ident) {
                                     return c.reportErrorFmt("Expected variable identifier.", &.{}, @ptrCast(capture));
                                 }
-                                const ctx = sema.getResolveContext(c);
                                 const capturev = try c.heap.unwrapChoice(control.type, control.value, case_name);
-                                try ctx.initCtParam2(c.alloc, capture.name(), choice_case.payload_t, capturev);
+                                try localDecl2(c, capture.name(), choice_case.payload_t, capturev);
                             }
-                            defer {
-                                if (case.data.case.capture) |capture| {
-                                    const ctx = sema.getResolveContext(c);
-                                    const capturev = ctx.ct_params.fetchRemove(capture.name()).?.value;
-                                    c.heap.destructValue2(capturev.getType(), capturev.value);
-                                }
-                            }
-
-                            const local_start = push_ct_block(c);
 
                             try cb(c, case, data, opt_target);
 
@@ -487,6 +479,7 @@ fn eval_assign(c: *cy.Chunk, left_n: *ast.Node, right_n: *ast.Node, op_opt: ?ast
 }
 
 fn evalStmt(c: *cy.Chunk, ctx: EvalContext, stmt: *ast.Node) !EvalStmtResult {
+    log.tracev("evalStmt {}", .{stmt.type()});
     switch (stmt.type()) {
         .op_assign_stmt => {
             const assign_stmt = stmt.cast(.op_assign_stmt);
@@ -584,17 +577,28 @@ pub fn evalCheck(c: *cy.Chunk, node: *ast.Node, target_t: *cy.Type) anyerror!Typ
     return exprToValue(c, res, node);
 }
 
+pub fn eval_check_template(c: *cy.Chunk, node: *ast.Node, template: *cy.sym.Template) anyerror!TypeValue {
+    const expr = try evalExpr(c, node, ExprCstr.initInfer());
+    const value = try exprToValue(c, expr, node);
+    if (!value.type.isInstanceOf(template)) {
+        const type_name = try c.sema.allocTypeName(value.type);
+        defer c.alloc.free(type_name);
+        return c.reportErrorFmt("Expected type instance of `{}`, found `{}`.", &.{v(template.head.name()), v(type_name)}, node);
+    }
+    return value;
+}
+
 pub fn evalCompare(c: *cy.Chunk, type_: *cy.Type, a: Value, b: Value, node: *ast.Node) !bool { 
     switch (type_.id()) {
-        bt.Str => {
-            return std.mem.eql(u8, a.asString(), b.asString());
+        bt.EvalStr => {
+            return std.mem.eql(u8, a.as_eval_str(), b.as_eval_str());
         },
         bt.Type => {
             const a_t = a.asPtr(*cy.Type);
             const b_t = b.asPtr(*cy.Type);
             return a_t == b_t;
         },
-        bt.IntLit,
+        bt.EvalInt,
         bt.I64 => {
             return a.val == b.val;
         },
@@ -669,6 +673,7 @@ fn evalCallExpr(c: *cy.Chunk, call: *ast.CallExpr) !Expr {
             },
         }
     } else if (call.callee.type() == .ident or call.callee.type() == .at_lit) {
+
         const name = call.callee.name();
 
         const callee = try sema.lookupStaticIdent(c, name, node) orelse {
@@ -784,37 +789,29 @@ pub const CallCstr = struct {
     req_value: bool,
 };
 
-pub fn evalCall(c: *cy.Chunk, func: *cy.Func, args: []const Value, cstr: CallCstr, node: *ast.Node) !sema.ExprResult {
+pub fn evalCall(c: *cy.Chunk, func: *cy.Func, args: []const Value, node: *ast.Node) !sema.ExprResult {
+    log.tracev("evalCall: {s}", .{func.name()});
     switch (func.type) {
-        .host_ct => {
-            const ctx = cy.CtFuncContext{
+        .host_const_eval => {
+            const ctx = cy.ConstEvalContext{
                 .func = func, 
                 .args = args.ptr,
                 .node = node,
             };
 
-            if (!cstr.req_value) {
-                if (func.data.host_ct.ptr) |ptr| {
-                    var res: sema.ExprResult = undefined;
-                    if (!ptr(c, &ctx, &res)) {
-                        return error.CompileError;
-                    }
-                    return res;
-                }
-            }
-
-            const eval_ptr = func.data.host_ct.eval orelse {
-                return c.reportErrorFmt("Inline eval unsupported for `{}.{}`.", &.{v(func.parent_mod_sym().name()), v(func.name())}, node);
-            };
-            const res = eval_ptr(c, &ctx);
+            const res = func.data.host_const_eval.ptr(c, &ctx);
             if (res.type.id() == bt.Null) {
                 return error.CompileError;
             }
+            try sema_type.ensure_eval_eligible_type(c, res.type, node);
             return sema.ExprResult.initCtValue(res);
+        },
+        .host_builtin => {
+            @panic("unexpected");
         },
         .hostFunc => {
             if (func.data.hostFunc.eval) |eval_ptr| {
-                const ctx = cy.CtFuncContext{
+                const ctx = cy.ConstEvalContext{
                     .func = func, 
                     .args = args.ptr,
                     .node = node,
@@ -828,7 +825,7 @@ pub fn evalCall(c: *cy.Chunk, func: *cy.Func, args: []const Value, cstr: CallCst
         },
         .userFunc => {
             if (func.data.userFunc.eval) |eval_ptr| {
-                const ctx = cy.CtFuncContext{
+                const ctx = cy.ConstEvalContext{
                     .func = func, 
                     .args = args.ptr,
                     .node = node,
@@ -1065,38 +1062,24 @@ pub fn eval_type2(c: *cy.Chunk, resolve_new_type: bool, node: *ast.Node) !*cy.Ty
     return cte.deriveCtExprType(c, res, node);
 }
 
+// Borrows `tval`.
 pub fn evalFitTarget(c: *cy.Chunk, tval: TypeValue, target_t: *cy.Type, node: *ast.Node) !?Value {
     _ = node;
     if (target_t.kind() == .option) {
         const option = target_t.cast(.option);
         if (option.child_t.id() == tval.type.id()) {
-            return try c.heap.newSome(option, tval.value);
+            const copy = try c.heap.copy_value(tval);
+            return try c.heap.newSome(option, copy.value);
         }
     }
 
     if (target_t.id() == bt.I64) {
-        if (tval.type.id() == bt.IntLit) {
-            return Value.initInt(tval.value.as_int_lit());
+        if (tval.type.id() == bt.EvalInt) {
+            return Value.initInt(tval.value.as_eval_int());
         }
     }
 
-    if (target_t.id() == bt.StrLit) {
-        if (tval.type.id() == bt.Str) {
-            const s = tval.value.asString();
-            defer c.heap.release(tval.value);
-            return try c.heap.newGenericStr(s);
-        }
-    }
-
-    if (target_t.id() == bt.Str) {
-        if (tval.type.id() == bt.StrLit) {
-            const s = tval.value.as_str_lit();
-            defer c.heap.release(tval.value);
-            return try c.heap.newStr(s);
-        }
-    }
-
-    if (target_t.id() == bt.IntLit) {
+    if (target_t.id() == bt.EvalInt) {
         if (tval.type.id() == bt.I64) {
             return Value.initGenericInt(tval.value.asInt());
         }
@@ -1106,6 +1089,18 @@ pub fn evalFitTarget(c: *cy.Chunk, tval: TypeValue, target_t: *cy.Type, node: *a
 }
 
 pub fn evalExpr(c: *cy.Chunk, node: *ast.Node, cstr: ExprCstr) anyerror!Expr {
+    if (cy.Trace) {
+        const node_str = c.encoder.formatTrunc(node);
+        log.tracev("evalExpr {}: {s} \"{s}\"", .{c.trace_eval_expr_depth, @tagName(node.type()), node_str});
+        c.trace_eval_expr_depth += 1;
+    }
+    defer {
+        if (cy.Trace) {
+            c.trace_eval_expr_depth -= 1;
+            log.tracev("evalExpr {}: end", .{c.trace_eval_expr_depth});
+        }
+    }
+
     const res = try evalExprNoCheck(c, node, cstr);
     if (!cstr.fit_target and !cstr.check) {
         return res;
@@ -1142,6 +1137,7 @@ pub fn evalExpr(c: *cy.Chunk, node: *ast.Node, cstr: ExprCstr) anyerror!Expr {
 
     if (cstr.fit_target) {
         if (try evalFitTarget(c, res_val, target_t, node)) |new| {
+            c.heap.destructValue(res_val);
             return Expr.initValue2(target_t, new);
         }
     }
@@ -1258,9 +1254,9 @@ pub fn evalInitStruct(c: *cy.Chunk, struct_t: *cy.types.Struct, init_lit: *ast.I
     for (0..fieldNodes.len) |i| {
         const item = c.listDataStack.items[fieldsDataStart+i];
         if (item.node == null) {
-            if (fields[i].init_n) |_| {
-                const arg = try c.heap.copyValue2(fields[i].type, fields[i].init_value);
-                try c.valueStack.append(c.alloc, arg);
+            if (fields[i].init_n) |init_n| {
+                const arg = try evalCheck(c, init_n, fields[i].type);
+                try c.valueStack.append(c.alloc, arg.value);
             } else {
                 if (!struct_t.cstruct) {
                     return c.reportErrorFmt("Initialization requires the field `{}`.", &.{v(struct_t.fields_ptr[i].sym.head.name())}, node);
@@ -1363,6 +1359,21 @@ pub fn evalExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: ExprCstr) anyerror!E
                     }
                 }
             }
+            if (target_t.isPointer()) {
+                if (expr.type.kind() == .int) {
+                    try sema_type.ensure_resolved_type(c, target_t, node);
+                    const src_bits = expr.type.cast(.int).bits;
+                    if (src_bits == target_t.size() * 8) {
+                        return Expr.initValue2(target_t, expr.value);
+                    } else if (src_bits > target_t.size() * 8) {
+                        const src = expr.value.as_raw_lit(src_bits);
+                        if (src > cy.value.ones(target_t.size() * 8)) {
+                            return c.reportError("Loss of bits when casting integer to pointer.", node);
+                        }
+                        return Expr.initValue2(target_t, Value.initRaw(src));
+                    }
+                }
+            }
             return c.reportError("Unsupported auto cast.", node);
         },
         .if_expr => {
@@ -1403,6 +1414,10 @@ pub fn evalExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: ExprCstr) anyerror!E
             const sym = try evalSym(c, init_expr.left);
             switch (sym.type) {
                 .type => {
+                    const type_ = sym.cast(.type).type;
+
+                    try sema_type.ensure_eval_eligible_type(c, type_, node);
+
                     if (init_expr.lit.array_like) {
                         if (try c.getResolvedSym(sym, "@init_sequence", node)) |init_elems| {
                             _ = init_elems;
@@ -1412,7 +1427,6 @@ pub fn evalExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: ExprCstr) anyerror!E
                         }
                     } 
 
-                    const type_ = sym.cast(.type).type;
                     switch (type_.kind()) {
                         .partial_vector => {
                             return initPartialVector(c, type_.cast(.partial_vector), init_expr.lit);
@@ -1442,6 +1456,8 @@ pub fn evalExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: ExprCstr) anyerror!E
             const init_lit = node.cast(.init_lit);
 
             if (opt_target) |target_t| {
+                try sema_type.ensure_eval_eligible_type(c, target_t, node);
+
                 if (target_t.kind() == .struct_t) {
                     if (init_lit.args.len == 0) {
                         // TODO: Replace special cases with calls to @init_sequence, @init_record.
@@ -1942,7 +1958,7 @@ pub fn evalExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: ExprCstr) anyerror!E
         },
         .struct_decl => {
             // Unnamed struct.
-            const sym: *cy.Sym = @ptrCast(node.cast(.struct_decl).name);
+            const sym: *cy.Sym = @ptrCast(@alignCast(node.cast(.struct_decl).name));
             return Expr.initSym(sym);
         },
         .unary_expr => {
@@ -2011,6 +2027,34 @@ fn eval_un_expr(c: *cy.Chunk, opt_target: ?*cy.Type, unary: *ast.Unary) !Expr {
             const child = try eval(c, unary.child);
             defer c.heap.destructValue(child);
 
+            switch (child.type.id()) {
+                bt.F32 => {
+                    const res = cy.TypeValue.init(c.sema.f32_t, Value.initFloat32(-child.value.asF32()));
+                    return Expr.initValue(res);
+                },
+                bt.F64 => {
+                    const res = cy.TypeValue.init(c.sema.f64_t, Value.initFloat64(-child.value.asF64()));
+                    return Expr.initValue(res);
+                },
+                bt.I64 => {
+                    const res = cy.TypeValue.init(c.sema.i64_t, Value.initInt(-child.value.asInt()));
+                    return Expr.initValue(res);
+                },
+                bt.I32 => {
+                    const res = cy.TypeValue.init(c.sema.i32_t, Value.initInt32(-child.value.asI32()));
+                    return Expr.initValue(res);
+                },
+                bt.I16 => {
+                    const res = cy.TypeValue.init(c.sema.i16_t, Value.initInt16(-child.value.asI16()));
+                    return Expr.initValue(res);
+                },
+                bt.I8 => {
+                    const res = cy.TypeValue.init(c.sema.i8_t, Value.initInt8(-child.value.asI8()));
+                    return Expr.initValue(res);
+                },
+                else => {},
+            }
+
             const arg = cy.sema_func.Argument.initPreResolved(unary.child, sema.ExprResult.initCtValue(child));
 
             // Look for sym under child type's module.
@@ -2024,9 +2068,16 @@ fn eval_un_expr(c: *cy.Chunk, opt_target: ?*cy.Type, unary: *ast.Unary) !Expr {
             const child = try eval(c, unary.child);
             defer c.heap.destructValue(child);
 
-            if (child.type.id() == bt.Type) {
-                const sym = try cy.template.expand_template(c, c.sema.result_tmpl, &.{c.sema.type_t}, &.{child.value});
-                return Expr.initSym(sym);
+            switch (child.type.id()) {
+                bt.Type => {
+                    const sym = try cy.template.expand_template(c, c.sema.result_tmpl, &.{c.sema.type_t}, &.{child.value});
+                    return Expr.initSym(sym);
+                },
+                bt.Bool => {
+                    const res = cy.TypeValue.init(c.sema.bool_t, Value.initBool(!child.value.asBool()));
+                    return Expr.initValue(res);
+                },
+                else => {},
             }
 
             const arg = cy.sema_func.Argument.initPreResolved(unary.child, sema.ExprResult.initCtValue(child));
@@ -2040,6 +2091,21 @@ fn eval_un_expr(c: *cy.Chunk, opt_target: ?*cy.Type, unary: *ast.Unary) !Expr {
             const child = try evalTarget(c, unary.child, opt_target);
             defer c.heap.destructValue(child);
 
+            switch (child.type.id()) {
+                bt.R8,
+                bt.R16,
+                bt.R32,
+                bt.R64,
+                bt.I8,
+                bt.I16,
+                bt.I32,
+                bt.I64 => {
+                    const res = cy.TypeValue.init(child.type, Value.initRaw(~child.value.val));
+                    return Expr.initValue(res);
+                },
+                else => {},
+            }
+
             const arg = cy.sema_func.Argument.initPreResolved(unary.child, sema.ExprResult.initCtValue(child));
 
             const childTypeSym = child.type.sym();
@@ -2051,6 +2117,276 @@ fn eval_un_expr(c: *cy.Chunk, opt_target: ?*cy.Type, unary: *ast.Unary) !Expr {
         else => {},
     }
     return c.reportErrorFmt("Unsupported compile-time expression: `{}`", &.{v(node.type())}, node);
+}
+
+fn eval_bin_expr2(c: *cy.Chunk, left: cy.TypeValue, left_n: *ast.Node, right: cy.TypeValue, right_n: *ast.Node, op: cy.BinaryExprOp, node: *ast.Node) !TypeValue {
+    switch (left.type.id()) {
+        bt.F64 => {
+            switch (op) {
+                .star => {
+                    const left_v = left.value.asF64();
+                    const right_v = right.value.asF64();
+                    return cy.TypeValue.init(c.sema.f64_t, Value.initFloat64(left_v * right_v));
+                },
+                else => {
+                    return c.reportErrorFmt("Unsupported inline eval: {}", &.{v(op)}, node);
+                },
+            }
+        },
+        bt.F32 => {
+            switch (op) {
+                .star => {
+                    const left_v = left.value.asF32();
+                    const right_v = right.value.asF32();
+                    return cy.TypeValue.init(c.sema.f32_t, Value.initFloat32(left_v * right_v));
+                },
+                else => {
+                    return c.reportErrorFmt("Unsupported inline eval: {}", &.{v(op)}, node);
+                },
+            }
+        },
+        bt.R64 => {
+            switch (op) {
+                .plus => {
+                    const left_v = left.value.asUint();
+                    const right_v = right.value.asUint();
+                    return cy.TypeValue.init(left.type, Value.initR64(left_v +% right_v));
+                },
+                .minus => {
+                    const left_v = left.value.asUint();
+                    const right_v = right.value.asUint();
+                    return cy.TypeValue.init(left.type, Value.initR64(left_v -% right_v));
+                },
+                .star => {
+                    const left_v = left.value.asUint();
+                    const right_v = right.value.asUint();
+                    return cy.TypeValue.init(left.type, Value.initR64(left_v *% right_v));
+                },
+                .bitwiseRightShift => {
+                    const left_v = left.value.asUint();
+                    const right_v = right.value.asUint();
+                    return cy.TypeValue.init(left.type, Value.initR64(left_v >> @intCast(right_v)));
+                },
+                .bitwiseLeftShift => {
+                    const left_v = left.value.asUint();
+                    const right_v = right.value.asUint();
+                    return cy.TypeValue.init(left.type, Value.initR64(left_v << @intCast(right_v)));
+                },
+                .less_equal => {
+                    const left_v = left.value.asUint();
+                    const right_v = right.value.asUint();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v <= right_v));
+                },
+                .less => {
+                    const left_v = left.value.asUint();
+                    const right_v = right.value.asUint();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v < right_v));
+                },
+                .greater_equal => {
+                    const left_v = left.value.asUint();
+                    const right_v = right.value.asUint();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v >= right_v));
+                },
+                .greater => {
+                    const left_v = left.value.asUint();
+                    const right_v = right.value.asUint();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v > right_v));
+                },
+                else => {
+                    return c.reportErrorFmt("Unsupported inline eval: {}", &.{v(op)}, node);
+                },
+            }
+        },
+        bt.R8 => {
+            switch (op) {
+                .less_equal => {
+                    const left_v = left.value.asU8();
+                    const right_v = right.value.asU8();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v <= right_v));
+                },
+                .less => {
+                    const left_v = left.value.asU8();
+                    const right_v = right.value.asU8();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v < right_v));
+                },
+                .greater_equal => {
+                    const left_v = left.value.asU8();
+                    const right_v = right.value.asU8();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v >= right_v));
+                },
+                .greater => {
+                    const left_v = left.value.asU8();
+                    const right_v = right.value.asU8();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v > right_v));
+                },
+                else => {
+                    return c.reportErrorFmt("Unsupported inline eval: {}", &.{v(op)}, node);
+                },
+            }
+        },
+        bt.R16 => {
+            switch (op) {
+                .less_equal => {
+                    const left_v = left.value.asU16();
+                    const right_v = right.value.asU16();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v <= right_v));
+                },
+                .less => {
+                    const left_v = left.value.asU16();
+                    const right_v = right.value.asU16();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v < right_v));
+                },
+                .greater_equal => {
+                    const left_v = left.value.asU16();
+                    const right_v = right.value.asU16();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v >= right_v));
+                },
+                .greater => {
+                    const left_v = left.value.asU16();
+                    const right_v = right.value.asU16();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v > right_v));
+                },
+                else => {
+                    return c.reportErrorFmt("Unsupported inline eval: {}", &.{v(op)}, node);
+                },
+            }
+        },
+        bt.R32 => {
+            switch (op) {
+                .less_equal => {
+                    const left_v = left.value.asU32();
+                    const right_v = right.value.asU32();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v <= right_v));
+                },
+                .less => {
+                    const left_v = left.value.asU32();
+                    const right_v = right.value.asU32();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v < right_v));
+                },
+                .greater_equal => {
+                    const left_v = left.value.asU32();
+                    const right_v = right.value.asU32();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v >= right_v));
+                },
+                .greater => {
+                    const left_v = left.value.asU32();
+                    const right_v = right.value.asU32();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v > right_v));
+                },
+                else => {
+                    return c.reportErrorFmt("Unsupported inline eval: {}", &.{v(op)}, node);
+                },
+            }
+        },
+        bt.I8 => {
+            switch (op) {
+                .greater => {
+                    const left_v = left.value.asI8();
+                    const right_v = right.value.asI8();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v > right_v));
+                },
+                .less => {
+                    const left_v = left.value.asI8();
+                    const right_v = right.value.asI8();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v < right_v));
+                },
+                else => {
+                    return c.reportErrorFmt("Unsupported inline eval: {}", &.{v(op)}, node);
+                },
+            }
+        },
+        bt.I16 => {
+            switch (op) {
+                .greater => {
+                    const left_v = left.value.asI16();
+                    const right_v = right.value.asI16();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v > right_v));
+                },
+                .less => {
+                    const left_v = left.value.asI16();
+                    const right_v = right.value.asI16();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v < right_v));
+                },
+                else => {
+                    return c.reportErrorFmt("Unsupported inline eval: {}", &.{v(op)}, node);
+                },
+            }
+        },
+        bt.I32 => {
+            switch (op) {
+                .greater => {
+                    const left_v = left.value.asI32();
+                    const right_v = right.value.asI32();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v > right_v));
+                },
+                .less => {
+                    const left_v = left.value.asI32();
+                    const right_v = right.value.asI32();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v < right_v));
+                },
+                else => {
+                    return c.reportErrorFmt("Unsupported inline eval: {}", &.{v(op)}, node);
+                },
+            }
+        },
+        bt.I64 => {
+            switch (op) {
+                .plus => {
+                    const left_v = left.value.asUint();
+                    const right_v = right.value.asUint();
+                    return cy.TypeValue.init(left.type, Value.initR64(left_v +% right_v));
+                },
+                .minus => {
+                    const left_v = left.value.asUint();
+                    const right_v = right.value.asUint();
+                    return cy.TypeValue.init(left.type, Value.initR64(left_v -% right_v));
+                },
+                .star => {
+                    const left_v = left.value.asInt();
+                    const right_v = right.value.asInt();
+                    return cy.TypeValue.init(left.type, Value.initInt(left_v *% right_v));
+                },
+                .slash => {
+                    const left_v = left.value.asInt();
+                    const right_v = right.value.asInt();
+                    return cy.TypeValue.init(left.type, Value.initInt(@divTrunc(left_v, right_v)));
+                },
+                .greater => {
+                    const left_v = left.value.asInt();
+                    const right_v = right.value.asInt();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v > right_v));
+                },
+                .less => {
+                    const left_v = left.value.asInt();
+                    const right_v = right.value.asInt();
+                    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(left_v < right_v));
+                },
+                .bitwiseRightShift => {
+                    const left_v = left.value.asUint();
+                    const right_v = right.value.asUint();
+                    return cy.TypeValue.init(left.type, Value.initR64(left_v >> @intCast(right_v)));
+                },
+                .bitwiseLeftShift => {
+                    const left_v = left.value.asUint();
+                    const right_v = right.value.asUint();
+                    return cy.TypeValue.init(left.type, Value.initR64(left_v << @intCast(right_v)));
+                },
+                else => {
+                    return c.reportErrorFmt("Unsupported inline eval: {}", &.{v(op)}, node);
+                }
+            }
+        },
+        else => {
+            const leftTypeSym = left.type.sym();
+            const sym = try c.getResolvedSymOrFail(@ptrCast(leftTypeSym), op.name(), node);
+            const func_sym = try sema.requireFuncSym(c, sym, node);
+            const args = [_]sema_func.Argument{
+                sema_func.Argument.initReceiver(left_n, sema.ExprResult.initCtValue(left)),
+                sema_func.Argument.initPreResolved(right_n, sema.ExprResult.initCtValue(right)),
+            };
+            return callFuncSym(c, func_sym, &args, &.{}, node);
+        },
+    }
 }
 
 fn eval_bin_expr(c: *cy.Chunk, left_n: *ast.Node, op: ast.BinaryExprOp, right_n: *ast.Node, node: *ast.Node) !TypeValue {
@@ -2077,29 +2413,28 @@ fn eval_bin_expr(c: *cy.Chunk, left_n: *ast.Node, op: ast.BinaryExprOp, right_n:
         .slash,
         .pow,
         .less,
+        .less_equal,
         .greater,
+        .greater_equal,
         .bitwiseLeftShift,
         .plus,
-        .minus => {
+        .minus => {        
             switch (left_n.type()) {
                 .floatLit => {
                     // Infer type from right.
                     const right = try eval(c, right_n);
                     const left = try evalHint(c, left_n, right.type);
-
-                    const leftTypeSym = left.type.sym();
-                    const sym = try c.getResolvedSymOrFail(@ptrCast(leftTypeSym), op.name(), node);
-                    const func_sym = try sema.requireFuncSym(c, sym, node);
-                    const args = [_]sema_func.Argument{
-                        sema_func.Argument.initReceiver(left_n, sema.ExprResult.initCtValue(left)),
-                        sema_func.Argument.initPreResolved(right_n, sema.ExprResult.initCtValue(right)),
-                    };
-                    return callFuncSym(c, func_sym, &args, &.{}, node);
+                    return eval_bin_expr2(c, left, left_n, right, right_n, op, node);
                 },
                 else => {},
             }
             const left = try eval(c, left_n);
             defer c.heap.destructValue(left);
+            if (left.type.kind() == .int or left.type.kind() == .raw or left.type.kind() == .float) {
+                const right = try evalCheck(c, right_n, left.type);
+                defer c.heap.destructValue(right);
+                return eval_bin_expr2(c, left, left_n, right, right_n, op, node);
+            }
 
             const leftTypeSym = left.type.sym();
             const sym = try c.getResolvedSymOrFail(@ptrCast(leftTypeSym), op.name(), node);
@@ -2128,12 +2463,6 @@ fn eval_bin_expr(c: *cy.Chunk, left_n: *ast.Node, op: ast.BinaryExprOp, right_n:
 
 fn evalStringLiteral(c: *cy.Chunk, str: []const u8, opt_target: ?*cy.Type) !Expr {
     if (opt_target) |target_t| {
-        if (target_t.id() == bt.StrLit) {
-            return Expr.initValue(.{
-                .type = c.sema.str_lit_t,
-                .value = try c.heap.newGenericStr(str),
-            });
-        }
         // if (target_t.isPointer()) {
         //     const target_ptr = target_t.cast(.pointer);
         //     if (target_ptr.child_t.id() == bt.R8 or target_ptr.child_t.id() == bt.I8) {
@@ -2144,10 +2473,10 @@ fn evalStringLiteral(c: *cy.Chunk, str: []const u8, opt_target: ?*cy.Type) !Expr
         //     }
         // }
 
-        if (target_t.id() == bt.IntLit) {
+        if (target_t.id() == bt.EvalInt) {
             if (try sema.semaTryStringLitCodepoint(c, str, 64)) |val| {
                 return Expr.initValue(.{
-                    .type = c.sema.int_lit_t,
+                    .type = c.sema.eval_int_t,
                     .value = val,
                 });
             }
@@ -2171,8 +2500,8 @@ fn evalStringLiteral(c: *cy.Chunk, str: []const u8, opt_target: ?*cy.Type) !Expr
     }
 
     return Expr.initValue(.{
-        .type = c.sema.str_t,
-        .value = try c.heap.newStr(str),
+        .type = c.sema.eval_str_t,
+        .value = try c.heap.init_eval_str(str),
     });
 }
 
@@ -2359,10 +2688,10 @@ fn evalSignedLiteral(c: *cy.Chunk, literal: []const u8, target_t: *cy.Type, base
                 .value = Value.initInt32(val),
             });
         },
-        bt.IntLit => {
+        bt.EvalInt => {
             const val = try sema.semaParseInt(c, u64, literal, base, node);
             return Expr.initValue(.{
-                .type = c.sema.int_lit_t,
+                .type = c.sema.eval_int_t,
                 .value = Value.initGenericInt(@bitCast(val)),
             });
         },
@@ -2437,10 +2766,10 @@ fn evalUnsignedLiteral(c: *cy.Chunk, literal: []const u8, target_t: *cy.Type, ba
                 .value = Value.initR32(val),
             });
         },
-        bt.IntLit => {
+        bt.EvalInt => {
             const val = try sema.semaParseInt(c, u64, literal, base, node);
             return Expr.initValue(.{
-                .type = c.sema.int_lit_t,
+                .type = c.sema.eval_int_t,
                 .value = Value.initGenericInt(@bitCast(val)),
             });
         },

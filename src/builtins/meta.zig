@@ -6,14 +6,18 @@ const C = @import("../capi.zig");
 const bt = cy.types.BuiltinTypes;
 const zErrFunc = cy.core.zErrFunc;
 const cFunc = cy.core.cFunc;
-const zErrCtFunc = cy.core.zErrCtFunc;
+const zErrConstEvalFunc = cy.core.zErrConstEvalFunc;
+const zErrBuiltinFunc = cy.core.zErrBuiltinFunc;
 const sema = cy.sema;
 const sema_type = cy.sema_type;
 const ir = cy.ir;
 const v = cy.fmt.v;
 const ast = cy.ast;
+const cte = cy.cte;
 const Value = cy.Value;
 const TypeValue = cy.TypeValue;
+const is_wasm = builtin.cpu.arch.isWasm();
+const is_wasm_freestanding = is_wasm and builtin.os.tag == .freestanding;
 
 pub const Src = @embedFile("meta.cy");
 
@@ -23,68 +27,77 @@ const types = [_]struct{[]const u8, C.BindType}{
     .{"Code",           C.TYPE_CREATE(createCodeType)},
 
     .{"CasePayload",    C.TYPE_ALIAS(resolveCasePayload)},
-    .{"OptionChild",    C.TYPE_ALIAS(resolveOptionChild)},
-    .{"ResultChild",    C.TYPE_ALIAS(resolveResultChild)},
+
+    // #[bind]
+    // type OptionChild[OptionT Any] = _
+    // .{"OptionChild",    C.TYPE_ALIAS(resolveOptionChild)},
+
+    // #[bind]
+    // type ResultChild[Result Any] = _
+    // .{"ResultChild",    C.TYPE_ALIAS(resolveResultChild)},
 };
 
 const funcs = [_]struct{[]const u8, C.BindFunc}{
     .{"stack_trace",     zErrFunc(stack_trace)},
     .{"get_closure_data", zErrFunc(get_closure_data)},
-    .{"access",          zErrCtFunc(access, null)},
-    .{"access_result_payload", zErrCtFunc(access_result_payload, null)},
-    .{"access_result_error", zErrCtFunc(access_result_error, null)},
-    .{"access_choice_case", zErrCtFunc(access_choice_case, null)},
-    .{"access_option_payload", zErrCtFunc(access_option_payload, null)},
+    .{"access",          zErrBuiltinFunc(access, null)},
+    .{"access_result_payload", zErrBuiltinFunc(access_result_payload, null)},
+    .{"access_result_error", zErrBuiltinFunc(access_result_error, null)},
+    .{"access_choice_case", zErrBuiltinFunc(access_choice_case, null)},
+    .{"access_option_payload", zErrBuiltinFunc(access_option_payload, null)},
     .{"event",           zErrFunc(event)},
-    .{"choice_tag",      zErrCtFunc(choice_tag, choice_tag_eval)},
-    .{"init_choice",     zErrCtFunc(init_choice, null)},
-    .{"is_none",         zErrCtFunc(is_none, null)},
-    .{"is_result_error", zErrCtFunc(is_result_error, null)},
-    .{"enum_int_values", zErrCtFunc(null, enum_int_values)},
-    .{"enum_values",     zErrCtFunc(null, enum_values)},
-    .{"enum_case",       zErrCtFunc(null, enum_case)},
-    .{"eval",            zErrCtFunc(eval, null)},
-    .{"log",             zErrCtFunc(null, log_)},
-    .{"error",           zErrCtFunc(null, error_)},
-    .{"init_type",       zErrCtFunc(init_type, init_type_eval)},
-    .{"cy_full_version", zErrCtFunc(null, cy_full_version)},
-    .{"build_flag",      zErrCtFunc(null, build_flag)},
-    .{"build_option",    zErrCtFunc(null, build_option)},
-    .{"build_mode",      zErrCtFunc(null, build_mode)},
-    .{"mod_uri",         zErrCtFunc(null, mod_uri)},
-    .{"load",            zErrCtFunc(null, load_)},
-    .{"cpu",             zErrCtFunc(null, cpu)},
-    .{"system",          zErrCtFunc(null, system)},
-    .{"is_vm_target",    zErrCtFunc(null, is_vm_target)},
-    .{"is_inline_eval",  zErrCtFunc(null, is_inline_eval)},
-    .{"new_struct",      zErrCtFunc(null, new_struct)},
-    .{"endian",          zErrCtFunc(null, endian_)},
-    .{"has_decl",        zErrCtFunc(null, has_decl)},
-    .{"reachable",       zErrCtFunc(null, reachable)},
+    .{"choice_tag",      zErrBuiltinFunc(choice_tag, choice_tag_eval)},
+    .{"init_choice",     zErrBuiltinFunc(init_choice, null)},
+    .{"is_none",         zErrBuiltinFunc(is_none, null)},
+    .{"is_result_error", zErrBuiltinFunc(is_result_error, null)},
+    .{"enum_int_values", zErrConstEvalFunc(enum_int_values)},
+    .{"enum_values",     zErrConstEvalFunc(enum_values)},
+    .{"enum_case",       zErrConstEvalFunc(enum_case)},
+    .{"eval",            zErrConstEvalFunc(eval)},
+    .{"log",             zErrConstEvalFunc(log_)},
+    .{"error",           zErrConstEvalFunc(error_)},
+    .{"init_type",       zErrBuiltinFunc(init_type, init_type_eval)},
+    .{"full_version",    zErrConstEvalFunc(full_version)},
+    .{"build_flag",      zErrConstEvalFunc(build_flag)},
+    .{"build_option",    zErrConstEvalFunc(build_option)},
+    .{"build_mode",      zErrConstEvalFunc(build_mode)},
+    .{"mod_uri",         zErrConstEvalFunc(mod_uri)},
+    .{"load",            zErrConstEvalFunc(load_)},
+    .{"cpu",             zErrConstEvalFunc(cpu)},
+    .{"system",          zErrConstEvalFunc(system)},
+    .{"is_vm_target",    zErrConstEvalFunc(is_vm_target)},
+    .{"is_inline_eval",  zErrConstEvalFunc(is_inline_eval)},
+    .{"new_struct",      zErrConstEvalFunc(new_struct)},
+    .{"endian",          zErrConstEvalFunc(endian_)},
+    .{"has_decl",        zErrConstEvalFunc(has_decl)},
+    .{"reachable",       zErrConstEvalFunc(reachable)},
     .{"dump_frame",      zErrFunc(dump_frame)},
     .{"trace_retains",   cFunc(trace_retains)},
     .{"trace_releases",  cFunc(trace_releases)},
+    .{"pointer_width",   zErrConstEvalFunc(pointer_width)},
+    .{"trace_enabled",   zErrConstEvalFunc(trace_enabled)},
+    .{"enum_name_eval", zErrConstEvalFunc(enum_name_eval)},
 
     // PartialStructLayout
-    .{"PartialStructLayout.is_field_active", zErrCtFunc(null, PartialStructLayout_is_field_active)},
-    .{"PartialStructLayout.field_layout", zErrCtFunc(null, PartialStructLayout_field_layout)},
+    .{"PartialStructLayout.is_field_active", zErrConstEvalFunc(PartialStructLayout_is_field_active)},
+    .{"PartialStructLayout.field_layout", zErrConstEvalFunc(PartialStructLayout_field_layout)},
 
     // type
-    .{"type.is_instance_of", zErrCtFunc(null, type_is_instance_of)},
-    .{"type.is_copyable",  zErrCtFunc(null, type_is_copyable)},
-    .{"type.is_const",     zErrCtFunc(null, type_is_const)},
-    .{"type.implements",   zErrCtFunc(null, type_implements)},
-    .{"type.id",           zErrCtFunc(null, type_id_)},
-    .{"type.size",         zErrCtFunc(null, type_size)},
-    .{"type.of",           zErrCtFunc(null, type_of)},
-    .{"type.@init",        zErrCtFunc(null, type_init)},
-    .{"type.info",         zErrCtFunc(null, type_info)},
-    .{"type.name",         zErrCtFunc(null, type_name)},
+    .{"type.is_instance_of", zErrConstEvalFunc(type_is_instance_of)},
+    .{"type.is_copyable",  zErrConstEvalFunc(type_is_copyable)},
+    .{"type.is_const",     zErrConstEvalFunc(type_is_const)},
+    .{"type.implements",   zErrConstEvalFunc(type_implements)},
+    .{"type.id",           zErrConstEvalFunc(type_id_)},
+    .{"type.size",         zErrConstEvalFunc(type_size)},
+    .{"type.of",           zErrConstEvalFunc(type_of)},
+    .{"type.@init",        zErrConstEvalFunc(type_init)},
+    .{"type.info",         zErrConstEvalFunc(type_info)},
+    .{"type.name",         zErrConstEvalFunc(type_name)},
     .{"type.name_rt",      zErrFunc(type_name_rt)},
-    .{"type.fn_ret",       zErrCtFunc(null, type_fn_ret)},
-    .{"type.struct_state_len", zErrCtFunc(null, type_struct_state_len)},
-    .{"type.managed",      zErrCtFunc(null, type_managed)},
-    .{"type.field",        zErrCtFunc(null, type_field)},
+    .{"type.fn_ret",       zErrConstEvalFunc(type_fn_ret)},
+    .{"type.struct_state_len", zErrConstEvalFunc(type_struct_state_len)},
+    .{"type.managed",      zErrConstEvalFunc(type_managed)},
+    .{"type.field",        zErrConstEvalFunc(type_field)},
 };
 
 comptime {
@@ -165,7 +178,7 @@ fn createTypeType(vm: ?*C.VM, c_mod: ?*C.Sym, decl: ?*C.Node) callconv(.c) *C.Ty
     const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
     const c = chunk_sym.chunk;
 
-    const new_t = c.sema.createTypeWithId(.pointer, bt.Type, .{ .ref = false, .child_t = c.sema.void_t }) catch @panic("error");
+    const new_t = c.sema.createTypeWithId(.raw, bt.Type, .{ .bits = 64, .distinct = false }) catch @panic("error");
     new_t.info.ct = true;
     return @ptrCast(new_t);
 }
@@ -202,107 +215,74 @@ pub fn get_closure_data(t: *cy.Thread) !C.Ret {
     return C.RetOk;
 }
 
-pub fn access(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !void {
-    const rec_n = ctx.args[0].asPtr(*cy.ast.Node);
-    const name = ctx.args[1].asPtr(*cy.heap.Str).slice();
-    defer c.heap.release(ctx.args[1]);
+pub fn access(c: *cy.Chunk, ctx: *cy.BuiltinContext, res: *sema.ExprResult) !void {
+    const rec_n = ctx.args[0];
+    const name_res = try cte.evalCheck(c, ctx.args[1], c.sema.eval_str_t);
+    const name = name_res.value.as_eval_str();
+    defer c.heap.release(name_res.value);
     res.* = try sema.semaAccessExpr2(c, rec_n, name, ctx.node, false, null);
 }
 
-pub fn access_result_error(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !void {
-    const result_n = ctx.args[0].asPtr(*cy.ast.Node);
-    const result = try c.semaExpr(result_n, .{});
-
-    const result_t = result.type.getBaseType();
+pub fn access_result_error(c: *cy.Chunk, ctx: *cy.BuiltinContext, res: *sema.ExprResult) !void {
+    const result = try c.sema_expr_cstr_template(ctx.args[0], c.sema.result_tmpl);
 
     const field = try c.ir.newExpr(.field, c.sema.error_t, ctx.node, .{
         .idx = 1,
         .rec = result.ir,
     });
     const case = try c.ir.newExpr(.case, c.sema.error_t, ctx.node, .{
-        .union_t = result_t,
+        .union_t = result.type,
         .case = 1,
         .child = field,
     });
-    res.* = sema.ExprResult.init(case, c.sema.error_t);
-    res.addressable = true;
+    res.* = sema.ExprResult.init2(case);
+    res.addressable = result.addressable;
 }
 
-pub fn access_result_payload(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !void {
-    const result_t = ctx.func.instance.?.params[0].asPtr(*cy.Type);
-    const result_n = ctx.args[0].asPtr(*cy.ast.Node);
-    const result = try c.semaExpr(result_n, .{});
+pub fn access_result_payload(c: *cy.Chunk, ctx: *cy.BuiltinContext, res: *sema.ExprResult) !void {
+    const result = try c.sema_expr_cstr_template(ctx.args[0], c.sema.result_tmpl);
+    const result_t = result.type.cast(.result);
 
-    const field = try c.ir.newExpr(.field, ctx.func.sig.ret, ctx.node, .{
+    const field = try c.ir.newExpr(.field, result_t.child_t, ctx.node, .{
         .idx = 1,
         .rec = result.ir,
     });
-    const case = try c.ir.newExpr(.case, ctx.func.sig.ret, ctx.node, .{
-        .union_t = result_t,
+    const case = try c.ir.newExpr(.case, result_t.child_t, ctx.node, .{
+        .union_t = result.type,
         .case = 1,
         .child = field,
     });
-    res.* = sema.ExprResult.init(case, ctx.func.sig.ret);
-    res.addressable = true;
+    res.* = sema.ExprResult.init2(case);
+    res.addressable = result.addressable;
 }
 
-pub fn access_option_payload(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !void {
-    const option_t = ctx.func.instance.?.params[0].asPtr(*cy.Type);
-    const option_n = ctx.args[0].asPtr(*cy.ast.Node);
-    const option = try c.semaExpr(option_n, .{});
-
-    // Expect type or ref to type.
-    if (option.type == option_t) {
-        if (option_t.cast(.option).zero_union) {
-            res.* = try sema.semaBitcast(c, option, ctx.func.sig.ret, ctx.node);
-            return;
-        } else {
-            res.* = try sema.semaField(c, option, option_n, 1, ctx.func.sig.ret, ctx.node);
-            return;
-        }
+pub fn access_option_payload(c: *cy.Chunk, ctx: *cy.BuiltinContext, res: *sema.ExprResult) !void {
+    const option = try c.sema_expr_cstr_template(ctx.args[0], c.sema.option_tmpl);
+    const option_t = option.type.cast(.option);
+    if (option_t.zero_union) {
+        res.* = try sema.semaBitcast(c, option, option_t.child_t, ctx.node);
+        res.addressable = option.addressable;
+    } else {
+        res.* = try sema.semaField(c, option, ctx.args[0], 1, option_t.child_t, ctx.node);
     }
-
-    if (option.type.getRefLikeChild()) |child_t| {
-        if (child_t == option_t) {
-            if (option_t.cast(.option).zero_union) {
-                const ptr_t = try sema.getPtrType(c, ctx.func.sig.ret);
-                const ptr = try sema.semaBitcast(c, option, ptr_t, ctx.node);
-                res.* = try sema.semaDeref(c, ptr, ctx.node);
-                return;
-            } else {
-                res.* = try sema.semaField(c, option, option_n, 1, ctx.func.sig.ret, ctx.node);
-                return;
-            }
-        }
-    }
-
-    const name = try c.sema.allocTypeName(option_t);
-    defer c.alloc.free(name);
-    return c.reportErrorFmt("Expected `{}` or a reference type.", &.{v(name)}, ctx.node);
 }
 
-pub fn access_choice_case(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !void {
-    const choice_t = ctx.func.instance.?.params[0].asPtr(*cy.Type);
-    const choice_n = ctx.args[0].asPtr(*cy.ast.Node);
-    const choice = try c.semaExpr(choice_n, .{});
-
-    // Expect type or ref to type.
-    if (choice.type != choice_t) {
-        if (choice.type.kind() == .pointer) {
-            if (choice.type.cast(.pointer).child_t != choice_t) {
-                const name = try c.sema.allocTypeName(choice_t);
-                defer c.alloc.free(name);
-                return c.reportErrorFmt("Expected `{}` or a reference of it.", &.{v(name)}, ctx.node);
-            }
-        }
+pub fn access_choice_case(c: *cy.Chunk, ctx: *cy.BuiltinContext, res: *sema.ExprResult) !void {
+    const choice = try c.semaExpr(ctx.args[0], .{});
+    if (choice.type.kind() != .choice) {
+        const name = try c.sema.allocTypeName(choice.type);
+        defer c.alloc.free(name);
+        return c.reportErrorFmt("Expected choice type, found `{}`.", &.{v(name)}, ctx.node);
     }
-
-    const loc = try c.ir.newExpr(.field, ctx.func.sig.ret, ctx.node, .{
+    const choice_t = choice.type.cast(.choice);
+    const tag = try cte.evalCheck(c, ctx.args[1], choice_t.tag_t);
+    const payload_t = choice.type.cast(.choice).getCaseByTag(@intCast(tag.value.asInt())).payload_t;
+    const expr = try c.ir.newExpr(.field, payload_t, ctx.node, .{
         .idx = 1,
         .rec = choice.ir,
     });
-    res.* = sema.ExprResult.init(loc, ctx.func.sig.ret);
-    res.addressable = true;
+    res.* = sema.ExprResult.init2(expr);
+    res.addressable = choice.addressable;
 }
 
 pub fn dump_frame(t: *cy.Thread) !C.Ret {
@@ -314,22 +294,24 @@ pub fn dump_frame(t: *cy.Thread) !C.Ret {
     const func_info = cy.debug.get_pc_func_metadata(t.c.vm, prev_pc);
     const frame = prev_fp[0..func_info.stack_size];
 
-    var buf: [1024]u8 = undefined;
-    var w = std.Io.Writer.fixed(&buf);
+    var wa = std.Io.Writer.Allocating.init(t.alloc);
+    defer wa.deinit();
+    var w = &wa.writer;
+
+    try w.writeAll("frame: ");
     for (0..func_info.ret_size) |i| {
         try w.print("%{}={}, ", .{i, frame[i].val});
     }
-    std.debug.print("frame: {s} info={}, ret_pc={*}, ret_fp={*}\n", .{
-        w.buffered(),
+    try w.print("info={}, ret_pc={*}, ret_fp={*}\n", .{
         frame[func_info.ret_size].val,
         frame[func_info.ret_size+1].retPcPtr,
         frame[func_info.ret_size+2].retFramePtr,
     });
-    w.end = 0;
+    try w.writeAll("  locals: ");
     for (func_info.ret_size+4..frame.len) |i| {
         try w.print("%{}={}, ", .{i, frame[i].val});
     }
-    std.debug.print("  locals: {s}\n", .{w.buffered()});
+    t.c.vm.log(wa.written());
     return C.RetOk;
 }
 
@@ -339,36 +321,54 @@ pub fn event(t: *cy.Thread) !C.Ret {
     return C.RetOk;
 }
 
-pub fn init_choice(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResult) !void {
-    const choice_t = ctx.func.instance.?.params[0].asPtr(*cy.Type);
-    const tag = ctx.args[0].asInt();
+pub fn init_choice(c: *cy.Chunk, ctx: *cy.BuiltinContext, out: *sema.ExprResult) !void {
+    const choice_t = try cte.evalType(c, ctx.args[0]);
+    if (choice_t.kind() != .choice) {
+        const name = try c.sema.allocTypeName(choice_t);
+        defer c.alloc.free(name);
+        return c.reportErrorFmt("Expected choice type, found `{}`.", &.{v(name)}, ctx.node);
+    }
+
+    const tag_t = choice_t.cast(.choice).tag_t;
+    const tagv = try cte.evalCheck(c, ctx.args[1], tag_t);
+    const tag = tagv.value.asInt();
 
     const case = choice_t.cast(.choice).getCaseByTag(@intCast(tag));
 
-    const arg = ctx.args[1].asPtr(*cy.ast.Node);
-    var payload = try c.semaExprCstr(arg, case.payload_t);
-    payload = try sema.semaOwn(c, payload, arg);
+    var payload = try c.semaExprCstr(ctx.args[2], case.payload_t);
+    payload = try sema.semaOwn(c, payload, ctx.args[2]);
     out.* = try sema.semaInitChoice(c, case.type, case.idx, case.val, payload, ctx.node);
 }
 
-pub fn choice_tag_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
-    const arg = ctx.args[0].asPtr(*cy.heap.HeapObject);
-    return cy.TypeValue.init(c.sema.i64_t, arg.object.getValuesPtr()[0]);
+pub fn choice_tag_eval(c: *cy.Chunk, ctx: *cy.BuiltinContext) !cy.TypeValue {
+    const argv = try cte.eval(c, ctx.args[0]);
+    if (argv.type.kind() != .choice) {
+        const name = try c.sema.allocTypeName(argv.type);
+        defer c.alloc.free(name);
+        return c.reportErrorFmt("Expected choice type, found `{}`.", &.{v(name)}, ctx.node);
+    }
+    const arg = argv.value.asPtr(*cy.heap.HeapObject);
+    const tag_t = argv.type.cast(.choice).tag_t;
+    return cy.TypeValue.init(tag_t, arg.object.getValuesPtr()[0]);
 }
 
-pub fn choice_tag(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResult) !void {
-    const rec = ctx.args[0].asPtr(*ir.Expr);
-    const tag_t = ctx.func.sig.ret;
+pub fn choice_tag(c: *cy.Chunk, ctx: *cy.BuiltinContext, out: *sema.ExprResult) !void {
+    const rec = try c.semaExpr(ctx.args[0], .{});
+    if (rec.type.kind() != .choice) {
+        const name = try c.sema.allocTypeName(rec.type);
+        defer c.alloc.free(name);
+        return c.reportErrorFmt("Expected choice type, found `{}`.", &.{v(name)}, ctx.node);
+    }
+    const tag_t = rec.type.cast(.choice).tag_t;
     const loc = try c.ir.newExpr(.field, tag_t, ctx.node, .{
         .idx = 0,
-        .rec = rec,
+        .rec = rec.ir,
     });
     out.* = sema.ExprResult.init2(loc);
 }
 
-pub fn is_result_error(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResult) !void {
-    const arg = ctx.args[0].asPtr(*cy.ast.Node);
-    const res = try c.semaExpr(arg, .{});
+pub fn is_result_error(c: *cy.Chunk, ctx: *cy.BuiltinContext, out: *sema.ExprResult) !void {
+    const res = try c.semaExpr(ctx.args[0], .{});
     const loc = try c.ir.newExpr(.field, c.sema.i64_t, ctx.node, .{
         .idx = 0,
         .rec = res.ir,
@@ -377,44 +377,43 @@ pub fn is_result_error(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResu
     out.* = try c.semaIsZero(tag, ctx.node);
 }
 
-pub fn is_none(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResult) !void {
-    const arg = ctx.args[0].asPtr(*cy.ast.Node);
-    var res = try c.semaExpr(arg, .{});
+pub fn is_none(c: *cy.Chunk, ctx: *cy.BuiltinContext, out: *sema.ExprResult) !void {
+    var res = try c.semaExpr(ctx.args[0], .{});
     res = try sema.semaManage(c, res, ctx.node);
     out.* = try c.semaIsNone(res, ctx.node);
 }
 
-pub fn enum_int_values(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn enum_int_values(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const enum_t = ctx.func.instance.?.params[0].asPtr(*cy.Type);
     if (enum_t.kind() != .enum_t) {
         return c.reportError("Expected enum type.", ctx.node);
     }
     const cases = enum_t.cast(.enum_t).cases();
     const buffer_t = ctx.func.sig.ret;
-    const res = try c.heap.new_buffer_undef(buffer_t, cases.len);
+    const res = try c.heap.new_eval_buffer_undef(buffer_t, cases.len);
     for (cases, 0..) |case, i| {
         var val = cy.Value.initInt(@intCast(case.val));
-        try res.asHeapObject().buffer.initElem(c.heap, c.sema.i64_t, i, @ptrCast(&val));
+        try res.asHeapObject().eval_buffer.init_elem(c.heap, c.sema.i64_t, i, @ptrCast(&val));
     }
     return cy.TypeValue.init(ctx.func.sig.ret, res);
 }
 
-pub fn enum_values(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn enum_values(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const enum_t = ctx.func.instance.?.params[0].asPtr(*cy.Type);
     if (enum_t.kind() != .enum_t) {
         return c.reportError("Expected enum type.", ctx.node);
     }
     const cases = enum_t.cast(.enum_t).cases();
     const buffer_t = ctx.func.sig.ret;
-    const res = try c.heap.new_buffer_undef(buffer_t, cases.len);
+    const res = try c.heap.new_eval_buffer_undef(buffer_t, cases.len);
     for (cases, 0..) |case, i| {
         var val = cy.Value.initInt(@intCast(case.val));
-        try res.asHeapObject().buffer.initElem(c.heap, enum_t, i, @ptrCast(&val));
+        try res.asHeapObject().eval_buffer.init_elem(c.heap, enum_t, i, @ptrCast(&val));
     }
     return cy.TypeValue.init(ctx.func.sig.ret, res);
 }
 
-pub fn enum_case(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn enum_case(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const T = ctx.func.instance.?.params[0].asPtr(*cy.Type);
     if (T.kind() != .enum_t) {
         return c.reportError("Expected enum type.", ctx.node);
@@ -424,25 +423,24 @@ pub fn enum_case(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     const case = T.cast(.enum_t).getCaseByTag(@intCast(enum_val));
     const case_t = (try c.vm.findType("meta.EnumCase")).?;
     const case_v = try c.heap.newInstance(case_t, &.{
-        field_init("name", try c.heap.newStr(case.head.name())),
+        field_init("name", try c.heap.init_eval_str(case.head.name())),
     });
     return cy.TypeValue.init(case_t, case_v);
 }
 
-pub fn eval(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResult) !void {
+pub fn eval(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     _ = c;
     _ = ctx;
-    _ = out;
     @panic("TODO");
 }
 
-pub fn error_(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
-    const msg = ctx.args[0].asString();
+pub fn error_(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
+    const msg = ctx.args[0].as_eval_str();
     defer c.heap.release(ctx.args[0]);
     return c.reportError(msg, ctx.node);
 }
 
-pub fn log_(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn log_(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const val_t = ctx.func.instance.?.params[0].asPtr(*cy.Type);
     const val = ctx.args[0];
     defer c.heap.destructValue2(val_t, val);
@@ -455,9 +453,9 @@ pub fn log_(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     return cy.TypeValue.init(c.sema.void_t, cy.Value.Void);
 }
 
-pub fn init_type_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
-    const node = ctx.args[0].asPtr(*cy.ast.Node);
-    const type_ = ctx.func.instance.?.params[0].asPtr(*cy.Type);
+pub fn init_type_eval(c: *cy.Chunk, ctx: *cy.BuiltinContext) !cy.TypeValue {
+    const node = ctx.args[1];
+    const type_ = try cte.evalType(c, ctx.args[0]);
 
     if (node.type() != .init_lit) {
         return c.reportErrorFmt("Expected init literal, found `{}`", &.{v(node.type())}, ctx.node);
@@ -476,9 +474,9 @@ pub fn init_type_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     }
 }
 
-pub fn init_type(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResult) !void {
-    const node = ctx.args[0].asPtr(*cy.ast.Node);
-    const type_ = ctx.func.instance.?.params[0].asPtr(*cy.Type);
+pub fn init_type(c: *cy.Chunk, ctx: *cy.BuiltinContext, out: *sema.ExprResult) !void {
+    const node = ctx.args[1];
+    const type_ = try cte.evalType(c, ctx.args[0]);
 
     if (node.type() != .init_lit) {
         return c.reportErrorFmt("Expected init literal, found `{}`", &.{v(node.type())}, ctx.node);
@@ -529,19 +527,19 @@ pub fn init_type(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResult) !v
     }
 }
 
-pub fn build_mode(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn build_mode(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     _ = ctx;
     const res_t = (try c.vm.findType("meta.BuildMode")).?;
     return cy.TypeValue.init(res_t, Value.initR64(0));
 }
 
-pub fn build_flag(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn build_flag(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     defer c.heap.release(ctx.args[0]);
     const has_flag = c.compiler.build_flags.contains(ctx.args[0].asString());
     return cy.TypeValue.init(c.sema.bool_t, cy.Value.initBool(has_flag));
 }
 
-pub fn build_option(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn build_option(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     defer c.heap.release(ctx.args[0]);
     const option_t = (try c.vm.findType("?str")).?;
     const s = c.compiler.build_options.get(ctx.args[0].asString()) orelse {
@@ -553,13 +551,15 @@ pub fn build_option(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     return cy.TypeValue.init(option_t, res);
 }
 
-pub fn cy_full_version(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
-    _ = ctx;
-    const str = try c.heap.newStr(build_config.full_version);
-    return cy.TypeValue.init(c.sema.str_t, str);
+pub fn full_version(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
+    const str = try c.heap.init_eval_str(build_config.full_version);
+    return cy.TypeValue.init(ctx.func.sig.ret, str);
 }
 
-pub fn load_(c: *cy.Chunk, cx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn load_(c: *cy.Chunk, cx: *cy.ConstEvalContext) !cy.TypeValue {
+    if (is_wasm_freestanding) {
+        return c.reportError("Unsupported.", cx.node);
+    }
     const path = cx.args[0].asString();
     defer c.heap.release(cx.args[0]);
 
@@ -569,24 +569,24 @@ pub fn load_(c: *cy.Chunk, cx: *cy.CtFuncContext) !cy.TypeValue {
     var dir = try std.fs.openDirAbsolute(root_path, .{});
     defer dir.close();
 
-    const data = try dir.readFileAlloc(c.alloc, path, 1e10);
+    const data = try dir.readFileAlloc(c.alloc, path, 1e9);
     defer c.alloc.free(data);
 
-    const str = try c.heap.newStr(data);
-    return cy.TypeValue.init(c.sema.str_t, str);
+    const str = try c.heap.init_eval_str(data);
+    return cy.TypeValue.init(c.sema.eval_str_t, str);
 }
 
-pub fn mod_uri(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn mod_uri(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     _ = ctx;
-    const str = try c.heap.newStr(c.srcUri);
-    return cy.TypeValue.init(c.sema.str_t, str);
+    const str = try c.heap.init_eval_str(c.srcUri);
+    return cy.TypeValue.init(c.sema.eval_str_t, str);
 }
 
 const StructConfig = extern struct {
     tuple: bool,
 };
 
-pub fn new_struct(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn new_struct(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const fields_ptr = ctx.args[0].asPtr([*]sema_type.StructField);
     const num_fields: usize = @intCast(ctx.func.instance.?.params[0].asInt());
     const fields = fields_ptr[0..num_fields];
@@ -606,14 +606,14 @@ pub fn new_struct(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     return cy.TypeValue.init(c.sema.type_t, cy.Value.initPtr(new_t));
 }
 
-pub fn PartialStructLayout_is_field_active(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn PartialStructLayout_is_field_active(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const layout = ctx.args[0].asPtr(*sema.PartialStructLayout);
     const state_offset = ctx.args[1].asInt();
     const res = Value.initBool(layout.fields[@intCast(state_offset)]);
     return TypeValue.init(c.sema.bool_t, res);
 }
 
-pub fn PartialStructLayout_field_layout(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn PartialStructLayout_field_layout(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const layout = ctx.args[0].asPtr(*sema.PartialStructLayout);
     const state_offset: usize = @intCast(ctx.args[1].asInt());
     const state_len: usize = @intCast(ctx.args[2].asInt());
@@ -630,14 +630,14 @@ pub fn PartialStructLayout_field_layout(c: *cy.Chunk, ctx: *cy.CtFuncContext) !c
     return TypeValue.init(option_t, res);
 }
 
-pub fn is_inline_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn is_inline_eval(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     _ = ctx;
     const rctx = sema.getResolveContext(c);
     const res = cy.Value.initBool(rctx.is_inline_eval);
     return cy.TypeValue.init(c.sema.bool_t, res);
 }
 
-pub fn is_vm_target(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn is_vm_target(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     _ = ctx;
     const res = cy.Value.initBool(c.compiler.config.backend == C.BackendVM);
     return cy.TypeValue.init(c.sema.bool_t, res);
@@ -647,21 +647,22 @@ pub const SystemKind = enum {
     linux,
     macos,
     windows,
+    freestanding,
+    wasi,
 };
 
-pub fn system(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn system(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     _ = c;
     const kind = std.enums.nameCast(SystemKind, builtin.os.tag);
     return cy.TypeValue.init(ctx.func.sig.ret, cy.Value.initInt(@intFromEnum(kind)));
 }
 
-pub fn cpu(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
-    _ = ctx;
-    const str = try c.heap.newStr(@tagName(builtin.cpu.arch));
-    return cy.TypeValue.init(c.sema.str_t, str);
+pub fn cpu(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
+    const str = try c.heap.init_eval_str(@tagName(builtin.cpu.arch));
+    return cy.TypeValue.init(ctx.func.sig.ret, str);
 }
 
-pub fn endian_(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn endian_(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     _ = c;
     if (builtin.cpu.arch.endian() == .little) {
         return cy.TypeValue.init(ctx.func.sig.ret, cy.Value.initInt(0));
@@ -670,34 +671,54 @@ pub fn endian_(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     }
 }
 
-fn reachable(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn enum_name_eval(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
+    const value = ctx.args[0];
+    const type_ = ctx.func.sig.params()[0].get_type();
+    if (type_.kind() != .enum_t) {
+        return c.reportError("Expected enum type.", ctx.node);
+    }
+    const case = type_.cast(.enum_t).getCaseByTag(@intCast(value.asUint()));
+    return cy.TypeValue.init(ctx.func.sig.ret, try c.heap.init_eval_str(case.head.name()));
+}
+
+pub fn trace_enabled(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
+    _ = ctx;
+    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(build_config.trace));
+}
+
+pub fn pointer_width(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
+    _ = ctx;
+    return cy.TypeValue.init(c.sema.i64_t, Value.initInt(builtin.target.ptrBitWidth()));
+}
+
+fn reachable(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     return cy.TypeValue.init(ctx.func.sig.ret, cy.Value.initBool(c.block().endReachable));
 }
 
-fn has_decl(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+fn has_decl(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const parent_n = ctx.args[0].asPtr(*ast.Node);
-    const name = ctx.args[1].asString();
+    const name = ctx.args[1].as_eval_str();
     defer c.heap.release(ctx.args[1]);
     const parent = try cy.cte.evalSym(c, parent_n);
     const res = try c.getResolvedSym(parent, name, ctx.node);
     return cy.TypeValue.init(ctx.func.sig.ret, cy.Value.initBool(res != null));
 }
 
-pub fn type_id_(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn type_id_(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     _ = c;
     const type_ = ctx.args[0].asPtr(*cy.Type);
     const val = cy.Value.initInt(@intCast(type_.id()));
     return cy.TypeValue.init(ctx.func.sig.ret, val);
 }
 
-pub fn type_managed(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn type_managed(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     _ = c;
     const type_ = ctx.args[0].asPtr(*cy.Type);
     const managed = type_.isManaged();
     return cy.TypeValue.init(ctx.func.sig.ret, cy.Value.initBool(managed));
 }
 
-pub fn type_fn_ret(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn type_fn_ret(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const type_ = ctx.args[0].asPtr(*cy.Type);
     if (type_.kind() == .func_ptr) {
         const ret = type_.cast(.func_ptr).sig.ret;
@@ -710,13 +731,13 @@ pub fn type_fn_ret(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     }
 }
 
-pub fn type_struct_state_len(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn type_struct_state_len(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const type_ = ctx.args[0].asPtr(*cy.Type);
     if (type_.kind() != .struct_t) {
         return c.reportError("Expected struct type.", ctx.node);
     }
     const state_len = type_.cast(.struct_t).field_state_len;
-    return cy.TypeValue.init(ctx.func.sig.ret, Value.initGenericInt(@intCast(state_len)));
+    return cy.TypeValue.init(ctx.func.sig.ret, Value.initInt(@intCast(state_len)));
 }
 
 pub fn type_name_rt(t: *cy.Thread) !C.Ret {
@@ -736,29 +757,29 @@ pub fn type_name_rt(t: *cy.Thread) !C.Ret {
     return C.RetOk;
 }
 
-pub fn type_name(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn type_name(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const type_ = ctx.args[0].asPtr(*cy.Type);
     const name = try c.sema.allocTypeName(type_);
     defer c.alloc.free(name);
-    const val = try c.heap.newStr(name);
+    const val = try c.heap.init_eval_str(name);
     return cy.TypeValue.init(ctx.func.sig.ret, val);
 }
 
-pub fn type_size(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn type_size(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     _ = c;
     const type_ = ctx.args[0].asPtr(*cy.Type);
-    const val = cy.Value.initGenericInt(@intCast(type_.size()));
+    const val = cy.Value.initInt(@intCast(type_.size()));
     return cy.TypeValue.init(ctx.func.sig.ret, val);
 }
 
-pub fn type_of(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn type_of(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const expr = ctx.args[0].asPtr(*cy.ast.Node);
     const res = try c.semaExpr(expr, .{});
     const val = cy.Value.initPtr(res.type);
     return cy.TypeValue.init(ctx.func.sig.ret, val);
 }
 
-pub fn type_init(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn type_init(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const name = ctx.args[0].asString();
     defer c.heap.release(ctx.args[0]);
     const res = try sema.lookupStaticIdent(c, name, ctx.node) orelse {
@@ -885,7 +906,7 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const name = type_.name();
                     const trait_info_t = (try c.vm.findType("meta.GenTraitInfo")).?;
                     const trait_info = try c.heap.newInstance(trait_info_t, &.{
-                        field_init("name", try c.heap.newStr(name)),
+                        field_init("name", try c.heap.init_eval_str(name)),
                     });
                     return c.heap.newChoice(info_t, "gen_trait", trait_info);
                 },
@@ -927,22 +948,22 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const choice_t = type_.cast(.choice);
                     const choice_info_t = (try c.vm.findType("meta.ChoiceInfo")).?;
                     const choice_case_t = (try c.vm.findType("meta.ChoiceCase")).?;
-                    const buffer_t = (try c.vm.findType("Buffer[meta.ChoiceCase]")).?;
+                    const buffer_t = (try c.vm.findType("EvalBuffer[meta.ChoiceCase]")).?;
 
                     const cases = choice_t.cases();
-                    const buffer = try c.heap.new_buffer_undef(buffer_t, cases.len);
+                    const buffer = try c.heap.new_eval_buffer_undef(buffer_t, cases.len);
                     for (cases, 0..) |case, i| {
                         const case_v = try c.heap.newInstance(choice_case_t, &.{
-                            field_init("name", try c.heap.newStr(case.name())),
+                            field_init("name", try c.heap.init_eval_str(case.name())),
                             field_init("type", cy.Value.initPtr(case.payload_t)),
                         });
                         defer c.heap.release(case_v);
-                        try buffer.asHeapObject().buffer.initElem(c.heap, choice_case_t, i, case_v.asHeapObject().object.getBytePtr());
+                        try buffer.asHeapObject().eval_buffer.init_elem(c.heap, choice_case_t, i, case_v.asHeapObject().object.getBytePtr());
                     }
                     const name = type_.name();
 
-                    const str_t = (try c.vm.findType("?str")).?.cast(.option);
-                    const namev = try c.heap.newSome(str_t, try c.heap.newStr(name));
+                    const str_t = (try c.vm.findType("?EvalStr")).?.cast(.option);
+                    const namev = try c.heap.newSome(str_t, try c.heap.init_eval_str(name));
                     const choice_info = try c.heap.newInstance(choice_info_t, &.{
                         field_init("name", namev),
                         field_init("cases", buffer),
@@ -953,20 +974,20 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                     const enum_t = type_.cast(.enum_t);
                     const enum_info_t = (try c.vm.findType("meta.EnumInfo")).?;
                     const enum_case_t = (try c.vm.findType("meta.EnumCase")).?;
-                    const buffer_t = (try c.vm.findType("Buffer[meta.EnumCase]")).?;
+                    const buffer_t = (try c.vm.findType("EvalBuffer[meta.EnumCase]")).?;
 
                     const cases = enum_t.cases();
-                    const buffer = try c.heap.new_buffer_undef(buffer_t, cases.len);
+                    const buffer = try c.heap.new_eval_buffer_undef(buffer_t, cases.len);
                     for (cases, 0..) |case, i| {
                         const case_v = try c.heap.newInstance(enum_case_t, &.{
-                            field_init("name", try c.heap.newStr(case.head.name())),
+                            field_init("name", try c.heap.init_eval_str(case.head.name())),
                         });
                         defer c.heap.release(case_v);
-                        try buffer.asHeapObject().buffer.initElem(c.heap, enum_case_t, i, case_v.asHeapObject().object.getBytePtr());
+                        try buffer.asHeapObject().eval_buffer.init_elem(c.heap, enum_case_t, i, case_v.asHeapObject().object.getBytePtr());
                     }
                     const name = type_.name();
-                    const str_t = (try c.vm.findType("?str")).?.cast(.option);
-                    const namev = try c.heap.newSome(str_t, try c.heap.newStr(name));
+                    const str_t = (try c.vm.findType("?EvalStr")).?.cast(.option);
+                    const namev = try c.heap.newSome(str_t, try c.heap.init_eval_str(name));
                     const enum_info = try c.heap.newInstance(enum_info_t, &.{
                         field_init("name", namev),
                         field_init("cases", buffer),
@@ -976,21 +997,21 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                 .c_union => {
                     const c_union = type_.cast(.c_union);
                     const case_t = (try c.vm.findType("meta.CUnionCase")).?;
-                    const buffer_t = (try c.vm.findType("Buffer[meta.CUnionCase]")).?;
+                    const buffer_t = (try c.vm.findType("EvalBuffer[meta.CUnionCase]")).?;
                     const cases = c_union.cases();
-                    const buffer = try c.heap.new_buffer_undef(buffer_t, cases.len);
+                    const buffer = try c.heap.new_eval_buffer_undef(buffer_t, cases.len);
                     for (cases, 0..) |case, i| {
                         const case_v = try c.heap.newInstance(case_t, &.{
-                            field_init("name", try c.heap.newStr(case.name())),
+                            field_init("name", try c.heap.init_eval_str(case.name())),
                             field_init("type", cy.Value.initPtr(case.payload_t)),
                         });
                         defer c.heap.release(case_v);
-                        try buffer.asHeapObject().buffer.initElem(c.heap, case_t, i, case_v.asHeapObject().object.getBytePtr());
+                        try buffer.asHeapObject().eval_buffer.init_elem(c.heap, case_t, i, case_v.asHeapObject().object.getBytePtr());
                     }
                     const name = type_.name();
 
-                    const str_t = (try c.vm.findType("?str")).?.cast(.option);
-                    const namev = try c.heap.newSome(str_t, try c.heap.newStr(name));
+                    const str_t = (try c.vm.findType("?EvalStr")).?.cast(.option);
+                    const namev = try c.heap.newSome(str_t, try c.heap.init_eval_str(name));
                     const cunion_info_t = (try c.vm.findType("meta.CUnionInfo")).?;
                     const info = try c.heap.newInstance(cunion_info_t, &.{
                         field_init("name", namev),
@@ -1001,22 +1022,22 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
                 .struct_t => {
                     const struct_t = type_.cast(.struct_t);
                     const field_t = (try c.vm.findType("meta.StructField")).?;
-                    const buffer_t = (try c.vm.findType("Buffer[meta.StructField]")).?;
+                    const buffer_t = (try c.vm.findType("EvalBuffer[meta.StructField]")).?;
                     const fields = struct_t.fields();
-                    const buffer = try c.heap.new_buffer_undef(buffer_t, fields.len);
+                    const buffer = try c.heap.new_eval_buffer_undef(buffer_t, fields.len);
                     for (fields, 0..) |field, i| {
                         const f = try c.heap.newInstance(field_t, &.{
-                            field_init("name", try c.heap.newStr(field.sym.head.name())),
+                            field_init("name", try c.heap.init_eval_str(field.sym.head.name())),
                             field_init("type", cy.Value.initPtr(field.type)),
                             field_init("offset", cy.Value.initInt(@intCast(field.offset))),
                             field_init("state_offset", cy.Value.initInt(@intCast(field.state_offset))),
                         });
                         defer c.heap.release(f);
-                        try buffer.asHeapObject().buffer.initElem(c.heap, field_t, i, f.asHeapObject().object.getBytePtr());
+                        try buffer.asHeapObject().eval_buffer.init_elem(c.heap, field_t, i, f.asHeapObject().object.getBytePtr());
                     }
                     const name = type_.name();
-                    const str_t = (try c.vm.findType("?str")).?.cast(.option);
-                    const namev = try c.heap.newSome(str_t, try c.heap.newStr(name));
+                    const str_t = (try c.vm.findType("?EvalStr")).?.cast(.option);
+                    const namev = try c.heap.newSome(str_t, try c.heap.init_eval_str(name));
                     if (struct_t.cstruct) {
                         const struct_info_t = (try c.vm.findType("meta.CStructInfo")).?;
                         const struct_info = try c.heap.newInstance(struct_info_t, &.{
@@ -1053,7 +1074,7 @@ fn type_info2(c: *cy.Chunk, type_: *cy.Type) !cy.Value {
     }
 }
 
-pub fn type_field(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn type_field(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const type_ = ctx.args[0].asPtr(*cy.Type);
     const name = ctx.args[1].asString();
     defer c.heap.release(ctx.args[1]);
@@ -1073,7 +1094,7 @@ pub fn type_field(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     const field_t = (try c.findResolvedType("meta.StructField", ctx.node)).?;
     const struct_field = type_.cast(.struct_t).fields()[field.idx];
     const val = try c.heap.newInstance(field_t, &.{
-        field_init("name", try c.heap.newStr(name)),
+        field_init("name", try c.heap.init_eval_str(name)),
         field_init("type", cy.Value.initPtr(struct_field.type)),
         field_init("offset", cy.Value.initInt(@intCast(struct_field.offset))),
         field_init("state_offset", cy.Value.initInt(@intCast(struct_field.state_offset))),
@@ -1081,7 +1102,7 @@ pub fn type_field(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     return cy.TypeValue.init(field_t, val);
 }
 
-pub fn type_info(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn type_info(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const type_ = ctx.args[0].asPtr(*cy.Type);
     const val = try type_info2(c, type_);
     return cy.TypeValue.init(ctx.func.sig.ret, val);
@@ -1090,16 +1111,16 @@ pub fn type_info(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
 fn newFuncInfo(c: *cy.Chunk, kind: u8, sig: *cy.FuncSig) !cy.Value {
     const func_info_t = (try c.vm.findType("meta.FuncInfo")).?;
     const param_t = (try c.vm.findType("meta.FuncParam")).?;
-    const buffer_t = (try c.vm.findType("Buffer[meta.FuncParam]")).?;
+    const buffer_t = (try c.vm.findType("EvalBuffer[meta.FuncParam]")).?;
     const params = sig.params();
 
-    const buffer = try c.heap.new_buffer_undef(buffer_t, params.len);
+    const buffer = try c.heap.new_eval_buffer_undef(buffer_t, params.len);
     for (params, 0..) |param, i| {
         const p = try c.heap.newInstance(param_t, &.{
             field_init("type", cy.Value.initPtr(param.get_type())),
         });
         defer c.heap.release(p);
-        try buffer.asHeapObject().buffer.initElem(c.heap, param_t, i, p.asHeapObject().object.getBytePtr());
+        try buffer.asHeapObject().eval_buffer.init_elem(c.heap, param_t, i, p.asHeapObject().object.getBytePtr());
     }
 
     return c.heap.newInstance(func_info_t, &.{
@@ -1109,7 +1130,7 @@ fn newFuncInfo(c: *cy.Chunk, kind: u8, sig: *cy.FuncSig) !cy.Value {
     });
 }
 
-fn type_implements(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+fn type_implements(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const type_ = ctx.args[0].asPtr(*cy.Type);
     const trait_t = ctx.args[1].asPtr(*cy.Type);
     if (trait_t.kind() != .generic_trait) {
@@ -1119,19 +1140,19 @@ fn type_implements(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     return cy.TypeValue.init(c.sema.bool_t, cy.Value.initBool(implements));
 }
 
-fn type_is_const(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+fn type_is_const(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const type_ = ctx.args[0].asPtr(*cy.Type);
     try sema_type.ensure_resolved_type(c, type_, ctx.node);
     return cy.TypeValue.init(c.sema.bool_t, cy.Value.initBool(type_.isConstEligible()));
 }
 
-fn type_is_copyable(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+fn type_is_copyable(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const type_ = ctx.args[0].asPtr(*cy.Type);
     try sema_type.ensure_resolved_type(c, type_, ctx.node);
     return cy.TypeValue.init(c.sema.bool_t, cy.Value.initBool(type_.is_copyable()));
 }
 
-fn type_is_instance_of(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+fn type_is_instance_of(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const type_ = ctx.args[0].asPtr(*cy.Type);
     const template_n = ctx.args[1].asPtr(*ast.Node);
     const sym = try cy.cte.evalSym(c, template_n);

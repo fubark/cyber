@@ -306,12 +306,10 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
         c.thread_dump_stats(main_thread);
     }
     if (c.TRACE()) {
-        if (eval_res.res_t == c.TypeVoid) {
-            const grc = c.thread_rc(main_thread);
-            if (grc != 0) {
-                std.debug.print("unreleased refcount: {}\n", .{grc});
-                c.thread_dump_live_objects(main_thread);
-            }
+        const grc = c.thread_rc(main_thread);
+        if (grc != 0) {
+            std.debug.print("unreleased refcount: {}\n", .{grc});
+            c.thread_dump_live_objects(main_thread);
         }
     }
 }
@@ -364,8 +362,11 @@ fn panic_handler() !void {
 }
 
 fn sig_handler(sig: i32, info: *const std.posix.siginfo_t, ctx_ptr: ?*anyopaque) callconv(.c) noreturn {
+    app_debug.handleSegfaultPosix(sig, info, ctx_ptr, sig_handler_inner);
+}
+
+fn sig_handler_inner() callconv(.c) void {
     app_debug.vm_segv_handler(gvm) catch |err| {
         std.debug.panic("failed during segfault: {}", .{err});
     };
-    app_debug.handleSegfaultPosix(sig, info, ctx_ptr);
 }

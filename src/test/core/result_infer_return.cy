@@ -3,12 +3,12 @@ use test
 -- Infer error return.
 fn fail() -> !int:
     return error.Fail
-test.eq(error.Fail, fail().unwrapError())
+test.eq(error.Fail, fail().unwrap_error())
 
 -- Infer error void return.
 fn fail_void() -> !void:
     return error.Fail
-test.eq(error.Fail, fail_void().unwrapError())
+test.eq(error.Fail, fail_void().unwrap_error())
 
 -- Infer value return.
 fn succeed() -> !int:

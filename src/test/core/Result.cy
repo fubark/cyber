@@ -10,11 +10,11 @@ test.eq(234, res!)
 
 -- Initialize error.
 res = as[!int] error.Invalid
-test.eq(error.Invalid, res.unwrapError())
+test.eq(error.Invalid, res.unwrap_error())
 
 -- Initialize error, implicitly.
 res = error.Invalid
-test.eq(error.Invalid, res.unwrapError())
+test.eq(error.Invalid, res.unwrap_error())
 
 -- Unwrap value.
 fn ok() -> !str:
@@ -26,7 +26,7 @@ test.eq('123', ok()!)
 fn fail() -> !str:
     res := Result[int](error.Invalid)
     return str(res!)
-test.eq(error.Invalid, fail().unwrapError())
+test.eq(error.Invalid, fail().unwrap_error())
 
 -- !else unwraps value.
 res = 123

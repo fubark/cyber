@@ -9,6 +9,7 @@ const Value = cy.Value;
 const bt = cy.types.BuiltinTypes;
 const ir = cy.ir;
 
+// Borrows `val_`.
 pub fn value(c: *cy.Chunk, val_: cy.TypeValue, target_opt: ?*cy.Type, node: *ast.Node) !sema.ExprResult {
     var val = val_;
     if (target_opt) |target_t| {
@@ -47,9 +48,9 @@ pub fn value(c: *cy.Chunk, val_: cy.TypeValue, target_opt: ?*cy.Type, node: *ast
         bt.I64 => {
             return c.semaConst(val.value.asUint(), val.type, node);
         },
-        bt.IntLit => {
+        bt.EvalInt => {
             if (target_opt) |target_t| {
-                const i = val.value.as_int_lit();
+                const i = val.value.as_eval_int();
                 switch (target_t.id()) {
                     bt.R8 => {
                         if (i >> 8 == 0) {
@@ -72,11 +73,11 @@ pub fn value(c: *cy.Chunk, val_: cy.TypeValue, target_opt: ?*cy.Type, node: *ast
                     else => {},
                 }
             }
-            return c.semaConst(@bitCast(val.value.as_int_lit()), c.sema.i64_t, node);
+            return c.semaConst(@bitCast(val.value.as_eval_int()), c.sema.i64_t, node);
         },
-        bt.StrLit => {
+        bt.EvalStr => {
             // Ensure ct string outlives sema.
-            const slice = val.value.asPtr(*cy.heap.StrLit).slice();
+            const slice = val.value.asPtr(*cy.heap.EvalStr).slice();
             const dupe = try c.ir.alloc.dupe(u8, slice);
 
             if (target_opt) |target_t| {
@@ -88,13 +89,6 @@ pub fn value(c: *cy.Chunk, val_: cy.TypeValue, target_opt: ?*cy.Type, node: *ast
                 }
             }
 
-            return c.semaRawString(dupe, node);
-        },
-        bt.Str => {
-            // Ensure ct string outlives sema.
-            const dupe = try c.ir.alloc.dupe(u8, val.value.asString());
-
-            // Already a raw string.
             return c.semaRawString(dupe, node);
         },
         bt.Symbol => {

@@ -26,14 +26,6 @@ contexts:
       scope: punctuation.definition.string.begin.cyber
       push: double_quoted_string
 
-    # @foo
-    # - match: (?<=@)\w+
-    - match: \@\w*
-      scope: string.quoted.other.cyber
-
-    - match: (?<![\w\]\)])\.\w+(?![\w(])
-      scope: string.quoted.other.cyber
-
     - match: \$\w*
       scope: variable.member.cyber
 

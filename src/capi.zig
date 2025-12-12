@@ -101,6 +101,7 @@ pub const vm_set_printer = c.cl_vm_set_printer;
 pub const vm_eprinter = c.cl_vm_eprinter;
 pub const vm_set_eprinter = c.cl_vm_set_eprinter;
 pub const vm_set_logger = c.cl_vm_set_logger;
+pub const vm_logger = c.cl_vm_logger;
 pub const vm_set_user_data = c.cl_vm_set_user_data;
 pub const vm_user_data = c.cl_vm_user_data;
 pub const vm_dump_bytecode = c.cl_vm_dump_bytecode;
@@ -367,8 +368,8 @@ pub const BIND_FUNC = c.CL_BIND_FUNC;
 pub const BIND_GLOBAL = c.CL_BIND_GLOBAL;
 
 pub const BindFuncVm = c.CL_BIND_FUNC_VM;
-pub const BindFuncCt = c.CL_BIND_FUNC_CT;
-pub const BindFuncSema = c.CL_BIND_FUNC_SEMA;
+pub const BindFuncConstEval = c.CL_BIND_FUNC_CONST_EVAL;
+pub const BindFuncBuiltin = c.CL_BIND_FUNC_BUILTIN;
 pub const BindFuncDecl = c.CL_BIND_FUNC_DECL;
 
 pub const Backend = c.CLBackend;

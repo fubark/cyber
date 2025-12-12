@@ -71,15 +71,61 @@ fn binary_search_lower(len int, needle %T, compare &OpaqueFunc[CompareIndexFn[T]
     return low
 
 --| Deep dump of a value.
-fn dump(val %T) -> str:
-    #switch type.info(T):
-        #case .vector |info|:
-            children := []str{}
-            for 0..#{info.len} |i|:
-                children <<= dump(val[i])
-            return '{%{children.join(', ')}}'
-        #else:
-            return to_print_string(val)
+fn dump(val %T):
+    log(dump_str(move val))
+
+fn dump_str(val %T) -> str:
+    return dump_str(&val, 0)
+
+fn dump_str(val &%T, indent int) -> str:
+    #if T == str:
+        return "str '%{val.*}'"
+    #else type.is_instance_of(T, Slice):
+        return '%{type.name(T)}(%{val.len()})'
+    #else:
+        #switch type.info(T):
+            #case .struct |info|:
+                out := '%{type.name(T)}{\n'
+                #for 0..info.fields.len() |i|:
+                    #field := info.fields[i]
+                    out += '  '.repeat(indent+1)
+                    out += '%{#{field.name}}: %{dump_str(&meta.access(val, field.name), indent+1)}\n'
+                out += '  '.repeat(indent)
+                out += '}'
+                return out
+
+            #case .option |info|:
+                if meta.is_none(val):
+                    return '%{type.name(T)}(none)'
+                else:
+                    out := '?'
+                    out += dump_str(&meta.access_option_payload(val.*), indent)
+                    return out
+
+            #case .choice |info|:
+                out := '%{type.name(T)}.%{meta.enum_name(meta.choice_tag(val.*))}('
+                switch meta.choice_tag(val.*):
+                    #for meta.enum_values(T.Tag) |Tag|:
+                        case Tag:
+                            out += dump_str(&meta.access_choice_case(val.*, Tag), indent)
+                out += ')'
+                return out
+
+            #case .ref |info|:
+                -- Skip dereferencing since that would need a dedupe cache.
+                return '%{type.name(T)}'
+
+            #case .ptr |info|:
+                return '%{type.name(T)} %{val.*}'
+
+            #case .vector |info|:
+                children := []str{}
+                for 0..#{info.len} |i|:
+                    children <<= dump(val[i])
+                return '{%{children.join(', ')}}'
+
+            #else:
+                return '%{type.name(T)}'
 
 --| Prints a value to the error stream.
 fn eprint(x %T):
@@ -158,7 +204,7 @@ fn to_print_string(x %T) -> str:
                 else:
                     return 'none'
             #case .choice:
-                return type.name(T) + '@' + meta.enum_name(meta.choice_tag(T, &x)) + '{}'
+                return type.name(T) + '@' + meta.enum_name(meta.choice_tag(x)) + '{}'
             #case .ptr |ptr|:
                 return '@' + (as[r64] x).fmt()
             #case .func |func|:
@@ -198,7 +244,7 @@ fn bool :: @init(val float) -> bool:
 fn bool :: @init(val str) -> bool:
     return val == 'true'
 
-#[bind]
+#[reserve]
 fn (bool) `!`() -> bool
 
 #[bind] type symbol _
@@ -215,15 +261,20 @@ fn error :: @init(val symbol) -> error:
 fn (error) sym() -> symbol:
     return as $
 
-#[bind] type int_lit _
+#[bind] type EvalInt _
+
+--| Const eval string.
+#[bind]
+type EvalStr _
+
+fn EvalStr :: @init(x Self) -> Self:
+    return x
 
 #[bind]
-type str_lit:
-    ptr    Ptr[byte]
-    header int
+fn EvalStr :: @init(x %T) -> Self
 
-fn str_lit :: @init(x Self) -> Self:
-    return x
+#[bind]
+fn (EvalStr) `+`(o Self) -> Self
 
 type NumberFormatConfig:
     --| `pad` provides the ASCII rune that is used for padding.
@@ -237,9 +288,10 @@ type r8  = Raw[8]
 type r16 = Raw[16]
 type r32 = Raw[32]
 type r64 = Raw[64]
+type rsize = if (meta.pointer_width() == 64) r64 else r32
 
 --| Represents a raw integer value with bits of widths 8, 16, 32, or 64.
-#[bind] type Raw[const Bits int_lit] _
+#[bind] type Raw[const Bits EvalInt] _
 
 const Raw[] :: zero Self = 0
 const Raw[] :: ones Self = ~0
@@ -281,21 +333,21 @@ fn Raw[] :: @init(x %T) -> Self:
             #else:
                 meta.error('Unsupported: ' + type.name(T))
 
-#[bind='Raw[].pre~'] fn (Raw[]) `~`() -> Self
-#[bind] fn (Raw[]) `<`(right Self) -> bool
-#[bind] fn (Raw[]) `<=`(right Self) -> bool
-#[bind] fn (Raw[]) `>`(right Self) -> bool
-#[bind] fn (Raw[]) `>=`(right Self) -> bool
-#[bind] fn (Raw[]) `+`(right Self) -> Self
-#[bind] fn (Raw[]) `-`(right Self) -> Self
-#[bind] fn (Raw[]) `*`(right Self) -> Self
-#[bind] fn (Raw[]) `/`(right Self) -> Self
-#[bind] fn (Raw[]) `%`(right Self) -> Self
-#[bind] fn (Raw[]) `&&`(right Self) -> Self
-#[bind] fn (Raw[]) `||`(right Self) -> Self
-#[bind] fn (Raw[]) `~`(right Self) -> Self
-#[bind] fn (Raw[]) `<<`(right Self) -> Self
-#[bind] fn (Raw[]) `>>`(right Self) -> Self
+#[reserve] fn (Raw[]) `~`() -> Self
+#[reserve] fn (Raw[]) `<`(right Self) -> bool
+#[reserve] fn (Raw[]) `<=`(right Self) -> bool
+#[reserve] fn (Raw[]) `>`(right Self) -> bool
+#[reserve] fn (Raw[]) `>=`(right Self) -> bool
+#[reserve] fn (Raw[]) `+`(right Self) -> Self
+#[reserve] fn (Raw[]) `-`(right Self) -> Self
+#[reserve] fn (Raw[]) `*`(right Self) -> Self
+#[reserve] fn (Raw[]) `/`(right Self) -> Self
+#[reserve] fn (Raw[]) `%`(right Self) -> Self
+#[reserve] fn (Raw[]) `&&`(right Self) -> Self
+#[reserve] fn (Raw[]) `||`(right Self) -> Self
+#[reserve] fn (Raw[]) `~`(right Self) -> Self
+#[reserve] fn (Raw[]) `<<`(right Self) -> Self
+#[reserve] fn (Raw[]) `>>`(right Self) -> Self
 
 fn (Raw[]) fmt() -> str:
     return $fmt(.hex)
@@ -319,9 +371,10 @@ type i16 = Int[16]
 type i32 = Int[32]
 type i64 = Int[64]
 type int = Int[64]
+type isize = if (meta.pointer_width() == 64) i64 else i32
 
 --| A two's complement signed integer for bit widths: 8, 16, 32, and 64.
-#[bind] type Int[const Bits int_lit] _
+#[bind] type Int[const Bits EvalInt] _
 
 const Int[] :: min = @compute_int_min(Self)
 const Int[] :: max = @compute_int_max(Self)
@@ -420,30 +473,49 @@ fn Int[] :: parse(s str) -> !Self:
         exp += 1
     return res
 
-#[bind='Int[].pre~'] fn (Int[]) `~`() -> Self
-#[bind='Int[].pre-'] fn (Int[]) `-`() -> Self
-#[bind] fn (Int[]) `<`(right Self) -> bool
-#[bind] fn (Int[]) `<=`(right Self) -> bool
-#[bind] fn (Int[]) `>`(right Self) -> bool
-#[bind] fn (Int[]) `>=`(right Self) -> bool
-#[bind] fn (Int[]) `+`(right Self) -> Self
-#[bind] fn (Int[]) `-`(right Self) -> Self
-#[bind] fn (Int[]) `*`(right Self) -> Self
-#[bind] fn (Int[]) `/`(right Self) -> Self
-#[bind] fn (Int[]) `%`(right Self) -> Self
-#[bind] fn (Int[]) `&&`(right Self) -> Self
-#[bind] fn (Int[]) `||`(right Self) -> Self
-#[bind] fn (Int[]) `~`(right Self) -> Self
-#[bind] fn (Int[]) `<<`(right Self) -> Self
-#[bind] fn (Int[]) `>>`(right Self) -> Self
-#[bind] fn (Int[]) ult(right Self) -> bool
-#[bind] fn (Int[]) ule(right Self) -> bool
-#[bind] fn (Int[]) ugt(right Self) -> bool
-#[bind] fn (Int[]) uge(right Self) -> bool
-#[bind] fn (Int[]) umul(right Self) -> Self
-#[bind] fn (Int[]) udiv(right Self) -> Self
-#[bind] fn (Int[]) umod(right Self) -> Self
-#[bind] fn (Int[]) asr(right Self) -> Self
+#[reserve] fn (Int[]) `~`() -> Self
+#[reserve] fn (Int[]) `-`() -> Self
+#[reserve] fn (Int[]) `<`(right Self) -> bool
+#[reserve] fn (Int[]) `<=`(right Self) -> bool
+#[reserve] fn (Int[]) `>`(right Self) -> bool
+#[reserve] fn (Int[]) `>=`(right Self) -> bool
+#[reserve] fn (Int[]) `+`(right Self) -> Self
+#[reserve] fn (Int[]) `-`(right Self) -> Self
+#[reserve] fn (Int[]) `*`(right Self) -> Self
+#[reserve] fn (Int[]) `/`(right Self) -> Self
+#[reserve] fn (Int[]) `%`(right Self) -> Self
+#[reserve] fn (Int[]) `&&`(right Self) -> Self
+#[reserve] fn (Int[]) `||`(right Self) -> Self
+#[reserve] fn (Int[]) `~`(right Self) -> Self
+#[reserve] fn (Int[]) `<<`(right Self) -> Self
+#[reserve] fn (Int[]) `>>`(right Self) -> Self
+
+fn (Int[]) ult(right Self) -> bool:
+    return (as[Raw[Bits]] self) < (as[Raw[Bits]] right)
+
+fn (Int[]) ule(right Self) -> bool:
+    return (as[Raw[Bits]] self) <= (as[Raw[Bits]] right)
+
+fn (Int[]) ugt(right Self) -> bool:
+    return (as[Raw[Bits]] self) > (as[Raw[Bits]] right)
+
+fn (Int[]) uge(right Self) -> bool:
+    return (as[Raw[Bits]] self) >= (as[Raw[Bits]] right)
+
+fn (Int[]) umul(right Self) -> Self:
+    return (as[Raw[Bits]] self) * (as[Raw[Bits]] right)
+
+fn (Int[]) udiv(right Self) -> Self:
+    return (as[Raw[Bits]] self) / (as[Raw[Bits]] right)
+
+fn (Int[]) umod(right Self) -> Self:
+    return (as[Raw[Bits]] self) % (as[Raw[Bits]] right)
+
+fn (Int[]) asr(right Self) -> Self:
+    return @asr(self, right)
+
+#[bind]
+fn @asr(x Int[%Bits], amt Int[Bits])
 
 fn (Int[]) `**`(e Self) -> Self:
     b := $
@@ -488,7 +560,7 @@ fn (Int[]) ufmt(format NumberFormat) -> str:
 #[bind] fn @bitTrunc(%T type, src Code) -> T
 
 --| Sign extension.
-#[bind] fn @sext(%T type, src Code) -> T
+#[bind] fn @sext(%T type, src %S) -> T
 
 --| Zero extension.
 #[bind] fn @zext(%T type, src %S) -> T
@@ -516,7 +588,7 @@ type f32   = Float[32]
 type f64   = Float[64]
 type float = Float[64]
 
-#[bind] type Float[const Bits int_lit] _
+#[bind] type Float[const Bits EvalInt] _
 
 fn Float[] :: @init(x Self) -> Self:
     return x
@@ -548,23 +620,26 @@ fn Float[] :: @init(x %T) -> Self:
 #[bind] fn f64_fmt(x float) -> str
 #[bind] fn f32_fmt(x f32) -> str
 
-#[bind='Float[].pre-'] fn (Float[]) `-`() -> Self
-#[bind] fn (Float[]) `<`(right Self) -> bool
-#[bind] fn (Float[]) `<=`(right Self) -> bool
-#[bind] fn (Float[]) `>`(right Self) -> bool
-#[bind] fn (Float[]) `>=`(right Self) -> bool
-#[bind] fn (Float[]) `+`(right Self) -> Self
-#[bind] fn (Float[]) `-`(right Self) -> Self
-#[bind] fn (Float[]) `*`(right Self) -> Self
-#[bind] fn (Float[]) `/`(right Self) -> Self
-#[bind] fn (Float[]) `%`(right Self) -> Self
+#[reserve] fn (Float[]) `-`() -> Self
+#[reserve] fn (Float[]) `<`(right Self) -> bool
+#[reserve] fn (Float[]) `<=`(right Self) -> bool
+#[reserve] fn (Float[]) `>`(right Self) -> bool
+#[reserve] fn (Float[]) `>=`(right Self) -> bool
+#[reserve] fn (Float[]) `+`(right Self) -> Self
+#[reserve] fn (Float[]) `-`(right Self) -> Self
+#[reserve] fn (Float[]) `*`(right Self) -> Self
+#[reserve] fn (Float[]) `/`(right Self) -> Self
+#[reserve] fn (Float[]) `%`(right Self) -> Self
 fn (Float[]) `**`(right Self) -> Self:
     #if Bits == 64:
         return float_pow($, right)
     #else:
         return float_pow32($, right)
 
-#[bind] fn (Float[]) abs() -> Self
+fn (Float[]) abs() -> Self:
+    return @fabs(self)
+
+#[bind] fn @fabs(x Float[%Bits]) -> Float[Bits]
 
 fn (Float[]) fmt() -> str:
     #if Self == float:
@@ -768,12 +843,35 @@ fn (&RtBorrow[]) @deinit():
     #else:
         (as[ExDefaultInner[T]] $ptr).borrow = false
 
+#[bind]
+type EvalBuffer[T Any] _
+
+#[bind]
+fn (EvalBuffer[]) @index_addr(idx int) -> Ptr[T]
+
+#[bind]
+fn (EvalBuffer[]) len() -> int
+
+#[consteval]
+fn (EvalBuffer[]) iterator() -> int:
+    return 0
+
+#[consteval]
+fn (EvalBuffer[]) next(idx &int) -> ?T:
+    if idx.* == self.len():
+        return none
+
+    val := self[idx.*]
+    idx.* += 1
+    return val
+
 --| A data structure that holds sequential elements up to a maximum capacity.
 --| `len()` indicates which elements are initialized.
 --| `cap()` is the total number of elements the buffer can hold.
 type Buffer[T Any]:
     with NoCopy
     with AsSpan[T]
+
     base   Ptr[T]
     length int
 
@@ -836,7 +934,7 @@ fn (&Buffer[]) @release_borrow():
 fn (scope &Buffer[]) @index_addr(idx int) -> scope &T:
     if idx.uge($length):
         panic_oob(idx)
-    return @scope_ptr_to_borrow('self', $base + idx)
+    return @scope_ptr_to_borrow('self', self.base + idx)
 
 fn (&&Buffer[]) `<<`(elem T):
     if $length == $cap():
@@ -849,7 +947,7 @@ fn (scope &Buffer[]) span() -> scope [&]T:
 
 fn (scope &Buffer[]) @slice() -> scope [&]T:
     return {
-        base   = as $base,
+        base   = @scope_ptr_to_borrow('self', self.base),
         length = $length,
     }
 
@@ -857,7 +955,7 @@ fn (scope &Buffer[]) @slice(start int) -> scope [&]T:
     if start > $length:
         panic_oob(start)
     return {
-        base   = as ($base + start),
+        base   = @scope_ptr_to_borrow('self', self.base + start),
         length = $length - start,
     }
 
@@ -869,7 +967,7 @@ fn (scope &Buffer[]) @slice(start int, end int) -> scope [&]T:
     if end < start:
         panic('InvalidArgument')
     return {
-        base   = as ($base + start),
+        base   = @scope_ptr_to_borrow('self', self.base + start),
         length = end - start,
     }
 
@@ -1858,7 +1956,7 @@ type FnTuple[const Sig FuncSig] const:
     fields := [Sig.num_params()]meta.StructField({name='', type=void, offset=0, state_offset=0})
     for 0..Sig.num_params() |i|:
         fields[i] = {
-            name = 'p' + str(i),
+            name = 'p' + EvalStr(i),
             type = Sig.param_at(i).type,
             offset = 0,
             state_offset = 0,
@@ -2401,7 +2499,9 @@ fn @init_ustr_undef(thread Thread, len int) -> str:
 #[bind] fn @isUniqueRef(ptr Ptr[void]) -> bool
 
 --| Insert a nop IR with a label.
-#[bind] fn @nop(label str)
+#[bind] fn @nop(label EvalStr)
+
+#[bind] fn @breakpoint()
 
 type DeinitFn = fn(Ptr[void]) -> void
 
@@ -2443,7 +2543,7 @@ fn @eq(a &%T, b &T) -> bool:
             #if T == str:
                 -- TODO: Consider moving this overloaded operator for `str`.
                 return @memByteEqs(a.ptr[0..a.len()], b.ptr[0..b.len()])
-            #for 0..struct_t.fields.length |i|:
+            #for 0..struct_t.fields.len() |i|:
                 #field := struct_t.fields[i]
                 if !@eq(&meta.access(a, field.name), &meta.access(b, field.name)):
                     return false
@@ -2458,16 +2558,16 @@ fn @eq(a &%T, b &T) -> bool:
                 return true
             if a_none or b_none:
                 return false
-            return meta.access_option_payload(T, a) == meta.access_option_payload(T, b)
+            return meta.access_option_payload(a.*) == meta.access_option_payload(b.*)
 
         #case .result |result_t|:
             a_err := meta.is_result_error(a)
             b_err := meta.is_result_error(b)
             if a_err and b_err:
-                return meta.access_result_error(a) == meta.access_result_error(b)
+                return meta.access_result_error(a.*) == meta.access_result_error(b.*)
             if a_err or b_err:
                 return false
-            return meta.access_result_payload(T, a) == meta.access_result_payload(T, b)
+            return meta.access_result_payload(a.*) == meta.access_result_payload(b.*)
 
         #case .int:
             return a.* == b.*
@@ -2489,15 +2589,14 @@ fn @copyStruct(%T type, src_ptr Code) -> T
 #[bind, unsafe] fn @unsafeCast(%T type, src Code) -> T
 
 #[bind, unsafe]
-fn @scope_ptr_to_borrow(scope_param str, ptr Ptr[%T]) -> &T
+fn @scope_ptr_to_borrow(scope_param EvalStr, ptr Ptr[%T]) -> &T
 
 #[bind] fn @bitCast(%T type, x %S) -> T
 
 type TraitStruct:
-    vtable Ptr[void]
-
     -- This particular field placement works well with the bc call convention.
-    impl   Ptr[void]
+    vtable r64  -- Ptr[void]
+    impl   r64  -- Ptr[void]
 
 fn @send(dst Thread, src Ptr[%T]) -> T:
     @nop('@send: ' + type.name(T))
@@ -2554,21 +2653,21 @@ fn @copy(src Ptr[%T]) -> T:
             if meta.is_none(src):
                 return none
             else:
-                payload := *meta.access_option_payload(T, src)
+                payload := *meta.access_option_payload(src.*)
                 return payload.*
 
         #case .result |result_t|:
             if meta.is_result_error(src):
                 return meta.access_result_error(src)
             else:
-                payload := *meta.access_result_payload(T, src)
+                payload := *meta.access_result_payload(src.*)
                 return payload.*
 
         #case .choice |choice_t|:
-            switch meta.choice_tag(T, as src):
+            switch meta.choice_tag(src.*):
                 #for meta.enum_values(T.Tag) |Tag|:
                     case Tag:
-                        payload := *meta.access_choice_case(T, src, Tag)
+                        payload := *meta.access_choice_case(src.*, Tag)
                         return meta.init_choice(T, Tag, payload.*)
 
         #case .ref_trait:
@@ -2648,11 +2747,12 @@ fn @deinitObject[T Any](obj Ptr[void]):
                     @freeObject(obj, 8)
                 #case .union:
                     if meta.get_closure_data(obj) |data|:
-                        captured := as[Ptr[Ptr[void]]] *data.captured
+                        captured := as[Ptr[r64]] *data.captured
                         for 0..data.numCaptured |i|:
-                            if @releaseOnly(captured[i]):
-                                if @getDeinitObject(captured[i]) |deinit|:
-                                    deinit(captured[i])
+                            captured_ptr := (as[Ptr[Ptr[void]]] *captured[i]).*
+                            if @releaseOnly(captured_ptr):
+                                if @getDeinitObject(captured_ptr) |deinit|:
+                                    deinit(captured_ptr)
                         @freeObject(obj, 24 + data.numCaptured * 8)
                     else:
                         @freeObject(obj, 24)
@@ -2681,7 +2781,7 @@ fn @partial_destruct(%T type, %Layout PartialStructLayout, val Ptr[T]):
 
     #switch type.info(T):
         #case .struct |struct_t|:
-            #for 0..struct_t.fields.length |i|:
+            #for 0..struct_t.fields.len() |i|:
                 #field := struct_t.fields[i]
                 #switch type.info(field.type):
                     #case .struct:
@@ -2716,7 +2816,7 @@ fn @destruct(%T type, val Ptr[T]):
 
     #switch type.info(T):
         #case .struct |struct_t|:
-            #for 0..struct_t.fields.length |i|:
+            #for 0..struct_t.fields.len() |i|:
                 #field := struct_t.fields[i]
                 @destruct(field.type, *meta.access(val, field.name))
 
@@ -2730,17 +2830,17 @@ fn @destruct(%T type, val Ptr[T]):
 
         #case .option |option_t|:
             if !meta.is_none(val):
-                @destruct(option_t.child, *meta.access_option_payload(T, val))
+                @destruct(option_t.child, *meta.access_option_payload(val.*))
 
         #case .result |result_t|:
             if !meta.is_result_error(val):
-                @destruct(result_t.child, *meta.access_result_payload(T, val))
+                @destruct(result_t.child, *meta.access_result_payload(val.*))
 
         #case .choice |choice_t|:
-            switch meta.choice_tag(T, as val):
+            switch meta.choice_tag(val.*):
                 #for meta.enum_values(T.Tag) |Tag|:
                     case Tag:
-                        payload := *meta.access_choice_case(T, val, Tag)
+                        payload := *meta.access_choice_case(val.*, Tag)
                         @destruct(meta.CasePayload[T, Tag], payload)
 
         #case .partial_vector |vector_t|:
@@ -2763,8 +2863,8 @@ fn @destruct(%T type, val Ptr[T]):
 
         #case .ref_trait |ref_trait|:
             trait_s := (as[Ptr[TraitStruct]] val).*
-            if @releaseOnly(trait_s.impl):
-                @destructBox(trait_s.impl)
+            if @releaseOnly(as trait_s.impl):
+                @destructBox(as trait_s.impl)
 
         #case .borrow_trait:
             pass
@@ -3484,7 +3584,7 @@ fn (&str) fmt(placeholder str, args %T) -> str:
     cur := 0
 
     #struct_t := type.info(T).!struct
-    #for 0..struct_t.fields.length |i|:
+    #for 0..struct_t.fields.len() |i|:
         begin:
             #field := struct_t.fields[i]
 
@@ -3723,7 +3823,7 @@ type PartialVector[T Any, const N int] _
 fn (scope &PartialVector[]) @index_addr(idx int) -> scope &T:
     if idx.uge($len()):
         panic_oob(idx)
-    elem_addr := @bitCast(int, $) + 8
+    elem_addr := @unsafeCast(int, $) + 8
     return @scope_ptr_to_borrow('self', as[Ptr[T]] elem_addr + idx)
 
 --| Alias for `append`.
@@ -3734,19 +3834,19 @@ fn (&PartialVector[]) append(x T):
     _len := $len()
     if _len == N:
         panic('`%{type.name(Self)}` already has the max number of elements `%{$len()}`.')
-    addr := @bitCast(int, $)
+    addr := @unsafeCast(int, $)
     @ptr_init((as[Ptr[T]] (addr + 8)) + _len, x)
     (as[Ptr[int]] addr).* += 1
 
 --| Returns the number of elements in the partial array.
 fn (&PartialVector[]) len() -> int:
     -- Get addr first to avoid implicit elem[0] cast for `Ptr[int]`.
-    addr := @bitCast(int, $)
+    addr := @unsafeCast(int, $)
     return (as[Ptr[int]] addr).*
 
 #[unsafe]
 fn (&PartialVector[]) setLength(len int):
-    addr := @bitCast(int, $)
+    addr := @unsafeCast(int, $)
     (as[Ptr[int]] addr).* = len
 
 #[bind]
@@ -3839,7 +3939,34 @@ fn (&Vector[]) as_ptr_span() -> PtrSpan[T]:
 #[bind]
 type Ptr[T Any] _
 
-#[bind]
+fn Ptr[] :: @init(x %T) -> Self:
+    #if false:
+        -- Placeholder for specific types.
+        pass
+    #else:
+        #switch type.info(T):
+            #case .raw |info|:
+                #if type.size(T) < type.size(Self):
+                    return @bitCast(Self, @zext(Raw[type.size(Self) * 8], x))
+                #else type.size(T) > type.size(Self):
+                    if x > Raw[type.size(Self)*8].ones:
+                        panic('Lossy conversion from `%{x}` to `%{type.name(Self)}`')
+                    return @bitCast(Self, @bitTrunc(Raw[type.size(Self)*8], x))
+                #else:
+                    return @bitCast(Self, x)
+            #case .int |info|:
+                #if type.size(T) < type.size(Self):
+                    return @bitCast(Self, @zext(Raw[type.size(Self) * 8], x))
+                #else type.size(T) > type.size(Self):
+                    if Raw[info.bits](x) > Raw[type.size(Self)*8].ones:
+                        panic('Lossy conversion from `%{x}` to `%{type.name(Self)}`')
+                    return @bitCast(Self, @bitTrunc(Raw[type.size(Self)*8], x))
+                #else:
+                    return @bitCast(Self, x)
+            #else:
+                meta.error('Unsupported: ' + type.name(T))
+
+#[reserve]
 fn (Ptr[]) @index_addr(idx int) -> Ptr[T]
 
 #[bind]
@@ -3886,14 +4013,17 @@ fn Result[] :: @init(x Self) -> Self:
 
 --| Returns the Result's successful value case or panics.
 fn (&Result[]) unwrap() -> T:
-    return Result_unwrap(T, self)
+    return @result_unwrap(T, self)
 
 #[bind]
-fn Result_unwrap(%T type, res Code) -> T
+fn @result_unwrap(%T type, res Code) -> T
 
 --| Returns the Result's error case or panics.
+fn (&Result[]) unwrap_error() -> error:
+    return @result_unwrap_error(self)
+
 #[bind]
-fn (&Result[]) unwrapError() -> error
+fn @result_unwrap_error(res Code) -> error
 
 #[bind]
 type Option[T Any] _
@@ -3912,7 +4042,7 @@ type Future[T Any]:
 
 fn (&Future[]) await() -> T:
     @await_(as[&FutureValue[T]] $.inner)
-    return meta.access_option_payload(?T, *$inner.data)
+    return meta.access_option_payload($inner.data)
 
 type FutureValue[T Any]:
     cont_head int -- index to `vm.task_nodes` or NullId
@@ -4117,6 +4247,8 @@ type SystemKind enum:
     case linux
     case macos
     case windows
+    case freestanding
+    case wasi
 
 #[bind] type VaList[T Any] _
 
@@ -4142,9 +4274,17 @@ fn (&Generator[]) @deinit():
 
 #[bind] fn (&Generator[]) @size() -> int
 
-#[bind] fn (&Generator[]) end()
+fn (&Generator[]) end():
+    @gen_end(self.*)
 
-#[bind] fn (&Generator[]) next() -> ?(type.fn_ret(FnPtr))
+#[bind]
+fn @gen_end(gen Generator[%FnPtr])
+
+fn (&Generator[]) next() -> ?(type.fn_ret(FnPtr)):
+    return @gen_next(self.*)
+
+#[bind]
+fn @gen_next(gen Generator[%FnPtr]) -> ?(type.fn_ret(FnPtr))
 
 #[bind] fn (&Generator[]) status() -> GeneratorStatus
 
@@ -4183,7 +4323,7 @@ fn spawn(func funcptr_t[%Sig], args FnTuple[Sig]) -> Future[Sig.ret()]:
     var thread_args FnTuple[Sig] = undef
     #for 0..Sig.num_params() |i|:
         #param := Sig.param_at(i)
-        #param_name := 'p' + str(i)
+        #param_name := 'p' + EvalStr(i)
         @ptr_init(*meta.access(thread_args, param_name), @send(thread, *meta.access(args, param_name)))
 
     future := Future(Sig.ret())

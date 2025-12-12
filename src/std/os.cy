@@ -64,9 +64,9 @@ const AccessExecute = c_int(1)  -- X_OK
 type AccessMode = c_int
 
 --| Default mode when creating a directory.
-const DefaultDirMode = switch meta.system():
-    case .macos => lc.mode_t(0o755)
-    case .linux => lc.mode_t(0o755)
+const DefaultDirMode lc.mode_t = switch meta.system():
+    case .macos => 0o755
+    case .linux => 0o755
     else => 0  -- Windows doesn't use POSIX mode_t
 
 --| Default mode when creating a file.
@@ -542,9 +542,8 @@ fn resolve_path(path str) -> !str:
             if len < 0:
                 return fromErrno()
             return str(buf[0..len])
-    #else:
-        panic('resolve_path not supported on this platform')
-
+        #else:
+            panic('resolve_path not supported on this platform')
 
 --| Sets an environment variable by key.
 fn set_env(key str, val str) -> !void:
@@ -574,7 +573,7 @@ fn sleep(nsecs int) -> !void:
         ns := nsecs % ns_per_s
         req := lc.timespec{
             sec = s,
-            nsec = ns,
+            nsec = as ns,
         }
         rem := lc.timespec{}
         if lc.nanosleep(*req, *rem) != 0:
@@ -869,11 +868,16 @@ type DirIterator:
 fn (&DirIterator) next(dir &Dir) -> !?DirEntry:
     return $impl.next(dir)
 
+type DirIteratorStub
+
+fn (&DirIteratorStub) next(dir &Dir) -> !?DirEntry:
+    panic('unsupported')
+
 type DirIteratorImpl = switch meta.system():
     case .macos => macos.DirIteratorImpl
     case .linux => linux.DirIteratorImpl
     case .windows => windows.DirIteratorImpl
-    else => void
+    else => DirIteratorStub
 
 type DirEntry:
     kind FileKind

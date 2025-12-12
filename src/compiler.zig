@@ -119,7 +119,7 @@ pub const Compiler = struct {
         self.* = .{
             .alloc = vm.alloc,
             .vm = vm,
-            .heap = try cy.Heap.init(vm.alloc, undefined),
+            .heap = try cy.Heap.init(vm, null, vm.alloc, undefined),
             .jitBuf = jitgen.CodeBuffer.init(),
             .reports = .{},
             .sema = try sema.Sema.init(vm.alloc, self),
@@ -874,6 +874,9 @@ fn loadBuiltinChunk(c: *cy.Chunk) !void {
     c.sema.future_tmpl = core.getSym("Future").?.cast(.template);
     c.sema.va_list_tmpl = core.getSym("VaList").?.cast(.template);
     c.sema.option_tmpl = core.getSym("Option").?.cast(.template);
+    c.sema.int_tmpl = core.getSym("Int").?.cast(.template);
+    c.sema.float_tmpl = core.getSym("Float").?.cast(.template);
+    c.sema.fn_tuple_tmpl = core.getSym("FnTuple").?.cast(.template);
     c.sema.result_tmpl = core.getSym("Result").?.cast(.template);
     c.sema.vector_tmpl = core.getSym("Vector").?.cast(.template);
     c.sema.generic_vector_tmpl = core.getSym("GenericVector").?.cast(.template);
@@ -896,12 +899,12 @@ fn loadBuiltinChunk(c: *cy.Chunk) !void {
     c.sema.opaque_func_tmpl = core.getSym("OpaqueFunc").?.cast(.template);
     c.sema.raw_buffer_tmpl = core.getSym("RawBuffer").?.cast(.template);
     c.sema.buffer_tmpl = core.getSym("Buffer").?.cast(.template);
+    c.sema.eval_buffer_tmpl = core.getSym("EvalBuffer").?.cast(.template);
     c.sema.panic_fn = core.getSym("panic").?.cast(.func).first;
     c.sema.panic_unwrap_error_fn = core.getSym("panic_unwrap_error").?.cast(.func).first;
     c.sema.track_main_local_fn = core.getSym("@trackMainLocal").?.cast(.func).first;
 
-    const int_tmpl = core.getSym("Int").?.cast(.template);
-    const float_tmpl = core.getSym("Float").?.cast(.template);
+    const float_tmpl = c.sema.float_tmpl;
     const raw_tmpl = core.getSym("Raw").?.cast(.template);
 
     // Resolve core builtin types first, since they are needed by sema.
@@ -919,8 +922,8 @@ fn loadBuiltinChunk(c: *cy.Chunk) !void {
     c.sema.any_t = try resolveTypeSym(c, mod, "Any");
     c.sema.dependent_t = try resolveTypeSym(c, mod, "dependent");
     c.sema.infer_t = try resolveTypeSym(c, mod, "Infer");
-    c.sema.int_lit_t = try resolveTypeSym(c, mod, "int_lit");
-    c.sema.str_lit_t = try resolveTypeSym(c, mod, "str_lit");
+    c.sema.eval_int_t = try resolveTypeSym(c, mod, "EvalInt");
+    c.sema.eval_str_t = try resolveTypeSym(c, mod, "EvalStr");
     c.sema.str_t = try resolveTypeSym(c, mod, "str");
     c.sema.str_buffer_t = try resolveTypeSym(c, mod, "StrBuffer");
     c.sema.mut_str_t = try resolveTypeSym(c, mod, "Str");
@@ -955,29 +958,33 @@ fn loadBuiltinChunk(c: *cy.Chunk) !void {
 
     // int, i32, i16, i8
     var bits = cy.Value.initGenericInt(64);
-    c.sema.i64_t = try c.vm.expandTypeTemplate(int_tmpl, &.{c.sema.int_lit_t}, &.{ bits });
+    const int_tmpl = c.sema.int_tmpl;
+    c.sema.i64_t = try c.vm.expandTypeTemplate(int_tmpl, &.{c.sema.eval_int_t}, &.{ bits });
     bits = cy.Value.initGenericInt(32);
-    c.sema.i32_t = try c.vm.expandTypeTemplate(int_tmpl, &.{c.sema.int_lit_t}, &.{ bits });
+    c.sema.i32_t = try c.vm.expandTypeTemplate(int_tmpl, &.{c.sema.eval_int_t}, &.{ bits });
     bits = cy.Value.initGenericInt(16);
-    c.sema.i16_t = try c.vm.expandTypeTemplate(int_tmpl, &.{c.sema.int_lit_t}, &.{ bits });
+    c.sema.i16_t = try c.vm.expandTypeTemplate(int_tmpl, &.{c.sema.eval_int_t}, &.{ bits });
     bits = cy.Value.initGenericInt(8);
-    c.sema.i8_t = try c.vm.expandTypeTemplate(int_tmpl, &.{c.sema.int_lit_t}, &.{ bits });
+    c.sema.i8_t = try c.vm.expandTypeTemplate(int_tmpl, &.{c.sema.eval_int_t}, &.{ bits });
 
-    // r8, r16, r32, r64
+    // r8, r16, r32, r64, rsize
     bits = cy.Value.initGenericInt(8);
-    c.sema.r8_t = try c.vm.expandTypeTemplate(raw_tmpl, &.{c.sema.int_lit_t}, &.{ bits });
+    c.sema.r8_t = try c.vm.expandTypeTemplate(raw_tmpl, &.{c.sema.eval_int_t}, &.{ bits });
     bits = cy.Value.initGenericInt(16);
-    c.sema.r16_t = try c.vm.expandTypeTemplate(raw_tmpl, &.{c.sema.int_lit_t}, &.{ bits });
+    c.sema.r16_t = try c.vm.expandTypeTemplate(raw_tmpl, &.{c.sema.eval_int_t}, &.{ bits });
     bits = cy.Value.initGenericInt(32);
-    c.sema.r32_t = try c.vm.expandTypeTemplate(raw_tmpl, &.{c.sema.int_lit_t}, &.{ bits });
+    c.sema.r32_t = try c.vm.expandTypeTemplate(raw_tmpl, &.{c.sema.eval_int_t}, &.{ bits });
     bits = cy.Value.initGenericInt(64);
-    c.sema.r64_t = try c.vm.expandTypeTemplate(raw_tmpl, &.{c.sema.int_lit_t}, &.{ bits });
+    c.sema.r64_t = try c.vm.expandTypeTemplate(raw_tmpl, &.{c.sema.eval_int_t}, &.{ bits });
+    sym = core.getSym("rsize").?;
+    try resolveSym(c, sym);
+    c.sema.rsize_t = sym.cast(.type_alias).sym.type;
 
     // float, f32
     bits = cy.Value.initGenericInt(64);
-    c.sema.f64_t = try c.vm.expandTypeTemplate(float_tmpl, &.{c.sema.int_lit_t}, &.{ bits });
+    c.sema.f64_t = try c.vm.expandTypeTemplate(float_tmpl, &.{c.sema.eval_int_t}, &.{ bits });
     bits = cy.Value.initGenericInt(32);
-    c.sema.f32_t = try c.vm.expandTypeTemplate(float_tmpl, &.{c.sema.int_lit_t}, &.{ bits });
+    c.sema.f32_t = try c.vm.expandTypeTemplate(float_tmpl, &.{c.sema.eval_int_t}, &.{ bits });
 
     const int_t = cy.Value.initType(c.sema.i64_t);
     c.sema.option_int_t = try c.vm.expandTypeTemplate(c.sema.option_tmpl, &.{c.sema.type_t}, &.{ int_t });
@@ -1011,7 +1018,7 @@ fn loadBuiltinChunk(c: *cy.Chunk) !void {
     std.debug.assert(c.sema.f64_t.id() == bt.F64);
     std.debug.assert(c.sema.f32_t.id() == bt.F32);
     std.debug.assert(c.sema.str_t.id() == bt.Str);
-    std.debug.assert(c.sema.str_lit_t.id() == bt.StrLit);
+    std.debug.assert(c.sema.eval_str_t.id() == bt.EvalStr);
     std.debug.assert(c.sema.str_buffer_t.id() == bt.StrBuffer);
     std.debug.assert(c.sema.void_t.id() == bt.Void);
     std.debug.assert(c.sema.never_t.id() == bt.Never);
@@ -1237,7 +1244,7 @@ fn reserveCoreTypes(self: *Compiler) !void {
         bt.I16,
         bt.I32,
         bt.I64,
-        bt.IntLit,
+        bt.EvalInt,
         bt.R8,
         bt.R16,
         bt.R32,
@@ -1255,7 +1262,7 @@ fn reserveCoreTypes(self: *Compiler) !void {
         bt.PartialStructLayout,
         bt.Str,
         bt.StrBuffer,
-        bt.StrLit,
+        bt.EvalStr,
         bt.Never,
         bt.Infer,
         bt.Dependent,

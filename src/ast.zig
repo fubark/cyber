@@ -163,8 +163,8 @@ pub const AttributeType = enum(u8) {
     generator,
     cond,
     unsafe,
-    global_init,
     consteval,
+    reserve,
 };
 
 const OptionType = extern struct {
@@ -872,8 +872,8 @@ pub const Range = extern struct {
     op_end: u32,
 };
 
-const IfExpr = struct {
-    cond: *Node align(8),
+const IfExpr = extern struct {
+    cond: *Node,
     body: *Node,
     else_expr: *Node,
     pos: u32,
@@ -1035,7 +1035,7 @@ const NodeHeader = extern struct {
 
 /// Each Node's position includes is between the source's start position and end position.
 pub const Node = struct {
-    dummy: u8 align(8) = undefined,
+    dummy: u8 = undefined,
 
     pub fn @"type"(self: *Node) NodeType {
         return @as(*NodeHeader, @ptrFromInt(@intFromPtr(self) - 1)).*.type;

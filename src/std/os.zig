@@ -84,7 +84,7 @@ fn stdout(t: *C.Thread) !C.Ret {
 }
 
 fn _args(t: *C.Thread) !C.Ret {
-    if (is_wasm) return t.ret_panic("Unsupported.");
+    // if (is_wasm) return t.ret_panic("Unsupported.");
 
     const ret = C.thread_ret(t, C.Slice);
     const byte_buffer_t: C.TypeId = @intCast(C.thread_int(t));
@@ -130,7 +130,7 @@ pub fn openLib(t: *C.Thread) anyerror!C.Ret {
 pub extern fn hostFileWrite(fid: u32, str: [*]const u8, strLen: usize) void;
 
 fn cacheUrl(t: *C.Thread) anyerror!C.Ret {
-    if (is_wasm) return t.ret_panic("Unsupported.");
+    // if (is_wasm) return t.ret_panic("Unsupported.");
 
     const vm = C.thread_vm(t);
     const alloc = C.thread_allocator(t);
@@ -178,7 +178,7 @@ const ExecResult = extern struct {
 };
 
 pub fn exec(t: *C.Thread) anyerror!C.Ret {
-    if (is_wasm) return t.ret_panic("Unsupported.");
+    if (is_wasm) return C.thread_ret_panic(t, "Unsupported.");
 
     const alloc = C.thread_allocator(t);
 
@@ -219,7 +219,7 @@ pub fn exec(t: *C.Thread) anyerror!C.Ret {
 }
 
 pub fn fetchUrl(t: *C.Thread) anyerror!C.Ret {
-    if (is_wasm) return t.ret_panic("Unsupported.");
+    // if (is_wasm) return t.ret_panic("Unsupported.");
 
     const ret = C.thread_ret(t, C.str);
     const url = C.str_bytes(C.thread_param(t, C.str));

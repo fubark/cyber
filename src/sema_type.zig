@@ -119,7 +119,8 @@ pub fn ensure_resolved_type(c: *cy.Chunk, type_: *cy.Type, node: *ast.Node) anye
     }
     switch (type_.kind()) {
         .never,
-        .int_lit,
+        .eval_int,
+        .eval_ref,
         .void,
         .func_ptr,
         .func_sym,
@@ -657,10 +658,15 @@ pub fn reserveStruct(c: *cy.Chunk, node: *ast.StructDecl, cstruct: bool) !*cy.sy
 }
 
 pub const StructField = extern struct {
-    name: cy.heap.Str,
+    name_ref: u64,
     type: *cy.Type,
     offset: i64,
     state_offset: i64,
+
+    pub fn name(self: *const StructField) *cy.heap.EvalStr {
+        const addr: usize = @intCast(self.name_ref);
+        return @ptrFromInt(addr);
+    }
 };
 
 pub fn reifyStructType(c: *cy.Chunk, struct_t: *cy.types.Struct, user_fields: []const StructField, node: *ast.Node) !void {
@@ -672,7 +678,7 @@ pub fn reifyStructType(c: *cy.Chunk, struct_t: *cy.types.Struct, user_fields: []
     errdefer c.alloc.free(fields);
 
     for (user_fields, 0..) |field, i| {
-        const field_name = field.name.slice();
+        const field_name = field.name().slice();
         const field_t = field.type;
         try ensure_resolved_type(c, field_t, node);
         if (field_t.isManaged()) {
@@ -765,8 +771,10 @@ pub fn resolveStructType(c: *cy.Chunk, struct_t: *cy.types.Struct, node: *ast.No
         decl = sym.decl.?.cast(.struct_decl);
     }
     try resolve_type_impls(c, &struct_t.base, decl.impls.slice());
-    try resolveStructFields(c, struct_t, decl);
+    try resolveStructFields(c, struct_t, decl); 
     struct_t.base.info.resolved = true;
+
+    // TODO: Create builtin @default_ctor that accepts non-default fields as a tuple.
 }
 
 fn indexOfTypedField(fields: []const *ast.Field, start: usize) ?usize {
@@ -776,33 +784,6 @@ fn indexOfTypedField(fields: []const *ast.Field, start: usize) ?usize {
         }
     }
     return null;
-}
-
-pub fn resolveStructFieldInit(c: *cy.Chunk, field: *cy.types.Field, init: *ast.Node) !void {
-    const res = try cte.evalCheck(c, init, field.type);
-    errdefer c.heap.destructValue(res);
-
-    // Only allow types that can be expanded at compile-time. `ct_expand.value`
-    // TODO: Similar to resolving const.
-    if (!field.type.isConstEligible()) {
-        const name = try c.sema.allocTypeName(field.type);
-        defer c.alloc.free(name);
-        if (field.type.kind() == .vector) {
-            return c.reportErrorFmt("TODO: `{}`.", &.{v(name)}, init);
-        }
-        return c.reportErrorFmt("Expected const eligible type, found `{}`.", &.{v(name)}, init);
-    }
-
-    field.init_value = res.value;
-
-    // Compile-time exclusive types do not have cached IR.
-    if (field.type.id() == bt.StrLit) {
-        field.init = null;
-    } else {
-        // Generate reusable IR.
-        field.init = (try ct_inline.value(c, res, null, init)).ir;
-    }
-    field.init_n = init;
 }
 
 /// Explicit `decl` node for distinct type declarations. Must belong to `c`.
@@ -894,10 +875,8 @@ pub fn resolveStructFields(c: *cy.Chunk, struct_t: *cy.types.Struct, decl: *ast.
             .type = field_t,
             .offset = 0,
             .state_offset = @intCast(field_state_len),
+            .init_n = field.init,
         };
-        if (field.init) |init| {
-            try resolveStructFieldInit(c, &fields[i], init);
-        }
 
         if (field_t.kind() == .struct_t) {
             field_state_len += field_t.cast(.struct_t).field_state_len;
@@ -1021,8 +1000,8 @@ pub fn resolve_type_impls(c: *cy.Chunk, type_: *cy.Type, impl_decls: []*ast.Impl
 }
 
 pub fn resolveFuncType(c: *cy.Chunk, func_type: *ast.FuncType) !*cy.FuncSig {
-    const start = c.typeStack.items.len;
-    defer c.typeStack.items.len = start;
+    const start = c.func_param_stack.items.len;
+    defer c.func_param_stack.items.len = start;
 
     for (func_type.params.slice()) |param| {
         var param_t: *cy.Type = undefined;
@@ -1032,12 +1011,12 @@ pub fn resolveFuncType(c: *cy.Chunk, func_type: *ast.FuncType) !*cy.FuncSig {
             param_t = try cte.eval_type2(c, false, param.name_type);
         }
 
-        try c.typeStack.append(c.alloc, param_t);
+        try c.func_param_stack.append(c.alloc, .init(param_t));
     }
 
     // Get return type.
     const ret_t = try resolveReturnType(c, func_type.ret);
-    return c.sema.ensureFuncSig2(@ptrCast(c.typeStack.items[start..]), ret_t, func_type.extern_ != null, null);
+    return c.sema.ensureFuncSig2(@ptrCast(c.func_param_stack.items[start..]), ret_t, func_type.extern_ != null, null);
 }
 
 pub fn resolvePartialVectorType(c: *cy.Chunk, array_t: *cy.types.PartialVector, decl: *ast.Node) !void {
@@ -1131,10 +1110,9 @@ pub fn resolveOptionType(c: *cy.Chunk, option_t: *cy.types.Option, decl: *ast.No
     if (option_t.zero_union) {
         // Payload field.
         try ensure_resolved_type(c, option_t.child_t, decl);
-
-        std.debug.assert(option_t.child_t.size() <= 8);
-        option_t.size = 8;
-        option_t.alignment = 8;
+        std.debug.assert(option_t.child_t.size() == 8 or option_t.child_t.size() == 4);
+        option_t.size = @intCast(option_t.child_t.size());
+        option_t.alignment = option_t.child_t.alignment();
     } else {
         // Tag field.
         const alignment: u8 = 8;
@@ -1335,7 +1313,7 @@ pub fn implements(c: *cy.Chunk, impl_t: *cy.Type, trait: *cy.types.GenericTrait,
         if (trait.members_len == 0) {
             // Check implicit trait.
             if (trait.predicate) |predicate| {
-                const ct_res = try cte.evalCall(c, predicate, &.{cy.Value.initPtr(impl_t)}, .{ .req_value = true }, node);
+                const ct_res = try cte.evalCall(c, predicate, &.{cy.Value.initPtr(impl_t)}, node);
                 if (ct_res.resType != .ct_value) {
                     return c.reportErrorFmt("Expected compile-time value.", &.{}, node);
                 }
@@ -1349,4 +1327,12 @@ pub fn implements(c: *cy.Chunk, impl_t: *cy.Type, trait: *cy.types.GenericTrait,
         try impls.put(c.alloc, impl_t, {});
     }
     return res;
+}
+
+pub fn ensure_eval_eligible_type(c: *cy.Chunk, type_: *cy.Type, node: *ast.Node) !void {
+    if (type_.isManaged()) {
+        const name = try c.sema.allocTypeName(type_);
+        defer c.alloc.free(name);
+        return c.reportErrorFmt("Expected eval eligible type, found `{}`.", &.{v(name)}, node);
+    }
 }

@@ -126,7 +126,7 @@ pub fn getSpecHashGroup(alloc: std.mem.Allocator, spec: []const u8) !SpecHashGro
 }
 
 fn readEntryFile(alloc: std.mem.Allocator, path: []const u8) ![]SpecEntry {
-    const content = try std.fs.cwd().readFileAlloc(alloc, path, 1e10);
+    const content = try std.fs.cwd().readFileAlloc(alloc, path, 1e9);
     defer alloc.free(content);
 
     var entries: std.ArrayListUnmanaged(SpecEntry) = .{};
@@ -169,7 +169,7 @@ pub fn allocSpecFileContents(alloc: std.mem.Allocator, entry: SpecEntry) ![]cons
     const cyberPath = try getCyberPath(alloc);
     const path = try std.fs.path.join(alloc, &.{cyberPath, entry.spec});
     defer alloc.free(path);
-    return std.fs.cwd().readFileAlloc(alloc, path, 1e10);
+    return std.fs.cwd().readFileAlloc(alloc, path, 1e9);
 }
 
 fn computeSpecHashStr(spec: []const u8) [16]u8 {

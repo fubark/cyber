@@ -32,13 +32,16 @@ pub const TypeKind = enum(u8) {
     func = vmc.TYPE_KIND_FUNC,
     func_sym = vmc.TYPE_KIND_FUNC_SYM,
     pointer = vmc.TYPE_KIND_PTR,
+
+    // An `eval_ref` is an rc type used during const eval that is always 8 bytes regardless of the compilation target.
+    eval_ref = vmc.TYPE_KIND_EVAL_REF,
     borrow = vmc.TYPE_KIND_BORROW,
     void = vmc.TYPE_KIND_VOID,
     generic = vmc.TYPE_KIND_GENERIC,
     result = vmc.TYPE_KIND_RESULT,
     ref_trait = vmc.TYPE_KIND_REF_TRAIT,
     borrow_trait = vmc.TYPE_KIND_BORROW_TRAIT,
-    int_lit = vmc.TYPE_KIND_INT_LIT,
+    eval_int = vmc.TYPE_KIND_EVAL_INT,
     generic_vector = vmc.TYPE_KIND_GENERIC_VECTOR,
     never = vmc.TYPE_KIND_NEVER,
     c_variadic = vmc.TYPE_KIND_CVARIADIC,
@@ -138,52 +141,45 @@ pub const Type = extern struct {
         return false;
     }
 
-    /// Type must not contain any reference types to be const eligible.
-    /// Although we may allow them when consts can also be runtime initialized.
+    /// What is const eligible is a subset of what is eval eligible.
+    /// The type must be immutable.
     pub fn isConstEligible(self: *Type) bool {
         switch (self.id()) {
+            bt.I8,
+            bt.I16,
             bt.I32,
             bt.I64,
+            bt.R8,
+            bt.R16,
+            bt.R32,
+            bt.R64,
             bt.Bool,
             bt.F64,
             bt.F32,
-            bt.StrLit,
-            bt.Str => {
+            bt.EvalStr => {
                 return true;
             },
             else => {},
+        }
+        if (self.isManaged()) {
+            return false;
         }
         switch (self.kind()) {
             .pointer => {
                 const pointer = self.cast(.pointer);
                 return !pointer.ref;
             },
-            .vector => {
-                const array_t = self.cast(.vector);
-                return array_t.elem_t.isConstEligible();
-            },
-            .partial_vector => {
-                const array_t = self.cast(.partial_vector);
-                return array_t.elem_t.isConstEligible();
-            },
             .struct_t => {
-                const struct_t = self.cast(.struct_t);
+                // Allow containers if they are not managed and all members are const eligible.
+                // TODO: Prevent method calling that are by pass by mutable receiver.
+                // TODO: Prevent mutation to any inner field.
                 std.debug.assert(self.isResolved());
+                const struct_t = self.cast(.struct_t);
                 for (struct_t.fields()) |field| {
                     if (!field.type.isConstEligible()) {
                         return false;
                     }
                 }
-                return true;
-            },
-            .borrow,
-            .choice,
-            .option,
-            .enum_t,
-            .float,
-            .bool,
-            .raw,
-            .int => {
                 return true;
             },
             else => {
@@ -197,6 +193,7 @@ pub const Type = extern struct {
             .pointer => {
                 return !self.cast(.pointer).ref;
             },
+            .eval_ref,
             .ref_trait,
             .func,
             .result,
@@ -290,6 +287,7 @@ pub const Type = extern struct {
             .pointer => {
                 return self.cast(.pointer).ref;
             },
+            .eval_ref,
             .func => {
                 return true;
             },
@@ -395,7 +393,8 @@ pub const Type = extern struct {
             .raw => return @intCast(self.cast(.raw).bits / 8),
             .int => return @intCast(self.cast(.int).bits / 8),
             .float => return @intCast(self.cast(.float).bits / 8),
-            .pointer => return 8,
+            .eval_ref => return 8,
+            .pointer => return @sizeOf(usize),
             .borrow => return 8,
             .ex_borrow => return 8,
             .borrow_trait,
@@ -419,14 +418,17 @@ pub const Type = extern struct {
             .result => return self.cast(.result).size,
             .option => return self.cast(.option).size,
             .choice => return self.cast(.choice).size,
-            .vector => return self.cast(.vector).size,
-            .partial_vector => return self.cast(.partial_vector).size,
+            .vector => return @intCast(self.cast(.vector).size),
+            .partial_vector => return @intCast(self.cast(.partial_vector).size),
             .raw => return self.cast(.raw).bits / 8,
             .int => return self.cast(.int).bits / 8,
             .float => return self.cast(.float).bits / 8,
-            .pointer => return 8,
-            .borrow => return 8,
-            .ex_borrow => return 8,
+            .eval_ref => return 8,
+
+            // TODO: Size should be determined during resolving which considers the compilation target.
+            .pointer => return @sizeOf(usize),
+            .borrow => return @sizeOf(usize),
+            .ex_borrow => return @sizeOf(usize),
             .borrow_trait,
             .ref_trait => return 16,
             .bool => return 1,
@@ -506,6 +508,10 @@ pub const Type = extern struct {
                 const impl = self.cast(.pointer);
                 alloc.destroy(impl);
             },
+            .eval_ref => {
+                const impl = self.cast(.eval_ref);
+                alloc.destroy(impl);
+            },
             .borrow => {
                 const impl = self.cast(.borrow);
                 alloc.destroy(impl);
@@ -514,8 +520,8 @@ pub const Type = extern struct {
                 const impl = self.cast(.ex_borrow);
                 alloc.destroy(impl);
             },
-            .int_lit => {
-                const impl = self.cast(.int_lit);
+            .eval_int => {
+                const impl = self.cast(.eval_int);
                 alloc.destroy(impl);
             },
             .c_variadic => {
@@ -733,7 +739,8 @@ fn TypeImpl(comptime kind: TypeKind) type {
         .raw        => Raw,
         .int        => Int,
         .float      => Float,
-        .int_lit,
+        .eval_ref,
+        .eval_int,
         .c_variadic,
         .generic,
         .null,
@@ -1116,21 +1123,21 @@ pub const GenericVector = extern struct {
 pub const PartialVector = extern struct {
     base: Type = undefined,
 
-    n: u64,
+    n: usize,
     elem_t: *cy.Type,
 
     /// Byte size.
-    size: u64 = 0,
+    size: usize = 0,
 };
 
 pub const Vector = extern struct {
     base: Type = undefined,
 
-    n: u64,
+    n: usize,
     elem_t: *cy.Type,
 
     /// Byte size.
-    size: u64 = 0,
+    size: usize = 0,
 };
 
 pub const VaList = extern struct {
@@ -1185,11 +1192,7 @@ pub const Field = extern struct {
     /// Considers nested struct fields only.
     state_offset: u32 = 0,
 
-    init: ?*ir.Expr = null,
-
-    init_value: cy.Value = undefined,
-
-    /// For compile-time evaluation.
+    /// Default initializer node.
     init_n: ?*ast.Node = null,
 };
 
@@ -1206,7 +1209,7 @@ pub const BuiltinTypes = struct {
     pub const I16: TypeId = vmc.TYPE_I16;
     pub const I32: TypeId = vmc.TYPE_I32;
     pub const I64: TypeId = vmc.TYPE_I64;
-    pub const IntLit: TypeId = vmc.TYPE_INT_LIT;
+    pub const EvalInt: TypeId = vmc.TYPE_EVAL_INT;
     pub const R8: TypeId = vmc.TYPE_R8;
     pub const R16: TypeId = vmc.TYPE_R16;
     pub const R32: TypeId = vmc.TYPE_R32;
@@ -1214,7 +1217,7 @@ pub const BuiltinTypes = struct {
     pub const F64: TypeId = vmc.TYPE_F64;
     pub const F32: TypeId = vmc.TYPE_F32;
     pub const Str: TypeId = vmc.TYPE_STR;
-    pub const StrLit: TypeId = vmc.TYPE_STR_LIT;
+    pub const EvalStr: TypeId = vmc.TYPE_EVAL_STR;
     pub const MutStr: TypeId = vmc.TYPE_MUT_STR;
     pub const NoCopy: TypeId = vmc.TYPE_NO_COPY;
     pub const Thread: TypeId = vmc.TYPE_THREAD;

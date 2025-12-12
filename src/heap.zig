@@ -62,7 +62,7 @@ pub const Heap = struct {
 
     c: vmc.Heap,
 
-    pub fn init(alloc: std.mem.Allocator, sema: *cy.Sema) !Heap {
+    pub fn init(vm: *cy.VM, thread: ?*cy.Thread, alloc: std.mem.Allocator, sema: *cy.Sema) !Heap {
         var new = Heap{
             .alloc = alloc,
             .sema = sema,
@@ -74,6 +74,8 @@ pub const Heap = struct {
             .countFrees = false,
             .numFreed = 0,
             .c = .{
+                .vm = @ptrCast(vm),
+                .thread = @ptrCast(thread),
                 .ctx = cy.NullId,
                 .numRetains = 0,
                 .numReleases = 0,
@@ -93,9 +95,18 @@ pub const Heap = struct {
 
     pub fn deinit(self: *Heap, reset: bool) void {
         if (self.buffers.size > 0) {
-            var iter = self.buffers.iterator();
-            while (iter.next()) |e| {
-                std.debug.print("unfreed: {*}\n", .{e.key_ptr.*});
+            if (cy.Trace) {
+                var wa = std.Io.Writer.Allocating.init(self.alloc);
+                defer wa.deinit();
+                var w = &wa.writer;
+
+                var iter = self.buffers.iterator();
+                while (iter.next()) |e| {
+                    w.print("unfreed: {*}\n", .{e.key_ptr.*}) catch @panic("error");
+                }
+
+                const vm: *cy.VM = @ptrCast(@alignCast(self.c.vm));
+                vm.log(wa.written());
             }
             std.debug.panic("Unfreed raw buffers: {}", .{self.buffers.size});
         }
@@ -166,7 +177,7 @@ pub const Heap = struct {
 
     pub fn freeBigObject(self: *cy.Heap, obj: *HeapObject, len: usize) void {
         const header = obj.bigHeader();
-        freePoolObject(self, header.ptr_obj);
+        freePoolObject(self, header.obj());
         if (cy.Trace) {
             if (self.objectTraceMap.getPtr(obj)) |trace| {
                 trace.free_ctx = self.c.ctx;
@@ -239,6 +250,16 @@ pub const Heap = struct {
         if (isObjectAlreadyFreed(self, obj)) {
             return true;
         }
+
+        // Assumes this function is invoked before the actual rc release.
+        if (self.objectTraceMap.get(obj).?.alloc_event == self.c.trace_track_object_event) {
+            const thread: *cy.Thread = @ptrCast(self.c.thread);
+            thread.log("track object: release rc={} ev={}", .{obj.rc() - 1, self.c.trace_event});
+            const trace = thread.alloc_stack_trace() catch @panic("error");
+            defer thread.alloc.free(trace);
+            thread.log("{s}", .{trace});
+        }
+
         return false;
     }
 
@@ -246,9 +267,20 @@ pub const Heap = struct {
         if (isObjectAlreadyFreed(self, obj)) {
             return true;
         }
+
         if (!self.objectTraceMap.contains(obj)) {
             std.debug.panic("Retaining untracked heap object: {*}", .{obj});
         }
+
+        // Assumes this function is invoked before the actual rc retain.
+        if (self.objectTraceMap.get(obj).?.alloc_event == self.c.trace_track_object_event) {
+            const thread: *cy.Thread = @ptrCast(self.c.thread);
+            thread.log("track object: retain rc={} ev={}", .{obj.rc() + 1, self.c.trace_event});
+            const trace = thread.alloc_stack_trace() catch @panic("error");
+            defer thread.alloc.free(trace);
+            thread.log("{s}", .{trace});
+        }
+
         return false;
     }
 
@@ -313,6 +345,7 @@ pub const Heap = struct {
         }
     }
 
+    // Consumes `val`.
     pub fn newSome(self: *Heap, option_t: *cy.types.Option, val: cy.Value) !cy.Value {
         if (option_t.zero_union) {
             return val;
@@ -322,8 +355,7 @@ pub const Heap = struct {
             dst[0] = Value.initInt(1);
 
             const child_t = option_t.child_t;
-            try self.copyValueTo2(child_t, @ptrCast(dst+1), val);
-            self.destructValue2(child_t, val);
+            self.moveValueTo(child_t, @ptrCast(dst+1), val);
             return Value.initPtr(new);
         }
     }
@@ -386,7 +418,9 @@ pub const Heap = struct {
     pub const init_astr_concat3 = Root.init_astr_concat3;
     pub const init_ustr_concat3 = Root.init_ustr_concat3;
     pub const newStr = Root.newStr;
-    pub const newGenericStr = Root.new_str_lit;
+    pub const init_eval_str = Root.init_eval_str;
+    pub const init_eval_str_undef = Root.init_eval_str_undef;
+    pub const init_eval_str_concat = Root.init_eval_str_concat;
     pub const newEmptyString = Root.newEmptyString;
     pub const init_empty_str = Root.init_empty_str;
     pub const newAstr = Root.newAstr;
@@ -414,8 +448,8 @@ pub const Heap = struct {
     pub const new_buffer = Root.new_buffer;
     pub const new_buffer_empty = Root.new_buffer_empty;
     pub const new_buffer_undef = Root.new_buffer_undef;
+    pub const new_eval_buffer_undef = Root.new_eval_buffer_undef;
     pub const allocVector = Root.allocVector;
-    pub const allocPointer = Root.allocPointer;
     pub const allocInt = Root.allocInt;
     pub const allocBool = Root.allocBool;
     pub const allocFuncSig = Root.allocFuncSig;
@@ -445,6 +479,7 @@ pub const Heap = struct {
     pub const moveValueAt = heap_value.moveValueAt;
     pub const moveValueTo = heap_value.moveValueTo;
     pub const copy_str = heap_value.copy_str;
+    pub const copy_value = heap_value.copyValue;
     pub const copyValue2 = heap_value.copyValue2;
     pub const copyValue3 = heap_value.copyValue3;
     pub const copyValueTo = heap_value.copyValueTo;
@@ -452,6 +487,7 @@ pub const Heap = struct {
     pub const copyStructTo = heap_value.copyStructTo;
     pub const freeOnly = heap_value.freeOnly;
     pub const release = heap_value.release;
+    pub const release_object_opt = heap_value.release_object_opt;
     pub const releaseOnly = heap_value.releaseOnly;
     pub const releaseObject = heap_value.releaseObject;
     pub const releaseOpaque = heap_value.releaseOpaque;
@@ -481,9 +517,13 @@ pub const HeapPage = struct {
 const HeapObjectId = u32;
 
 const BigObjectHeader = extern struct {
-    ptr_obj: *HeapObject,
+    obj_addr: u64,
     meta: u32,
     rc: u32,
+
+    pub fn obj(self: *BigObjectHeader) *HeapObject {
+        return @ptrFromInt(@as(usize, @intCast(self.obj_addr)));
+    }
 };
 
 pub const PoolObjectHeader = extern union {
@@ -505,6 +545,7 @@ pub const HeapObject = extern union {
     },
     raw_buffer: RawBuffer,
     buffer: Buffer,
+    eval_buffer: EvalBuffer,
     array: Array,
     map: MapValue,
     mapIter: MapIterator,
@@ -514,7 +555,7 @@ pub const HeapObject = extern union {
     func: Func,
 
     string: Str,
-    str_lit: StrLit,
+    eval_str: EvalStr,
     object: Object,
     trait: Trait,
     tccState: if (cy.hasFFI) TccState else void,
@@ -586,6 +627,18 @@ pub const Range = extern struct {
     end: i64,
 };
 
+pub const EvalBuffer = extern struct {
+    ptr: u64,
+    len: u64,
+
+    pub fn init_elem(self: *EvalBuffer, heap: *cy.Heap, elem_t: *cy.Type, idx: usize, src: [*]u8) !void {
+        const addr: usize = @intCast(self.ptr);
+        const byte_dst: [*]u8 = @ptrFromInt(addr);
+        const dst = byte_dst + idx * elem_t.size();
+        try heap.copyValueTo(elem_t, dst, src);
+    }
+};
+
 pub const Buffer = extern struct {
     base: u64,
     len: u64,
@@ -600,7 +653,8 @@ pub const Buffer = extern struct {
     }
 
     pub fn initElem(self: *Buffer, heap: *cy.Heap, elem_t: *cy.Type, idx: usize, src: [*]u8) !void {
-        const byte_dst: [*]u8 = @ptrFromInt(self.base);
+        const addr: usize = @intCast(self.base);
+        const byte_dst: [*]u8 = @ptrFromInt(addr);
         const dst = byte_dst + idx * elem_t.size();
         try heap.copyValueTo(elem_t, dst, src);
     }
@@ -636,14 +690,14 @@ pub const RawBuffer = extern struct {
 };
 
 pub const Slice = extern struct {
-    buf: u64,  // *void
-    ptr: u64,
+    buf: ?*RawBuffer,
+    ptr: *anyopaque,
     len: u64, 
     header: u64,
 
     pub fn items(self: *const Slice, comptime T: type) []T {
-        var buf: [*]T = @ptrFromInt(self.ptr);
-        return buf[0..self.len];
+        var buf: [*]T = @ptrCast(@alignCast(self.ptr));
+        return buf[0..@intCast(self.len)];
     }
 };
 
@@ -652,8 +706,9 @@ pub const Span = extern struct {
     len: u64, 
 
     pub fn items(self: *const Span, comptime T: type) []T {
-        var buf: [*]T = @ptrFromInt(self.ptr);
-        return buf[0..self.len];
+        const addr: usize = @intCast(self.ptr);
+        var buf: [*]T = @ptrFromInt(addr);
+        return buf[0..@intCast(self.len)];
     }
 };
 
@@ -724,48 +779,45 @@ pub const PtrSpan = extern struct {
     len: u64,
 };
 
-pub const StrLit = extern struct {
+pub const EvalStr = extern struct {
     ptr: u64,  // [*]u8
     header: u64,
 
-    pub fn ascii(self: *const StrLit) bool {
+    pub fn ascii(self: *const EvalStr) bool {
         return self.header & (1 << 63) != 0;
     }
 
-    pub fn slice(self: *const StrLit) []const u8 {
-        return @as([*]const u8, @ptrFromInt(self.ptr))[0..self.len()];
+    pub fn slice(self: *const EvalStr) []const u8 {
+        const addr: usize = @intCast(self.ptr);
+        return @as([*]const u8, @ptrFromInt(addr))[0..self.len()];
     }
 
-    pub fn len(self: *const StrLit) u64 {
+    pub fn mut_slice(self: *const EvalStr) []u8 {
+        const addr: usize = @intCast(self.ptr);
+        return @as([*]u8, @ptrFromInt(addr))[0..self.len()];
+    }
+
+    pub fn len(self: *const EvalStr) usize {
         return @intCast(self.header & ~(@as(u64, 1) << 63));
     }
 };
 
 pub const StrBuffer = RawBuffer;
 pub const Str = extern struct {
-    buf_: u64, // ?^StringBuffer
-    ptr: u64,  // *void
+    buf: ?*StrBuffer,
+    ptr: [*]const u8,  // *void
     len_: u64, // sign bit indicates ascii
-
-    pub fn buf(self: *const Str) ?*StrBuffer {
-        return @ptrFromInt(self.buf_);
-    }
-
-    pub fn setBuffer(self: *Str, new: *StrBuffer) void {
-        self.buf_ = @intFromPtr(new);
-        self.ptr = @intFromPtr(&new.data);
-    }
 
     pub fn ascii(self: *const Str) bool {
         return self.len_ & (1 << 63) != 0;
     }
 
     pub fn slice(self: *const Str) []const u8 {
-        return @as([*]const u8, @ptrFromInt(self.ptr))[0..self.len()];
+        return self.ptr[0..self.len()];
     }
 
     pub fn mutSlice(self: *const Str) []u8 {
-        return @as([*]u8, @ptrFromInt(self.ptr))[0..self.len()];
+        return @constCast(self.ptr[0..self.len()]);
     }
 
     pub fn len(self: *const Str) u32 {
@@ -883,6 +935,7 @@ pub const Func = extern struct {
             numCaptured: u64,
 
             // Begins array of boxed values.
+            // Each captured ptr is 8-bytes in case we need to encode info.
             firstCapturedVal: void,
         },
     },
@@ -961,13 +1014,13 @@ pub fn allocBigObject(self: *Heap, type_id: cy.TypeId, size: usize) !*HeapObject
     const obj: *HeapObject = @ptrFromInt(@intFromPtr(slice.ptr) + HeaderSize);
     const header: *BigObjectHeader = @ptrCast(slice.ptr);
     header.* = .{
-        .ptr_obj = ptr_obj,
+        .obj_addr = @intFromPtr(ptr_obj),
         .meta = type_id,
         .rc = 1,
     };
     ptr_obj.pointer.ptr = obj;
 
-    log.tracevIf(log_mem, "0 +1 alloc big object: {*} type={} evt={}", .{obj, type_id, cy.event_id});
+    log.tracevIf(log_mem, "0 +1 alloc big object: {*} type={} size={} evt={}", .{obj, type_id, size, cy.event_id});
     if (cy.Trace) {
         self.c.refCounts += 1;
         self.c.numRetains += 1;
@@ -1023,7 +1076,7 @@ pub fn allocPoolObject(self: *Heap, type_id: cy.TypeId) !*HeapObject {
         .rc = 1,
     };
 
-    log.tracevIf(log_mem, "0 +1 alloc pool object: {*} type={} evt={}", .{ptr, type_id, cy.event_id});
+    log.tracevIf(log_mem, "0 +1 alloc pool object: {*} type={} {s} evt={}", .{ptr, type_id, self.sema.types.items[type_id].name(), cy.event_id});
     if (cy.Trace) {
         try traceAlloc(self, ptr);
         if (self.heapFreeTail == ptr) {
@@ -1034,6 +1087,18 @@ pub fn allocPoolObject(self: *Heap, type_id: cy.TypeId) !*HeapObject {
         self.c.numRetains += 1;
     }
     return ptr;
+}
+
+pub fn new_eval_buffer_undef(self: *Heap, buffer_t: *cy.Type, len: usize) !Value {
+    const elem_t = buffer_t.sym().instance.?.params[0].asPtr(*cy.Type);
+    const ptr = try self.new_byte_buffer(elem_t.size() * len);
+
+    const object = try self.new_object_undef(buffer_t.id(), @sizeOf(EvalBuffer));
+    object.eval_buffer = .{
+        .ptr = @intFromPtr(ptr),
+        .len = len,
+    };
+    return Value.initPtr(object);
 }
 
 pub fn new_buffer_undef(self: *Heap, buffer_t: *cy.Type, len: usize) !Value {
@@ -1091,8 +1156,8 @@ pub fn new_raw_buffer(self: *Heap, buffer_t: cy.TypeId, n: usize, elem_size: usi
 pub fn init_slice_undef(self: *Heap, byte_buffer_t: cy.TypeId, n: usize, elem_size: usize) !Slice {
     const buffer = try self.new_raw_buffer(byte_buffer_t, n * elem_size, 1);
     return .{
-        .buf = @intFromPtr(buffer),
-        .ptr = @intFromPtr(buffer.raw_buffer.elemsPtr()),
+        .buf = @ptrCast(buffer),
+        .ptr = buffer.raw_buffer.elemsPtr(),
         .len = n,
         .header = n,
     };
@@ -1158,7 +1223,7 @@ pub fn new_byte_buffer(self: *Heap, size: usize) ![*]align(8) u8 {
     // @as(*u64, @ptrCast(slice.ptr)).* = size;
     // self.num_ex_buffers += 1;
     // return slice.ptr + 8;
-    log.tracevIf(log_mem, "alloc byte buffer: {*}\n", .{slice.ptr});
+    log.tracevIf(log_mem, "alloc byte buffer: {*}", .{slice.ptr});
     try self.buffers.put(self.alloc, slice.ptr, slice.len);
     return slice.ptr;
 }
@@ -1285,16 +1350,22 @@ pub fn newEmptyString(self: *Heap) !Value {
     return self.newAstrSlice(empty, null);
 } 
 
-pub fn new_str_lit(self: *Heap, str: []const u8) !Value {
-    const dupe = try self.alloc.dupe(u8, str);
-    const obj = try allocPoolObject(self, bt.StrLit);
-    obj.str_lit = .{
-        .ptr = @intFromPtr(dupe.ptr),
-        .header = str.len,
+pub fn init_eval_str_undef(self: *Heap, len: usize, ascii: bool) !*EvalStr {
+    const buf = try self.alloc.alloc(u8, len);
+    const obj = try allocPoolObject(self, bt.EvalStr);
+    obj.eval_str = .{
+        .ptr = @intFromPtr(buf.ptr),
+        .header = len,
     };
-    if (cy.string.isAstring(str)) {
-        obj.str_lit.header |= 1 << 63;
+    if (ascii) {
+        obj.eval_str.header |= 1 << 63;
     }
+    return &obj.eval_str;
+}
+
+pub fn init_eval_str(self: *Heap, str: []const u8) !Value {
+    const obj = try self.init_eval_str_undef(str.len, cy.string.isAstring(str));
+    @memcpy(obj.mut_slice(), str);
     return Value.initPtr(obj);
 }
 
@@ -1340,6 +1411,14 @@ pub fn init_ustr(self: *Heap, str: []const u8) !Str {
     const dst = res.mutSlice();
     @memcpy(dst, str);
     return res;
+}
+
+pub fn init_eval_str_concat(self: *Heap, str: []const u8, str2: []const u8, ascii: bool) !Value {
+    const res = try init_eval_str_undef(self, str.len + str2.len, ascii);
+    const dst = res.mut_slice();
+    @memcpy(dst[0..str.len], str);
+    @memcpy(dst[str.len..], str2);
+    return Value.initPtr(res);
 }
 
 pub fn init_astr_concat(self: *Heap, str: []const u8, str2: []const u8) !Str {
@@ -1440,9 +1519,9 @@ pub fn new_object_undef(self: *cy.Heap, type_id: cy.TypeId, size: usize) !*cy.He
 pub fn init_astr_undef(self: *Heap, len: usize) !Str {
     const buf = try newStringBufferUndef(self, len);
     return .{
-        .buf_ = @intFromPtr(buf),
-        .ptr = @intFromPtr(&buf.raw_buffer.data),
-        .len_ = len | (1 << 63),
+        .buf = @ptrCast(buf),
+        .ptr = @ptrCast(&buf.raw_buffer.data),
+        .len_ = @as(u64, len) | (1 << 63),
     };
 }
 
@@ -1455,8 +1534,8 @@ pub fn newAstrUndef(self: *Heap, len: usize) !*cy.HeapObject {
 pub fn init_ustr_undef(self: *Heap, len: usize) !Str {
     const buf = try newStringBufferUndef(self, len);
     return .{
-        .buf_ = @intFromPtr(buf),
-        .ptr = @intFromPtr(&buf.raw_buffer.data),
+        .buf = @ptrCast(buf),
+        .ptr = @ptrCast(&buf.raw_buffer.data),
         .len_ = len,
     };
 }
@@ -1471,8 +1550,8 @@ pub fn newUstrUndef(self: *Heap, len: usize) !*HeapObject {
 pub fn newUstrSlice(self: *Heap, slice: []const u8, buf: ?*StrBuffer) !Value {
     const obj = try allocPoolObject(self, bt.Str);
     obj.string = .{
-        .buf_ = @intFromPtr(buf),
-        .ptr = @intFromPtr(slice.ptr),
+        .buf = buf,
+        .ptr = slice.ptr,
         .len_ = slice.len,
     };
     return Value.initPtr(obj);
@@ -1482,8 +1561,8 @@ pub fn newUstrSlice(self: *Heap, slice: []const u8, buf: ?*StrBuffer) !Value {
 pub fn init_ustr_slice(self: *Heap, slice: []const u8, buf: ?*StrBuffer) !Str {
     _ = self;
     return .{
-        .buf_ = @intFromPtr(buf),
-        .ptr = @intFromPtr(slice.ptr),
+        .buf = buf,
+        .ptr = slice.ptr,
         .len_ = slice.len,
     };
 }
@@ -1492,9 +1571,9 @@ pub fn init_ustr_slice(self: *Heap, slice: []const u8, buf: ?*StrBuffer) !Str {
 pub fn init_astr_slice(self: *Heap, slice: []const u8, buf: ?*StrBuffer) !Str {
     _ = self;
     return .{
-        .buf_ = @intFromPtr(buf),
-        .ptr = @intFromPtr(slice.ptr),
-        .len_ = slice.len | (1 << 63),
+        .buf = buf,
+        .ptr = slice.ptr,
+        .len_ = @as(u64, slice.len) | (1 << 63),
     };
 }
 
@@ -1502,8 +1581,8 @@ pub fn init_astr_slice(self: *Heap, slice: []const u8, buf: ?*StrBuffer) !Str {
 pub fn newAstrSlice(self: *Heap, slice: []const u8, buf: ?*StrBuffer) !Value {
     const obj = try allocPoolObject(self, bt.Str);
     obj.string = .{
-        .buf_ = @intFromPtr(buf),
-        .ptr = @intFromPtr(slice.ptr),
+        .buf_ = buf,
+        .ptr = slice.ptr,
         .len_ = slice.len | (1 << 63),
     };
     return Value.initPtr(obj);
@@ -1546,14 +1625,6 @@ pub fn allocInt(self: *Heap, val: i64) !Value {
     const obj = try allocPoolObject(self, bt.I64);
     obj.integer = .{
         .val = val,
-    };
-    return Value.initPtr(obj);
-}
-
-pub fn allocPointer(self: *Heap, type_id: cy.TypeId, ptr: ?*anyopaque) !Value {
-    const obj = try allocPoolObject(self, type_id);
-    obj.pointer = .{
-        .ptr = ptr,
     };
     return Value.initPtr(obj);
 }
@@ -1610,9 +1681,11 @@ pub fn newSmallObjectUndef(self: *Heap, type_id: cy.TypeId) !*HeapObject {
 pub fn allocFunc(self: *Heap, union_t: cy.TypeId, func_ptr: Value) !Value {
     if (func_ptr.val >> 63 != 0) {
         const ptr = func_ptr.val & ~(@as(u64, 1) << 63);
-        return allocHostFuncUnion(self, union_t, @ptrFromInt(ptr));
+        const addr: usize = @intCast(ptr);
+        return allocHostFuncUnion(self, union_t, @ptrFromInt(addr));
     } else {
-        return allocBcFuncUnion(self, union_t, @ptrFromInt(func_ptr.val));
+        const addr: usize = @intCast(func_ptr.val);
+        return allocBcFuncUnion(self, union_t, @ptrFromInt(addr));
     }
 }
 
@@ -1622,10 +1695,6 @@ pub const MaxPoolObjectUserBytes = @sizeOf(PoolObject) - 8;
 pub fn traceAlloc(self: *Heap, ptr: *HeapObject) !void {
     // log.tracev("alloc {*} {} {}", .{ptr, ptr.getTypeId(), vm.c.debugPc});
     const event_id = self.next_trace_event();
-    // if (event_id == 7821) {
-    //     // std.debug.print("DEBUG: {s}\n", .{vm.getType(type_id).name()});
-    //     return error.Panic;
-    // }
     self.objectTraceMap.put(self.alloc, ptr, .{
         .alloc_event = event_id,
         .alloc_ctx = self.c.ctx,
@@ -1658,20 +1727,20 @@ test "Free object invalidation." {
     // Invalidation only happens in trace mode.
     if (cy.Trace) {
         // Free pool object with no previous free slot invalidates object pointer.
-        var obj = try vm.main_thread.heap.allocPoolObject(100);
+        var obj = try vm.main_thread.heap.allocPoolObject(0);
         vm.main_thread.heap.freePoolObject(obj);
         try t.eq(obj.header().object.meta, cy.NullId);
 
         // Free pool object with previous free slot invalidates object pointer.
-        var obj1 = try vm.main_thread.heap.allocPoolObject(100);
-        var obj2 = try vm.main_thread.heap.allocPoolObject(100);
+        var obj1 = try vm.main_thread.heap.allocPoolObject(0);
+        var obj2 = try vm.main_thread.heap.allocPoolObject(0);
         vm.main_thread.heap.freePoolObject(obj1); // Previous slot is freed.
         vm.main_thread.heap.freePoolObject(obj2);
         try t.eq(obj1.header().object.meta, cy.NullId);
         try t.eq(obj2.header().object.meta, cy.NullId);
 
         // Free external object invalidates object pointer.
-        obj = try vm.main_thread.heap.allocBigObject(100, 40);
+        obj = try vm.main_thread.heap.allocBigObject(0, 40);
         vm.main_thread.heap.c.ctx = 123;
         vm.main_thread.heap.freeBigObject(obj, 40);
         try t.eq(isObjectAlreadyFreed(&vm.main_thread.heap, obj), true);
@@ -1683,20 +1752,22 @@ test "heap internals." {
 
     try t.eq(24, @sizeOf(AsyncTask));
     if (cy.is32Bit) {
-        try t.eq(@sizeOf(MapValue), 48);
-        try t.eq(@sizeOf(MapIterator), 24);
-        try t.eq(@sizeOf(Pointer), 16);
+        try t.eq(40, @sizeOf(MapValue));
+        try t.eq(16, @sizeOf(MapIterator));
     } else {
         if (builtin.os.tag != .windows) {
-            try t.eq(@sizeOf(MapValue), 48);
-            try t.eq(@sizeOf(MapIterator), 16);
-            try t.eq(@sizeOf(Pointer), 8);
+            try t.eq(48, @sizeOf(MapValue));
+            try t.eq(16, @sizeOf(MapIterator));
         }
     }
 
     if (builtin.os.tag != .windows) { 
         try t.eq(@sizeOf(Func), 24);
-        try t.eq(@sizeOf(Str), 24);
+        if (cy.is32Bit) {
+            try t.eq(@sizeOf(Str), 16);
+        } else {
+            try t.eq(@sizeOf(Str), 24);
+        }
         try t.eq(@sizeOf(Object), 8);
         if (cy.hasFFI) {
             try t.eq(@sizeOf(TccState), 24);
@@ -1715,3 +1786,44 @@ test "heap internals." {
     try t.eq(@intFromPtr(&func_u.data.closure.firstCapturedVal), @intFromPtr(&c_func_u.data.closure.firstCapturedVal));
     try t.eq(@intFromPtr(&func_u.data.closure.firstCapturedVal), @intFromPtr(&func_u) + 24);
 }
+
+// Useful when debugging allocations on WASM when there are no stack traces.
+pub const TraceAllocator = struct {
+    alloc_: std.mem.Allocator,
+
+    const vtable = std.mem.Allocator.VTable{
+        .alloc = alloc,
+        .resize = resize,
+        .free = free,
+        .remap = remap,
+    };
+
+    pub fn allocator(self: *TraceAllocator) std.mem.Allocator {
+        return std.mem.Allocator{
+            .ptr = self,
+            .vtable = &vtable,
+        };
+    }
+
+    fn alloc(ptr: *anyopaque, len: usize, log2_align: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
+        const self: *TraceAllocator = @ptrCast(@alignCast(ptr));
+        const res = self.alloc_.rawAlloc(len, log2_align, ret_addr);
+        return res;
+    }
+
+    fn resize(ptr: *anyopaque, buf: []u8, log2_align: std.mem.Alignment, new_len: usize, ret_addr: usize) bool {
+        const self: *TraceAllocator = @ptrCast(@alignCast(ptr));
+        return self.alloc_.rawResize(buf, log2_align, new_len, ret_addr);
+    }
+
+    fn remap(ptr: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {
+        const self: *TraceAllocator = @ptrCast(@alignCast(ptr));
+        return self.alloc_.rawRemap(memory, alignment, new_len, ret_addr);
+    }
+
+    fn free(ptr: *anyopaque, buf: []u8, log2_align: std.mem.Alignment, ret_addr: usize) void {
+        const self: *TraceAllocator = @ptrCast(@alignCast(ptr));
+        @memset(buf, 0);
+        return self.alloc_.rawFree(buf, log2_align, ret_addr);
+    }
+};

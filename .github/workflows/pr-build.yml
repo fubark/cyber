@@ -165,10 +165,11 @@ jobs:
       - name: Run tests.
         if: env.BUILD_TARGET == 'wasm32-freestanding' || env.BUILD_TARGET == 'wasm32-wasi'
         run: |
-          zig build build-test -Dtarget=wasm32-wasi ${{ env.ZIG_MODE_FLAG }} 
-          wasm3/build/wasm3 zig-out/bin/unit_test.wasm
-          wasm3/build/wasm3 zig-out/bin/test.wasm
+          zig build build-test -Dtarget=wasm32-wasi -Doptimize=ReleaseSafe
+          wasm3/build/wasm3 zig-out/bin/lib_test.wasm
+          wasm3/build/wasm3 zig-out/bin/cli_test.wasm
           wasm3/build/wasm3 zig-out/bin/trace_test.wasm
+          wasm3/build/wasm3 zig-out/bin/behavior_test.wasm
 
       - name: Build.
         run: zig build ${{ env.BUILD_CMD }} ${{ env.ZIG_MODE_FLAG }} ${{ env.ZIG_TARGET_FLAG }}

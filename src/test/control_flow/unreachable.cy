@@ -42,7 +42,7 @@ fn ct_switch_stmt_enum() -> int:
             return 234
 
 fn switch_for_case(n &Number) -> int:
-    switch meta.choice_tag(Number, n):
+    switch meta.choice_tag(n.*):
         #for meta.enum_values(Number.Tag) |Tag|:
             case Tag:
                 return 123

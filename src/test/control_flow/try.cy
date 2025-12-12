@@ -7,7 +7,7 @@ fn foo() -> !int:
 fn bar() -> !int:
     return error.Fail
 
-test.eq(error.Fail, foo().unwrapError())
+test.eq(error.Fail, foo().unwrap_error())
 
 -- Propagate for error return.
 fn errorReturn() -> error:

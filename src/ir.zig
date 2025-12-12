@@ -49,6 +49,7 @@ pub const StmtCode = enum(u8) {
     forRangeStmt,
     yield,
     await_,
+    breakpoint,
     ret,
     ret_expr,
     ret_gen,
@@ -129,7 +130,6 @@ pub const ExprCode = enum(u8) {
     lambda,
     lift,
     local,
-    spawn,
     global,
     string,
     truev,
@@ -186,7 +186,7 @@ pub const ExprCode = enum(u8) {
     partial_vector,
 };
 
-pub const SimpleExpr = struct {
+pub const SimpleExpr = extern struct {
     base: Expr = undefined,
 };
 
@@ -205,7 +205,7 @@ pub const Expr = extern struct {
     }
 };
 
-pub const Condition = enum {
+pub const Condition = enum(u8) {
     eq,
     ne,
     gt,
@@ -225,94 +225,94 @@ pub const Condition = enum {
     }
 };
 
-pub const GenNext = struct {
+pub const GenNext = extern struct {
     base: Expr = undefined,
     gen: *Expr,
 };
 
-pub const GenEnd = struct {
+pub const GenEnd = extern struct {
     base: Expr = undefined,
     gen: *Expr,
 };
 
-pub const Compare = struct {
+pub const Compare = extern struct {
     base: Expr = undefined,
     left: *Expr,
     right: *Expr,
     cond: Condition,
 };
 
-pub const Case = struct {
+pub const Case = extern struct {
     base: Expr = undefined,
     child: *Expr,
     union_t: *cy.Type,
     case: u32,
 };
 
-pub const Yield = struct {
+pub const Yield = extern struct {
     base: Stmt = undefined,
     deinit_head: ?*Stmt,
     ret_opt_t: *cy.Type,
     end: bool,
 };
 
-pub const ReturnExpr = struct {
+pub const ReturnExpr = extern struct {
     base: Stmt = undefined,
     expr: *Expr,
 };
 
-pub const ReturnGen = struct {
+pub const ReturnGen = extern struct {
     base: Stmt = undefined,
     deinit_head: ?*Stmt,
     gen_t: *cy.Type,
     next_t: *cy.Type,
 };
 
-pub const Return = struct {
+pub const Return = extern struct {
     base: Stmt = undefined,
     return_value: bool,
 };
 
-pub const Release = struct {
+pub const Release = extern struct {
     base: Stmt = undefined,
     reg: u32,
     optional: bool,
     deinit_obj: *cy.Func,
 };
 
-pub const Retain = struct {
+pub const Retain = extern struct {
     base: Expr = undefined,
     expr: *Expr,
 };
 
-pub const Lift = struct {
+pub const Lift = extern struct {
     base: Expr = undefined,
     child: *Expr,
 };
 
-pub const Trunc = struct {
+pub const Trunc = extern struct {
     base: Expr = undefined,
     expr: *Expr,
     from_bits: u8,
     to_bits: u8,
 };
 
-pub const Await = struct {
+pub const Await = extern struct {
     base: Stmt = undefined,
     expr: *Expr,
 };
 
-pub const AddressOf = struct {
+pub const AddressOf = extern struct {
     base: Expr = undefined,
     expr: *Expr,
 };
 
-pub const Deref = struct {
+pub const Deref = extern struct {
     base: Expr = undefined,
     expr: *Expr,
 };
 
-pub const Trait = struct {
+pub const Trait = extern struct {
     base: Expr = undefined,
     ref: *Expr,
     impl_t: *cy.Type,
@@ -320,28 +320,28 @@ pub const Trait = struct {
     trait_t: *cy.Type,
 };
 
-pub const UnwrapAddr = struct {
+pub const UnwrapAddr = extern struct {
     base: Expr = undefined,
     choice: *Expr,
     tag: u8,
 };
 
-pub const UnwrapNZ = struct {
+pub const UnwrapNZ = extern struct {
     base: Expr = undefined,
     option: *Expr,
 };
 
-pub const PopLocals = struct {
+pub const PopLocals = extern struct {
     base: Stmt = undefined,
     local_end: usize,
 };
 
-pub const Block = struct {
+pub const Block = extern struct {
     base: Stmt = undefined,
     bodyHead: ?*Stmt,
 };
 
-pub const SwitchStmt = struct {
+pub const SwitchStmt = extern struct {
     base: Stmt = undefined,
     cases: [*]*Expr,
     numCases: u8,
@@ -353,7 +353,7 @@ const Reg = packed struct {
     temp: bool,
 };
 
-pub const SwitchCase = struct {
+pub const SwitchCase = extern struct {
     base: Expr = undefined,
     // else case if `numConds` == 0.
     numConds: u8,
@@ -362,28 +362,28 @@ pub const SwitchCase = struct {
     fallthrough: bool,
 };
 
-pub const CaseCond = struct {
+pub const CaseCond = extern struct {
     base: Expr = undefined,
     body_head: ?*Stmt,
     expr: *Expr,
 };
 
-pub const LoopBlock = struct {
+pub const LoopBlock = extern struct {
     base: Stmt = undefined,
     body_head: ?*Stmt,
 };
 
-pub const Captured = struct {
+pub const Captured = extern struct {
     base: Expr = undefined,
     idx: u8,
 };
 
-pub const Bitcast = struct {
+pub const Bitcast = extern struct {
     base: Expr = undefined,
     expr: *Expr,
 };
 
-pub const Cast = struct {
+pub const Cast = extern struct {
     base: Expr = undefined,
     expr: *Expr,
     type: *cy.Type,
@@ -392,7 +392,7 @@ pub const Cast = struct {
 
 /// Can have a chain of nested struct field indexes.
 /// The array of nested indexes are located after this struct.
-pub const Field = struct {
+pub const Field = extern struct {
     base: Expr = undefined,
     /// Receiver.
     rec: *Expr,
@@ -404,48 +404,42 @@ pub const Field = struct {
     member_cont: bool = false,
 };
 
-pub const SetField = struct {
+pub const SetField = extern struct {
     base: Stmt = undefined,
     field: *Expr,
     right: *Expr,
 };
 
-pub const Spawn = struct {
-    base: Expr = undefined,
-    callee: *Expr,
-    args: [*]*Expr,
-    nargs: u8,
-};
-
-pub const Init = struct {
+pub const Init = extern struct {
     base: Expr = undefined,
     args: [*]*Expr,
     nargs: u8,
 };
 
-pub const InitZero = struct {
+pub const InitZero = extern struct {
     base: Expr = undefined,
-    size: usize,
+    size: u64,
 };
 
-pub const InitCase = struct {
+pub const InitCase = extern struct {
     base: Expr = undefined,
     child: *Expr,
     case: u32,
 };
 
-pub const ForRangeStmt = struct {
+pub const ForRangeStmt = extern struct {
     base: Stmt = undefined,
     start: *Expr,
     end: *Expr,
-    eachLocal: ?u8,
+    has_each_local: bool,
+    eachLocal: u8,
     increment: bool,
     end_inclusive: bool,
     declHead: ?*Stmt,
     bodyHead: ?*Stmt,
 };
 
-pub const TryStmt = struct {
+pub const TryStmt = extern struct {
     base: Stmt = undefined,
     hasErrLocal: bool,
     errLocal: u8,
@@ -453,12 +447,12 @@ pub const TryStmt = struct {
     catchBodyHead: *Stmt,
 };
 
-pub const Local = struct {
+pub const Local = extern struct {
     base: Expr = undefined,
     id: u8,
 };
 
-pub const Lambda = struct {
+pub const Lambda = extern struct {
     base: Expr = undefined,
     func: *cy.Func,
 
@@ -470,7 +464,7 @@ pub const Lambda = struct {
     pinned_closure: bool,
 };
 
-pub const FuncBlock = struct {
+pub const FuncBlock = extern struct {
     base: Stmt = undefined,
     func: *cy.Func,
     bodyHead: ?*Stmt,
@@ -484,16 +478,16 @@ pub const FuncBlock = struct {
     skip: bool = false,
 };
 
-pub const PushBlock = struct {
+pub const PushBlock = extern struct {
     maxLocals: u8,
 };
 
-pub const MainBlock = struct {
+pub const MainBlock = extern struct {
     base: Stmt = undefined,
     bodyHead: ?*Stmt,
 };
 
-pub const FuncParam = struct {
+pub const FuncParam = extern struct {
     reg: u8,
     namePtr: [*]const u8,
     nameLen: u16,
@@ -504,12 +498,12 @@ pub const FuncParam = struct {
     }
 };
 
-pub const Discard = struct {
+pub const Discard = extern struct {
     base: Stmt = undefined,
     expr: *Expr,
 };
 
-pub const DeclareLocal = struct {
+pub const DeclareLocal = extern struct {
     base: Stmt = undefined,
     name_ptr: [*]const u8,
     name_len: u16,
@@ -524,7 +518,7 @@ pub const DeclareLocal = struct {
     }
 };
 
-pub const Slice = struct {
+pub const Slice = extern struct {
     base: Expr = undefined,
     recvT: *cy.Type,
     rec: *Expr,
@@ -532,13 +526,13 @@ pub const Slice = struct {
     right: *Expr,
 };
 
-pub const BinOp2 = struct {
+pub const BinOp2 = extern struct {
     base: Expr = undefined,
     left: *Expr,
     right: *Expr,
 };
 
-pub const BinOp = struct {
+pub const BinOp = extern struct {
     base: Expr = undefined,
     leftT: *cy.Type,
     rightT: *cy.Type,
@@ -547,13 +541,13 @@ pub const BinOp = struct {
     right: *Expr,
 };
 
-pub const SetDeref = struct {
+pub const SetDeref = extern struct {
     base: Stmt = undefined,
     ptr: *Expr,
     right: *Expr,
 };
 
-pub const SetGeneric = struct {
+pub const SetGeneric = extern struct {
     base: Stmt = undefined,
     left_t: *cy.Type,
     right_t: *cy.Type,
@@ -561,46 +555,46 @@ pub const SetGeneric = struct {
     right: *Expr,
 };
 
-pub const SetReturn = struct {
+pub const SetReturn = extern struct {
     base: Stmt = undefined,
     right: *Expr,
 };
 
-pub const SetLocal = struct {
+pub const SetLocal = extern struct {
     base: Stmt = undefined,
     id: u8,
     right: *Expr,
 };
 
-pub const SetGlobal = struct {
+pub const SetGlobal = extern struct {
     base: Stmt = undefined,
     sym: *cy.Sym,
     expr: *Expr,
 };
 
-pub const Global = struct {
+pub const Global = extern struct {
     base: Expr = undefined,
     sym: *cy.Sym,
 };
 
-pub const FuncPtr = struct {
+pub const FuncPtr = extern struct {
     base: Expr = undefined,
     func: *cy.Func,
 };
 
-pub const Func = struct {
+pub const Func = extern struct {
     base: Expr = undefined,
     expr: *Expr,
 };
 
-pub const Call = struct {
+pub const Call = extern struct {
     base: Expr = undefined,
     func: *cy.Func,
     numArgs: u8,
     args: [*]const *Expr,
 };
 
-pub const CallTrait = struct {
+pub const CallTrait = extern struct {
     base: Expr = undefined,
     trait: *Expr,
     args: [*]*Expr,
@@ -608,80 +602,85 @@ pub const CallTrait = struct {
     vtable_idx: u8,
 };
 
-pub const CallPtr = struct {
+pub const CallPtr = extern struct {
     base: Expr = undefined,
     callee: *Expr,
     args: [*]*Expr,
     nargs: u8,
 };
 
-pub const CallUnion = struct {
+pub const CallUnion = extern struct {
     base: Expr = undefined,
     callee: *Expr,
     args: [*]*Expr,
     nargs: u8,
 };
 
-pub const Const64 = struct {
+pub const Const64 = extern struct {
     base: Expr = undefined,
     val: u64,
 };
 
-pub const Const16 = struct {
+pub const Const16 = extern struct {
     base: Expr = undefined,
     val: u16,
 };
 
-pub const Const32 = struct {
+pub const Const32 = extern struct {
     base: Expr = undefined,
     val: u32,
 };
 
-pub const Const8 = struct {
+pub const Const8 = extern struct {
     base: Expr = undefined,
     val: u8,
 };
 
-pub const IsZero = struct {
+pub const IsZero = extern struct {
     base: Expr = undefined,
     child: *Expr,
 };
 
-pub const NopLabel = struct {
+pub const NopLabel = extern struct {
     base: Stmt = undefined,
     label_idx: usize,
     label_len: usize,
 };
 
-pub const String = struct {
+pub const String = extern struct {
     base: Expr = undefined,
-    raw: []const u8,
+    raw_ptr: [*]const u8,
+    raw_len: usize,
+
+    pub fn raw(self: *String) []const u8 {
+        return self.raw_ptr[0..self.raw_len];
+    }
 };
 
-pub const UnOp = struct {
+pub const UnOp = extern struct {
     base: Expr = undefined,
     expr: *Expr,
     childT: *cy.Type,
     op: cy.UnaryOp,
 };
 
-pub const Widen = struct {
+pub const Widen = extern struct {
     base: Expr = undefined,
     expr: *Expr,
     src_bits: u32,
 };
 
-pub const UnOp2 = struct {
+pub const UnOp2 = extern struct {
     base: Expr = undefined,
     expr: *Expr,
 };
 
-pub const StmtBlock = struct {
+pub const StmtBlock = extern struct {
     first: ?*Stmt,
     last: ?*Stmt,
 };
 
-pub const IfBlock = struct {
+pub const IfBlock = extern struct {
     base: Stmt = undefined,
     cond_expr: *Expr,
     body_head: ?*Stmt,
@@ -715,6 +714,7 @@ pub fn StmtImpl(comptime code: StmtCode) type {
         .nop_label => NopLabel,
         .yield => Yield,
         .await_ => Await,
+        .breakpoint => SimpleStmt,
         .ret_expr => ReturnExpr,
         .ret_gen => ReturnGen,
         .ret => Return,
@@ -725,7 +725,7 @@ pub fn StmtImpl(comptime code: StmtCode) type {
 }
 
 pub fn ExprImpl(comptime code: ExprCode) type {
-    return switch (code) {
+    const res = switch (code) {
         .lambda => Lambda,
         .switch_case => SwitchCase,
         .case_cond => CaseCond,
@@ -778,7 +778,6 @@ pub fn ExprImpl(comptime code: ExprCode) type {
         .init_zero => InitZero,
         .lift => Lift,
         .retain => Retain,
-        .spawn => Spawn,
         .field => Field,
         .cast => Cast,
         .bitcast => Bitcast,
@@ -794,6 +793,10 @@ pub fn ExprImpl(comptime code: ExprCode) type {
         .gen_end => GenEnd,
         else => SimpleExpr,
     };
+    if (@typeInfo(res).@"struct".layout != .@"extern") {
+        @compileError(@typeName(res));
+    }
+    return res;
 }
 
 /// IR ops use an explicit index since the underlying buffer can grow.

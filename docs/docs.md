@@ -3010,8 +3010,8 @@ A generator can be reset to its entry point with the original arguments or diffe
 * [Compile-time types.](#compile-time-types)
   * [`type` type.](#type-type)
   * [`fnsym` type.](#fnsym-type)
-  * [`str_lit` type.](#str_lit-type)
-  * [`int_lit` type.](#int_lit-type)
+  * [`EvalStr` type.](#evalstr-type)
+  * [`EvalInt` type.](#evalint-type)
 * [Attributes.](#attributes)
 </td>
 </tr></table>
@@ -3203,11 +3203,11 @@ fn my_hash(s str) -> int:
 m := IntMap[str, my_hash]{}
 ```
 
-### `str_lit` type.
-`str_lit` can be expanded to a `str`, `[]byte`, zero terminated `Ptr[byte]`, `int`, or `byte`.
+### `EvalStr` type.
+`EvalStr` can be expanded to a `str`, `[]byte`, zero terminated `Ptr[byte]`, `int`, or `byte`.
 
-### `int_lit` type.
-`int_lit` can be expanded to different integer types. Currently, it has the extent of an `int` type.
+### `EvalInt` type.
+`EvalInt` can be expanded to different integer types. Currently, it has the extent of an `int` type.
 
 ## Attributes.
 *TBD*

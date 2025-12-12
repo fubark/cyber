@@ -30,13 +30,13 @@ pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
     }
 }
 
-const funcs = [_]struct { []const u8, C.BindFunc }{
-    .{ "@initBindLib", core.zErrFunc(initBindLib) },
-    .{ "include", core.zErrCtFunc(null, import) },
-    .{ "flag", core.zErrCtFunc(null, flag) },
-    .{ "bind_lib", core.zErrCtFunc(null, bind_lib) },
-    .{ "from_strz", core.zErrFunc(from_strz) },
-    .{ "to_strz", core.zErrFunc(to_strz) },
+const funcs = [_]struct{[]const u8, C.BindFunc}{
+    .{"@initBindLib", core.zErrFunc(initBindLib)},
+    .{"include",  core.zErrConstEvalFunc(import)},
+    .{"flag",     core.zErrConstEvalFunc(flag)},
+    .{"bind_lib",  core.zErrConstEvalFunc(bind_lib)},
+    .{"from_strz", core.zErrFunc(from_strz)},
+    .{"to_strz",   core.zErrFunc(to_strz)},
 };
 
 /// Call `dlopen` for each chunk that needs it and assume `dlopen` caches duplicate libraries.
@@ -451,32 +451,31 @@ fn to_strz(t: *cy.Thread) !C.Ret {
     return C.RetOk;
 }
 
-pub fn bind_lib(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
-    const path = ctx.args[0].asPtr(*cy.HeapObject);
-    defer c.heap.release(ctx.args[0]);
+pub fn bind_lib(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
+    const opt_path = ctx.args[0].asPtr(?*cy.heap.EvalStr);
+    defer c.heap.release_object_opt(@ptrCast(opt_path));
     c.has_bind_lib = true;
     if (c.bind_lib) |dl_bind| {
         c.alloc.free(dl_bind);
     }
     c.bind_lib = null;
-    if (path.object.firstValue.asInt() == 1) {
-        const path_str: *cy.heap.Str = @ptrCast(&path.object.getValuesPtr()[1]);
-        const new_dl_bind = try c.alloc.dupe(u8, path_str.slice());
+    if (opt_path) |path| {
+        const new_dl_bind = try c.alloc.dupe(u8, path.slice());
         c.bind_lib = new_dl_bind;
     }
     return cy.TypeValue.init(c.sema.void_t, cy.Value.Void);
 }
 
-pub fn import(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
-    const spec = ctx.args[0].asString();
+pub fn import(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
+    const spec = ctx.args[0].as_eval_str();
     defer c.heap.release(ctx.args[0]);
     const dupe = try c.alloc.dupe(u8, spec);
     try c.compiler.c_includes.append(c.alloc, dupe);
     return cy.TypeValue.init(c.sema.void_t, cy.Value.Void);
 }
 
-pub fn flag(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
-    const str = ctx.args[0].asString();
+pub fn flag(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
+    const str = ctx.args[0].as_eval_str();
     defer c.heap.release(ctx.args[0]);
     const dupe = try c.alloc.dupe(u8, str);
     try c.compiler.c_flags.append(c.alloc, dupe);

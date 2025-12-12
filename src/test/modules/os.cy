@@ -9,7 +9,7 @@ os.unset_env('testfoo')!
 t.assert(os.get_env('testfoo') == none)
 
 -- accessFile()
-t.eq(error.FileNotFound, os.accessFile('src/test/assets/missing.txt', os.AccessExists).unwrapError())
+t.eq(error.FileNotFound, os.accessFile('src/test/assets/missing.txt', os.AccessExists).unwrap_error())
 os.accessFile('src/test/assets/file.txt', os.AccessExists)!
 
 -- args()
@@ -108,7 +108,7 @@ t.eq('foo', str(file.read(3)!))
 
 -- File.seekFromStart()
 file = os.open_file('src/test/assets/file.txt', .read)!
-t.eq(error.InvalidArgument, file.seekFromStart(-1).unwrapError())
+t.eq(error.InvalidArgument, file.seekFromStart(-1).unwrap_error())
 file.seekFromStart(3)!
 t.eq('bar', str(file.read(3)!))
 

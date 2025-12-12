@@ -83,12 +83,12 @@ test.eq(s.!rectangle.height, rect.height)
 tag := Shape.Tag.rectangle
 test.eq(tag, .rectangle)
 
--- switch: capture borrow to no copy payload.
+-- switch: capture borrow to `NoCopy` payload.
 type Choice enum:
     case a Array[int]
 
 c := Choice.a({})
-switch &c:
+switch c:
     case .a |&a|:
         test.eq(0, a.len())
 

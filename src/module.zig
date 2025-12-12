@@ -321,25 +321,29 @@ pub fn reserveHostFunc(
     return func;
 }
 
-pub fn resolveHostFunc(c: *cy.Chunk, func: *cy.Func, sig: *sema.FuncSig, func_ptr: cy.ZHostFn, eval_ptr: ?cy.ZCtEvalFuncFn) !void {
+pub fn resolveHostFunc(c: *cy.Chunk, func: *cy.Func, sig: *sema.FuncSig, func_ptr: cy.ZHostFn, eval_ptr: ?cy.ZConstEvalFn) !void {
+    func.type = .hostFunc;
     try resolveFunc(c, func, sig);
-    func.data.hostFunc.ptr = func_ptr;
-    func.data.hostFunc.eval = eval_ptr;
+    func.data = .{ .hostFunc = .{
+        .ptr = func_ptr,
+        .eval = eval_ptr,
+    }};
 }
 
-pub fn resolveHostSemaFunc(c: *cy.Chunk, func: *cy.Func, sig: *cy.FuncSig, func_ptr: ?cy.ZSemaFn) !void {
-    func.type = .host_sema;
+pub fn resolveHostBuiltinFunc(c: *cy.Chunk, func: *cy.Func, sig: *sema.FuncSig, func_ptr: cy.ZBuiltinFn, eval_ptr: ?cy.ZBuiltinEvalFn) !void {
+    func.type = .host_builtin;
     try resolveFunc(c, func, sig);
-    func.data = .{ .host_sema = .{ .ptr = func_ptr }};
+    func.data = .{ .host_builtin = .{
+        .ptr = func_ptr,
+        .eval = eval_ptr,
+    }};
 }
 
-pub fn resolveHostCtFunc(c: *cy.Chunk, func: *cy.Func, sig: *cy.FuncSig, func_ptr: ?cy.ZCtFn, eval_ptr: ?cy.ZCtEvalFuncFn) !void {
-    func.type = .host_ct;
-    if (func_ptr == null) {
-        func.info.const_eval_only = true;
-    }
+pub fn resolveHostConstEvalFunc(c: *cy.Chunk, func: *cy.Func, sig: *cy.FuncSig, func_ptr: cy.ZConstEvalFn) !void {
+    func.type = .host_const_eval;
+    func.info.const_eval_only = true;
     try resolveFunc(c, func, sig);
-    func.data = .{ .host_ct = .{ .ptr = func_ptr, .eval = eval_ptr }};
+    func.data = .{ .host_const_eval = .{ .ptr = func_ptr }};
 }
 
 pub fn reserveTraitFunc(
@@ -398,12 +402,9 @@ pub fn reserveFunc(
     const sym = try prepareFuncSym(c, parent, mod, name, decl);
 
     var extern_ = false;
-    var global_init = false;
     for (decl.attrs.slice()) |attr| {
         if (attr.type == .extern_) {
             extern_ = true;
-        } else if (attr.type == .global_init) {
-            global_init = true;
         } else if (attr.type == .cond) {
             const res = try cy.cte.evalCheck(c, attr.value.?, c.sema.bool_t);
             if (!res.value.asBool()) {

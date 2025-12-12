@@ -27,7 +27,9 @@ const UserVM = cy.UserVM;
 
 const logger = cy.log.scoped(.vm);
 
-const trace_panic_at_main_heap_event: u64 = 0;
+// Tracing for the main thread.
+const trace_panic_at_event: u64 = 0;
+const trace_track_object_event: u64 = 0;
 
 const VMC = extern struct {
     consts_ptr: [*]Value,
@@ -127,7 +129,10 @@ pub const VM = struct {
     num_cont_evals: u32,
 
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
-        const num_cpus = try std.Thread.getCpuCount();
+        var num_cpus: usize = 1;
+        if (build_config.threads) {
+            num_cpus = try std.Thread.getCpuCount();
+        }
         self.* = .{
             .alloc = alloc,
             .compiler = undefined,
@@ -178,7 +183,8 @@ pub const VM = struct {
         self.main_thread = try self.alloc.create(cy.Thread);
         try self.main_thread.init(0, alloc, self);
         if (cy.Trace) {
-            self.main_thread.heap.c.trace_panic_at_event = trace_panic_at_main_heap_event;
+            self.main_thread.heap.c.trace_panic_at_event = trace_panic_at_event;
+            self.main_thread.heap.c.trace_track_object_event = trace_track_object_event;
         }
 
         try self.funcSyms.ensureTotalCapacityPrecise(self.alloc, 255);
@@ -711,7 +717,7 @@ pub const VM = struct {
 };
 
 test "vm internals." {
-    try zt.eq(@alignOf(VM), 8);
+    try zt.eq(8, @alignOf(VM));
 
     // Check Zig/C structs.
     inline for (std.meta.fields(vmc.VM)) |field| {
@@ -726,7 +732,11 @@ test "vm internals." {
 
     try zt.eq(@offsetOf(VM, "c"), @offsetOf(vmc.ZVM, "c"));
 
-    try zt.eq(16, @sizeOf(FuncSymbol));
+    if (cy.is32Bit) {
+        try zt.eq(8, @sizeOf(FuncSymbol));
+    } else {
+        try zt.eq(16, @sizeOf(FuncSymbol));
+    }
     try zt.eq(@offsetOf(FuncSymbol, "type"), @offsetOf(vmc.FuncSymbol, "type"));
     try zt.eq(@offsetOf(FuncSymbol, "data"), @offsetOf(vmc.FuncSymbol, "data"));
 }
@@ -806,6 +816,16 @@ inline fn deoptimizeBinOp(pc: [*]cy.Inst) void {
     pc[4] = pc[11];
 }
 
+fn z_write_ptr(buf: C.Bytes, ptr: ?*anyopaque) callconv(.c) usize {
+    const res = std.fmt.bufPrint(C.from_bytes(buf), "{*}", .{ptr}) catch @panic("error");
+    return res.len;
+}
+
+fn z_write_u64(buf: C.Bytes, x: u64) callconv(.c) usize {
+    const res = std.fmt.bufPrint(C.from_bytes(buf), "{}", .{x}) catch @panic("error");
+    return res.len;
+}
+
 fn zFatal() callconv(.c) void {
     cy.fatal();
 }
@@ -820,7 +840,7 @@ fn zCallTrait(t: *cy.Thread, pc: [*]cy.Inst, fp: [*]Value, vtable_idx: u16, base
     const trait_vtable: usize = @intCast(fp[base+3].val);
     const vtable = t.c.vm.vtables.items[trait_vtable];
     const ptr_info = vtable[vtable_idx];
-    const ptr: *anyopaque = @ptrFromInt(ptr_info & ~(@as(u64, 1) << 63));
+    const ptr: *anyopaque = @ptrFromInt(@as(usize, @intCast(ptr_info & ~(@as(u64, 1) << 63))));
     const host_func = (ptr_info >> 63) != 0;
 
     const res = @call(.always_inline, cy.Thread.callTraitSymInst, .{t, pc, fp, ptr, host_func, base}) catch |err| {
@@ -872,6 +892,13 @@ pub fn zPrintTraceAtPc(t: *cy.Thread, debug_pc: ?*anyopaque, title: C.Bytes, msg
     defer w.deinit();
     cy.debug.write_trace_at_pc(t.c.vm, &w.writer, debug_pc, C.from_bytes(title), C.from_bytes(msg)) catch cy.fatal();
     t.c.vm.log(w.written());
+}
+
+pub fn z_dump_stack_trace(t: *cy.Thread) callconv(.c) void {
+    std.debug.assert(cy.Trace);
+    const trace = t.alloc_stack_trace() catch @panic("error");
+    defer t.alloc.free(trace);
+    t.c.vm.log(trace);
 }
 
 pub fn zGetExternFunc(vm: *cy.VM, func_id: u32) callconv(.c) *const anyopaque {
@@ -1042,6 +1069,14 @@ fn zAllocPoolObject(t: *cy.Thread, type_id: cy.TypeId) callconv(.c) vmc.HeapObje
             .code = vmc.RES_UNKNOWN,
         };
     };
+    if (cy.Trace) {
+        if (t.heap.objectTraceMap.get(obj).?.alloc_event == t.heap.c.trace_track_object_event) {
+            t.c.vm.log("track object: allocation rc=1");
+            const trace = t.alloc_stack_trace() catch @panic("error");
+            defer t.alloc.free(trace);
+            t.c.vm.log(trace);
+        }
+    }
     return .{
         .obj = @ptrCast(obj),
         .code = vmc.RES_SUCCESS,
@@ -1055,6 +1090,14 @@ fn zAllocBigObject(t: *cy.Thread, type_id: cy.TypeId, size: usize) callconv(.c) 
             .code = vmc.RES_UNKNOWN,
         };
     };
+    if (cy.Trace) {
+        if (t.heap.objectTraceMap.get(obj).?.alloc_event == t.heap.c.trace_track_object_event) {
+            t.c.vm.log("track object: allocation rc=1");
+            const trace = t.alloc_stack_trace() catch @panic("error");
+            defer t.alloc.free(trace);
+            t.c.vm.log(trace);
+        }
+    }
     return .{
         .obj = @ptrCast(obj),
         .code = vmc.RES_SUCCESS,
@@ -1110,18 +1153,13 @@ fn z_panic_unexpected_choice(t: *cy.Thread, exp: i64, act: i64) callconv(.c) voi
     t.log_tracev("{s}", .{msg});
 }
 
-fn c_strlen(s: [*:0]const u8) callconv(.c) usize {
-    return std.mem.sliceTo(s, 0).len;
-}
-
 fn c_pow(b: f64, e: f64) callconv(.c) f64 {
     return std.math.pow(f64, b, e);
 }
 
 comptime {
     if (cy.isWasmFreestanding and build_config.vmEngine == .c) {
-        @export(c_strlen, .{ .name = "strlen", .linkage = .strong });
-        @export(c_pow, .{ .name = "pow", .linkage = .strong });
+        @export(&c_pow, .{ .name = "pow", .linkage = .strong });
     }
 
     @export(&zAwait, .{ .name = "zAwait", .linkage = .strong });
@@ -1149,7 +1187,10 @@ comptime {
     @export(&zEnsureListCap, .{ .name = "zEnsureListCap", .linkage = .strong });
     @export(&zDumpObjectTrace, .{ .name = "zDumpObjectTrace", .linkage = .strong });
     @export(&zPrintTraceAtPc, .{ .name = "zPrintTraceAtPc", .linkage = .strong });
+    @export(&z_dump_stack_trace, .{ .name = "z_dump_stack_trace", .linkage = .strong });
     @export(&zGetExternFunc, .{ .name = "zGetExternFunc", .linkage = .strong });
+    @export(&z_write_ptr, .{ .name = "z_write_ptr", .linkage = .strong });
+    @export(&z_write_u64, .{ .name = "z_write_u64", .linkage = .strong });
 }
 
 pub fn default_print(_: ?*C.Thread, _: C.Bytes) callconv(.c) void {
@@ -1164,11 +1205,11 @@ pub fn default_log(_: ?*C.VM, _: C.Bytes) callconv(.c) void {
     // Nop.
 }
 
-fn zFree(t: *cy.Thread, bytes: vmc.Str) callconv(.c) void {
+fn zFree(t: *cy.Thread, bytes: vmc.Bytes) callconv(.c) void {
     t.alloc.free(bytes.ptr[0..bytes.len]);
 }
 
-pub fn zGetTypeName(vm: *VM, id: cy.TypeId) callconv(.c) vmc.Str {
+pub fn zGetTypeName(vm: *VM, id: cy.TypeId) callconv(.c) vmc.Bytes {
     // Only builds rt type names in trace mode.
     std.debug.assert(cy.Trace);
 
@@ -1179,7 +1220,7 @@ pub fn zGetTypeName(vm: *VM, id: cy.TypeId) callconv(.c) vmc.Str {
     const res = info.name_ptr[0..info.name_len];
     const name = C.to_bytes(res);
 
-    return vmc.Str{
+    return vmc.Bytes{
         .ptr = name.ptr,
         .len = name.len,
     };

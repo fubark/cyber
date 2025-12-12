@@ -94,7 +94,7 @@ type Node enum:
     case group               Group
     case hex_lit             Literal
     case ident               Ident
-    case if_expr             void
+    case if_expr             IfExpr
     case if_stmt             void
     case if_unwrap_stmt      void
     case impl_decl           ImplDecl
@@ -168,19 +168,19 @@ type Node enum:
     case yield_stmt          void
 
 fn (&Node) decl_name() -> str:
-    return switch $:
+    return switch self.*:
         case .func_decl |node| => node.name.name()
         case .const_decl |node| => node.name.name()
         case .type_alias_decl |node| => node.name.name()
         case .global_decl |node| => node.name.name()
-        else => panic('Not a decl node: %{meta.choice_tag(Node, $)}')
+        else => panic('Not a decl node: %{meta.choice_tag(self.*)}')
 
 fn (&Node) name() -> str:
-    return switch $:
+    return switch self.*:
         case .raw_string_lit |node| => node.value
         case .at_lit |node| => node.value
         case .ident |node| => node.name
-        else => panic('No name: %{meta.choice_tag(Node, $)}')
+        else => panic('No name: %{meta.choice_tag(self.*)}')
 
 -- Returns whether a two statements are adjacent to one another.
 -- Two lines are adjacent if separated by a new line and optional indentation.
@@ -206,7 +206,7 @@ fn is_adjacent_stmt(src str, a_end int, b_start int) -> bool:
     return true
 
 fn (&Node) end() -> int:
-    switch $:
+    switch self.*:
         -- .null           => cy.NullId,
         -- .all            => self.cast(.all).pos + 1,
         case .access_expr |node|: return node.right.end()
@@ -333,7 +333,7 @@ fn (&Node) end() -> int:
         case .group |node|: return node.end
         case .hex_lit |node|: return node.end()
         case .ident |node|: return node.end()
-        -- .if_expr        => self.cast(.if_expr).else_expr.end(),
+        case .if_expr |node|: return node.else_expr.end()
         -- .if_stmt        => {
         --     const stmt = self.cast(.if_stmt);
         --     if (stmt.else_blocks.len > 0) {
@@ -516,7 +516,7 @@ fn (&Node) end() -> int:
         --         return yield.pos + 5;
         --     }
         -- },
-        else: panic("TODO end: %{meta.choice_tag(Node, $)}")
+        else: panic("TODO end: %{meta.choice_tag(self.*)}")
 
 fn (&Node) pos() -> int:
     switch $.*:
@@ -569,7 +569,7 @@ fn (&Node) pos() -> int:
         case .group |node|: return node.pos
         case .hex_lit |node|: return node.pos
         case .ident |node|:       return node.pos
-        -- .if_expr        => self.cast(.if_expr).pos,
+        case .if_expr |node|: return node.pos
         -- .if_stmt        => self.cast(.if_stmt).pos,
         -- .if_unwrap_stmt => self.cast(.if_unwrap_stmt).pos,
         case .index_expr |node|: return node.left.pos()
@@ -637,7 +637,7 @@ fn (&Node) pos() -> int:
         -- .whileCondStmt  => self.cast(.whileCondStmt).pos,
         -- .while_unwrap_stmt => self.cast(.while_unwrap_stmt).pos,
         -- .yield_stmt     => self.cast(.yield_stmt).pos,
-        else: panic("TODO pos: %{meta.choice_tag(Node, $)}")
+        else: panic("TODO pos: %{meta.choice_tag(self.*)}")
 
 type ZNode
 
@@ -703,6 +703,10 @@ type AttributeKind enum:
     case extern
     case call
     case generator
+    case cond
+    case unsafe
+    case consteval
+    case reserve
 
 type Attribute:
     kind  AttributeKind
@@ -892,6 +896,12 @@ type FuncParam:
     const_param bool
     pos i32
 
+type IfExpr:
+    cond ^Node
+    body ^Node
+    else_expr ^Node
+    pos i32
+
 type AccessExpr:
     left ^Node
     right ^Node
@@ -987,11 +997,11 @@ type VarDecl:
 
 type ZStr:
     ptr Ptr[byte]
-    len int
+    len rsize
 
 type ZNodes:
     ptr Ptr[Ptr[ZNode]]
-    len int
+    len rsize
 
 fn from_znodes(znodes ZNodes) -> []^Node:
     nodes := []^Node{}
@@ -1044,8 +1054,8 @@ fn from_znode(znode Ptr[ZNode]) -> ?^Node:
 
 type ZNodePayload[T Any] const: 
     struct_t := type.info(T).!struct
-    fields := [struct_t.fields.length]meta.StructField({name='', type=void, offset=0, state_offset=0})
-    for 0..struct_t.fields.length |i|:
+    fields := [struct_t.fields.len()]meta.StructField({name='', type=void, offset=0, state_offset=0})
+    for 0..struct_t.fields.len() |i|:
         field := struct_t.fields[i]
         ztype := void
         if field.type == []^Node:
@@ -1075,13 +1085,13 @@ type ZNodePayload[T Any] const:
 fn from_znode_auto(%Tag Node.Tag, znode Ptr[ZNode]) -> ^Node:
     #N := meta.CasePayload[Node, Tag]
     #if N == void:
-        return ^meta.access(Node, meta.enum_name(Tag))
+        return ^meta.access(Node, meta.enum_name_eval(Tag))
     #else:
         z := as[Ptr[ZNodePayload[N]]] znode
 
         var payload N = undef
         #struct_t := type.info(N).!struct
-        #for 0..struct_t.fields.length |i|:
+        #for 0..struct_t.fields.len() |i|:
             begin: 
                 #field := struct_t.fields[i]
                 #if field.type == []^Node:
@@ -1175,7 +1185,7 @@ type Comment:
     end int
 
 fn parser_comments(parser Ptr[void]) -> []Comment:
-    return _parser_comments(parser, type.id(RawBuffer[Comment]))
+    return _parser_comments(parser, type.id(RawBuffer[byte]))
 
 #[bind]
 fn _parser_comments(parser Ptr[void], buffer_t int) -> []Comment
@@ -1330,7 +1340,7 @@ fn REPL :: new() -> REPL:
     return ctx
 
 fn (&REPL) print_intro():
-    print("%{meta.cy_full_version()} REPL")
+    print("%{meta.full_version()} REPL")
     print("Commands: .exit")
 
 type ReadLineFn = fn(prefix str) -> Future[str]

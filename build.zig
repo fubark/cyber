@@ -20,6 +20,7 @@ var optFFI: ?bool = undefined;
 var optStatic: ?bool = undefined;
 var optJIT: ?bool = undefined;
 var strip: bool = undefined;
+var threads: bool = undefined;
 
 var rtarget: std.Build.ResolvedTarget = undefined;
 var target: std.Target = undefined;
@@ -60,11 +61,21 @@ pub fn build(b: *std.Build) !void {
         }
         break :b false;
     };
+    threads = b.option(bool, "threads", "Enable threads.") orelse b: {
+        if (target.cpu.arch.isWasm() and (target.os.tag == .freestanding or target.os.tag == .wasi)) {
+            break :b false;
+        }
+        break :b true;
+    };
 
-    const abs_root_path = try std.fs.cwd().realpathAlloc(b.allocator, ".");
+    var abs_root_path: []const u8 = undefined;
+    if (target.os.tag == .wasi) {
+        abs_root_path = "";
+    } else {
+        abs_root_path = try std.fs.cwd().realpathAlloc(b.allocator, ".");
+    }
 
     var opts = getDefaultOptions();
-    opts.malloc = if (target.cpu.arch.isWasm()) .zig else .malloc;
     opts.applyOverrides();
 
     const lib_mod = try create_lib_module(b, opts);
@@ -137,27 +148,6 @@ pub fn build(b: *std.Build) !void {
             step.dependOn(&b.addInstallFile(b.path("src/std/libc.linux.cy"), "bin/src/std/libc.linux.cy").step);
         }
     }
-
-    // {
-    //     const step = b.step("vm-lib", "Build vm as a library.");
-
-    //     const opts = getDefaultOptions();
-    //     const obj = try buildCVM(b, opts);
-
-    //     const root = b.createModule(.{
-    //         .target = rtarget,
-    //         .optimize = optimize,
-    //     });
-    //     const lib = b.addLibrary(.{
-    //         .linkage = .static,
-    //         .name = "vm",
-    //         .root_module = root,
-    //     });
-    //     lib.addObject(obj);
-
-    //     step.dependOn(&lib.step);
-    //     step.dependOn(&b.addInstallArtifact(lib, .{}).step);
-    // }
 
     var standalone_lib_artifact: *std.Build.Step.InstallArtifact = undefined;
     {
@@ -355,7 +345,6 @@ pub const Options = struct {
     log_mem: bool,
     target: std.Target,
     optimize: std.builtin.OptimizeMode,
-    malloc: Allocator,
     static: bool,
     cyc: bool,
     ffi: bool,
@@ -363,9 +352,6 @@ pub const Options = struct {
     jit: bool,
 
     fn applyOverrides(self: *Options) void {
-        if (optMalloc) |malloc| {
-            self.malloc = malloc;
-        }
         if (optFFI) |ffi| {
             self.ffi = ffi;
         }
@@ -379,17 +365,6 @@ pub const Options = struct {
 };
 
 fn getDefaultOptions() Options {
-    var malloc: Allocator = undefined;
-    // Use mimalloc for fast builds.
-    if (target.cpu.arch.isWasm()) {
-        malloc = .zig;
-    } else {
-        if (optimize != .Debug) {
-            malloc = .mimalloc;
-        } else {
-            malloc = .zig;
-        }
-    }
     return .{
         .selinux = selinux,
         .trace = trace,
@@ -397,7 +372,6 @@ fn getDefaultOptions() Options {
         .target = target,
         .optimize = optimize,
         .cyc = true,
-        .malloc = malloc,
         .static = true,
         .ffi = !target.cpu.arch.isWasm(),
         .cli = !target.cpu.arch.isWasm(),
@@ -422,10 +396,14 @@ const CliConfig = struct {
 
     fn default() CliConfig {
         var malloc_: Allocator = undefined;
-        if (optimize != .Debug) {
-            malloc_ = .mimalloc;
-        } else {
+        if (target.cpu.arch.isWasm()) {
             malloc_ = .zig;
+        } else {
+            if (optimize != .Debug) {
+                malloc_ = .mimalloc;
+            } else {
+                malloc_ = .zig;
+            }
         }
         if (optMalloc) |malloc| {
             malloc_ = malloc;
@@ -478,7 +456,6 @@ fn create_lib_config(b: *std.Build, opts: Options) !*std.Build.Module {
     }
     options.addOption([]const u8, "build", buildTag);
     options.addOption([]const u8, "commit", commitTag);
-    options.addOption(Allocator, "malloc", opts.malloc);
     options.addOption(config_.Engine, "vmEngine", vmEngine);
     options.addOption(bool, "trace", opts.trace);
     options.addOption(bool, "log_mem", opts.log_mem);
@@ -487,6 +464,7 @@ fn create_lib_config(b: *std.Build, opts: Options) !*std.Build.Module {
     options.addOption(bool, "ffi", opts.ffi);
     options.addOption(bool, "cli", opts.cli);
     options.addOption(bool, "jit", opts.jit);
+    options.addOption(bool, "threads", threads);
     return options.createModule();
 }
 

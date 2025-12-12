@@ -1,6 +1,7 @@
 const std = @import("std");
 const cy = @import("cyber.zig");
 const log = cy.log.scoped(.worker);
+const build_config = @import("build_config");
 
 const TaskKind = enum(u8) {
     thread,
@@ -68,6 +69,9 @@ pub const Pool = struct {
     }
 
     pub fn add_thread_task(self: *Pool, thread: *cy.Thread, func_ptr: cy.Value, fut: *cy.heap.FutureValue, ret_size: usize) !void {
+        if (!build_config.threads) {
+            @panic("unsupported");
+        }
         {
             self.mutex.lock();
             defer self.mutex.unlock();

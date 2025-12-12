@@ -483,6 +483,10 @@ export fn cl_vm_set_eprinter(vm: *cy.VM, print: C.PrintErrorFn) void {
     vm.print_err = print;
 }
 
+export fn cl_vm_logger(vm: *cy.VM) C.LogFn {
+    return vm.log_fn;
+}
+
 export fn cl_vm_set_logger(vm: *cy.VM, logger: C.LogFn) void {
     vm.log_fn = logger;
 }
@@ -599,8 +603,8 @@ export fn cl_new_func_union(t: *cy.Thread, union_t: *cy.Type, func: C.HostFn) Va
     return t.heap.allocHostFuncUnion(union_t.id(), @ptrCast(func)) catch fatal();
 }
 
-export fn clGetFuncSig(vm: *cy.VM, params: [*]const *cy.Type, nparams: usize, ret_t: *cy.Type) *cy.FuncSig {
-    return vm.sema.ensureFuncSig(@ptrCast(params[0..nparams]), ret_t) catch fatal();
+export fn cl_vm_ensure_func_sig(vm: *cy.VM, params: [*]const *cy.Type, nparams: usize, ret_t: *cy.Type) *cy.FuncSig {
+    return vm.sema.ensureFuncSig(@ptrCast(@alignCast(params[0..nparams])), ret_t) catch fatal();
 }
 
 // test "clNewFunc()" {
@@ -985,4 +989,19 @@ test "meta constants" {
     try zt.eq(C.Success, res);
     const exp_endian = std.enums.nameCast(Endian, builtin.cpu.arch.endian());
     try zt.eq(@intFromEnum(exp_endian), @as(*i64, @ptrCast(eval_res.res)).*);
+}
+
+// pub fn panic(msg: []const u8, trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
+//     _ = trace;
+//     _ = ret_addr;
+//     // if (is_wasm) {
+//     //     std.debug.print("{s}", .{msg});
+//     //     @trap();
+//     // } else {
+//         // std.debug.defaultPanic(msg, @returnAddress());
+//     // }
+// }
+
+export fn cl_strlen(s: [*:0]const u8) usize {
+    return std.mem.len(s);
 }

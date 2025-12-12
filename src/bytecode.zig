@@ -313,18 +313,30 @@ pub const ByteCodeBuffer = struct {
     }
 
     pub fn setOpArgU64(self: *ByteCodeBuffer, idx: usize, arg: u64) void {
+        if (cy.Trace) {
+            if (idx + 8 > self.ops.items.len) @panic("OutOfBounds");
+        }
         @as(*align(1) u64, @ptrCast(&self.ops.items[idx])).* = arg;
     }
 
     pub fn setOpArgU48(self: *ByteCodeBuffer, idx: usize, arg: u48) void {
+        if (cy.Trace) {
+            if (idx + 6 > self.ops.items.len) @panic("OutOfBounds");
+        }
         @as(*align(1) u48, @ptrCast(&self.ops.items[idx])).* = arg;
     }
 
     pub fn setOpArgU32(self: *ByteCodeBuffer, idx: usize, arg: u32) void {
+        if (cy.Trace) {
+            if (idx + 4 > self.ops.items.len) @panic("OutOfBounds");
+        }
         @as(*align(1) u32, @ptrCast(&self.ops.items[idx])).* = arg;
     }
 
     pub fn setOpArgU16(self: *ByteCodeBuffer, idx: usize, arg: u16) void {
+        if (cy.Trace) {
+            if (idx + 2 > self.ops.items.len) @panic("OutOfBounds");
+        }
         @as(*align(1) u16, @ptrCast(&self.ops.items[idx])).* = arg;
     }
 
@@ -468,7 +480,7 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
         },
         .call => {
             const base = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const func_pc = @as(*const align(1) u48, @ptrCast(pc + 3)).*;
+            const func_pc: usize = @intCast(@as(*const align(1) u48, @ptrCast(pc + 3)).*);
             const func_id: u32 = @as(*const align(1) u32, @ptrFromInt(func_pc - 4)).*;
 
             const name = vm.funcSymDetails.items[func_id].name();
@@ -497,12 +509,12 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
             }
             if (vm.funcSymDetails.items[func_id].func) |func| {
                 const parent = func.parent_mod_sym().name();
-                try w.print("{s}.{s}(%{}..%{})", .{
-                    parent, name, base + 4, base + 4 + reg_size,
+                try w.print("{s}.{s}(%{}..%{}) {}", .{
+                    parent, name, base + 4, base + 4 + reg_size, func_id,
                 });
             } else {
-                try w.print("{s}(%{}..%{})", .{
-                    name, base + 4, base + 4 + reg_size,
+                try w.print("{s}(%{}..%{}) {}", .{
+                    name, base + 4, base + 4 + reg_size, func_id,
                 });
             }
         },
@@ -514,7 +526,7 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
                     base, base + 4,
                 });
             } else {
-                const ptr: *anyopaque = @ptrFromInt(ptr_int);
+                const ptr: *anyopaque = @ptrFromInt(@as(usize, @intCast(ptr_int)));
                 const func_id = vm.host_funcs.get(ptr).?;
                 const name = vm.funcSymDetails.items[func_id].name();
                 const sig = vm.sema.getFuncSig(vm.funcSymDetails.items[func_id].sig);
@@ -558,16 +570,16 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
         },
         .nops => {
             const ptr_len = @as(*const align(1) u64, @ptrCast(pc + 1)).*;
-            const ptr: [*]u8 = @ptrFromInt(ptr_len & 0xffffffffffff);
-            const len_ = ptr_len >> 48;
+            const ptr: [*]u8 = @ptrFromInt(@as(usize, @intCast(ptr_len & 0xffffffffffff)));
+            const len_: usize = @intCast(ptr_len >> 48);
             const str = ptr[0..len_];
             try w.print("'{s}'", .{str});
         },
         .const_str => {
             const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
             const ptr_len = @as(*const align(1) u64, @ptrCast(pc + 3)).*;
-            const ptr: [*]u8 = @ptrFromInt(ptr_len & 0xffffffffffff);
-            const len_ = ptr_len >> 48;
+            const ptr: [*]u8 = @ptrFromInt(@as(usize, @intCast(ptr_len & 0xffffffffffff)));
+            const len_: usize = @intCast(ptr_len >> 48);
             const ascii = pc[11].val == 1;
             const str = ptr[0..len_];
             try w.print("%{}..%{} = '{s}' ascii={}", .{dst, dst+3, str, ascii});
@@ -931,6 +943,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .end,
         .ret_0,
         .ret,
+        .trap_debug,
         .trap => {
             return 1;
         },
@@ -1248,13 +1261,14 @@ pub const OpCode = enum(u8) {
     nop32 = vmc.CodeNOP32,
     nops = vmc.CodeNOPS,
     trap = vmc.CodeTRAP,
+    trap_debug = vmc.CodeTRAP_DEBUG,
 
     /// Indicates the end of the main script.
     end = vmc.CodeEND,
 };
 
 test "bytecode internals." {
-    try t.eq(126, std.enums.values(OpCode).len);
+    try t.eq(127, std.enums.values(OpCode).len);
     try t.eq(@sizeOf(Inst), 1);
     try t.eq(@sizeOf(DebugSym), 16);
 }

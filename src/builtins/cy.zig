@@ -79,6 +79,7 @@ pub fn UserVM_init(t: *cy.Thread) anyerror!C.Ret {
     // Use the same printers as the parent VM.
     C.vm_set_printer(new, C.vm_printer(@ptrCast(t.c.vm)));
     C.vm_set_eprinter(new, C.vm_eprinter(@ptrCast(t.c.vm)));
+    C.vm_set_logger(new, C.vm_logger(@ptrCast(t.c.vm)));
 
     const ret = t.ret(UserVM);
     ret.* = .{ .vm = @ptrCast(@alignCast(new)) };
@@ -246,12 +247,14 @@ fn parserReportFn(p: *cy.Parser, format: []const u8, args: []const cy.fmt.FmtVal
     const msg = try cy.fmt.allocFormat(p.alloc, format, args);
     defer p.alloc.free(msg);
 
-    std.debug.print("{s}\n", .{msg});
-
     var wa = std.Io.Writer.Allocating.init(p.alloc);
     defer wa.deinit();
+
+    try wa.writer.print("{s}\n", .{msg});
     try cy.debug.write_user_error_trace2(&wa.writer, p.ast.view(), "<memory>", pos);
-    std.debug.print("{s}\n", .{wa.written()});
+
+    const t: *cy.Thread = @ptrCast(@alignCast(p.ctx));
+    t.c.vm.log(wa.written());
     return error.ParseError;
 }
 

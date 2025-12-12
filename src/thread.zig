@@ -17,7 +17,7 @@ pub const CalleeStart: u8 = vmc.CALLEE_START;
 pub fn ret_generator(heap: *cy.Heap, type_id: cy.TypeId, ret_size: u16, frame: []cy.Value, resume_pc: ?*cy.Inst, deinit_pc: ?*cy.Inst) !void {
     // Only persists the locals. Assumes generator is 1 reg return.
     const locals = frame[ret_size + 4..];
-    const obj: *vmc.Generator = @ptrCast(try heap.allocBigObject(type_id, @sizeOf(vmc.Generator)));
+    const obj: *vmc.Generator = @ptrCast(try heap.new_object_undef(type_id, @sizeOf(vmc.Generator)));
     const locals_dup = try heap.alloc.dupe(cy.Value, locals);
     obj.* = .{
         .frame_ptr = @ptrCast(locals_dup.ptr),
@@ -127,14 +127,14 @@ pub fn freeHeapPages(t: *cy.Thread) !FreeHeapResult {
                 if (cy.Trace) {
                     if (t.heap.checkDoubleFree(obj)) {
                         var buf: [128]u8 = undefined;
-                        const pc: [*]cy.Inst = @ptrFromInt(t.heap.c.ctx);
+                        const pc: [*]cy.Inst = @ptrFromInt(@as(usize, @intCast(t.heap.c.ctx)));
                         const msg = std.fmt.bufPrint(&buf, "{*} at pc: {}({s})", .{
                             obj, t.heap.c.ctx, @tagName(pc[0].opcode()),
                         }) catch @panic("error");
 
                         var w = std.Io.Writer.Allocating.init(t.alloc);
                         defer w.deinit();
-                        cy.debug.write_trace_at_pc(t.c.vm, &w.writer, @ptrFromInt(t.heap.c.ctx), "double free", msg) catch @panic("error");
+                        cy.debug.write_trace_at_pc(t.c.vm, &w.writer, pc, "double free", msg) catch @panic("error");
                         cy.debug.write_object_trace(t, &w.writer, obj) catch @panic("error");
                         t.c.vm.log(w.written());
                         cy.fatal();
@@ -212,7 +212,7 @@ pub const Thread = struct {
 
     pub fn init(self: *Thread, id: usize, alloc: std.mem.Allocator, vm: *cy.VM) !void {
         self.* = .{
-            .heap = try cy.Heap.init(alloc, vm.sema),
+            .heap = try cy.Heap.init(self.c.vm, self, alloc, vm.sema),
             .alloc = alloc,
             .c = .{
                 .id = id,
@@ -635,7 +635,8 @@ pub const Thread = struct {
     pub fn callPtrInst(self: *Thread, pc: [*]cy.Inst, fp: [*]Value, base: u16) !PcFp {
         const base_ptr = fp + base;
         const callee = base_ptr[3];
-        const ptr: *anyopaque = @ptrFromInt(callee.val & ~(@as(u64, 1) << 63));
+        const addr: usize = @intCast(callee.val & ~(@as(u64, 1) << 63));
+        const ptr: *anyopaque = @ptrFromInt(addr);
         const host_func = (callee.val >> 63) != 0;
         if (host_func) {
             self.c.pc = @ptrCast(pc);
@@ -1009,6 +1010,22 @@ pub const Thread = struct {
         if (cy.Trace and c.verbose()) {
             self.log(format, args);
         }
+    }
+
+    pub fn alloc_stack_trace(self: *cy.Thread) ![]const u8 {
+        var lw = std.Io.Writer.Allocating.init(self.alloc);
+        defer lw.deinit();
+        const w = &lw.writer;
+
+        const cx = self.getTraceFiberContext();
+
+        _ = try self.unwindStack(self.c.stack(), cx);
+        const frames = try cy.debug.allocStackTrace(self.c.vm, self.c.stack(), self.compact_trace.items);
+        var trace = cy.StackTrace{ .frames = frames };
+        defer trace.deinit(self.alloc);
+        try cy.debug.writeStackFrames(self.c.vm, w, frames);
+
+        return lw.toOwnedSlice();
     }
 };
 

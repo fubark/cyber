@@ -14,6 +14,7 @@ const fmt = @import("../fmt.zig");
 const v = fmt.v;
 const ast = cy.ast;
 const ir = cy.ir;
+const cte = cy.cte;
 const bt = cy.types.BuiltinTypes;
 const sema = cy.sema;
 const sema_type = cy.sema_type;
@@ -36,8 +37,9 @@ const types = [_]struct{[]const u8, C.BindType}{
     .{"bool",           C.TYPE_CREATE(createBoolType)},
     .{"symbol",         C.TYPE_CREATE(createSymbolType)},
     .{"error",          C.TYPE_CREATE(createErrorType)},
-    .{"int_lit",        C.TYPE_CREATE(create_int_lit_type)},
-    .{"str_lit",        C.TYPE_RESERVE_DECL(bt.StrLit)},
+    .{"EvalBuffer",     C.TYPE_CREATE(create_eval_buffer_type)},
+    .{"EvalInt",        C.TYPE_CREATE(create_eval_int_type)},
+    .{"EvalStr",        C.TYPE_CREATE(create_eval_str_type)},
     .{"Raw",            C.TYPE_CREATE(createRawType)},
     .{"Int",            C.TYPE_CREATE(createIntType)},
     .{"Float",          C.TYPE_CREATE(createFloatType)},
@@ -81,17 +83,16 @@ const funcs = [_]struct{[]const u8, C.BindFunc}{
     .{"abort",          zErrFunc(abort)},
     .{"prints_",        cFunc(prints)}, 
     .{"log_",           cFunc(log)},
-    .{"spawn",          zErrCtFunc(spawn, null)},
     .{"memory",         zErrFunc(memory)},
 
-    .{"@bitTrunc",      zErrCtFunc(bitTrunc, bitTrunc_eval)},
-    .{"@sext",          zErrCtFunc(sext, null)},
-    .{"@zext",          zErrCtFunc(zext, null)},
-    .{"@floatToInt",    zErrCtFunc(floatToInt, null)},
-    .{"@intToFloat",    zErrCtFunc(intToFloat, null)},
-    .{"@consume",       zErrCtFunc(consume, null)},
-    .{"@cmp",           zErrCtFunc(cmp, null)},
-    .{"@copyStruct",    zErrCtFunc(copyStruct, null)},
+    .{"@bitTrunc",      zErrBuiltinFunc(bitTrunc, bitTrunc_eval)},
+    .{"@sext",          zErrBuiltinFunc(sext, null)},
+    .{"@zext",          zErrBuiltinFunc(zext, null)},
+    .{"@floatToInt",    zErrBuiltinFunc(floatToInt, null)},
+    .{"@intToFloat",    zErrBuiltinFunc(intToFloat, null)},
+    .{"@consume",       zErrBuiltinFunc(consume, null)},
+    .{"@cmp",           zErrBuiltinFunc(cmp, null)},
+    .{"@copyStruct",    zErrBuiltinFunc(copyStruct, null)},
     .{"@freeObject",    cFunc(freeObject)},
     .{"@getDeinitObject", zErrFunc(getDeinitObject)},
     .{"@getTypeDtor",   zErrFunc(getTypeDtor)},
@@ -101,27 +102,31 @@ const funcs = [_]struct{[]const u8, C.BindFunc}{
     .{"@retain",        zErrFunc(retain)},
     .{"@refCount",      zErrFunc(refCount)},
     .{"@isUniqueRef",   zErrFunc(isUniqueRef)},
-    .{"@unsafeCast",    zErrCtFunc(unsafeCast, null)},
-    .{"@scope_ptr_to_borrow", zErrCtFunc(scope_ptr_to_borrow, scope_ptr_to_borrow_eval)},
-    .{"@bitCast",       zErrCtFunc(bitCast, bitCast_eval)},
-    .{"@nop",           zErrCtFunc(null, nop)},
+    .{"@unsafeCast",    zErrBuiltinFunc(unsafeCast, null)},
+    .{"@scope_ptr_to_borrow", zErrBuiltinFunc(scope_ptr_to_borrow, scope_ptr_to_borrow_eval)},
+    .{"@bitCast",       zErrBuiltinFunc(bitCast, bitCast_eval)},
+    .{"@nop",           zErrConstEvalFunc(nop)},
+    .{"@breakpoint",    zErrBuiltinFunc(breakpoint, null)},
     .{"@memcpy",        zErrFunc(memcpy)},
     .{"@memset",        zErrFunc(memset)},
     .{"@memmove",       zErrFunc(memmove)},
     .{"@notifyFutureComplete", zErrFunc(notifyFutureComplete)},
-    .{"@await_",        zErrCtFunc(await_, null)},
+    .{"@await_",        zErrBuiltinFunc(await_, null)},
     .{"@trackMainLocal", zErrFunc(trackMainLocal)},
-    .{"@compute_int_max", zErrCtFunc(null, compute_int_max)},
-    .{"@compute_int_min", zErrCtFunc(null, compute_int_min)},
-    .{"@ptr_init",      zErrSemaFunc(ptr_init)},
+    .{"@compute_int_max", zErrConstEvalFunc(compute_int_max)},
+    .{"@compute_int_min", zErrConstEvalFunc(compute_int_min)},
+    .{"@ptr_init",      zErrBuiltinFunc(ptr_init, null)},
     .{"@ref_addr",      zErrFunc(ref_addr)},
     .{"@new_thread",    zErrFunc(new_thread)},
     .{"@start_thread",  zErrFunc(start_thread)},
     .{"@new_shared_state", zErrFunc(new_shared_state)},
-    .{"@call",          zErrCtFunc(call, null)},
+    .{"@call",          zErrBuiltinFunc(call, null)},
 
-    // bool
-    .{"bool.!",         zErrCtFunc(bool_not, bool_not_eval)},
+    .{"EvalBuffer[].@index_addr", zErrConstEvalFunc(EvalBuffer_index_addr)},
+    .{"EvalBuffer[].len", zErrConstEvalFunc(EvalBuffer_len)},
+
+    .{"EvalStr.@init", zErrConstEvalFunc(EvalStr_init)},
+    .{"EvalStr.+", zErrConstEvalFunc(EvalStr_concat)},
 
     // symbol
     .{"symbol.name",    zErrFunc(symbol_name)},
@@ -129,67 +134,17 @@ const funcs = [_]struct{[]const u8, C.BindFunc}{
     // error
 
     // Raw
-    .{"Raw[].pre~",   zErrCtFunc(bindings.Int_not, bindings.Int_not_eval)},
-    .{"Raw[].<",      zErrCtFunc(bindings.cmp(.lt), null)},
-    .{"Raw[].<=",     zErrCtFunc(bindings.cmp(.le), null)},
-    .{"Raw[].>",      zErrCtFunc(bindings.cmp(.gt), null)},
-    .{"Raw[].>=",     zErrCtFunc(bindings.cmp(.ge), null)},
-    .{"Raw[].+",      zErrCtFunc(bindings.Int_add, null)},
-    .{"Raw[].-",      zErrCtFunc(bindings.Int_sub, bindings.Int_sub_eval)},
-    .{"Raw[].*",      zErrCtFunc(bindings.Int_umul, bindings.Int_mul_eval)},
-    .{"Raw[]./",      zErrCtFunc(bindings.Int_udiv, null)},
-    .{"Raw[].%",      zErrCtFunc(bindings.Int_umod, null)},
-    .{"Raw[].&&",     zErrCtFunc(bindings.Int_and, null)},
-    .{"Raw[].||",     zErrCtFunc(bindings.Int_or, null)},
-    .{"Raw[].~",      zErrCtFunc(bindings.Int_xor, null)},
-    .{"Raw[].<<",     zErrCtFunc(bindings.Int_lsl, bindings.Int_lsl_eval)},
-    .{"Raw[].>>",     zErrCtFunc(bindings.Int_lsr, bindings.Int_lsr_eval)},
-
     .{"raw_fmt",      zErrFunc(raw_fmt)},
 
     // Int
     .{"Int[].@init",  zDeclFunc(Int_init)},
-    .{"Int[].pre~",   zErrCtFunc(bindings.Int_not, bindings.Int_not_eval)},
-    .{"Int[].pre-",   zErrCtFunc(bindings.Int_neg, bindings.Int_neg_eval)},
-    .{"Int[].<",      zErrCtFunc(bindings.cmp(.lt), bindings.Int_lt_eval)},
-    .{"Int[].<=",     zErrCtFunc(bindings.cmp(.le), null)},
-    .{"Int[].>",      zErrCtFunc(bindings.cmp(.gt), bindings.Int_gt_eval)},
-    .{"Int[].>=",     zErrCtFunc(bindings.cmp(.ge), null)},
-    .{"Int[].+",      zErrCtFunc(bindings.Int_add, bindings.Int_add_eval)},
-    .{"Int[].-",      zErrCtFunc(bindings.Int_sub, bindings.Int_sub_eval)},
-    .{"Int[].*",      zErrCtFunc(bindings.Int_mul, bindings.Int_mul_eval)},
-    .{"Int[]./",      zErrCtFunc(bindings.Int_div, bindings.Int_div_eval)},
-    .{"Int[].%",      zErrCtFunc(bindings.Int_mod, null)},
-    .{"Int[].&&",     zErrCtFunc(bindings.Int_and, null)},
-    .{"Int[].||",     zErrCtFunc(bindings.Int_or, null)},
-    .{"Int[].~",      zErrCtFunc(bindings.Int_xor, null)},
-    .{"Int[].<<",     zErrCtFunc(bindings.Int_lsl, bindings.Int_lsl_eval)},
-    .{"Int[].>>",     zErrCtFunc(bindings.Int_lsr, bindings.Int_lsr_eval)},
-    .{"Int[].ult",    zErrCtFunc(bindings.cmp(.ult), bindings.Int_ult_eval)},
-    .{"Int[].ule",    zErrCtFunc(bindings.cmp(.ule), null)},
-    .{"Int[].ugt",    zErrCtFunc(bindings.cmp(.ugt), bindings.Int_ugt_eval)},
-    .{"Int[].uge",    zErrCtFunc(bindings.cmp(.uge), bindings.Int_uge_eval)},
-    .{"Int[].umul",   zErrCtFunc(bindings.Int_umul, null)},
-    .{"Int[].udiv",   zErrCtFunc(bindings.Int_udiv, null)},
-    .{"Int[].umod",   zErrCtFunc(bindings.Int_umod, null)},
-    .{"Int[].asr",    zErrCtFunc(bindings.Int_asr, null)},
+    .{"@asr",    zErrBuiltinFunc(bindings.asr, null)},
 
     .{"int_fmt",      zErrFunc2(int_fmt, int_fmt_eval)},
 
     // .{"int.fmt2",       zErrFunc(int_fmt2)},
 
-    // Float
-    .{"Float[].pre-", zErrCtFunc(bindings.float_neg, bindings.float_neg_eval)},
-    .{"Float[].<",    zErrCtFunc(bindings.cmp(.lt), null)},
-    .{"Float[].<=",   zErrCtFunc(bindings.cmp(.le), null)},
-    .{"Float[].>",    zErrCtFunc(bindings.cmp(.gt), null)},
-    .{"Float[].>=",   zErrCtFunc(bindings.cmp(.ge), null)},
-    .{"Float[].+",    zErrCtFunc(bindings.float_add, null)},
-    .{"Float[].-",    zErrCtFunc(bindings.float_sub, null)},
-    .{"Float[].*",    zErrCtFunc(bindings.float_mul, bindings.float_mul_eval)},
-    .{"Float[].abs",  zErrCtFunc(bindings.float_abs, null)},
-    .{"Float[]./",    zErrCtFunc(bindings.float_div, null)},
-    .{"Float[].%",    zErrCtFunc(bindings.float_mod, null)},
+    .{"@fabs",  zErrBuiltinFunc(bindings.fabs, null)},
     .{"atof",         zErrFunc(atof)},
     .{"atof32",       zErrFunc(atof32)},
     .{"float_pow",    cFunc(bindings.float_pow)},
@@ -204,7 +159,7 @@ const funcs = [_]struct{[]const u8, C.BindFunc}{
     // str
     .{"str.initRune",    zErrFunc(str_initRune)},
     .{"str.initPtrSpan", zErrFunc(string.initPtrSpan)},
-    .{"str.+",           zErrFunc2(string.concat, string.concat_eval)},
+    .{"str.+",           zErrFunc(string.concat)},
     .{"str.concat",      zErrFunc(string.concat)},
     .{"str.count",       cFunc(string.count)},
     // func("str.decode",       String_decode),
@@ -241,30 +196,28 @@ const funcs = [_]struct{[]const u8, C.BindFunc}{
     // func("Vector.concat", arrayConcat),
     // func("Vector.insert", zErrFunc(arrayInsert)),
     // func("Vector.repeat", zErrFunc(arrayRepeat)),
-    .{"Vector[].ct_repeat", zErrCtFunc(null, Vector_ct_repeat)},
+    .{"Vector[].ct_repeat", zErrConstEvalFunc(Vector_ct_repeat)},
 
-    .{"Result_unwrap",      zErrCtFunc(Result_unwrap, null)},
-    .{"Result[].unwrapError", zErrCtFunc(Result_unwrapError, null)},
+    .{"@result_unwrap",      zErrBuiltinFunc(result_unwrap, null)},
+    .{"@result_unwrap_error", zErrBuiltinFunc(result_unwrap_error, null)},
 
     // Ptr
-    .{"Ptr[].@index_addr", zErrCtFunc(Ptr_index_addr, null)},
-    .{"Ptr[].fromAddr",   zErrFunc(Ptr_fromAddr)},
     .{"Ptr[].+",          zDeclFunc(Ptr_add_eval)},
 
     .{"Func.@size",       cFunc(Func_size)},
     .{"OpaqueFunc.@size", cFunc(Func_size)},
 
     // FuncSig
-    .{"FuncSig.num_params", zErrCtFunc(null, FuncSig_num_params)},
-    .{"FuncSig.param_at", zErrCtFunc(null, FuncSig_param_at)},
-    .{"FuncSig.ret",      zErrCtFunc(null, FuncSig_ret)},
+    .{"FuncSig.num_params", zErrConstEvalFunc(FuncSig_num_params)},
+    .{"FuncSig.param_at", zErrConstEvalFunc(FuncSig_param_at)},
+    .{"FuncSig.ret",      zErrConstEvalFunc(FuncSig_ret)},
 
     // Generator
     .{"Generator[].deinit", zErrFunc(Generator_deinit)},
     .{"Generator[].@size",  cFunc(Generator_size)},
     .{"Generator[].status", cFunc(Generator_status)},
-    .{"Generator[].next",   zErrCtFunc(Generator_next, null)},
-    .{"Generator[].end",    zErrCtFunc(Generator_end, null)},
+    .{"@gen_next",   zErrBuiltinFunc(gen_next, null)},
+    .{"@gen_end",    zErrBuiltinFunc(gen_end, null)},
 };
 
 comptime {
@@ -322,9 +275,17 @@ fn onLoadZ(vm: *cy.VM, mod: *cy.Sym) !void {
     }
 }
 
-pub fn zErrCtEvalFunc(comptime f: fn(*cy.Chunk, *cy.CtFuncContext) anyerror!cy.TypeValue) cy.ZCtEvalFuncFn {
+pub fn zErrConstEvalFunc(comptime f: fn(*cy.Chunk, *cy.ConstEvalContext) anyerror!TypeValue) C.BindFunc {
+    return C.BindFunc{
+        .kind = C.BindFuncConstEval,
+        .ptr = @ptrCast(@constCast(zErrConstEvalFunc2(f))),
+        .ptr2 = null,
+    };
+}
+
+pub fn zErrConstEvalFunc2(comptime f: fn(*cy.Chunk, *cy.ConstEvalContext) anyerror!cy.TypeValue) cy.ZConstEvalFn {
     const S = struct {
-        pub fn genFunc(c: *cy.Chunk, ctx: *cy.CtFuncContext) callconv(.c) cy.TypeValue {
+        pub fn genFunc(c: *cy.Chunk, ctx: *cy.ConstEvalContext) callconv(.c) cy.TypeValue {
             return @call(.always_inline, f, .{c, ctx}) catch |err| {
                 if (cy.compiler.dumpCompileErrorStackTrace and !C.silent()) {
                     std.debug.dumpStackTrace(@errorReturnTrace().?.*);
@@ -339,78 +300,64 @@ pub fn zErrCtEvalFunc(comptime f: fn(*cy.Chunk, *cy.CtFuncContext) anyerror!cy.T
     return @ptrCast(@constCast(&S.genFunc));
 }
 
-pub fn zErrSemaFunc2(comptime f: fn(*cy.Chunk, *cy.SemaFuncContext, *sema.ExprResult) anyerror!void) cy.ZSemaFn {
-    const S = struct {
-        pub fn genFunc(c: *cy.Chunk, ctx: *cy.SemaFuncContext, out: *sema.ExprResult) callconv(.c) bool {
-            @call(.always_inline, f, .{c, ctx, out}) catch |err| {
-                if (cy.compiler.dumpCompileErrorStackTrace and !C.silent()) {
-                    std.debug.dumpStackTrace(@errorReturnTrace().?.*);
-                    std.debug.print("evalFunc: {}\n", .{err});
-                }
-                if (err != error.CompileError) {
-                    _ = c.addReportFmt("error.{}", &.{v(err)}, ctx.node) catch @panic("");
-                }
-                return false;
-            };
-            return true;
-        }
-    };
-    return @ptrCast(@constCast(&S.genFunc));
-}
-
-pub fn zErrCtFunc2(comptime f: fn(*cy.Chunk, *cy.CtFuncContext, *sema.ExprResult) anyerror!void) cy.ZCtFn {
-    const S = struct {
-        pub fn genFunc(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResult) callconv(.c) bool {
-            @call(.always_inline, f, .{c, ctx, out}) catch |err| {
-                if (cy.compiler.dumpCompileErrorStackTrace and !C.silent()) {
-                    std.debug.dumpStackTrace(@errorReturnTrace().?.*);
-                    std.debug.print("evalFunc: {}\n", .{err});
-                }
-                if (err != error.CompileError) {
-                    _ = c.addReportFmt("error.{}", &.{v(err)}, ctx.node) catch @panic("");
-                }
-                return false;
-            };
-            return true;
-        }
-    };
-    return @ptrCast(@constCast(&S.genFunc));
-}
-
-pub fn zDeclFunc(comptime eval_f: ?fn (*cy.Chunk, *cy.CtFuncContext) anyerror!cy.TypeValue) C.BindFunc {
+pub fn zDeclFunc(comptime eval_f: ?fn (*cy.Chunk, *cy.ConstEvalContext) anyerror!cy.TypeValue) C.BindFunc {
     var res = C.BindFunc{
         .kind = C.BindFuncDecl,
         .ptr = null,
         .ptr2 = null,
     };
     if (eval_f) |eval_f_| {
-        res.ptr2 = @ptrCast(@constCast(zErrCtEvalFunc(eval_f_)));
+        res.ptr2 = @ptrCast(@constCast(zErrConstEvalFunc2(eval_f_)));
     }
     return res;
 }
 
-pub fn zErrSemaFunc(comptime f: fn(*cy.Chunk, *cy.SemaFuncContext, *sema.ExprResult) anyerror!void) C.BindFunc {
-    return C.BindFunc{
-        .kind = C.BindFuncSema,
-        .ptr = @ptrCast(@constCast(zErrSemaFunc2(f))),
-        .ptr2 = null,
-    };
-}
-
-pub fn zErrCtFunc(comptime f: ?fn(*cy.Chunk, *cy.CtFuncContext, *sema.ExprResult) anyerror!void,
-                  comptime eval_f: ?fn(*cy.Chunk, *cy.CtFuncContext) anyerror!cy.TypeValue) C.BindFunc {
+pub fn zErrBuiltinFunc(comptime f: fn(*cy.Chunk, *cy.BuiltinContext, *sema.ExprResult) anyerror!void, comptime f2: ?fn(*cy.Chunk, *cy.BuiltinContext) anyerror!TypeValue) C.BindFunc {
     var res = C.BindFunc{
-        .kind = C.BindFuncCt,
-        .ptr = null,
+        .kind = C.BindFuncBuiltin,
+        .ptr = @ptrCast(zErrBuiltinFunc2(f)),
         .ptr2 = null,
     };
-    if (f) |f_| {
-        res.ptr = @ptrCast(@constCast(zErrCtFunc2(f_)));
-    }
-    if (eval_f) |eval_f_| {
-        res.ptr2 = @ptrCast(@constCast(zErrCtEvalFunc(eval_f_)));
+    if (f2) |const_eval| {
+        res.ptr2 = @ptrCast(zErrBuiltinEvalFunc(const_eval));
     }
     return res;
+}
+
+pub fn zErrBuiltinFunc2(comptime f: fn(*cy.Chunk, *cy.BuiltinContext, *sema.ExprResult) anyerror!void) cy.ZBuiltinFn {
+    const S = struct {
+        pub fn genFunc(c: *cy.Chunk, ctx: *cy.BuiltinContext, out: *sema.ExprResult) callconv(.c) bool {
+            @call(.always_inline, f, .{c, ctx, out}) catch |err| {
+                if (cy.compiler.dumpCompileErrorStackTrace and !C.silent()) {
+                    std.debug.dumpStackTrace(@errorReturnTrace().?.*);
+                    std.debug.print("evalFunc: {}\n", .{err});
+                }
+                if (err != error.CompileError) {
+                    _ = c.addReportFmt("error.{}", &.{v(err)}, ctx.node) catch @panic("");
+                }
+                return false;
+            };
+            return true;
+        }
+    };
+    return @ptrCast(@constCast(&S.genFunc));
+}
+
+pub fn zErrBuiltinEvalFunc(comptime f: fn(*cy.Chunk, *cy.BuiltinContext) anyerror!cy.TypeValue) cy.ZBuiltinEvalFn {
+    const S = struct {
+        pub fn genFunc(c: *cy.Chunk, ctx: *cy.BuiltinContext) callconv(.c) cy.TypeValue {
+            return @call(.always_inline, f, .{c, ctx}) catch |err| {
+                if (cy.compiler.dumpCompileErrorStackTrace and !C.silent()) {
+                    std.debug.dumpStackTrace(@errorReturnTrace().?.*);
+                }
+                if (err != error.CompileError) {
+                    _ = c.addReportFmt("error.{}", &.{v(err)}, ctx.node) catch @panic("");
+                }
+                return cy.TypeValue{ .type = &cy.types.NullType, .value = Value.Void };
+            };
+        }
+    };
+    return @ptrCast(@constCast(&S.genFunc));
 }
 
 pub fn funcDecl() C.BindFunc {
@@ -445,7 +392,7 @@ pub fn zErrFunc(comptime f: fn (t: *cy.Thread) anyerror!C.Ret) C.BindFunc {
     };
 }
 
-pub fn zErrFunc2(comptime f: fn (t: *cy.Thread) anyerror!C.Ret, comptime eval_f: ?fn (*cy.Chunk, *cy.CtFuncContext) anyerror!cy.TypeValue) C.BindFunc {
+pub fn zErrFunc2(comptime f: fn (t: *cy.Thread) anyerror!C.Ret, comptime eval_f: ?fn (*cy.Chunk, *cy.ConstEvalContext) anyerror!cy.TypeValue) C.BindFunc {
     const S = struct {
         pub fn genFunc(t: *cy.Thread) callconv(.c) C.Ret {
             return @call(.always_inline, f, .{t}) catch |err| {
@@ -458,7 +405,7 @@ pub fn zErrFunc2(comptime f: fn (t: *cy.Thread) anyerror!C.Ret, comptime eval_f:
         .ptr = @ptrCast(@constCast(&S.genFunc)),
     };
     if (eval_f) |eval_f_| {
-        res.ptr2 = @ptrCast(@constCast(zErrCtEvalFunc(eval_f_)));
+        res.ptr2 = @ptrCast(@constCast(zErrConstEvalFunc2(eval_f_)));
     }
     return res;
 }
@@ -665,7 +612,7 @@ fn createRawType(vm: ?*C.VM, c_mod: ?*C.Sym, decl: ?*C.Node) callconv(.c) *C.Typ
 
     var ctx = sema.getResolveContext(c);
     const instance = ctx.data.sym.cast(.type).instance.?;
-    const bits = instance.getParamValue("Bits").?.as_int_lit();
+    const bits = instance.getParamValue("Bits").?.as_eval_int();
     const type_id = switch (bits) {
         64 => bt.R64,
         32 => bt.R32,
@@ -705,7 +652,7 @@ fn createIntType(vm: ?*C.VM, c_mod: ?*C.Sym, decl: ?*C.Node) callconv(.c) *C.Typ
 
     var ctx = sema.getResolveContext(c);
     const instance = ctx.data.sym.cast(.type).instance.?;
-    const bits = instance.getParamValue("Bits").?.as_int_lit();
+    const bits = instance.getParamValue("Bits").?.as_eval_int();
     const type_id = switch (bits) {
         64 => bt.I64,
         32 => bt.I32,
@@ -719,13 +666,33 @@ fn createIntType(vm: ?*C.VM, c_mod: ?*C.Sym, decl: ?*C.Node) callconv(.c) *C.Typ
     return @ptrCast(new_t);
 }
 
-fn create_int_lit_type(vm: ?*C.VM, c_mod: ?*C.Sym, decl: ?*C.Node) callconv(.c) *C.Type {
+fn create_eval_str_type(vm: ?*C.VM, c_mod: ?*C.Sym, decl: ?*C.Node) callconv(.c) *C.Type {
     _ = vm;
     _ = decl;
     const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
     const c = chunk_sym.chunk;
 
-    const new_t = c.sema.createTypeWithId(.int_lit, bt.IntLit, .{}) catch @panic("error");
+    const new_t = c.sema.createTypeWithId(.eval_ref, bt.EvalStr, .{}) catch @panic("error");
+    return @ptrCast(new_t);
+}
+
+fn create_eval_buffer_type(vm: ?*C.VM, c_mod: ?*C.Sym, decl: ?*C.Node) callconv(.c) *C.Type {
+    _ = vm;
+    _ = decl;
+    const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
+    const c = chunk_sym.chunk;
+
+    const new_t = c.sema.createType(.eval_ref, .{}) catch @panic("error");
+    return @ptrCast(new_t);
+}
+
+fn create_eval_int_type(vm: ?*C.VM, c_mod: ?*C.Sym, decl: ?*C.Node) callconv(.c) *C.Type {
+    _ = vm;
+    _ = decl;
+    const chunk_sym = cy.Sym.fromC(c_mod).cast(.chunk);
+    const c = chunk_sym.chunk;
+
+    const new_t = c.sema.createTypeWithId(.eval_int, bt.EvalInt, .{}) catch @panic("error");
     return @ptrCast(new_t);
 }
 
@@ -737,7 +704,7 @@ fn createFloatType(vm: ?*C.VM, c_mod: ?*C.Sym, decl: ?*C.Node) callconv(.c) *C.T
 
     var ctx = sema.getResolveContext(c);
     const instance = ctx.data.sym.cast(.type).instance.?;
-    const bits = instance.getParamValue("Bits").?.as_int_lit();
+    const bits = instance.getParamValue("Bits").?.as_eval_int();
     const type_id = switch (bits) {
         64 => bt.F64,
         32 => bt.F32,
@@ -839,7 +806,7 @@ fn createOptionType(vm: ?*C.VM, c_mod: ?*C.Sym, decl: ?*C.Node) callconv(.c) *C.
     const instance = ctx.data.sym.instance().?;
     const child_t = instance.getParamValue("T").?.asPtr(*cy.Type);
 
-    const zero_union = child_t.kind() == .pointer or child_t.kind() == .func_ptr;
+    const zero_union = child_t.kind() == .pointer or child_t.kind() == .func_ptr or child_t.kind() == .eval_ref;
     const new_t = c.sema.createType(.option, .{
         .child_t = child_t,
         .zero_union = zero_union,
@@ -891,14 +858,11 @@ fn createVectorType(vm: ?*C.VM, c_mod: ?*C.Sym, decl: ?*C.Node) callconv(.c) ?*C
     return @ptrCast(new_t);
 }
 
-pub fn copyStruct(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !void {
-    const struct_t = ctx.func.sig.ret.cast(.struct_t);
+pub fn copyStruct(c: *cy.Chunk, ctx: *cy.BuiltinContext, res: *sema.ExprResult) !void {
+    const struct_t = (try cte.evalType(c, ctx.args[0])).cast(.struct_t);
 
-    const ptr_n = ctx.args[0].asPtr(*cy.ast.Node);
-    const ptr = try c.semaExpr(ptr_n, .{});
-    if (ptr.type.kind() != .pointer) {
-        return c.reportError("Expected pointer type.", ptr_n);
-    }
+    const ptr_n = ctx.args[1];
+    const ptr = try c.sema_expr_cstr_template(ptr_n, c.sema.ptr_tmpl);
 
     var b: sema.InitBuilder = .{ .c = c };
     const fields = struct_t.fields();
@@ -912,17 +876,15 @@ pub fn copyStruct(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !
     res.* = sema.ExprResult.initOwned(loc);
 }
 
-pub fn bitTrunc_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
-    const target_t = ctx.func.instance.?.params[0].asPtr(*cy.Type);
-    const src_n = ctx.args[0].asPtr(*cy.ast.Node);
-    const child = try cy.cte.eval(c, src_n);
+pub fn bitTrunc_eval(c: *cy.Chunk, ctx: *cy.BuiltinContext) !cy.TypeValue {
+    const target_t = try cte.evalType(c, ctx.args[0]);
+        const child = try cy.cte.eval(c, ctx.args[1]);
     return cy.TypeValue.init(target_t, child.value);
 }
 
-pub fn bitTrunc(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !void {
-    const target_t = ctx.func.instance.?.params[0].asPtr(*cy.Type);
-    const src_n = ctx.args[0].asPtr(*cy.ast.Node);
-    const src = try c.semaExpr(src_n, .{});
+pub fn bitTrunc(c: *cy.Chunk, ctx: *cy.BuiltinContext, res: *sema.ExprResult) !void {
+    const target_t = try cte.evalType(c, ctx.args[0]);
+    const src = try c.semaExpr(ctx.args[1], .{});
     var src_bits: u32 = undefined;
     if (src.type.kind() == .int) {
         src_bits = src.type.cast(.int).bits;
@@ -947,12 +909,13 @@ pub fn bitTrunc(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !vo
     res.* = sema.ExprResult.init2(expr);
 }
 
-pub fn zext(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !void {
-    const target_t = ctx.func.instance.?.params[0].asPtr(*cy.Type);
-    const src = ctx.args[0].asPtr(*ir.Expr);
+pub fn zext(c: *cy.Chunk, ctx: *cy.BuiltinContext, res: *sema.ExprResult) !void {
+    const target_t = try cte.evalType(c, ctx.args[0]);
     if (target_t.kind() != .int and target_t.kind() != .raw) {
         return c.reportError("Expected `Int` or `Raw` target type.", ctx.node);
     }
+
+    const src = try c.semaExpr(ctx.args[1], .{});
     var src_bits: u32 = undefined;
     if (src.type.kind() == .int) {
         src_bits = src.type.cast(.int).bits;
@@ -962,19 +925,19 @@ pub fn zext(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !void {
         return c.reportError("Expected `Int` or `Raw` source type.", ctx.node);
     }
     const expr = try c.ir.newExpr(.zext, target_t, ctx.node, .{
-        .expr = src,
+        .expr = src.ir,
         .src_bits = src_bits,
     });
     res.* = sema.ExprResult.init2(expr);
 }
 
-pub fn sext(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !void {
-    const target_t = ctx.func.instance.?.params[0].asPtr(*cy.Type);
-    const src_n = ctx.args[0].asPtr(*cy.ast.Node);
-    const src = try c.semaExpr(src_n, .{});
+pub fn sext(c: *cy.Chunk, ctx: *cy.BuiltinContext, res: *sema.ExprResult) !void {
+    const target_t = try cte.evalType(c, ctx.args[0]);
     if (target_t.kind() != .int and target_t.kind() != .raw) {
         return c.reportError("Expected `Int` or `Raw` target type.", ctx.node);
     }
+
+    const src = try sema.semaExpr(c, ctx.args[1], .{});
     var src_bits: u32 = undefined;
     if (src.type.kind() == .int) {
         src_bits = src.type.cast(.int).bits;
@@ -990,22 +953,22 @@ pub fn sext(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !void {
     res.* = sema.ExprResult.init2(expr);
 }
 
-pub fn intToFloat(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !void {
-    const target_t = ctx.func.instance.?.params[0].asPtr(*cy.Type);
+pub fn intToFloat(c: *cy.Chunk, ctx: *cy.BuiltinContext, res: *sema.ExprResult) !void {
+    const target_t = try cte.evalType(c, ctx.args[0]);
     if (target_t.kind() != .float) {
         return c.reportError("Expected float type.", ctx.node);
     }
-    const int_n = ctx.args[0].asPtr(*cy.ast.Node);
+    const int_n = ctx.args[1];
     const int = try c.semaExprCstr(int_n, c.sema.i64_t);
     res.* = try sema.semaIntToFloat(c, target_t, int, ctx.node);
 }
 
-pub fn floatToInt(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !void {
-    const float_t = ctx.func.instance.?.params[0].asPtr(*cy.Type);
+pub fn floatToInt(c: *cy.Chunk, ctx: *cy.BuiltinContext, res: *sema.ExprResult) !void {
+    const float_t = try cte.evalType(c, ctx.args[0]);
     if (float_t.kind() != .float) {
         return c.reportError("Expected float type.", ctx.node);
     }
-    const float_n = ctx.args[0].asPtr(*cy.ast.Node);
+    const float_n = ctx.args[1];
     const float = try c.semaExprCstr(float_n, float_t);
     const expr = try c.ir.newExpr(.f2i, c.sema.i64_t, ctx.node, .{
         .expr = float.ir,
@@ -1013,8 +976,8 @@ pub fn floatToInt(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !
     res.* = sema.ExprResult.init2(expr);
 }
 
-pub fn consume(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !void {
-    const expr_n = ctx.args[0].asPtr(*cy.ast.Node);
+pub fn consume(c: *cy.Chunk, ctx: *cy.BuiltinContext, res: *sema.ExprResult) !void {
+    const expr_n = ctx.args[0];
     const expr = try c.semaExpr(expr_n, .{});
     if (expr.resType != .value_local) {
         return c.reportError("Expected local.", expr_n);
@@ -1024,15 +987,15 @@ pub fn consume(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !voi
     res.* = sema.ExprResult.initVoid(c.sema.void_t);
 }
 
-pub fn cmp(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !void {
-    const a_n = ctx.args[0].asPtr(*cy.ast.Node);
+pub fn cmp(c: *cy.Chunk, ctx: *cy.BuiltinContext, res: *sema.ExprResult) !void {
+    const a_n = ctx.args[0];
     const a = try c.semaExpr(a_n, .{});
 
     if (a.type.kind() != .int) {
         return c.reportErrorFmt("Expected comparable primitive type. Found `{}`.", &.{v(a.type.kind())}, a_n);
     }
 
-    const b_n = ctx.args[0].asPtr(*cy.ast.Node);
+    const b_n = ctx.args[0];
     const b = try c.semaExprCstr(b_n, a.type);
 
     const loc = try c.ir.newExpr(.binary_op, c.sema.bool_t, ctx.node, .{
@@ -1045,16 +1008,16 @@ pub fn cmp(c: *cy.Chunk, ctx: *cy.CtFuncContext, res: *sema.ExprResult) !void {
     res.* = sema.ExprResult.init(loc, c.sema.bool_t);
 }
 
-pub fn nop(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
-    const label = ctx.args[0].asString();
+pub fn nop(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
+    const label = ctx.args[0].asPtr(*cy.heap.EvalStr).slice();
     defer c.heap.release(ctx.args[0]);
     try sema.semaNop(c, label, ctx.node);
     return cy.TypeValue.init(c.sema.void_t, Value.Void);
 }
 
 /// Compile-time version of Int conversions. It should be faster than interpreting `Int[].@init`.
-pub fn Int_init(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
-    const rec_bits = ctx.func.parent.parent.?.cast(.type).instance.?.params[0].as_int_lit();
+pub fn Int_init(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
+    const rec_bits = ctx.func.parent.parent.?.cast(.type).instance.?.params[0].as_eval_int();
     const val_t = ctx.func.instance.?.params[0].asPtr(*cy.Type);
     switch (rec_bits) {
         8 => {
@@ -1101,15 +1064,16 @@ pub fn Int_init(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     }
 }
 
-pub fn bitCast_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
-    const target_t = ctx.func.instance.?.params[0].asPtr(*cy.Type);
+pub fn bitCast_eval(c: *cy.Chunk, ctx: *cy.BuiltinContext) !cy.TypeValue {
+    const target_t = try cte.evalType(c, ctx.args[0]);
     // Extract S from Expr[S].
-    const src_t = ctx.func.sig.params_ptr[0].get_type().sym().instance.?.params[0].asPtr(*cy.Type);
+    const src = try cte.eval(c, ctx.args[1]);
+    const src_t = src.type;
 
     if (target_t.kind() == .int) {
         const target_int_t = target_t.cast(.int);
         if (src_t.kind() == .int and src_t.cast(.int).bits == target_int_t.bits) {
-            return cy.TypeValue.init(target_t, ctx.args[0]);
+            return cy.TypeValue.init(target_t, src.value);
         }
     }
 
@@ -1120,131 +1084,93 @@ pub fn bitCast_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     return c.reportErrorFmt("Cannot bitcast `{}` to `{}`.", &.{v(src_name), v(target_name)}, ctx.node);
 }
 
-pub fn bitCast(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResult) !void {
-    const target_t = ctx.func.instance.?.params[0].asPtr(*cy.Type);
-    const src = ctx.args[0].asPtr(*ir.Expr);
-
-    if (target_t.kind() == .int) {
-        const target_int_t = target_t.cast(.int);
-
-        if (src.type.kind() == .int and src.type.cast(.int).bits == target_int_t.bits) {
-            out.* = try sema.semaBitcast2(c, src, target_t, ctx.node);
-            return;
-        }
-
-        if (src.type.kind() == .raw and src.type.cast(.raw).bits == target_int_t.bits) {
-            out.* = try sema.semaBitcast2(c, src, target_t, ctx.node);
-            return;
-        }
-
-        if (target_int_t.bits == 64) {
-            // Ref[T] -> i64
-            // Ptr[T] -> i64
-            if (src.type.kind() == .pointer) {
-                out.* = try sema.semaBitcast2(c, src, target_t, ctx.node);
-                return;
-            }
-            // &T -> i64
-            if (src.type.kind() == .borrow) {
-                out.* = try sema.semaBitcast2(c, src, target_t, ctx.node);
-                return;
-            }
-            if (src.type.kind() == .enum_t) {
-                out.* = try sema.semaBitcast2(c, src, target_t, ctx.node);
-                return;
-            }
-            if (src.type.kind() == .float and src.type.cast(.float).bits == 64) {
-                out.* = try sema.semaBitcast2(c, src, target_t, ctx.node);
-                return;
-            }
-        }
-
-        // Cast to 8-bit int.
-        if (target_int_t.bits == 8) {
-            if (src.type.id() == bt.Bool) {
-                out.* = try sema.semaBitcast2(c, src, target_t, ctx.node);
-                return;
-            }
-        }
-    }
-
-    // Cast to raw.
-    if (target_t.kind() == .raw) {
-        const target_raw_t = target_t.cast(.raw);
-
-        if (src.type.kind() == .int and src.type.cast(.int).bits == target_raw_t.bits) {
-            out.* = try sema.semaBitcast2(c, src, target_t, ctx.node);
-            return;
-        }
-
-        if (src.type.kind() == .raw and src.type.cast(.raw).bits == target_raw_t.bits) {
-            out.* = try sema.semaBitcast2(c, src, target_t, ctx.node);
-            return;
-        }
-
-        if (src.type.kind() == .float and src.type.cast(.float).bits == target_raw_t.bits) {
-            out.* = try sema.semaBitcast2(c, src, target_t, ctx.node);
-            return;
-        }
-    }
-
-    // Cast to float.
-    if (target_t.kind() == .float) {
-        const target_float_t = target_t.cast(.float);
-        if (src.type.kind() == .int and src.type.cast(.int).bits == target_float_t.bits) {
-            // i32 -> f32
-            // i64 -> f64
-            out.* = try sema.semaBitcast2(c, src, target_t, ctx.node);
-            return;
-        }
-        if (src.type.kind() == .raw and src.type.cast(.raw).bits == target_float_t.bits) {
-            // r32 -> f32
-            // r64 -> f64
-            out.* = try sema.semaBitcast2(c, src, target_t, ctx.node);
-            return;
-        }
-    }
-
-    if (target_t.isPointer()) {
-        if (src.type.kind() == .int and src.type.cast(.int).bits == 64) {
-            // i64/u64 -> Ptr[T]
-            out.* = try sema.semaBitcast2(c, src, target_t, ctx.node);
-            return;
-        }
-
-        if (src.type.isPointer()) {
-            // Ptr[S] -> Ptr[T]
-            out.* = try sema.semaBitcast2(c, src, target_t, ctx.node);
-            return;
-        }
-    }
-
-    if (target_t.kind() == .vector) {
-        const target_vector_t = target_t.cast(.vector);
-        if (src.type.kind() == .vector) {
-            const vector_t = src.type.cast(.vector);
-            if (target_vector_t.n == vector_t.n and target_vector_t.elem_t.id() == vector_t.elem_t.id()) {
-                out.* = try sema.semaBitcast2(c, src, target_t, ctx.node);
-                return;
-            }
-        }
-    }
-
-    const src_name = try c.sema.allocTypeName(src.type);
-    defer c.alloc.free(src_name);
-    const target_name = try c.sema.allocTypeName(target_t);
-    defer c.alloc.free(target_name);
-    return c.reportErrorFmt("Cannot bitcast `{}` to `{}`.", &.{v(src_name), v(target_name)}, ctx.node);
+pub fn breakpoint(c: *cy.Chunk, ctx: *cy.BuiltinContext, out: *sema.ExprResult) !void {
+    _ = try c.ir.pushStmt(.breakpoint, ctx.node, .{});
+    out.* = try c.semaVoid(ctx.node);
 }
 
-pub fn unsafeCast(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResult) !void {
-    const src_n = ctx.args[0].asPtr(*cy.ast.Node);
+pub fn bitCast(c: *cy.Chunk, ctx: *cy.BuiltinContext, out: *sema.ExprResult) !void {
+    const target_t = try cte.evalType(c, ctx.args[0]);
+    const src = try c.semaExpr(ctx.args[1], .{});
+
+    var can_bitcast = true;
+    b: {
+        switch (target_t.kind()) {
+            .pointer => {
+                if (target_t.cast(.pointer).ref) {
+                    can_bitcast = false;
+                    break :b;
+                }
+            },
+            .vector => {
+                const target_vector_t = target_t.cast(.vector);
+                if (src.type.kind() == .vector) {
+                    const vector_t = src.type.cast(.vector);
+                    if (target_vector_t.n == vector_t.n and target_vector_t.elem_t.id() == vector_t.elem_t.id()) {
+                        break :b;
+                    }
+                }
+                can_bitcast = false;
+                break :b;
+            },
+            .bool,
+            .enum_t,
+            .float,
+            .raw,
+            .int => {},
+            else => {
+                can_bitcast = false;
+                break :b;
+            },
+        }
+
+        switch (src.type.kind()) {
+            .pointer => {
+                if (src.type.cast(.pointer).ref) {
+                    can_bitcast = false;
+                    break :b;
+                }
+            },
+            .bool,
+            .enum_t,
+            .raw,
+            .float,
+            .int => {},
+            else => {
+                can_bitcast = false;
+                break :b;
+            },
+        }
+    }
+
+    if (can_bitcast) {
+        out.* = try sema.semaBitcast(c, src, target_t, ctx.node);
+        out.owned = true;
+        return;
+    } else {
+        const src_name = try c.sema.allocTypeName(src.type);
+        defer c.alloc.free(src_name);
+        const target_name = try c.sema.allocTypeName(target_t);
+        defer c.alloc.free(target_name);
+        return c.reportErrorFmt("Cannot bitcast `{}` to `{}`.", &.{v(src_name), v(target_name)}, ctx.node);
+    }
+}
+
+pub fn unsafeCast(c: *cy.Chunk, ctx: *cy.BuiltinContext, out: *sema.ExprResult) !void {
+    const cast_t = try cte.evalType(c, ctx.args[0]);
+    const src_n = ctx.args[1];
     const src = try c.semaExpr(src_n, .{});
-    const cast_t = ctx.func.sig.ret;
-    const loc = try c.ir.newExpr(.bitcast, cast_t, ctx.node, .{
-        .expr = src.ir,
-    });
-    out.* = sema.ExprResult.init(loc, cast_t);
+
+    if (cast_t.kind() == .int) {
+        if (src.type.kind() == .borrow) {
+            if (src.type.size() < cast_t.size()) {
+                out.* = try sema.semaZext(c, cast_t, @intCast(src.type.size() * 8), src, ctx.node);
+                return;
+            }
+        }
+    }
+
+    out.* = try sema.semaBitcast(c, src, cast_t, ctx.node);
     out.*.owned = true;
 }
 
@@ -1339,34 +1265,11 @@ pub fn prints(t: *cy.Thread) callconv(.c) C.Ret {
 //     return C.RetOk;
 // }
 
-pub fn spawn(c: *cy.Chunk, cx: *cy.CtFuncContext, out: *sema.ExprResult) !void {
-    const callee = cx.args[0].asPtr(*ir.Expr);
-    const tuple = cx.args[1].asPtr(*ir.Expr);
-    if (tuple.code == .call) {
-        return c.reportErrorFmt("here {}", &.{v(tuple.cast(.call).func.name())}, tuple.node);
-    }
-    for (tuple.type.cast(.struct_t).fields()) |field| {
-        if (!field.type.is_sendable()) {
-            const name = try c.sema.allocTypeName(field.type);
-            defer c.alloc.free(name);
-            return c.reportErrorFmt("Expected `{}` to be `Sendable`.", &.{v(name)}, cx.node);
-        }
-    }
-
-    const init_ir = tuple.cast(.init);
-    const res = try c.ir.newExpr(.spawn, cx.func.sig.ret, cx.node, .{
-        .callee = callee,
-        .nargs = init_ir.nargs,
-        .args = init_ir.args,
-    });
-    out.* = sema.ExprResult.initOwned(res);
-}
-
-pub fn Result_unwrap(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResult) !void {
-    const val_t = ctx.func.instance.?.params[0].asPtr(*cy.Type);
+pub fn result_unwrap(c: *cy.Chunk, ctx: *cy.BuiltinContext, out: *sema.ExprResult) !void {
+    const val_t = try cte.evalType(c, ctx.args[0]);
     const res_t = try sema.getResultType(c, val_t);
 
-    const res_n = ctx.args[0].asPtr(*cy.ast.Node);
+    const res_n = ctx.args[1];
     const borrow_res_t = try sema.getBorrowType(c, res_t);
     const res = try c.semaExprCstr(res_n, borrow_res_t);
 
@@ -1380,11 +1283,11 @@ pub fn Result_unwrap(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResult
     out.* = try sema.semaOwn(c, out.*, ctx.node);
 }
 
-pub fn Result_unwrapError(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResult) !void {
-    const res = ctx.args[0].asPtr(*ir.Expr);
+pub fn result_unwrap_error(c: *cy.Chunk, ctx: *cy.BuiltinContext, out: *sema.ExprResult) !void {
+    const res = try c.semaExpr(ctx.args[0], .{});
     const ptr_t = try sema.getPtrType(c, c.sema.error_t);
     const loc = try c.ir.newExpr(.unwrap_addr, ptr_t, ctx.node, .{
-        .choice = res,
+        .choice = res.ir,
         .tag = 0,
     });
     out.* = sema.ExprResult.init2(loc);
@@ -1401,7 +1304,55 @@ pub fn freeObject(t: *cy.Thread) callconv(.c) C.Ret {
     return C.RetOk;
 }
 
-fn compute_int_min(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+fn EvalStr_init(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
+    const type_ = ctx.func.instance.?.params[0].asPtr(*cy.Type);
+    const value = ctx.args[0];
+    defer c.heap.destructValue2(type_, value);
+    switch (type_.id()) {
+        bt.I64 => {
+            const res = try std.fmt.allocPrint(c.alloc, "{}", .{value.asInt()});
+            defer c.alloc.free(res);
+            return cy.TypeValue.init(ctx.func.sig.ret, try c.heap.init_eval_str(res));
+        },
+        else => {
+            const name = try c.sema.allocTypeName(type_);
+            defer c.alloc.free(name);
+            return c.reportErrorFmt("Unsupported conversion from `{}` to `EvalStr`.", &.{v(name)}, ctx.node);
+        },
+    }
+}
+
+fn EvalStr_concat(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
+    const left = ctx.args[0].asPtr(*cy.heap.EvalStr);
+    defer c.heap.release(ctx.args[0]);
+
+    const right = ctx.args[1].asPtr(*cy.heap.EvalStr);
+    defer c.heap.release(ctx.args[1]);
+
+    const ascii = left.ascii() and right.ascii();
+    const res = try c.heap.init_eval_str_concat(left.slice(), right.slice(), ascii);
+    return cy.TypeValue.init(ctx.func.sig.ret, res);
+}
+
+fn EvalBuffer_len(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
+    const buf = ctx.args[0].asPtr(*cy.heap.EvalBuffer);
+    defer c.heap.release(ctx.args[0]);
+    return TypeValue.init(ctx.func.sig.ret, Value.initR64(buf.len));
+}
+
+fn EvalBuffer_index_addr(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
+    const buf = ctx.args[0].asPtr(*cy.heap.EvalBuffer);
+    defer c.heap.release(ctx.args[0]);
+
+    const elem_t = ctx.func.sig.ret.cast(.pointer).child_t;
+    const idx = ctx.args[1].asUint();
+    if (idx >= buf.len) {
+        return c.reportError("Out of bounds.", ctx.node);
+    }
+    return TypeValue.init(ctx.func.sig.ret, Value.initRaw(buf.ptr + idx * elem_t.size()));
+}
+
+fn compute_int_min(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const type_ = ctx.func.instance.?.params[0].asPtr(*cy.Type);
     if (type_.kind() != .int) {
         return c.reportErrorFmt("Expected integer type, found `{}`.", &.{v(type_.name())}, ctx.node);
@@ -1429,7 +1380,7 @@ fn compute_int_min(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     }
 }
 
-fn compute_int_max(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+fn compute_int_max(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const type_ = ctx.func.instance.?.params[0].asPtr(*cy.Type);
     if (type_.kind() != .int) {
         return c.reportErrorFmt("Expected integer type, found `{}`.", &.{v(type_.name())}, ctx.node);
@@ -1461,34 +1412,40 @@ pub fn completeFuture(t: *cy.Thread, future: cy.heap.Future) !void {
     // Copy continuations to the ready queue.
     var opt_node = future.inner.cont_head;
     while (opt_node != cy.NullId) {
-        const node = &t.c.vm.task_nodes.items[opt_node];
+        const node = &t.c.vm.task_nodes.items[@intCast(opt_node)];
         // try t.c.vm.ready_tasks.writeItem(node.task);
         opt_node = node.next;
         node.task.type = .dead;
     }
 }
 
-pub fn call(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResult) !void {
-    const func_ptr = ctx.args[0].asPtr(*ir.Expr);
-    const args = ctx.args[1].asPtr(*ir.Expr);
-    const tuple_t = ctx.func.sig.params()[1].get_type().cast(.borrow).child_t;
-    const sig = tuple_t.sym().instance.?.params[0].asPtr(*cy.FuncSig);
+pub fn call(c: *cy.Chunk, ctx: *cy.BuiltinContext, out: *sema.ExprResult) !void {
+    const func_ptr = try c.sema_expr_cstr_template(ctx.args[0], c.sema.func_ptr_tmpl);
+    var args = try c.semaExpr(ctx.args[1], .{});
+    const tuple_t = args.type.cast(.borrow).child_t;
+    if (!tuple_t.isInstanceOf(c.sema.fn_tuple_tmpl)) {
+        return c.reportError("Expected FnTuple.", ctx.args[1]);
+    }
+    const sig = func_ptr.type.cast(.func_ptr).sig;
+    if (tuple_t.cast(.struct_t).base.sym().instance.?.params[0].asPtr(*cy.FuncSig) != sig) {
+        return c.reportError("Function signature mismatch.", ctx.args[1]);
+    }
+    args = try sema.semaEnsureAddressable(c, args, ctx.args[1]);
 
     const ir_args = try c.ir.allocArray(*ir.Expr, sig.params_len);
-    const rec = sema.ExprResult.init2(args);
     for (sig.params(), 0..) |param, i| {
-        var arg = try sema.semaField(c, rec, ctx.node, i, param.get_type(), ctx.node);
+        var arg = try sema.semaField(c, args, ctx.node, i, param.get_type(), ctx.node);
         arg = try cy.sema_func.ownOrManageArg(c, arg, ctx.node);
         // arg = try sema.semaOwn(c, arg, ctx.node);
         ir_args[i] = arg.ir;
     }
 
-    const loc = try c.ir.newExpr(.call_ptr, sig.ret, ctx.node, .{
-        .callee = func_ptr,
+    const expr = try c.ir.newExpr(.call_ptr, sig.ret, ctx.node, .{
+        .callee = func_ptr.ir,
         .nargs = @intCast(ir_args.len),
         .args = ir_args.ptr,
     });
-    out.* = sema.ExprResult.initOwned(loc);
+    out.* = sema.ExprResult.initOwned(expr);
 }
 
 pub fn new_shared_state(t: *cy.Thread) !C.Ret {
@@ -1522,9 +1479,9 @@ pub fn start_thread(t: *cy.Thread) !C.Ret {
     return C.RetOk;
 }
 
-pub fn await_(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResult) !void {
-    const fut = ctx.args[0].asPtr(*ir.Expr);
-    _ = try c.ir.pushStmt(.await_, ctx.node, .{ .expr = fut });
+pub fn await_(c: *cy.Chunk, ctx: *cy.BuiltinContext, out: *sema.ExprResult) !void {
+    const fut = try c.semaExpr(ctx.args[0], .{});
+    _ = try c.ir.pushStmt(.await_, ctx.node, .{ .expr = fut.ir });
     out.* = try c.semaVoid(ctx.node);
 }
 
@@ -1632,7 +1589,6 @@ pub fn memmove(t: *cy.Thread) !C.Ret {
 }
 
 pub fn new_object_undef(t: *cy.Thread) !C.Ret {
-    if (cy.isWasm) return t.ret_panic("Unsupported.");
     const ret = t.ret(*cy.HeapObject);
     const type_id: cy.TypeId = @intCast(t.param(i64));
     const size: usize = @intCast(t.param(u64));
@@ -1641,7 +1597,6 @@ pub fn new_object_undef(t: *cy.Thread) !C.Ret {
 }
 
 pub fn new_object_undef2(t: *cy.Thread) !C.Ret {
-    if (cy.isWasm) return t.ret_panic("Unsupported.");
     const ret = t.ret(*cy.HeapObject);
     const thread = t.param(*cy.Thread);
     const type_id: cy.TypeId = @intCast(t.param(i64));
@@ -1651,8 +1606,6 @@ pub fn new_object_undef2(t: *cy.Thread) !C.Ret {
 }
 
 pub fn alloc(t: *cy.Thread) !C.Ret {
-    if (cy.isWasm) return t.ret_panic("Unsupported.");
-
     const ret = t.ret(?[*]align(8) u8);
     const size: usize = @intCast(t.param(i64));
     if (size == 0) {
@@ -1665,7 +1618,6 @@ pub fn alloc(t: *cy.Thread) !C.Ret {
 }
 
 pub fn free(t: *cy.Thread) anyerror!C.Ret {
-    if (cy.isWasm) return t.ret_panic("Unsupported.");
     _ = t.ret(void);
     const ptr = t.param(?[*]align(8) u8);
     t.heap.free_byte_buffer(ptr);
@@ -1732,17 +1684,17 @@ fn String_decode2(t: *cy.Thread) callconv(.c) Value {
     }
 }
 
-fn FuncSig_ret(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+fn FuncSig_ret(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const sig = ctx.args[0].asPtr(*cy.FuncSig);
     return cy.TypeValue.init(c.sema.type_t, Value.initPtr(sig.ret));
 }
 
-fn FuncSig_num_params(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+fn FuncSig_num_params(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const sig = ctx.args[0].asPtr(*cy.FuncSig);
     return cy.TypeValue.init(c.sema.i64_t, Value.initInt(@intCast(sig.numParams())));
 }
 
-fn FuncSig_param_at(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+fn FuncSig_param_at(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const sig = ctx.args[0].asPtr(*cy.FuncSig);
     const idx = ctx.args[1].asInt();
 
@@ -1759,7 +1711,7 @@ fn FuncSig_param_at(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
 
 const field_init = cy.heap.field_init;
 
-fn Vector_ct_repeat(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+fn Vector_ct_repeat(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const array_t = ctx.func.parent.parent.?.cast(.type).type.cast(.vector);
     const repeat: usize = @intCast(ctx.func.instance.?.params[0].asInt());
     const self = ctx.args[0];
@@ -1773,26 +1725,28 @@ fn Vector_ct_repeat(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
     return cy.TypeValue.init(new_arr_t, Value.initPtr(new_arr));
 }
 
-pub fn scope_ptr_to_borrow_eval(c: *cy.Chunk, cx: *cy.CtFuncContext) !cy.TypeValue {
-    const param_name = cx.args[0].asString();
+pub fn scope_ptr_to_borrow_eval(c: *cy.Chunk, cx: *cy.BuiltinContext) !cy.TypeValue {
+    const scope_param = try cte.evalCheck(c, cx.args[0], c.sema.eval_str_t);
+    defer c.heap.release(scope_param.value);
+    const param_name = scope_param.value.as_eval_str();
     _ = param_name;
-    defer c.heap.release(cx.args[0]);
-    const ptr = cx.args[1].asPtr(*anyopaque);
-    return cy.TypeValue.init(cx.func.sig.ret, Value.initPtr(ptr));
+    const ptrv = try cte.eval_check_template(c, cx.args[1], c.sema.ptr_tmpl);
+    const borrow_t = try sema.getBorrowType(c, ptrv.type.cast(.pointer).child_t);
+    const ptr = ptrv.value.asPtr(*anyopaque);
+    return cy.TypeValue.init(borrow_t, Value.initPtr(ptr));
 }
 
-fn scope_ptr_to_borrow(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResult) !void {
-    const scope_param = ctx.args[0].asPtr(*ir.Expr);
-    const param_name = scope_param.cast(.string).raw;
+fn scope_ptr_to_borrow(c: *cy.Chunk, ctx: *cy.BuiltinContext, out: *sema.ExprResult) !void {
+    const scope_param = try cte.evalCheck(c, ctx.args[0], c.sema.eval_str_t);
+    defer c.heap.release(scope_param.value);
+    const param_name = scope_param.value.as_eval_str();
 
     const res = c.proc().var_cache_entries.get(param_name) orelse {
         return c.reportErrorFmt("Expected param `{}`.", &.{v(param_name)}, ctx.node);
     };
-    const elem_t = ctx.func.instance.?.params[0].asPtr(*cy.Type);
-    const borrow_t = try sema.getBorrowType(c, elem_t);
+    const ptr = try c.sema_expr_cstr_template(ctx.args[1], c.sema.ptr_tmpl);
+    const borrow_t = try sema.getBorrowType(c, ptr.type.cast(.pointer).child_t);
 
-    const ptr_expr = ctx.args[1].asPtr(*ir.Expr);
-    const ptr = sema.ExprResult.init2(ptr_expr);
     out.* = try sema.semaBitcast(c, ptr, borrow_t, ctx.node);
     out.*.data.value.parent_local = res.data.local.varId;
 }
@@ -1939,19 +1893,30 @@ fn arrayRepeat(t: *cy.Thread) anyerror!Value {
     }
 }
 
-pub fn Generator_next(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResult) !void {
-    const gen = ctx.args[0].asPtr(*ir.Expr);
-    const next = try c.ir.newExpr(.gen_next, ctx.func.sig.ret, ctx.node, .{
-        .gen = gen,
+pub fn gen_next(c: *cy.Chunk, ctx: *cy.BuiltinContext, out: *sema.ExprResult) !void {
+    var gen = try c.sema_expr_cstr_template(ctx.args[0], c.sema.generator_tmpl);
+    gen = try sema.semaEnsureAddressable(c, gen, ctx.args[0]);
+
+    const ptr_t = try sema.getPtrType(c, gen.type);
+    const addr = try sema.semaAddressOf(c, gen, ptr_t, ctx.args[0]);
+
+    const fn_ptr_t = gen.type.cast(.struct_t).base.sym().instance.?.params[0].asPtr(*cy.Type);
+    const ret_t = try sema.getOptionType(c, fn_ptr_t.cast(.func_ptr).sig.ret);
+    const next = try c.ir.newExpr(.gen_next, ret_t, ctx.node, .{
+        .gen = addr.ir,
     });
-    out.* = sema.ExprResult.init2(next);
+    out.* = sema.ExprResult.initOwned(next);
 }
 
-pub fn Generator_end(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResult) !void {
-    // &Generator
-    const borrow_gen = ctx.args[0].asPtr(*ir.Expr);
+pub fn gen_end(c: *cy.Chunk, ctx: *cy.BuiltinContext, out: *sema.ExprResult) !void {
+    var gen = try c.sema_expr_cstr_template(ctx.args[0], c.sema.generator_tmpl);
+    gen = try sema.semaEnsureAddressable(c, gen, ctx.args[0]);
+
+    const ptr_t = try sema.getPtrType(c, gen.type);
+    const addr = try sema.semaAddressOf(c, gen, ptr_t, ctx.args[0]);
+
     const end = try c.ir.newExpr(.gen_end, c.sema.void_t, ctx.node, .{
-        .gen = borrow_gen,
+        .gen = addr.ir,
     });
     out.* = sema.ExprResult.init2(end);
 }
@@ -1998,10 +1963,10 @@ fn getGeneratorStatus(t: *cy.Thread, gen: *vmc.Generator) GeneratorStatus {
     return .paused;
 }
 
-pub fn ptr_init(c: *cy.Chunk, ctx: *cy.SemaFuncContext, out: *sema.ExprResult) !void {
+pub fn ptr_init(c: *cy.Chunk, ctx: *cy.BuiltinContext, out: *sema.ExprResult) !void {
     // const elem_t = ctx.func.parent.parent.?.cast(.type).type.cast(.pointer).child_t;
-    const ptr = c.expr_stack.items[ctx.expr_start];
-    var right = c.expr_stack.items[ctx.expr_start+1];
+    const ptr = try c.semaExpr(ctx.args[0], .{});
+    var right = try c.semaExpr(ctx.args[1], .{});
     right = try sema.semaOwn(c, right, right.ir.node);
 
     _ = try c.ir.pushStmt(.set_deref, ctx.node, .{
@@ -2011,41 +1976,12 @@ pub fn ptr_init(c: *cy.Chunk, ctx: *cy.SemaFuncContext, out: *sema.ExprResult) !
     out.* = sema.ExprResult.initVoid(c.sema.void_t);
 }
 
-pub fn Ptr_index_addr(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *sema.ExprResult) !void {
-    const ptr_t = ctx.func.sig.ret;
-    const child_t = ptr_t.cast(.pointer).child_t;
-
-    const ptr_expr = ctx.args[0].asPtr(*ir.Expr);
-    const idx = ctx.args[1].asPtr(*ir.Expr);
-    var ptr = sema.ExprResult.init2(ptr_expr);
-    var elem_size: sema.ExprResult = undefined;
-    ptr = try sema.semaBitcast(c, ptr, c.sema.i64_t, ctx.node);
-    elem_size = try c.semaConst(@intCast(child_t.size()), c.sema.i64_t, ctx.node);
-    const offset = try c.ir.newExpr(.mul, idx.type, ctx.node, .{
-        .left = idx,
-        .right = elem_size.ir,
-    });
-    const loc = try c.ir.newExpr(.add, idx.type, ctx.node, .{
-        .left = ptr.ir,
-        .right = offset,
-    });
-    out.* = sema.ExprResult.init2(loc);
-    out.* = try sema.semaBitcast(c, out.*, ptr_t, ctx.node);
-}
-
-pub fn Ptr_add_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn Ptr_add_eval(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     _ = c;
     const child_t = ctx.func.sig.params_ptr[0].get_type().cast(.pointer).child_t;
     const addr: usize = @intFromPtr(ctx.args[0].asPtr(?*anyopaque));
     const right = @as(usize, @intCast(ctx.args[1].asInt())) * child_t.size();
     return cy.TypeValue.init(ctx.func.sig.ret, Value.initPtr(@ptrFromInt(addr + right)));
-}
-
-fn Ptr_fromAddr(t: *cy.Thread) anyerror!C.Ret {
-    const ret = t.ret(*anyopaque);
-    const addr = t.param(u64);
-    ret.* = @ptrFromInt(addr);
-    return C.RetOk;
 }
 
 fn Func_size(t: *cy.Thread) callconv(.c) C.Ret {
@@ -2118,7 +2054,7 @@ fn raw_fmt(t: *cy.Thread) anyerror!C.Ret {
     return C.RetOk;
 }
 
-pub fn int_fmt_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
+pub fn int_fmt_eval(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const val = ctx.args[0].asInt();
     const format = try std.meta.intToEnum(NumberFormat, ctx.args[1].asInt());
     const res = try intFmtExt(c.heap, val, format, .{});
@@ -2209,15 +2145,14 @@ pub fn rawFmtExt(t: *cy.Thread, val: u64, format: NumberFormat, opts: IntFmtOpti
 }
 
 pub fn getDeinitObject(t: *cy.Thread) anyerror!C.Ret {
-    const ret = t.ret(?*anyopaque);
+    const ret = t.ret(u64);
     const obj = t.param(*cy.HeapObject);
     const type_ = t.c.vm.sema.getType(obj.getTypeId());
     const func_ = type_.deinit_obj orelse {
-        std.debug.print("Missing deinitObject: {s}\n", .{type_.name()});
         return t.ret_panic("Missing deinitObject.");
     };
     const pc = t.c.vm.compiler.genSymMap.get(func_).?.func.static_pc;
-    ret.* = pc;
+    ret.* = @intFromPtr(pc);
     return C.RetOk;
 }
 
@@ -2258,20 +2193,6 @@ pub fn releaseOnly(t: *cy.Thread) anyerror!C.Ret {
     const free_ = t.heap.releaseOnly(obj);
     ret.* = free_;
     return C.RetOk;
-}
-
-pub fn bool_not(c: *cy.Chunk, ctx: *cy.CtFuncContext, out: *cy.sema.ExprResult) !void {
-    const child = ctx.args[0].asPtr(*ir.Expr);
-    const expr = try c.ir.newExpr(.unary_op, c.sema.bool_t, ctx.node, .{
-        .childT = child.type,
-        .op = .lnot,
-        .expr = child,
-    });
-    out.* = cy.sema.ExprResult.init2(expr);
-}
-
-pub fn bool_not_eval(c: *cy.Chunk, ctx: *cy.CtFuncContext) !cy.TypeValue {
-    return cy.TypeValue.init(c.sema.bool_t, Value.initBool(!ctx.args[0].asBool()));
 }
 
 pub fn f32_to_f64(t: *cy.Thread) callconv(.c) C.Ret {

@@ -2,13 +2,19 @@ const std = @import("std");
 const builtin = @import("builtin");
 const C = @import("capi.zig");
 const vmc = @import("vmc");
+const is_wasm = builtin.cpu.arch.isWasm();
 
 /// NOTE: Dupe Zig segfault handler to wrap a custom user handler.
 var windows_segfault_handle: ?std.os.windows.HANDLE = null;
 
 /// Attaches a global SIGSEGV handler which calls `@panic("segmentation fault");`
 const SigactionFn = if (builtin.os.tag == .windows) *const fn (i32, *const void, ?*anyopaque) callconv(.c) noreturn else std.posix.Sigaction.sigaction_fn;
+
 pub fn attachSegfaultHandler(handler: SigactionFn) void {
+    if (is_wasm) {
+        @panic("unsupported");
+    }
+
     if (!std.debug.have_segfault_handling_support) {
         @compileError("segfault handler not supported for this target");
     }
@@ -183,7 +189,7 @@ pub fn vm_panic_handler(_: *C.VM) !void {
     C.thread_signal_host_panic(t);
 }
 
-pub fn handleSegfaultPosix(sig: i32, info: *const std.posix.siginfo_t, ctx_ptr: ?*anyopaque) callconv(.c) noreturn {
+pub fn handleSegfaultPosix(sig: i32, info: *const std.posix.siginfo_t, ctx_ptr: ?*anyopaque, handler: *const fn() callconv(.c) void) callconv(.c) noreturn {
     // Reset to the default handler so that if a segfault happens in this handler it will crash
     // the process. Also when this handler returns, the original instruction will be repeated
     // and the resulting segfault will crash the process rather than continually dump stack traces.
@@ -210,6 +216,8 @@ pub fn handleSegfaultPosix(sig: i32, info: *const std.posix.siginfo_t, ctx_ptr: 
 
                 dumpSegfaultInfoPosix(sig, code, addr, ctx_ptr);
             }
+
+            handler();
 
             waitForOtherThreadToFinishPanicking();
         },

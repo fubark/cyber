@@ -38,7 +38,7 @@ pub const App = struct {
 
     /// Interface used for imports and fetch.
     httpClient: http.HttpClient,
-    stdHttpClient: *http.StdHttpClient,
+    stdHttpClient: if (!is_wasm) *http.StdHttpClient else void,
 
     mod_root: []const u8,
 
@@ -101,9 +101,11 @@ pub fn init_cli(vm: *C.VM, alloc: std.mem.Allocator) !void {
         try app.mod_bindings.putNoClobber(alloc, abs_path, mod.bind_fn);
     }
 
-    app.stdHttpClient = try alloc.create(http.StdHttpClient);
-    app.stdHttpClient.* = http.StdHttpClient.init(alloc);
-    app.httpClient = app.stdHttpClient.iface();
+    if (!is_wasm) {
+        app.stdHttpClient = try alloc.create(http.StdHttpClient);
+        app.stdHttpClient.* = http.StdHttpClient.init(alloc);
+        app.httpClient = app.stdHttpClient.iface();
+    }
     C.vm_set_user_data(vm, app);
 
     C.vm_set_resolver(vm, resolver);
@@ -120,8 +122,10 @@ pub fn deinit_cli(vm: *C.VM) void {
     app.deinit();
     const alloc = app.alloc;
 
-    app.httpClient.deinit();
-    alloc.destroy(app.stdHttpClient);
+    if (!is_wasm) {
+        app.httpClient.deinit();
+        alloc.destroy(app.stdHttpClient);
+    }
 
     alloc.destroy(app);
 }
@@ -175,7 +179,7 @@ pub fn loader(vm_: ?*C.VM, mod_: ?*C.Sym, spec_: C.Bytes, res: [*c]C.LoaderResul
         }
     }
 
-    if (is_wasm) {
+    if (is_wasm_freestanding) {
         return false;
     }
 
@@ -193,7 +197,7 @@ pub fn loader(vm_: ?*C.VM, mod_: ?*C.Sym, spec_: C.Bytes, res: [*c]C.LoaderResul
             }
         };
     } else {
-        src = std.fs.cwd().readFileAlloc(app.alloc, spec, 1e10) catch |e| {
+        src = std.fs.cwd().readFileAlloc(app.alloc, spec, 1e9) catch |e| {
             const msg = std.fmt.allocPrint(app.alloc, "Can not load `{s}`. {}", .{ spec, e }) catch return false;
             defer app.alloc.free(msg);
             C.reportApiError(@ptrCast(vm), C.to_bytes(msg));
@@ -223,10 +227,6 @@ fn dl_resolver(vm: ?*C.VM, uri: C.Bytes, out: [*c]C.Bytes) callconv(.c) bool {
 fn resolver(vm_: ?*C.VM, params: C.ResolverParams, res_uri_len: ?*usize) callconv(.c) bool {
     const vm: *C.VM = @ptrCast(vm_);
     const uri = C.from_bytes(params.uri);
-
-    if (is_wasm) {
-        return false;
-    }
 
     const app: *App = @ptrCast(@alignCast(C.vm_user_data(vm)));
 
@@ -294,7 +294,7 @@ fn zResolve(vm: *C.VM, alloc: std.mem.Allocator, chunkId: u32, buf: []u8, cur_ur
     const path = fbuf.getWritten();
 
     // Get canonical path.
-    const absPath = std.fs.cwd().realpath(path, buf) catch |e| {
+    const absPath = realpath(std.fs.cwd(), path, buf) catch |e| {
         if (e == error.FileNotFound) {
             const msg = try std.fmt.allocPrint(alloc, "Import path does not exist: `{s}`", .{path});
             if (builtin.os.tag == .windows) {
@@ -308,6 +308,37 @@ fn zResolve(vm: *C.VM, alloc: std.mem.Allocator, chunkId: u32, buf: []u8, cur_ur
         }
     };
     return absPath;
+}
+
+fn realpath(cwd: std.fs.Dir, path: []const u8, out: []u8) ![]u8 {
+    if (is_wasm and builtin.os.tag == .wasi) {
+        return wasi_realpath(cwd, path, out);
+    } else {
+        return cwd.realpath(path, out);
+    }
+}
+
+// TODO: Emulate realpath.
+fn wasi_realpath(cwd: std.fs.Dir, path: []const u8, out: []u8) ![]u8 {
+    var w = std.Io.Writer.fixed(out);
+    if (path.len == 0 or path[0] != '/') {
+        var prestat: std.os.wasi.prestat_t = undefined;
+
+        if (std.os.wasi.fd_prestat_get(cwd.fd, &prestat) != .SUCCESS) {
+            return error.MissingCwd;
+        }
+
+        var buf: [1024]u8 = undefined;
+        const len = prestat.u.dir.pr_name_len;
+        if (len > buf.len) return error.NameTooLong;
+
+        if (std.os.wasi.fd_prestat_dir_name(cwd.fd, @ptrCast(&buf[0]), len) != .SUCCESS) {
+            return error.MissingCwd;
+        }
+        try w.writeAll(buf[0..len]);
+    }
+    try w.writeAll(path);
+    return w.buffered();
 }
 
 fn loadUrl(vm: *C.VM, alloc: std.mem.Allocator, url: []const u8) ![]const u8 {

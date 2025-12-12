@@ -16,6 +16,9 @@ const FuncResultKind = enum(u8) {
     rt,
     rt_sema,
     ct,
+
+    // NOTE: See if most functions can return the final ExprResult to avoid bubbling up args. Try to remove `rt`, `rt_sema`.
+    expr_res,
 };
 
 pub const FuncSymResult = struct {
@@ -30,11 +33,7 @@ const FuncResultUnion = union {
         nargs: u32,
         ret_parent_scope_local: ?u32,
     },
-    rt_sema: struct {
-        expr_start: usize,
-        nargs: u32,
-        ret_parent_scope_local: ?u32,
-    },
+    expr_res: sema.ExprResult,
     ct: sema.ExprResult,
 };
 
@@ -177,7 +176,7 @@ pub fn matchGenericFuncCt(c: *cy.Chunk, template: *cy.sym.FuncTemplate,
     const gen_func = try genFunc(c, template, &template_ctx, node);
 
     const ct_args = c.valueStack.items[arg_start..arg_start+arg_idx];
-    const res = try cte.evalCall(c, gen_func, ct_args, cstr, node);
+    const res = try cte.evalCall(c, gen_func, ct_args, node);
     return .{
         .func = gen_func,
         .res = res,
@@ -189,58 +188,6 @@ const MatchGenericFuncRt = struct {
     nargs: usize,
     ret_parent_scope_local: ?u32,
 };
-
-// NOTE: Keep up to date with `matchGenericFuncRt`
-pub fn matchGenericFuncRtSema(c: *cy.Chunk, template: *cy.sym.FuncTemplate,
-    pre_args: []const Argument, end_args: []const *ast.Node, expr_start: usize,
-    overloaded: bool, match_err: *FuncMatchError, node: *ast.Node) !?MatchGenericFuncRt {
-    _ = overloaded;
-
-    try sema.ensureResolvedFuncTemplate(c, template);
-
-    const nargs = pre_args.len + end_args.len;
-    
-    if (template.func_params.len != nargs) {
-        match_err.* = FuncMatchError.init(undefined, 0, undefined);
-        return null;
-    }
-
-    // Prepare template context.
-    try sema.pushSymResolveContext(c, @ptrCast(template), node);
-    var template_ctx = sema.saveResolveContext(c);
-    template_ctx.has_ct_params = true;
-    defer template_ctx.deinit(c);
-
-    var arg_idx: u32 = 0;
-
-    const params = template.sig.params();
-    for (0..nargs) |i| {
-        var arg: Argument = undefined;
-        if (i < pre_args.len) {
-            arg = pre_args[i];
-        } else {
-            arg = Argument.init(end_args[i - pre_args.len]);
-        }
-        const final_arg = try matchTemplateArg(c, params[i], arg, template, &template_ctx, i, true);
-        if (final_arg.resolve_t == .rt) {
-            c.expr_stack.items[expr_start + arg_idx] = final_arg.res.rt;
-            arg_idx += 1;
-        } else if (final_arg.resolve_t == .template) {
-            const name = template.func_params[i].name_type.name();
-            try template_ctx.initCtParam(c.alloc, name, final_arg.res.template);
-        } else if (final_arg.resolve_t == .incompat) {
-            return error.Unexpected;
-        }
-    }
-
-    const func = try genFunc(c, template, &template_ctx, node);
-
-    return .{
-        .func = func,
-        .nargs = arg_idx,
-        .ret_parent_scope_local = null,
-    };
-}
 
 pub fn matchGenericFuncRt(c: *cy.Chunk, template: *cy.sym.FuncTemplate,
     pre_args: []const Argument, end_args: []const *ast.Node, args: []*ir.Expr,
@@ -383,12 +330,17 @@ fn getVmCVariantFunc(c: *cy.Chunk, extern_func: *cy.Func, args: []*ir.Expr, node
     return res.value_ptr.*;
 }
 
-pub fn matchFuncRt(c: *cy.Chunk, func: *cy.sym.Func, pre_args: []const Argument,
+pub fn matchFuncRt(c: *cy.Chunk, func: *cy.Func, pre_args: []const Argument,
     end_args: []const *ast.Node, node: *ast.Node) !FuncResult {
 
     var match_err: FuncMatchError = undefined;
 
     switch (func.type) {
+        .reserved => {
+            const name = try c.sema.newFuncName(c.alloc, func, .{});
+            defer c.alloc.free(name);
+            return c.reportErrorFmt("Cannot invoke the reserved function `{}`.", &.{v(name)}, node);
+        },
         .generic => {
             const args = try c.ir.allocArray(*ir.Expr, pre_args.len + end_args.len);
             const res = (try matchGenericFuncRt(c, func.data.generic, pre_args, end_args, args, false, &match_err, node)) orelse {
@@ -405,39 +357,26 @@ pub fn matchFuncRt(c: *cy.Chunk, func: *cy.sym.Func, pre_args: []const Argument,
                 }},
             };
         },
-        .generic_sema => {
-            const expr_start = c.expr_stack.items.len;
-            const max_args = pre_args.len + end_args.len;
-            try c.expr_stack.resize(c.alloc, expr_start + max_args);
-            const res = (try matchGenericFuncRtSema(c, func.data.generic, pre_args, end_args, expr_start, false, &match_err, node)) orelse {
-                return reportCallFuncMismatch2(c, pre_args, end_args, func, match_err, node);
+        .host_builtin => {
+            std.debug.assert(pre_args.len == 0);
+            if (end_args.len != func.sig.params_len) {
+                const name = try c.sema.newFuncName(c.alloc, func, .{});
+                defer c.alloc.free(name);
+                return c.reportErrorFmt("Expected {} arguments for `{}`, found {}.", &.{v(func.sig.params_len), v(func.name()), v(end_args.len)}, node);
+            }
+            const ctx = cy.BuiltinContext{
+                .func = func, 
+                .args = end_args.ptr,
+                .node = node,
             };
-            const nargs = res.nargs;
-            return .{
-                .func = res.func,
-                .kind = .rt_sema,
-                .data = .{ .rt_sema = .{
-                    .expr_start = expr_start,
-                    .nargs = @intCast(nargs),
-                    .ret_parent_scope_local = null,
-                }},
-            };
-        },
-        .host_sema => {
-            const expr_start = c.expr_stack.items.len;
-            const nargs = pre_args.len + end_args.len;
-            try c.expr_stack.resize(c.alloc, expr_start + nargs);
-            const res = (try matchFuncSigSema(c, func.sig, pre_args, end_args, expr_start, false, &match_err)) orelse {
-                return reportCallFuncMismatch2(c, pre_args, end_args, func, match_err, node);
-            };
+            var res: sema.ExprResult = undefined;
+            if (!func.data.host_builtin.ptr(c, &ctx, &res)) {
+                return error.CompileError;
+            }
             return .{
                 .func = func,
-                .kind = .rt_sema,
-                .data = .{ .rt_sema = .{
-                    .expr_start = expr_start,
-                    .nargs = @intCast(nargs),
-                    .ret_parent_scope_local = res.ret_parent_scope_local,
-                }},
+                .kind = .expr_res,
+                .data = .{ .expr_res = res },
             };
         },
         else => {
@@ -560,63 +499,6 @@ const MatchFuncSigResult = struct {
     ret_parent_scope_local: ?u32,
 };
 
-// NOTE: Keep this up to date with `matchFuncSig`.
-pub fn matchFuncSigSema(c: *cy.Chunk, sig: *cy.FuncSig, pre_args: []const Argument, end_args: []const *ast.Node,
-    expr_start: usize, overloaded: bool, match_err: *FuncMatchError) !?MatchFuncSigResult {
-
-    const params = sig.params();
-    const nargs = pre_args.len + end_args.len;
-    if (params.len != nargs) {
-        // Continue if at least has variadic minimum.
-        if (params.len == 0 or !(params[params.len-1].get_type().kind() == .c_variadic and nargs >= params.len - 1)) {
-            match_err.* = FuncMatchError.init(undefined, 0, undefined);
-            return null;
-        }
-    }
-
-    const capture_param_scope = sig.scope_param_idx != cy.NullU8;
-    var ret_parent_scope_local: ?u32 = null;
-
-    var arg_idx: u32 = 0;
-
-    for (0..nargs) |i| {
-        var arg: Argument = undefined;
-        if (i < pre_args.len) {
-            arg = pre_args[i];
-            if (arg.type == .skip) {
-                arg_idx += 1;
-                continue;
-            }
-        } else {
-            arg = Argument.init(end_args[i - pre_args.len]);
-        }
-
-        var param: sema.FuncParam = undefined;
-        if (i >= params.len) {
-            // C variadic arg.
-            param = params[params.len-1];
-        } else {
-            param = params[i];
-        }
-
-        var match: bool = undefined;
-        const arg_res = try matchArg(c, arg, param, overloaded, &match);
-        if (!match) {
-            match_err.* = FuncMatchError.init(param, arg_idx + 1, arg_res.type);
-            return null;
-        }
-        if (capture_param_scope and sig.scope_param_idx == i) {
-            ret_parent_scope_local = arg_res.recParentLocal();
-        }
-        c.expr_stack.items[expr_start + arg_idx] = arg_res;
-        arg_idx += 1;
-    }
-
-    return .{
-        .ret_parent_scope_local = ret_parent_scope_local,
-    };
-}
-
 pub fn matchFuncSig(c: *cy.Chunk, sig: *cy.FuncSig, pre_args: []const Argument, end_args: []const *ast.Node,
     args: []*ir.Expr, overloaded: bool, match_err: *FuncMatchError) !?MatchFuncSigResult {
 
@@ -684,38 +566,8 @@ pub fn matchFuncSym2(c: *cy.Chunk, func_sym: *cy.sym.FuncSym, pre_args: []const 
     }
 
     switch (res.func.type) {
-        .host_ct => {
-            const exprs: []const cy.Value = @ptrCast(res.data.rt.args[0..res.data.rt.nargs]);
-            const cstr = cte.CallCstr{ .req_value = req_value };
-            var eval_res = try cte.evalCall(c, res.func, exprs, cstr, node);
-            if (cstr.req_value and eval_res.resType != .ct_value) {
-                return c.reportErrorFmt("Expected compile-time value.", &.{}, node);
-            }
-            if (eval_res.type.kind() == .borrow) {
-                // Set `ret_parent_scope_local`. Otherwise, allow $scopePtrToBorrow to set the scope.
-                if (res.func.sig.scope_param_idx != cy.NullU8) {
-                    if (eval_res.resType == .value) {
-                        eval_res.data.value.parent_local = res.data.rt.ret_parent_scope_local;
-                    }
-                }
-            }
-            return eval_res;
-        },
-        .host_sema => {
-            defer c.expr_stack.items.len = res.data.rt_sema.expr_start;
-            if (req_value) {
-                @panic("TODO.");
-            }
-            var eval_res = try eval_sema_func(c, res.func, res.data.rt_sema.expr_start, node);
-            if (eval_res.type.kind() == .borrow) {
-                // Set `ret_parent_scope_local`. Otherwise, allow $scopePtrToBorrow to set the scope.
-                if (res.func.sig.scope_param_idx != cy.NullU8) {
-                    if (eval_res.resType == .value) {
-                        eval_res.data.value.parent_local = res.data.rt.ret_parent_scope_local;
-                    }
-                }
-            }
-            return eval_res;
+        .host_builtin => {
+            return res.data.expr_res;
         },
         else => {
             const expr = try c.ir.newExpr(.call, res.func.sig.ret, node, .{ 
@@ -728,19 +580,6 @@ pub fn matchFuncSym2(c: *cy.Chunk, func_sym: *cy.sym.FuncSym, pre_args: []const 
             return expr_res;
         }
     }
-}
-
-fn eval_sema_func(c: *cy.Chunk, func: *cy.Func, expr_start: usize, node: *ast.Node) !sema.ExprResult {
-    const ctx = cy.SemaFuncContext{
-        .func = func, 
-        .expr_start = expr_start,
-        .node = node,
-    };
-    var res: sema.ExprResult = undefined;
-    if (!func.data.host_sema.ptr.?(c, &ctx, &res)) {
-        return error.CompileError;
-    }
-    return res;
 }
 
 pub fn matchFuncSym(c: *cy.Chunk, func_sym: *cy.sym.FuncSym, pre_args: []const Argument, end_args: []const *ast.Node,
@@ -829,43 +668,73 @@ pub fn matchFuncSym(c: *cy.Chunk, func_sym: *cy.sym.FuncSym, pre_args: []const A
 
 pub fn matchFuncCt(c: *cy.Chunk, func: *cy.Func, pre_args: []const Argument, end_args: []const *ast.Node, cstr: cte.CallCstr, node: *ast.Node) !FuncResult {
     try sema.ensure_resolved_func(c, func, true, node);
-    if (func.type == .generic) {
-        var match_err: FuncMatchError = undefined;
-        const res = (try matchGenericFuncCt(c, func.data.generic, pre_args, end_args, cstr, &match_err, node)) orelse {
-            return reportCallFuncMismatch2(c, pre_args, end_args, func, match_err, node);
-        };
-        return .{
-            .func = res.func,
-            .kind = .ct,
-            .data = .{ .ct = res.res },
-        };
-    } else {
-        var match_err: FuncMatchError = undefined;
-        const res = (try matchFuncSigCt(c, func.sig, pre_args, end_args, cstr, &match_err, node)) orelse {
-            return reportCallFuncMismatch2(c, pre_args, end_args, func, match_err, node);
-        };
-        const ct_args = c.valueStack.items[res.arg_start..];
-        defer {
-            for (0..ct_args.len) |i| {
-                const arg = ct_args[i];
-                const arg_t = c.typeStack.items[res.argt_start + i];
-                // Only reference args are owned by the callsite.
-                if (arg_t.isObjectLike()) {
-                    c.heap.destructValue2(arg_t, arg);
-                }
+    switch (func.type) {
+        .generic => {
+            var match_err: FuncMatchError = undefined;
+            const res = (try matchGenericFuncCt(c, func.data.generic, pre_args, end_args, cstr, &match_err, node)) orelse {
+                return reportCallFuncMismatch2(c, pre_args, end_args, func, match_err, node);
+            };
+            return .{
+                .func = res.func,
+                .kind = .ct,
+                .data = .{ .ct = res.res },
+            };
+        },
+        .reserved => {
+            const name = try c.sema.newFuncName(c.alloc, func, .{});
+            defer c.alloc.free(name);
+            return c.reportErrorFmt("Cannot invoke the reserved function `{}`.", &.{v(name)}, node);
+        },
+        .host_builtin => {
+            const ptr = func.data.host_builtin.eval orelse {
+                const name = try c.sema.newFuncName(c.alloc, func, .{});
+                defer c.alloc.free(name);
+                return c.reportErrorFmt("Unsupported const eval of `{}`.", &.{v(func.name())}, node);
+            };
+            std.debug.assert(pre_args.len == 0);
+            if (end_args.len != func.sig.params_len) {
+                const name = try c.sema.newFuncName(c.alloc, func, .{});
+                defer c.alloc.free(name);
+                return c.reportErrorFmt("Expected {} arguments for `{}`, found {}.", &.{v(func.sig.params_len), v(func.name()), v(end_args.len)}, node);
             }
-            c.valueStack.items.len = res.arg_start;
-            c.typeStack.items.len = res.argt_start;
+            const ctx = cy.BuiltinContext{
+                .func = func, 
+                .args = end_args.ptr,
+                .node = node,
+            };
+            const res = ptr(c, &ctx);
+            if (res.type.id() == bt.Null) {
+                return error.CompileError;
+            }
+            try sema_type.ensure_eval_eligible_type(c, res.type, node);
+            return .{
+                .func = func,
+                .kind = .ct,
+                .data = .{ .ct = sema.ExprResult.initCtValue(res) },
+            };
+        },
+        else => {
+            var match_err: FuncMatchError = undefined;
+            const res = (try matchFuncSigCt(c, func.sig, pre_args, end_args, cstr, &match_err, node)) orelse {
+                return reportCallFuncMismatch2(c, pre_args, end_args, func, match_err, node);
+            };
+            const ct_args = c.valueStack.items[res.arg_start..];
+            defer {
+                // No destruction after const eval call.
+                // Unlike runtime, compile-time callsite doesn't try to manage an eval_ref (all arguments are copied to the callee).
+                c.valueStack.items.len = res.arg_start;
+                c.typeStack.items.len = res.argt_start;
+            }
+            const ct_res = try cte.evalCall(c, func, ct_args, node);
+            if (cstr.req_value and ct_res.resType != .ct_value) {
+                return c.reportErrorFmt("Expected compile-time value.", &.{}, node);
+            }
+            return .{
+                .func = func,
+                .kind = .ct,
+                .data = .{ .ct = ct_res },
+            };
         }
-        const ct_res = try cte.evalCall(c, func, ct_args, cstr, node);
-        if (cstr.req_value and ct_res.resType != .ct_value) {
-            return c.reportErrorFmt("Expected compile-time value.", &.{}, node);
-        }
-        return .{
-            .func = func,
-            .kind = .ct,
-            .data = .{ .ct = ct_res },
-        };
     }
 }
 
@@ -901,7 +770,7 @@ fn matchOverloadedFuncCt(c: *cy.Chunk, func: *cy.Func, pre_args: []const Argumen
             c.typeStack.items.len = res.argt_start;
         }
 
-        const ct_res = try cte.evalCall(c, func, c.valueStack.items[res.arg_start..], call_cstr, node);
+        const ct_res = try cte.evalCall(c, func, c.valueStack.items[res.arg_start..], node);
         if (req_value and ct_res.resType != .ct_value) {
             return c.reportErrorFmt("Expected compile-time value.", &.{}, node);
         }
@@ -1281,6 +1150,7 @@ fn matchTemplateArg(c: *cy.Chunk, param: sema.FuncParam, arg: Argument, template
     return resolved_arg;
 }
 
+// Owns a copy of the argument, unless its obtaining a borrow to a receiver.
 fn matchPreArgCt(c: *cy.Chunk, arg: Argument, param: sema.FuncParam, req_value: bool, out_match: *bool) !cy.TypeValue {
     const param_t = param.get_type();
     var ct_value: cy.TypeValue = undefined;
@@ -1313,7 +1183,7 @@ fn matchPreArgCt(c: *cy.Chunk, arg: Argument, param: sema.FuncParam, req_value: 
             // T -> T
             if (rec.type.id() == param_t.id()) {
                 out_match.* = true;
-                return rec;
+                return c.heap.copy_value(rec);
             }
 
             if (param_t.kind() == .borrow) {
@@ -1368,7 +1238,7 @@ fn matchPreArgCt(c: *cy.Chunk, arg: Argument, param: sema.FuncParam, req_value: 
                     out_match.* = false;
                     return arg.data.pre_resolved.data.ct_value;
                 }
-                ct_value = arg.data.pre_resolved.data.ct_value;
+                ct_value = try c.heap.copy_value(arg.data.pre_resolved.data.ct_value);
             },
             else => {
                 std.debug.panic("TODO: {}", .{arg.data.pre_resolved.resType});

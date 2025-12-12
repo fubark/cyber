@@ -43,7 +43,8 @@ pub fn genAll(c: *cy.Compiler) !void {
         log.tracev("prep type: {s}", .{stype.name()});
 
         switch (stype.kind()) {
-            .int_lit,
+            .eval_ref,
+            .eval_int,
             .c_variadic,
             .c_union,
             .never,
@@ -246,11 +247,11 @@ fn prepareSym(c: *cy.Compiler, sym: *cy.Sym) !void {
 pub fn prepareFunc(c: *cy.Compiler, func: *cy.Func) !void {
     switch (func.type) {
         .unresolved,
+        .reserved,
         .vm_extern_variant,
-        .host_sema,
-        .host_ct,
+        .host_builtin,
+        .host_const_eval,
         .generic,
-        .generic_sema,
         .trait => return,
         .userLambda => {
             if (cy.Trace) {
@@ -363,8 +364,10 @@ fn genStmt(c: *Chunk, stmt: *ir.Stmt) anyerror!void {
     }
 
     switch (stmt.code) {
+        .await_             => try gen_await(c, stmt.cast(.await_), node),
         .block              => try gen_block(c, stmt.cast(.block), node),
         .break_             => try gen_break(c, stmt.cast(.break_), node),
+        .breakpoint         => try gen_breakpoint(c, node),
         .continue_          => try gen_continue(c, stmt.cast(.continue_), node),
         .declare_local      => try gen_declare_local(c, stmt.cast(.declare_local), node),
         .discard            => try gen_discard(c, stmt.cast(.discard), node),
@@ -390,7 +393,6 @@ fn genStmt(c: *Chunk, stmt: *ir.Stmt) anyerror!void {
         .tryStmt            => try gen_try_stmt(c, stmt.cast(.tryStmt), node),
         .verbose            => try verbose(c, stmt.cast(.verbose), node),
         .yield              => try gen_yield_stmt(c, stmt.cast(.yield), node),
-        .await_             => try gen_await(c, stmt.cast(.await_), node),
         //         .dumpBytecode => {
         //             try cy.debug.dumpBytecode(c.compiler.vm, null);
         //         },
@@ -568,7 +570,7 @@ fn gen_nop_label(c: *Chunk, stmt: *ir.NopLabel, node: *ast.Node) !void {
 
 fn genNopLabel2(c: *Chunk, label: []const u8, node: *ast.Node) !void {
     const res = try c.buf.getOrPushConstString(label);
-    const ptr_len = (@intFromPtr(res.slice.ptr) & 0xffffffffffff) | (res.slice.len << 48);
+    const ptr_len = (@as(u64, @intFromPtr(res.slice.ptr)) & 0xffffffffffff) | (@as(u64, res.slice.len) << 48);
     const pc = c.buf.ops.items.len;
     try c.pushCode(.nops, &.{ 0, 0, 0, 0, 0, 0, 0, 0 }, node);
     c.buf.setOpArgU64(pc + 1, ptr_len);
@@ -646,6 +648,10 @@ pub fn genFuncBlock(c: *Chunk, stmt: *ir.FuncBlock, node: *ast.Node) !void {
     try popFuncBlockCommon(c, func);
 }
 
+fn gen_breakpoint(c: *Chunk, node: *ast.Node) !void {
+    try c.pushFCode(.trap_debug, &.{}, node);
+}
+
 fn gen_await(c: *Chunk, stmt: *ir.Await, node: *ast.Node) !void {
     const childv = try genExpr(c, stmt.expr, Cstr.localOrTemp());
     const pc = c.buf.ops.items.len;
@@ -677,7 +683,7 @@ fn gen_gen_next(c: *Chunk, expr: *ir.GenNext, cstr: Cstr, node: *ast.Node) !GenV
 
 fn gen_gen_end(c: *Chunk, expr: *ir.GenEnd, cstr: Cstr, node: *ast.Node) !GenValue {
     _ = cstr;
-    const gen_t = expr.gen.type.cast(.borrow).child_t;
+    const gen_t = expr.gen.type.cast(.pointer).child_t;
     const ret_t = gen_t.sym().instance.?.params[0].asPtr(*cy.Type).cast(.func_ptr).sig.ret;
     const next_t = try cy.sema.getOptionType(c, ret_t);
 
@@ -749,8 +755,8 @@ fn gen_addr_global(c: *Chunk, global: *cy.Sym, cstr: Cstr, node: *ast.Node) !Gen
 fn push_addr(c: *Chunk, dst: Reg, reg: Reg, node: *ast.Node) !void {
     const pc = c.buf.len();
     try c.pushCode(.addr, &.{ 0, 0, 0, 0 }, node);
-    c.buf.setOpArgU32(pc + 1, dst);
-    c.buf.setOpArgU32(pc + 3, reg);
+    c.buf.setOpArgU16(pc + 1, dst);
+    c.buf.setOpArgU16(pc + 3, reg);
 }
 
 fn genAddressOf2(c: *Chunk, expr: *ir.Expr, cstr: Cstr, node: *ast.Node) !GenValue {
@@ -784,6 +790,9 @@ fn genAddressOf2(c: *Chunk, expr: *ir.Expr, cstr: Cstr, node: *ast.Node) !GenVal
                 return gen_call(c, expr.cast(.call), cstr, node);
             }
             return c.reportError("TODO", node);
+        },
+        .bitcast => {
+            return genAddressOf2(c, expr.cast(.bitcast).expr, cstr, node);
         },
         else => {
             return c.reportErrorFmt("TODO: {}", &.{v(expr.code)}, node);
@@ -1295,9 +1304,9 @@ fn gen_retain(c: *Chunk, expr: *ir.Retain, cstr: Cstr, node: *ast.Node) !GenValu
 fn gen_string(c: *Chunk, expr: *ir.String, cstr: Cstr, node: *ast.Node) !GenValue {
     const dst = try bc.selectReg(c, expr.base.type, cstr, node);
     if (expr.base.type.id() == bt.Str) {
-        try pushConstString(c, expr.raw, dst.reg, node);
+        try pushConstString(c, expr.raw(), dst.reg, node);
     } else if (expr.base.type.isPointer()) {
-        try pushConstStrZPtr(c, expr.raw, dst.reg, node);
+        try pushConstStrZPtr(c, expr.raw(), dst.reg, node);
     } else {
         return error.Unexpected;
     }
@@ -1311,7 +1320,7 @@ fn pushConstStrZPtr(c: *Chunk, str: []const u8, dst: Reg, node: *ast.Node) !void
 
 fn pushConstString(c: *Chunk, str: []const u8, dst: Reg, node: *ast.Node) !void {
     const res = try c.buf.getOrPushConstString(str);
-    const ptr_len = (@intFromPtr(res.slice.ptr) & 0xffffffffffff) | (res.slice.len << 48);
+    const ptr_len = (@as(u64, @intFromPtr(res.slice.ptr)) & 0xffffffffffff) | (@as(u64, res.slice.len) << 48);
     const pc = c.buf.ops.items.len;
     try c.pushCode(.const_str, &.{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, @intFromBool(res.ascii) }, node);
     c.buf.setOpArgU16(pc + 1, dst);
@@ -1940,83 +1949,6 @@ fn push_load(c: *cy.Chunk, dst: Reg, src_ptr: Reg, src_off: u16, src_t: *cy.Type
     }
 }
 
-fn pushCopyFromAddr(c: *cy.Chunk, dst: u8, src_addr: u8, offset: usize, val_t: *cy.Type, node: *ast.Node) !void {
-    switch (val_t.kind()) {
-        .option => {
-            if (val_t.cast(.option).zero_union) {
-                try push_load_64(c, dst, src_addr, @intCast(offset), node);
-            } else {
-                try push_load(c, dst, src_addr, offset, val_t, node);
-            }
-        },
-        .borrow_trait,
-        .ref_trait,
-        .choice => {
-            try push_load(c, dst, src_addr, offset, val_t, node);
-        },
-        .struct_t => {
-            try push_load(c, dst, src_addr, offset, val_t, node);
-        },
-        .bool => {
-            try push_load_8(c, dst, src_addr, @intCast(offset), node);
-        },
-        .func,
-        .pointer,
-        .borrow,
-        .func_ptr,
-        .enum_t,
-        .float => {
-            try push_load_64(c, dst, src_addr, @intCast(offset), node);
-        },
-        .raw => {
-            const raw_t = val_t.cast(.raw);
-            switch (raw_t.bits) {
-                64 => {
-                    try push_load_64(c, dst, src_addr, @intCast(offset), node);
-                },
-                32 => {
-                    try push_load_32(c, dst, src_addr, @intCast(offset), node);
-                },
-                16 => {
-                    try push_load_16(c, dst, src_addr, @intCast(offset), node);
-                },
-                8 => {
-                    try push_load_8(c, dst, src_addr, @intCast(offset), node);
-                },
-                0 => {},
-                else => {
-                    return error.TODO;
-                },
-            }
-        },
-        .int => {
-            const int_t = val_t.cast(.int);
-            switch (int_t.bits) {
-                64 => {
-                    try push_load_64(c, dst, src_addr, @intCast(offset), node);
-                },
-                32 => {
-                    try push_load_32(c, dst, src_addr, @intCast(offset), node);
-                },
-                16 => {
-                    try push_load_16(c, dst, src_addr, @intCast(offset), node);
-                },
-                8 => {
-                    try push_load_8(c, dst, src_addr, @intCast(offset), node);
-                },
-                0 => {},
-                else => {
-                    return error.TODO;
-                },
-            }
-        },
-        .void => {},
-        else => {
-            return c.reportErrorFmt("Unsupported `{}`.", &.{v(val_t.kind())}, node);
-        }
-    }
-}
-
 fn gen_local(c: *Chunk, expr: *ir.Local, cstr: Cstr, node: *ast.Node) !GenValue {
     const reg = toLocalReg(c, expr.id);
     if (cstr.type == .simple) {
@@ -2459,9 +2391,9 @@ fn gen_for_range_stmt(c: *Chunk, stmt: *ir.ForRangeStmt, node: *ast.Node) !void 
     // Copy counter.
     // TODO: Shouldn't be necessary since the counter will be read-only.
     var eachLocal: Reg = undefined;
-    if (stmt.eachLocal) |irVar| {
+    if (stmt.has_each_local) {
         try genStmts(c, stmt.declHead);
-        eachLocal = toLocalReg(c, irVar);
+        eachLocal = toLocalReg(c, stmt.eachLocal);
         try push_mov(c, eachLocal, counter, 1, node);
     }
 

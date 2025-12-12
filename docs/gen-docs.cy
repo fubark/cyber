@@ -462,7 +462,7 @@ global next_decl_id int = 1
 
 fn gen_index_entry(entry IndexEntry) -> str:
     base_stmt := entry.stmt
-    if meta.choice_tag(cy.Node, base_stmt) == .template:
+    if meta.choice_tag(base_stmt.*) == .template:
         template := base_stmt.!template
         base_stmt = template.child_decl
 
@@ -508,7 +508,7 @@ type IndexEntry:
 
 fn symbol_order(stmt ^cy.Node) -> int:
     base_stmt := stmt
-    if meta.choice_tag(cy.Node, stmt) == .template:
+    if meta.choice_tag(stmt.*) == .template:
         template := stmt.!template
         base_stmt = template.child_decl
 
@@ -537,7 +537,7 @@ fn get_base_type(node ^cy.Node) -> ^cy.Node:
         case .ex_borrow |n|:
             return get_base_type(n.child)
         else:
-            panic('unsupported %{meta.choice_tag(cy.Node, node)}')
+            panic('unsupported %{meta.choice_tag(node.*)}')
 
 fn gen_mods_content(cur_dir str, mods []ModulePair) -> !str:
     res := ''
@@ -554,7 +554,7 @@ fn gen_mods_content(cur_dir str, mods []ModulePair) -> !str:
 
         for stmts |stmt|:
             base_stmt := stmt
-            if meta.choice_tag(cy.Node, stmt) == .template:
+            if meta.choice_tag(stmt.*) == .template:
                 template := stmt.!template
                 base_stmt = template.child_decl
 
@@ -703,8 +703,8 @@ fn gen_mods_content(cur_dir str, mods []ModulePair) -> !str:
 
             -- Order: type level decls, then methods.
             entry.children.sort(|a, b|):
-                a_method := meta.choice_tag(cy.Node, a) == .func_decl and a.!func_decl.sig_t == .method
-                b_method := meta.choice_tag(cy.Node, b) == .func_decl and b.!func_decl.sig_t == .method
+                a_method := meta.choice_tag(a.*) == .func_decl and a.!func_decl.sig_t == .method
+                b_method := meta.choice_tag(b.*) == .func_decl and b.!func_decl.sig_t == .method
                 if !a_method and b_method:
                     return true
                 if a_method and !b_method:
@@ -775,7 +775,7 @@ fn gen_decl(_stmt ^cy.Node, parse_res &cy.ParseResult) -> str:
     stmt := _stmt
 
     tparams_s := ''
-    if meta.choice_tag(cy.Node, stmt) == .template:
+    if meta.choice_tag(stmt.*) == .template:
         template := stmt.!template
         tparams_s = '[%{func_params_text(parse_res, template.params)}]'
         stmt = template.child_decl

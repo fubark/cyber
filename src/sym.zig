@@ -687,11 +687,6 @@ pub fn deinit_sym_ct_values(heap: *cy.Heap, sym: *Sym) void {
                 if (!struct_t.base.info.resolved) {
                     return;
                 }
-                for (struct_t.fields()) |field| {
-                    if (field.init_n) |_| {
-                        heap.destructValue2(field.type, field.init_value);
-                    }
-                }
             }
         },
         .func_template => {
@@ -705,7 +700,7 @@ pub fn deinit_sym_ct_values(heap: *cy.Heap, sym: *Sym) void {
 }
 
 pub fn deinit_func_ct_values(heap: *cy.Heap, func: *Func) void {
-    if (func.type == .generic or func.type == .generic_sema) {
+    if (func.type == .generic) {
         const template = func.data.generic;
         for (template.instances.items) |variant| {
             cy.Instance.deinitValues(heap, variant);
@@ -880,8 +875,10 @@ pub const FuncKind = enum {
     /// Invoked during sema.
     /// TODO: rename to `host_builtin`.
     /// TODO: Force attribute `#builtin` to be declared.
-    host_ct,
-    host_sema,
+    host_const_eval,
+    host_builtin,
+
+    reserved,
 
     userFunc,
     userLambda,
@@ -889,7 +886,6 @@ pub const FuncKind = enum {
     extern_,
     vm_extern_variant,
     generic,
-    generic_sema,
 };
 
 const FuncInfo = packed struct {
@@ -930,6 +926,7 @@ pub const FuncConfig = struct {
 
 pub const Func = struct {
     type: FuncKind,
+
     next: ?*Func,
 
     /// For non-lambdas, this can refer to a FuncSym or Template.
@@ -940,17 +937,17 @@ pub const Func = struct {
     decl: ?*ast.Node,
 
     data: union {
-        host_sema: struct {
-            ptr: ?cy.ZSemaFn,
+        host_builtin: struct {
+            ptr: cy.ZBuiltinFn,
+            eval: ?cy.ZBuiltinEvalFn = null,
         },
-        host_ct: struct {
-            ptr: ?cy.ZCtFn,
-            eval: ?cy.ZCtEvalFuncFn,
+        host_const_eval: struct {
+            ptr: cy.ZConstEvalFn,
         },
         hostFunc: struct {
             // NOTE: inline `cy.ZHostFn` to avoid `dependency loop detected` bug.
             ptr: *const fn(*cy.VM) callconv(.c) C.Ret,
-            eval: ?cy.ZCtEvalFuncFn = null,
+            eval: ?cy.ZConstEvalFn = null,
         },
         trait: struct {
             vtable_idx: u32,
@@ -959,7 +956,7 @@ pub const Func = struct {
             /// Currently used to invalidate the IR func block when removing temporary functions.
             /// See `cte.expandValueTemplate`.
             loc: *ir.Stmt,
-            eval: ?cy.ZCtEvalFuncFn = null,
+            eval: ?cy.ZConstEvalFn = null,
         },
         userLambda: struct {
             func_block_ir: *ir.Stmt,
@@ -976,7 +973,7 @@ pub const Func = struct {
     info: FuncInfo,
 
     pub fn destroy(self: *Func, alloc: std.mem.Allocator) void {
-        if (self.type == .generic or self.type == .generic_sema) {
+        if (self.type == .generic) {
             self.data.generic.deinit(alloc);
             alloc.destroy(self.data.generic);
         } else if (self.type == .extern_) {
@@ -1641,8 +1638,8 @@ fn writeVariantParam(s: *cy.Sema, w: anytype, arg: cy.TypeValue, config: SymForm
         bt.I64 => {
             try w.print("{}", .{arg.value.asInt()});
         },
-        bt.IntLit => {
-            try w.print("{}", .{arg.value.as_int_lit()});
+        bt.EvalInt => {
+            try w.print("{}", .{arg.value.as_eval_int()});
         },
         bt.Str => {
             try w.print("'{s}'", .{arg.value.asString()});
@@ -1716,22 +1713,12 @@ fn writeLocalFuncVariantParams(s: *cy.Sema, w: *std.Io.Writer, variant: *cy.Inst
 }
 
 test "sym internals" {
-    if (builtin.mode == .ReleaseFast) {
-        if (cy.is32Bit) {
-            try t.eq(@sizeOf(Sym), 16);
-            try t.eq(@sizeOf(Func), 36);
-        } else {
-            try t.eq(@sizeOf(Sym), 24);
-            try t.eq(@sizeOf(Func), 64);
-        }
+    if (cy.is32Bit) {
+        try t.eq(16, @sizeOf(Sym));
+        try t.eq(36, @sizeOf(Func));
     } else {
-        if (cy.is32Bit) {
-            try t.eq(@sizeOf(Sym), 16);
-            try t.eq(@sizeOf(Func), 44);
-        } else {
-            try t.eq(@sizeOf(Sym), 24);
-            try t.eq(@sizeOf(Func), 72);
-        }
+        try t.eq(24, @sizeOf(Sym));
+        try t.eq(72, @sizeOf(Func));
     }
 
     try t.eq(@offsetOf(Template, "head"), 0);

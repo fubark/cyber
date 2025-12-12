@@ -19,11 +19,11 @@ const dumpParseErrorStackTrace = !cy.isFreestanding and builtin.mode == .Debug a
 const attributes = std.StaticStringMap(cy.ast.AttributeType).initComptime(.{
     .{ "bind", .bind },
     .{ "extern", .extern_ },
+    .{ "reserve", .reserve },
     .{ "call", .call },
     .{ "generator", .generator },
     .{ "cond", .cond },
     .{ "unsafe", .unsafe },
-    .{ "global_init", .global_init },
     .{ "consteval", .consteval },
 });
 
@@ -1262,7 +1262,7 @@ pub const Parser = struct {
         const members: []*ast.Node = try self.ast.dupeNodes(self.node_stack.items[member_start..]);
         return self.ast.newNode(.enumDecl, .{
             .name = name,
-            .members = .{ .ptr = members.ptr, .len = members.len },
+            .members = .{ .ptr = @ptrCast(members.ptr), .len = members.len },
             .isChoiceType = isChoiceType,
             .hidden = config.hidden,
             .pos = self.tokenPos(start),
@@ -1849,7 +1849,7 @@ pub const Parser = struct {
         const cases: []*ast.CaseStmt = @ptrCast(try self.ast.dupeNodes(self.node_stack.items[case_start..]));
         const switch_n = try self.ast.newNode(.switch_stmt, .{
             .expr = expr,
-            .cases = .{ .ptr = cases.ptr, .len = cases.len },
+            .cases = .{ .ptr = @ptrCast(cases.ptr), .len = cases.len },
             .pos = self.tokenPos(start),
         });
         if (!isStmt) {

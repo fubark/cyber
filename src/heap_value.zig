@@ -24,6 +24,7 @@ pub fn moveValueTo(self: *cy.Heap, val_t: *cy.Type, dst: [*]u8, val: Value) void
 }
 
 pub fn copyValueTo(self: *cy.Heap, val_t: *cy.Type, dst: [*]u8, src: [*]const u8) !void {
+    log.tracev("copyValueTo {s} dst={*} src={*}", .{val_t.name(), dst, src});
     switch (val_t.id()) {
         bt.Void => {},
         bt.R64,
@@ -42,14 +43,9 @@ pub fn copyValueTo(self: *cy.Heap, val_t: *cy.Type, dst: [*]u8, src: [*]const u8
         bt.Bool => {
             dst[0] = src[0];
         },
-        bt.StrLit => {
-            const src_str: *const cy.heap.StrLit = @ptrCast(@alignCast(src));
-            const new_buf = try self.alloc.dupe(u8, src_str.slice());
-            const dst_str: *cy.heap.StrLit = @ptrCast(@alignCast(dst));
-            dst_str.* = .{
-                .ptr = @intFromPtr(new_buf.ptr),
-                .header = src_str.header,
-            };
+        bt.EvalStr => {
+            self.retain(valueConstCast(src)[0]);
+            valueCast(dst)[0] = valueConstCast(src)[0];
         },
         else => {
             switch (val_t.kind()) {
@@ -76,9 +72,20 @@ pub fn copyValueTo(self: *cy.Heap, val_t: *cy.Type, dst: [*]u8, src: [*]const u8
                 },
                 .pointer => {
                     const ptr_t = val_t.cast(.pointer);
-                    if (ptr_t.ref) {
-                        self.retain(valueConstCast(src)[0]);
+                    if (val_t.size() == 8) {
+                        if (ptr_t.ref) {
+                            self.retain(valueConstCast(src)[0]);
+                        }
+                        valueCast(dst)[0] = valueConstCast(src)[0];
+                    } else {
+                        if (ptr_t.ref) {
+                            self.retainObject(@ptrFromInt(@as(*const u32, @ptrCast(@alignCast(src))).*));
+                        }
+                        @as(*u32, @ptrCast(@alignCast(dst))).* = @as(*const u32, @ptrCast(@alignCast(src))).*;
                     }
+                },
+                .eval_ref => {
+                    self.retain(valueConstCast(src)[0]);
                     valueCast(dst)[0] = valueConstCast(src)[0];
                 },
                 else => {
@@ -115,6 +122,7 @@ pub fn copyValue2(self: *cy.Heap, val_t: *cy.Type, val: Value) !Value {
 }
 
 pub fn copyValue3(self: *cy.Heap, val_t: *cy.Type, src: [*]const u8) !Value {
+    log.tracev("copyValue3 {s} src={*}", .{val_t.name(), src});
     switch (val_t.id()) {
         bt.Void => {
             return Value.Void;
@@ -137,22 +145,16 @@ pub fn copyValue3(self: *cy.Heap, val_t: *cy.Type, src: [*]const u8) !Value {
         },
         bt.PartialStructLayout,
         bt.FuncSig,
-        bt.IntLit,
+        bt.EvalInt,
         bt.R64,
         bt.F64,
         bt.I64,
         bt.Type => {
             return valueConstCast(src)[0];
         },
-        bt.StrLit => {
-            const src_str: *const cy.heap.StrLit = @ptrCast(@alignCast(src));
-            const new_buf = try self.alloc.dupe(u8, src_str.slice());
-            const new = try self.new_object_undef(bt.StrLit, 16);
-            new.str_lit = .{
-                .ptr = @intFromPtr(new_buf.ptr),
-                .header = src_str.header,
-            };
-            return Value.initPtr(new);
+        bt.EvalStr => {
+            self.retain(valueConstCast(src)[0]);
+            return valueConstCast(src)[0];
         },
         else => {
             switch (val_t.kind()) {
@@ -176,9 +178,21 @@ pub fn copyValue3(self: *cy.Heap, val_t: *cy.Type, src: [*]const u8) !Value {
                 },
                 .pointer => {
                     const ptr_t = val_t.cast(.pointer);
-                    if (ptr_t.ref) {
-                        self.retain(valueConstCast(src)[0]);
+                    if (val_t.size() == 8) {
+                        if (ptr_t.ref) {
+                            self.retain(valueConstCast(src)[0]);
+                        }
+                        return valueConstCast(src)[0];
+                    } else {
+                        const ptr: ?*anyopaque = @ptrFromInt(@as(*const u32, @ptrCast(@alignCast(src))).*);
+                        if (ptr_t.ref) {
+                            self.retainObject(@ptrCast(@alignCast(ptr)));
+                        }
+                        return Value.initPtr(ptr);
                     }
+                },
+                .eval_ref => {
+                    self.retain(valueConstCast(src)[0]);
                     return valueConstCast(src)[0];
                 },
                 .func_sym => {
@@ -197,7 +211,7 @@ pub fn copyValue3(self: *cy.Heap, val_t: *cy.Type, src: [*]const u8) !Value {
 }
 
 pub fn copy_str(self: *cy.Heap, val: cy.heap.Str) !cy.heap.Str {
-    if (val.buf()) |buf| {
+    if (val.buf) |buf| {
         self.retainObject(@ptrCast(buf));
     }
     return val;
@@ -211,12 +225,13 @@ pub fn copyStruct(self: *cy.Heap, struct_t: *cy.types.Struct, src: [*]const u8) 
 }
 
 pub fn copyStructTo(self: *cy.Heap, struct_t: *cy.types.Struct, dst: [*]u8, src: [*]const u8) anyerror!void {
-    if (!struct_t.base.info.copy_user) {
-        for (struct_t.fields()) |field| {
-            try self.copyValueTo(field.type, dst + field.offset, src + field.offset);
-        }
-    } else {
+    log.tracev("copyStructTo {s} dst={*} src={*}", .{struct_t.base.name(), dst, src});
+    if (struct_t.base.info.copy_user) {
         std.debug.panic("Unsupported: {s}", .{struct_t.base.name()});
+    }
+
+    for (struct_t.fields()) |field| {
+        try self.copyValueTo(field.type, dst + field.offset, src + field.offset);
     }
 }
 
@@ -301,7 +316,7 @@ pub fn destructValue2(self: *cy.Heap, val_t: *cy.Type, val: Value) void {
         bt.I32,
         bt.I64,
         bt.Any,
-        bt.IntLit,
+        bt.EvalInt,
         bt.Symbol,
         bt.FuncSig,
         bt.Type,
@@ -309,6 +324,7 @@ pub fn destructValue2(self: *cy.Heap, val_t: *cy.Type, val: Value) void {
         bt.Code,
         bt.Bool => {},
         bt.StrBuffer => @panic("Unexpected."),
+        bt.EvalStr,
         bt.Object => {
             self.release(val);
         },
@@ -361,6 +377,9 @@ pub fn destructValue2(self: *cy.Heap, val_t: *cy.Type, val: Value) void {
                         self.release(val);
                     }
                 },
+                .eval_ref => {
+                    self.release(val);
+                },
                 .borrow,
                 .func_sym,
                 .int,
@@ -377,12 +396,13 @@ pub fn destructValue2(self: *cy.Heap, val_t: *cy.Type, val: Value) void {
 }
 
 pub fn destructStr(self: *cy.Heap, str: *const cy.heap.Str) void {
-    if (str.buf()) |buf| { 
+    if (str.buf) |buf| { 
         self.releaseObject(@ptrCast(buf));
     }
 }
 
 pub fn destructValueAt(self: *cy.Heap, val_t: *cy.Type, ptr: [*]u8) void {
+    log.tracev("destructValueAt {s}", .{val_t.name()});
     switch (val_t.id()) {
         bt.Void,
         bt.R8,
@@ -398,12 +418,9 @@ pub fn destructValueAt(self: *cy.Heap, val_t: *cy.Type, ptr: [*]u8) void {
         bt.Symbol,
         bt.Type,
         bt.Bool => {},
+        bt.EvalStr,
         bt.Object => {
             self.release(valueCast(ptr)[0]);
-        },
-        bt.StrLit => {
-            var s: *cy.heap.StrLit = @ptrCast(@alignCast(ptr));
-            self.alloc.free(s.slice());
         },
         bt.Str => {
             self.destructStr(@ptrCast(@alignCast(ptr)));
@@ -446,6 +463,9 @@ pub fn destructValueAt(self: *cy.Heap, val_t: *cy.Type, ptr: [*]u8) void {
                     if (ptr_t.ref) {
                         self.release(valueCast(ptr)[0]);
                     }
+                },
+                .eval_ref => {
+                    self.release(valueCast(ptr)[0]);
                 },
                 .borrow,
                 .enum_t => {
@@ -500,6 +520,12 @@ pub fn releaseOpaque(self: *cy.Heap, obj: *anyopaque) void {
     releaseObject2(self, @ptrCast(@alignCast(obj)), false, {});
 }
 
+pub fn release_object_opt(self: *cy.Heap, opt: ?*cy.HeapObject) void {
+    if (opt) |obj| {
+        self.releaseObject(obj);
+    }
+}
+
 pub fn releaseObject(self: *cy.Heap, obj: *cy.HeapObject) void {
     releaseObject2(self, obj, false);
 }
@@ -521,8 +547,7 @@ pub fn releaseOnly(self: *cy.Heap, obj: *cy.HeapObject) bool {
             std.debug.panic("Double free. {*}", .{obj});
         }
         if (self.c.refCounts == 0) {
-            std.debug.print("Double free. {}\n", .{obj.getTypeId()});
-            cy.fatal();
+            std.debug.panic("Double free. {}", .{obj.getTypeId()});
         }
     }
     if (cy.TraceRC) {
@@ -640,12 +665,12 @@ pub fn destroyObject(self: *cy.Heap, obj: *cy.heap.HeapObject, comptime fatal: b
         bt.I64 => {
             self.freePoolObject(obj);
         },
-        bt.StrLit => {
-            self.alloc.free(obj.str_lit.slice());
+        bt.EvalStr => {
+            self.alloc.free(obj.eval_str.slice());
             self.freePoolObject(obj);
         },
         bt.StrBuffer => {
-            const len = obj.raw_buffer.len;
+            const len: usize = @intCast(obj.raw_buffer.len);
             if (8 + len <= 32) {
                 self.freePoolObject(obj);
             } else {
@@ -698,33 +723,13 @@ pub fn destroyObject(self: *cy.Heap, obj: *cy.heap.HeapObject, comptime fatal: b
                     if (!struct_t.cstruct) {
                         if (obj_t.sym().instance) |variant| {
                             if (variant.data.sym.template == self.sema.raw_buffer_tmpl) {
-                                // Emulate destructor.
                                 const elem_t = variant.params[0].asPtr(*cy.Type);
                                 const elem_size = elem_t.size();
-                                if (!fatal) {
-                                    const elems: [*]u8 = @ptrCast(&obj.raw_buffer.data);
-                                    const nelems: usize = @intCast(obj.raw_buffer.len);
-                                    for (0..nelems) |i| {
-                                        self.destructValueAt(elem_t, @ptrCast(@alignCast(elems + i*elem_size)));
-                                    }
-                                }
-                                const size = 8 + obj.raw_buffer.len * elem_size;
+                                const size: usize = @intCast(8 + obj.raw_buffer.len * elem_size);
                                 self.freeObject(obj, size);
                                 return;
                             } else if (variant.data.sym.template == self.sema.buffer_tmpl) {
-                                const elem_t = variant.params[0].asPtr(*cy.Type);
-                                const elem_size = elem_t.size();
-                                if (obj.buffer.base != 0) {
-                                    const elems: [*]u8 = @ptrFromInt(obj.buffer.base);
-                                    if (!fatal) {
-                                        const nelems: usize = @intCast(obj.buffer.len);
-                                        for (0..nelems) |i| {
-                                            self.destructValueAt(elem_t, elems + i*elem_size);
-                                        }
-                                        self.free_byte_buffer(@ptrCast(@alignCast(elems)));
-                                    }
-                                }
-                                return;
+                                @panic("unexpected use of managed type at compile-time");
                             }
                         }
                         if (!fatal) {
@@ -740,7 +745,7 @@ pub fn destroyObject(self: *cy.Heap, obj: *cy.heap.HeapObject, comptime fatal: b
                             self.freePoolObject(obj);
                         },
                         .closure => {
-                            const num_captured = obj.func.data.closure.numCaptured;
+                            const num_captured: usize = @intCast(obj.func.data.closure.numCaptured);
                             if (!fatal) {
                                 const src = obj.func.getCapturedValuesPtr()[0..num_captured];
                                 for (src) |captured| {
@@ -754,7 +759,7 @@ pub fn destroyObject(self: *cy.Heap, obj: *cy.heap.HeapObject, comptime fatal: b
                             }
                         },
                         .pinned_closure => {
-                            const num_captured = obj.func.data.closure.numCaptured;
+                            const num_captured: usize = @intCast(obj.func.data.closure.numCaptured);
                             if (num_captured <= 1) {
                                 self.freePoolObject(obj);
                             } else {
@@ -787,7 +792,7 @@ pub fn destroyObject(self: *cy.Heap, obj: *cy.heap.HeapObject, comptime fatal: b
                         const child_t = array_t.elem_t;
                         const elem_size = child_t.size();
                         const vals = obj.object.getBytePtr() + 8;
-                        const len = obj.object.firstValue.val;
+                        const len: usize = @intCast(obj.object.firstValue.val);
                         for (0..len) |i| {
                             self.destructValueAt(child_t, vals + i * elem_size);
                         }
@@ -832,12 +837,31 @@ pub fn destroyObject(self: *cy.Heap, obj: *cy.heap.HeapObject, comptime fatal: b
                 .enum_t => {
                     self.freePoolObject(obj);
                 },
+                .eval_ref => {
+                    if (obj_t.id() == bt.EvalStr) {
+                        self.alloc.free(obj.eval_str.slice());
+                    } else if (obj_t.instanceOf(self.sema.eval_buffer_tmpl)) |instance| {
+                        const elem_t = instance.params[0].asPtr(*cy.Type);
+                        const elem_size = elem_t.size();
+                        if (obj.eval_buffer.ptr != 0) {
+                            const addr: usize = @intCast(obj.eval_buffer.ptr);
+                            const elems: [*]u8 = @ptrFromInt(addr);
+                            if (!fatal) {
+                                const nelems: usize = @intCast(obj.eval_buffer.len);
+                                for (0..nelems) |i| {
+                                    self.destructValueAt(elem_t, elems + i*elem_size);
+                                }
+                                self.free_byte_buffer(@ptrCast(@alignCast(elems)));
+                            }
+                        }
+                    }
+                },
                 .dyn_trait,
                 .c_variadic,
                 .never,
                 .generic_vector,
                 .generic_trait,
-                .int_lit,
+                .eval_int,
                 .generic,
                 .null,
                 .borrow,
@@ -875,9 +899,16 @@ pub fn bufPrintValueShortStr(self: *cy.Heap, buf: []u8, val_t: cy.TypeId, val: V
     if (val_t == bt.Str) {
         const str = val.asString();
         if (str.len > 20) {
-            try w.print("String({}) {s}...", .{str.len, str[0..20]});
+            try w.print("str({}) {s}...", .{str.len, str[0..20]});
         } else {
-            try w.print("String({}) {s}", .{str.len, str});
+            try w.print("str({}) {s}", .{str.len, str});
+        }
+    } else if (val_t == bt.EvalStr) {
+        const str = val.as_eval_str();
+        if (str.len > 20) {
+            try w.print("EvalStr({}) {s}...", .{str.len, str[0..20]});
+        } else {
+            try w.print("EvalStr({}) {s}", .{str.len, str});
         }
     } else if (val_t == cy.heap.BigObjectPtrType & vmc.TYPE_MASK) {
         try w.print("bigObjectPtr", .{});
@@ -977,8 +1008,8 @@ pub fn writeValue(self: *const cy.Heap, w: *std.Io.Writer, val_t: cy.TypeId, val
             try w.print("{}", .{val.asByte()});
             return true;
         },
-        bt.IntLit => {
-            try w.print("{}", .{val.as_int_lit()});
+        bt.EvalStr => {
+            try w.print("{}", .{val.as_eval_int()});
             return true;
         },
         bt.Str => {

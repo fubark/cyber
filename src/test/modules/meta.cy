@@ -6,7 +6,7 @@ type Shape enum:
     case line  float
     case point
 s := Shape.line(123)
-test.eq(meta.choice_tag(Shape, &s), .line)
+test.eq(meta.choice_tag(s), .line)
 
 -- is_none()
 opt := ?int(none)

@@ -20,8 +20,9 @@ pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
 fn indexOfNewLine(t: *cy.Thread) !C.Ret {
     const ret = t.ret(cy.value.Option(i64));
     const buf = t.param(cy.heap.Span);
-    const ptr: [*]const u8 = @ptrFromInt(buf.ptr);
-    if (cy.string.indexOfNewLine(ptr[0..buf.len])) |idx| {
+    const addr: usize = @intCast(buf.ptr);
+    const ptr: [*]const u8 = @ptrFromInt(addr);
+    if (cy.string.indexOfNewLine(ptr[0..@intCast(buf.len)])) |idx| {
         ret.* = cy.value.Option(i64).some(@intCast(idx));
     } else {
         ret.* = cy.value.Option(i64).none();

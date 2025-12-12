@@ -70,16 +70,19 @@ pub const Config = struct {
 };
 
 export fn test_init() void {
-    app_debug.attachSegfaultHandler(sig_handler);
+    if (!is_wasm) {
+        app_debug.attachSegfaultHandler(sig_handler);
+    }
 }
 
 fn sig_handler(sig: i32, info: *const std.posix.siginfo_t, ctx_ptr: ?*anyopaque) callconv(.c) noreturn {
+    app_debug.handleSegfaultPosix(sig, info, ctx_ptr, sig_handler_inner);
+}
+
+fn sig_handler_inner() callconv(.c) void {
     if (test_vm) |vm| {
-        app_debug.vm_segv_handler(@ptrCast(@alignCast(vm))) catch |err| {
-            std.debug.panic("failed during segfault: {}", .{err});
-        };
+        app_debug.vm_segv_handler(@ptrCast(@alignCast(vm))) catch @panic("error");
     }
-    app_debug.handleSegfaultPosix(sig, info, ctx_ptr);
 }
 
 export fn zpanic(msg: [*]const u8, msg_len: usize, first_trace_addr: usize) noreturn {
@@ -266,8 +269,14 @@ pub const VMrunner = struct {
             preEval(run);
         }
 
-        run.main_path = c.vm_resolve(vm, config.uri);
-        defer c.vm_freeb(vm, run.main_path);
+        if (!is_wasm) {
+            run.main_path = c.vm_resolve(vm, config.uri);
+        } else {
+            run.main_path = try std.fmt.allocPrint(t.alloc, "/{s}", .{config.uri});
+        }
+        defer {
+            c.vm_freeb(vm, run.main_path);
+        }
 
         var res: c.EvalResult = undefined;
         const c_config = c.EvalConfig{
@@ -438,41 +447,39 @@ pub fn evalPass(config: Config, src: ?[]const u8) !void {
 fn expand_tmpl_macros(main_path: []const u8, tmpl: []const u8) ![]const u8 {
     var cur = try t.alloc.dupe(u8, tmpl);
     while (true) {
-        if (!is_wasm) {
-            if (std.mem.indexOf(u8, cur, "@AbsPath(")) |idx| {
-                if (std.mem.indexOfScalarPos(u8, cur, idx, ')')) |endIdx| {
-                    var buf: [1024]u8 = undefined;
-                    var w = std.Io.Writer.fixed(&buf);
-
-                    _ = try w.writeAll(cur[0..idx]);
-                    const basePath = try std.fs.realpathAlloc(t.alloc, ".");
-                    defer t.alloc.free(basePath);
-                    _ = try w.writeAll(basePath);
-                    try w.writeByte(std.fs.path.sep);
-
-                    const relPathStart = w.buffered().len;
-                    _ = try w.writeAll(cur[idx+9..endIdx]);
-                    if (builtin.os.tag == .windows) {
-                        _ = std.mem.replaceScalar(u8, w.buffered()[relPathStart..], '/', '\\');
-                    }
-
-                    _ = try w.writeAll(cur[endIdx+1..]);
-                    t.alloc.free(cur);
-                    cur = try t.alloc.dupe(u8, w.buffered());
-                    continue;
-                }
-            }
-            if (std.mem.indexOf(u8, cur, "@MainPath()")) |idx| {
+        if (std.mem.indexOf(u8, cur, "@AbsPath(")) |idx| {
+            if (std.mem.indexOfScalarPos(u8, cur, idx, ')')) |endIdx| {
                 var buf: [1024]u8 = undefined;
                 var w = std.Io.Writer.fixed(&buf);
 
                 _ = try w.writeAll(cur[0..idx]);
-                _ = try w.writeAll(main_path);
-                _ = try w.writeAll(cur[idx+11..]);
+                const basePath = try std.fs.realpathAlloc(t.alloc, ".");
+                defer t.alloc.free(basePath);
+                _ = try w.writeAll(basePath);
+                try w.writeByte(std.fs.path.sep);
+
+                const relPathStart = w.buffered().len;
+                _ = try w.writeAll(cur[idx+9..endIdx]);
+                if (builtin.os.tag == .windows) {
+                    _ = std.mem.replaceScalar(u8, w.buffered()[relPathStart..], '/', '\\');
+                }
+
+                _ = try w.writeAll(cur[endIdx+1..]);
                 t.alloc.free(cur);
                 cur = try t.alloc.dupe(u8, w.buffered());
                 continue;
             }
+        }
+        if (std.mem.indexOf(u8, cur, "@MainPath()")) |idx| {
+            var buf: [1024]u8 = undefined;
+            var w = std.Io.Writer.fixed(&buf);
+
+            _ = try w.writeAll(cur[0..idx]);
+            _ = try w.writeAll(main_path);
+            _ = try w.writeAll(cur[idx+11..]);
+            t.alloc.free(cur);
+            cur = try t.alloc.dupe(u8, w.buffered());
+            continue;
         }
         break;
     }

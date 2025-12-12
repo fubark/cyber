@@ -3,7 +3,7 @@ use meta
 use os
 use c
 
-const lib_path str = switch meta.system():
+const lib_path EvalStr = switch meta.system():
     case .linux => 'src/test/ffi/test_lib.so'
     case .windows => 'src/test/ffi/test_lib.dll'
     case .macos => 'src/test/ffi/test_lib.dylib'

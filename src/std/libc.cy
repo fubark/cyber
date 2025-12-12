@@ -41,6 +41,7 @@ type clockid_t = switch meta.system():
 type fd_t = switch meta.system():
     case .macos => i32
     case .linux => i32
+    case .wasi => i32
     else => void
 
 type pid_t = switch meta.system():
@@ -55,51 +56,53 @@ type cpu_set_t = switch meta.system():
 type mode_t = switch meta.system():
     case .macos => i16
     case .linux => r32
+    case .wasi => r32
     else => void
 
 type O = switch meta.system():
     case .macos => i32
     case .linux => r32
+    case .wasi => r32
     else => void
 
 -- TODO: packed structs would improve ergonomics of many of these system config types.
-const O_RDONLY = switch meta.system():
-    case .macos => O(0x0000)
-    case .linux => O(0x0000)
+const O_RDONLY O = switch meta.system():
+    case .macos => 0x0000
+    case .linux => 0x0000
     else => 0
-const O_WRONLY = switch meta.system():
-    case .macos => O(0x0001)
-    case .linux => O(0x0001)
+const O_WRONLY O = switch meta.system():
+    case .macos => 0x0001
+    case .linux => 0x0001
     else => 0
-const O_RDWR = switch meta.system():
-    case .macos => O(0x0002)
-    case .linux => O(0x0002)
+const O_RDWR O = switch meta.system():
+    case .macos => 0x0002
+    case .linux => 0x0002
     else => 0
-const O_NONBLOCK = switch meta.system():
-    case .macos => O(0x0004)
-    case .linux => O(0x0800)
+const O_NONBLOCK O = switch meta.system():
+    case .macos => 0x0004
+    case .linux => 0x0800
     else => 0
-const O_CREAT = switch meta.system():
-    case .macos => O(0x0200)
-    case .linux => O(0x0040)
+const O_CREAT O = switch meta.system():
+    case .macos => 0x0200
+    case .linux => 0x0040
     else => 0
-const O_TRUNC = switch meta.system():
-    case .macos => O(0x0400)
-    case .linux => O(0x0200)
+const O_TRUNC O = switch meta.system():
+    case .macos => 0x0400
+    case .linux => 0x0200
     else => 0
-const O_CLOEXEC = switch meta.system():
-    case .macos => O(0x1000000)
-    case .linux => O(0x80000)
+const O_CLOEXEC O = switch meta.system():
+    case .macos => 0x1000000
+    case .linux => 0x80000
     else => 0
-const O_DIRECTORY = switch meta.system():
-    case .macos => O(0x100000)
-    case .linux => O(0x10000)
+const O_DIRECTORY O = switch meta.system():
+    case .macos => 0x100000
+    case .linux => 0x10000
     else => 0
 
 type off_t = switch meta.system():
     case .macos => i64
     case .linux => i64
-    else => void
+    else => i64
 
 const PATH_MAX = switch meta.system():
     case .macos => 1024
@@ -111,9 +114,14 @@ type Stat = switch meta.system():
     case .linux => linux.Stat
     else => void
 
+type wasi_timespec cstruct:
+    sec  i64
+    nsec isize
+
 type timespec = switch meta.system():
     case .macos => macos.timespec
     case .linux => linux.timespec
+    case .wasi => wasi_timespec
     else => void
 
 #[extern]

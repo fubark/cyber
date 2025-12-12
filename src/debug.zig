@@ -127,25 +127,28 @@ pub fn write_object_alloc_trace(t: *cy.Thread, w: *std.Io.Writer, obj: *cy.HeapO
     const msg = try std.fmt.bufPrint(buf[valStr.len..], "{*}, type: {s}, rc: {} at t{}@{x} ev={}\nval={s}", .{
         obj, type_name, obj.rc(), t.c.id, trace.alloc_ctx, trace.alloc_event, valStr,
     });
-    try cy.debug.write_trace_at_pc(t.c.vm, w, @ptrFromInt(trace.alloc_ctx), "alloced", msg);
+    const addr: usize = @intCast(trace.alloc_ctx);
+    try cy.debug.write_trace_at_pc(t.c.vm, w, @ptrFromInt(addr), "alloced", msg);
 }
 
 pub fn write_object_trace(t: *cy.Thread, w: *std.Io.Writer, obj: *cy.HeapObject) !void {
     if (t.heap.objectTraceMap.get(obj)) |trace| {
         if (trace.alloc_ctx != 0) {
-            const alloc_pc: *cy.Inst = @ptrFromInt(trace.alloc_ctx);
+            const addr: usize = @intCast(trace.alloc_ctx);
+            const alloc_pc: *cy.Inst = @ptrFromInt(addr);
             const msg = try std.fmt.allocPrint(t.alloc, "{*} at pc: {*}({s}), ev={}", .{
-                obj, @as(*cy.Inst, @ptrFromInt(trace.alloc_ctx)), @tagName(alloc_pc.*.opcode()), trace.alloc_event,
+                obj, alloc_pc, @tagName(alloc_pc.*.opcode()), trace.alloc_event,
             });
             defer t.alloc.free(msg);
-            try write_trace_at_pc(t.c.vm, w, @ptrFromInt(trace.alloc_ctx), "alloced", msg);
+            try write_trace_at_pc(t.c.vm, w, alloc_pc, "alloced", msg);
         } else {
-            try write_trace_at_pc(t.c.vm, w, @ptrFromInt(trace.alloc_ctx), "alloced", "");
+            try write_trace_at_pc(t.c.vm, w, null, "alloced", "");
         }
 
         if (trace.free_ctx) |free_pc| {
             if (free_pc != 0) {
-                const free_pc_: *cy.Inst = @ptrFromInt(free_pc);
+                const addr: usize = @intCast(free_pc);
+                const free_pc_: *cy.Inst = @ptrFromInt(addr);
                 const msg = try std.fmt.allocPrint(t.alloc, "{}({s}) at pc: {}({s}), ev={}", .{
                     trace.free_type.?, t.heap.getType(trace.free_type.?).name(),
                     free_pc, @tagName(free_pc_.*.opcode()), trace.free_event,
@@ -189,6 +192,7 @@ pub fn thread_signal_host_panic(t: *cy.Thread) !void {
         };
         try w.print("panic at t{}@{}:{}\n", .{t.c.id, sym.file, sym.pc});
         try cy.thread.write_thread_inst(t, w, pc);
+        try w.writeByte('\n');
     } else {
         try w.print("panic at t{}@host_call:\n", .{t.c.id});
     }
@@ -216,6 +220,7 @@ pub fn thread_signal_host_segfault(t: *cy.Thread) !void {
         };
         try w.print("segfault at t{}@{}:{}\n", .{t.c.id, sym.file, sym.pc});
         try cy.thread.write_thread_inst(t, w, pc);
+        try w.writeByte('\n');
     } else {
         try w.print("segfault at t{}@host_call:\n", .{t.c.id});
     }
@@ -282,19 +287,21 @@ pub fn allocReportSummary(c: *const cy.Compiler, report: cy.Report) ![]const u8 
 
 fn writeCompileErrorSummary(c: *const cy.Compiler, w: *std.Io.Writer, report: cy.Report) !void {
     try w.print("CompileError: {s}\n\n", .{report.msg});
-    try writeUserErrorTrace2(c, w, report.chunk, @ptrFromInt(report.loc));
+    var addr: usize = @intCast(report.loc);
+    try writeUserErrorTrace2(c, w, report.chunk, @ptrFromInt(addr));
 
     // Append back trace.
     var opt_next: ?*cy.Report = report.next;
     while (opt_next) |next| {
         const chunk = c.chunks.items[next.chunk];
+        addr = @intCast(next.loc);
         switch (next.type) {
             .context => {
                 try w.print("{s}\n", .{next.msg});
-                try writeUserErrorTrace2(c, w, chunk.id, @ptrFromInt(next.loc));
+                try writeUserErrorTrace2(c, w, chunk.id, @ptrFromInt(addr));
             },
             .compile_err => {
-                try writeUserErrorTrace2(c, w, chunk.id, @ptrFromInt(next.loc));
+                try writeUserErrorTrace2(c, w, chunk.id, @ptrFromInt(addr));
             },
             else => {},
         }
@@ -487,7 +494,11 @@ pub fn writeStackFrames(vm: *const cy.VM, w: *std.Io.Writer, frames: []const C.S
 }
 
 test "debug internals." {
-    try zt.eq(16, @sizeOf(vmc.CompactFrame));
+    if (cy.is32Bit) {
+        try zt.eq(8, @sizeOf(vmc.CompactFrame));
+    } else {
+        try zt.eq(16, @sizeOf(vmc.CompactFrame));
+    }
 }
 
 /// Can only rely on pc and other non-reference values to build the stack frame since
@@ -513,7 +524,8 @@ pub fn compactToStackFrame(vm: *cy.VM, stack: []const cy.Value, frame: vmc.Compa
         var name: []const u8 = "host function";
         switch (ops[sym.pc].opcode()) {
             .call_host => {
-                const func_ptr: *anyopaque = @ptrFromInt(@as(*const align(1) u48, @ptrCast(ops.ptr + sym.pc + 3)).*);
+                const addr: usize = @intCast(@as(*const align(1) u48, @ptrCast(ops.ptr + sym.pc + 3)).*);
+                const func_ptr: *anyopaque = @ptrFromInt(addr);
                 const func_id = vm.host_funcs.get(func_ptr).?;
                 name = vm.funcSymDetails.items[func_id].name();
             },
@@ -678,7 +690,9 @@ pub fn dumpBytecode(vm: *cy.VM, opts: DumpBytecodeOptions) !void {
                 } else {
                     id = vm.compiler.genSymMap.get(func).?.func.id;
                 }
-                try w.print("--fn {s} {}\n", .{func.name(), id});
+                const name = try c.sema.newFuncName(c.alloc, func, .{});
+                defer c.alloc.free(name);
+                try w.print("--{} `fn {s}`\n", .{id, name});
             } else if (pc == start_pc) {
                 try w.print("--start\n", .{});
             }

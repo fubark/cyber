@@ -183,6 +183,8 @@ pub const Chunk = struct {
     
     user_data: ?*anyopaque,
 
+    trace_eval_expr_depth: usize = 0,
+
     pub fn init(self: *Chunk, c: *cy.Compiler, id: ChunkId, srcUri: []const u8, src: ?[]const u8) !void {
         self.* = .{
             .id = id,
@@ -778,8 +780,8 @@ pub const Chunk = struct {
     pub const resolveUserFunc = cy.module.resolveUserFunc;
     pub const resolveUserLambda = cy.module.resolveUserLambda;
     pub const resolveFuncInfo = cy.module.resolveFuncInfo;
-    pub const resolveHostCtFunc = cy.module.resolveHostCtFunc;
-    pub const resolveHostSemaFunc = cy.module.resolveHostSemaFunc;
+    pub const resolveHostConstEvalFunc = cy.module.resolveHostConstEvalFunc;
+    pub const resolveHostBuiltinFunc = cy.module.resolveHostBuiltinFunc;
     pub const resolveHostVar = cy.module.resolveHostVar;
     pub const resolveUserVarType = cy.module.resolveUserVarType;
     pub const checkResolvedSymIsDistinct = cy.module.checkResolvedSymIsDistinct;
@@ -835,6 +837,8 @@ pub const Chunk = struct {
     pub const semaCallFuncSymRec2 = sema.semaCallFuncSymRec2;
     // pub const semaCallGenericFunc = sema.semaCallGenericFunc;
     // pub const semaCallGenericFuncRec = sema.semaCallGenericFuncRec;
+
+    pub const sema_expr_cstr_template = sema.sema_expr_cstr_template;
 
     // pub usingnamespace jitgen.ChunkExt;
 };

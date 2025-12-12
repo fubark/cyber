@@ -124,22 +124,22 @@ pub fn Nullable(comptime T: type) type {
     return T;
 }
 
-pub const CtFuncContext = extern struct {
+pub const ConstEvalContext = extern struct {
     func: *Func,
     args: [*]const Value,
     node: *ast.Node,
 };
 
-pub const SemaFuncContext = extern struct {
+pub const BuiltinContext = extern struct {
     func: *Func,
-    expr_start: usize,
+    args: [*]const *ast.Node,
     node: *ast.Node,
 };
 
 pub const ZHostFn = *const fn(*VM) callconv(.c) C.Ret;
-pub const ZCtFn = *const fn(*Chunk, *const CtFuncContext, *sema.ExprResult) callconv(.c) bool;
-pub const ZSemaFn = *const fn(*Chunk, *const SemaFuncContext, *sema.ExprResult) callconv(.c) bool;
-pub const ZCtEvalFuncFn = *const fn(*Chunk, *const CtFuncContext) callconv(.c) TypeValue;
+pub const ZBuiltinFn = *const fn(*Chunk, *const BuiltinContext, *sema.ExprResult) callconv(.c) bool;
+pub const ZBuiltinEvalFn = *const fn(*Chunk, *const BuiltinContext) callconv(.c) TypeValue;
+pub const ZConstEvalFn = *const fn(*Chunk, *const ConstEvalContext) callconv(.c) TypeValue;
 
 pub const log = @import("log.zig");
 pub const utils = @import("utils.zig");

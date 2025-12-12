@@ -4,12 +4,12 @@
 #endif
 
 #include <stdarg.h>
-#include <string.h>
-#include <stdio.h>
-#include <math.h>
+// #include <stdio.h>
 #include "vm.h"
 
-#define TRACE_DUMP_OPS 0 
+// NOTE: Don't depend on libc that is not available in wasm-freestanding.
+
+#define TRACE_DUMP_OPS 0
 #define TRACE_DUMP_NOP 0
 
 __thread ZThread* cur_thread = NULL;
@@ -29,11 +29,7 @@ __thread ZThread* cur_thread = NULL;
         if (clVerbose) {\
         __VA_ARGS__; \
         }
-
-    #define TRACE_ERR(format, ...) \
-        do { if (TRACE) fprintf(stderr, format, __VA_ARGS__); } while (false)
 #else
-    #define TRACE_ERR(format, ...)
     #define TRACEV_IF(cond, ...)
     #define TRACEV(...)
 #endif
@@ -41,7 +37,31 @@ __thread ZThread* cur_thread = NULL;
 #define ASSERT(cond) \
     do { if (!(cond)) zFatal(); } while (false)
 
-#define str(x) ((Str){ x, strlen(x) })
+#define memcpy(dst, src, n) __builtin_memcpy(dst, src, n)
+#define memset(dst, x, n) __builtin_memset(dst, x, n)
+
+static size_t strlen(const char* s) {
+    size_t len = 0;
+    while (s[len] != '\0') {
+        len += 1;
+    }
+    return len;
+}
+
+static inline size_t write_str_len(Bytes buf, const char* s, size_t len) {
+    if (len > buf.len) {
+        zFatal();
+    }
+    memcpy(buf.ptr, s, len);
+    return len;
+}
+
+static size_t write_str(Bytes buf, const char* s) {
+    size_t len = strlen(s);
+    return write_str_len(buf, s, len);
+}
+
+#define BYTES(x) ((Bytes){ x, strlen(x) })
 
 // static inline FmtValue FMT_U32(u32 v) {
 //     return (FmtValue){ .type = FMT_TYPE_U32, .data = { .u32 = v }};
@@ -65,37 +85,54 @@ static inline Value* closureGetCapturedValuesPtr(FuncUnion* closure) {
     return &closure->data.closure.firstCapturedVal;
 }
 
-static void tlog(ZThread* t, const char* fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    char buf[1024];
-    int n = vsnprintf(buf, 1024, fmt, args);
-    va_end(args);
-    z_log(t, buf, n);
+static inline Bytes buf_rem(Bytes buf, size_t len) {
+    return (Bytes){buf.ptr+len, buf.len-len};
 }
 
 static inline bool releaseOnly(ZThread* t, HeapObject* obj) {
     ObjectHeader* head = (ObjectHeader*)((intptr_t)obj - 8);
 
 #if TRACE
+    char buf_arr[128];
+    Bytes buf = (Bytes){buf_arr, sizeof(buf_arr)};
+
     if (zCheckDoubleFree(t, obj)) {
-        char buf[128];
-        int len = snprintf(buf, sizeof(buf), "%p at t%d@%p(code=%u)", obj, t->c.id, (Inst*)t->heap.c.ctx, *(Inst*)t->heap.c.ctx);
-        Str title = str("double free");       
-        Str msg = (Str){&buf[0], len};
+        size_t len = 0;
+        len += z_write_ptr(buf_rem(buf, len), obj);
+        len += write_str(buf_rem(buf, len), " at t");
+        len += z_write_u64(buf_rem(buf, len), t->c.id);
+        len += write_str(buf_rem(buf, len), "@");
+        len += z_write_ptr(buf_rem(buf, len), (Inst*)t->heap.c.ctx);
+        len += write_str(buf_rem(buf, len), "(code=");
+        len += z_write_u64(buf_rem(buf, len), *(Inst*)t->heap.c.ctx);
+        len += write_str(buf_rem(buf, len), ")");
+        Bytes title = BYTES("double free");       
+        Bytes msg = (Bytes){buf_arr, len};
         zPrintTraceAtPc(t, t->heap.c.ctx, title, msg);
         zDumpObjectTrace(t, obj);
         zFatal();
     }
     TRACEV_IF(LOG_MEM,
-        Str name = zGetTypeName(t->c.vm, OBJ_TYPEID(obj));
-        tlog(t, "t%d: vmc | %d -1 | %.*s, %p", t->c.id, head->rc, name.len, name.ptr, obj);
+        Bytes name = zGetTypeName(t->c.vm, OBJ_TYPEID(obj));
+        size_t len = 0;
+        len += write_str(buf_rem(buf, len), "t");
+        len += z_write_u64(buf_rem(buf, len), t->c.id);
+        len += write_str(buf_rem(buf, len), ": vmc | ");
+        len += z_write_u64(buf_rem(buf, len), head->rc);
+        len += write_str(buf_rem(buf, len), " -1 | ");
+        len += write_str_len(buf_rem(buf, len), name.ptr, name.len);
+        len += write_str(buf_rem(buf, len), ", ");
+        len += z_write_ptr(buf_rem(buf, len), obj);
+        z_log(t, buf_arr, len);
     )
 #endif
     head->rc -= 1;
 #if TRACE
     if (t->heap.c.refCounts == 0) {
-        tlog(t, "Double free. %d", OBJ_TYPEID(head));
+        size_t len = 0;
+        len += write_str(buf_rem(buf, len), "Double free. ");
+        len += z_write_u64(buf_rem(buf, len), OBJ_TYPEID(head));
+        z_log(t, buf_arr, len);
         zFatal();
     }
     t->heap.c.refCounts -= 1;
@@ -112,8 +149,16 @@ static inline void release(ZThread* t, HeapObject* obj) {
 
 static inline void freeObject(ZThread* t, HeapObject* obj, size_t size) {
     TRACEV_IF(LOG_MEM,
-        Str name = zGetTypeName(t->c.vm, OBJ_TYPEID(obj));
-        tlog(t, "free %.*s %p", name.len, name.ptr, obj);
+        Bytes name = zGetTypeName(t->c.vm, OBJ_TYPEID(obj));
+
+        char buf_arr[128];
+        Bytes buf = (Bytes){buf_arr, sizeof(buf_arr)};
+        size_t len = 0;
+        len += write_str(buf_rem(buf, len), "free ");
+        len += write_str_len(buf_rem(buf, len), name.ptr, name.len);
+        len += write_str(buf_rem(buf, len), " ");
+        len += z_write_ptr(buf_rem(buf, len), obj);
+        z_log(t, buf_arr, len)
     )
     if (size <= 8 * 4) {
         zFreePoolObject(t, obj);
@@ -122,24 +167,49 @@ static inline void freeObject(ZThread* t, HeapObject* obj, size_t size) {
     }
 }
 
+// For debugging.
+void z_dump_stack_trace2() {
+    z_dump_stack_trace(cur_thread);
+}
+
 static inline void retain(ZThread* t, HeapObject* obj) {
-    ObjectHeader* head = (ObjectHeader*)((intptr_t)obj - 8);
-    TRACEV_IF(LOG_MEM,
-        Str name = zGetTypeName(t->c.vm, OBJ_TYPEID(obj));
-        tlog(t, "t%d: vmc | %d +1 | %.*s, %p", t->c.id, head->rc, name.len, name.ptr, obj);
-    )
-    head->rc += 1;
+    ObjectHeader* head = (ObjectHeader*)((intptr_t)obj - 8); 
 #if TRACE
+    char buf_arr[128];
     if (zCheckRetainDanglingPointer(t, obj)) {
-        char buf[128];
-        int len = snprintf(buf, sizeof(buf), "%p at pc: %p(code=%u)", obj, (Inst*)t->heap.c.ctx, *((Inst*)t->heap.c.ctx));
-        Str title = str("retain dangling ptr");       
-        Str msg = (Str){&buf[0], len};
+        Bytes buf = (Bytes){buf_arr, sizeof(buf_arr)};
+        size_t len = 0;
+        len += z_write_ptr(buf_rem(buf, len), obj);
+        len += write_str(buf_rem(buf, len), " at t");
+        len += z_write_u64(buf_rem(buf, len), t->c.id);
+        len += write_str(buf_rem(buf, len), "@");
+        len += z_write_ptr(buf_rem(buf, len), (Inst*)t->heap.c.ctx);
+        len += write_str(buf_rem(buf, len), "(code=");
+        len += z_write_u64(buf_rem(buf, len), *(Inst*)t->heap.c.ctx);
+        len += write_str(buf_rem(buf, len), ")");
+        Bytes title = BYTES("retain dangling ptr");
+        Bytes msg = (Bytes){buf_arr, len};
         zPrintTraceAtPc(t, t->heap.c.ctx, title, msg);
         zDumpObjectTrace(t, obj);
         zFatal();
     }
+    if (clVerbose && LOG_MEM) {
+        Bytes buf = (Bytes){buf_arr, sizeof(buf_arr)};
+
+        size_t len = 0;
+        len += write_str(buf_rem(buf, len), "t");
+        len += z_write_u64(buf_rem(buf, len), t->c.id);
+        len += write_str(buf_rem(buf, len), ": vmc | ");
+        len += z_write_u64(buf_rem(buf, len), head->rc);
+        len += write_str(buf_rem(buf, len), " +1 | ");
+        Bytes name = zGetTypeName(t->c.vm, OBJ_TYPEID(obj));
+        len += write_str_len(buf_rem(buf, len), name.ptr, name.len);
+        len += write_str(buf_rem(buf, len), ", ");
+        len += z_write_ptr(buf_rem(buf, len), obj);
+        z_log(t, buf_arr, len);
+    }
 #endif
+    head->rc += 1;
 #if TRACE
     t->heap.c.refCounts += 1;
     t->heap.c.numRetains += 1;
@@ -194,8 +264,8 @@ static inline HeapObjectResult allocObjectInit(ZThread* t, TypeId typeId, u16 si
 
 static inline String static_str(ZThread* t, u8* ptr, u32 len, bool ascii) {
     return (String){
-        .buf = 0,
-        .ptr = (u64)ptr,
+        .buf = NULL,
+        .ptr = ptr,
         .len = len | (ascii?(u64)1 << 63:0),
     };
 }
@@ -228,7 +298,10 @@ static i64 ipow(i64 b, i64 e) {
 static void panicStaticMsg(ZThread* t, const char* msg) {
     t->c.panic_payload = (u64)msg | (((u64)(strlen(msg))) << 48);
     t->c.panic_type = PANIC_STATIC_MSG;
-    TRACEV(tlog(t, "%s", msg));
+    TRACEV(
+        size_t len = strlen(msg);
+        z_log(t, msg, len);
+    );
 }
 
 static inline void panicDivisionByZero(ZThread* t) {
@@ -494,6 +567,7 @@ ResultCode execBytecode(ZThread* t) {
         JENTRY(NOP32),
         JENTRY(NOPS),
         JENTRY(TRAP),
+        JENTRY(TRAP_DEBUG),
         JENTRY(END),
     };
     STATIC_ASSERT(sizeof(jumpTable) == (CodeEND + 1) * sizeof(void*), JUMP_TABLE_INCOMPLETE);
@@ -539,9 +613,7 @@ beginSwitch:
         u32 len = ptr_len >> 48;
         bool ascii = pc[11];
         String res = static_str(t, ptr, len, ascii);
-        stack[dst] = res.buf;
-        stack[dst+1] = res.ptr;
-        stack[dst+2] = res.len;
+        *(String*)&stack[dst] = res;
         pc += 12;
         NEXT();
     }
@@ -800,7 +872,7 @@ beginSwitch:
         NEXT();
     }
     CASE(Release): {
-        if (!releaseOnly(t, (HeapObject*)stack[READ_U16(1)])) {
+        if (!releaseOnly(t, (HeapObject*)(size_t)stack[READ_U16(1)])) {
             pc += (uintptr_t)READ_I16(3);
             NEXT();
         }
@@ -1032,7 +1104,20 @@ beginSwitch:
             pc += 7;
             NEXT();
         }
-        stack[dst] = (strncmp(VALUE_GET_STRPTR(a), VALUE_GET_STRPTR(b), len) == 0);
+
+        const char* a_ptr = VALUE_GET_STRPTR(a);
+        const char* b_ptr = VALUE_GET_STRPTR(b);
+        while (len > 0) {
+            if (*a_ptr != *b_ptr) {
+                stack[dst] = 0;
+                pc += 7;
+                NEXT();
+            }
+            a_ptr += 1;
+            b_ptr += 1;
+            len -= 1;
+        }
+        stack[dst] = 1;
         pc += 7;
         NEXT();
     }
@@ -1064,7 +1149,7 @@ beginSwitch:
         F32_BINOP(stack[dst] = VALUE_F32(left / right))
     }
     CASE(FMOD32): {
-        F32_BINOP(stack[dst] = VALUE_F32(fmodf(left, right)))
+        F32_BINOP(stack[dst] = VALUE_F32(__builtin_fmodf(left, right)))
     }
     CASE(FNEG32): {
         F32_UNOP(stack[dst] = VALUE_F32(-val))
@@ -1120,7 +1205,7 @@ beginSwitch:
         FLOAT_BINOP(stack[dst] = VALUE_FLOAT(left / right))
     }
     CASE(FMOD): {
-        FLOAT_BINOP(stack[dst] = VALUE_FLOAT(fmod(left, right)))
+        FLOAT_BINOP(stack[dst] = VALUE_FLOAT(__builtin_fmod(left, right)))
     }
     CASE(FNEG): {
         FLOAT_UNOP(stack[dst] = VALUE_FLOAT(-val))
@@ -1170,7 +1255,6 @@ beginSwitch:
         u16 dst = READ_U16(1);
         Value val = stack[READ_U16(3)];
         if (val != 0) {
-            retain(t, (HeapObject*)val);
             stack[dst] = val;
             pc += 5;
             NEXT();
@@ -1363,15 +1447,15 @@ beginSwitch:
         NEXT();
     }
     CASE(RetainNZ): {
-        Value val = stack[pc[1]];
-        if (val != 0) {
-            retain(t, (HeapObject*)val);
+        size_t addr = stack[pc[1]];
+        if (addr != 0) {
+            retain(t, (HeapObject*)addr);
         }
         pc += 2;
         NEXT();
     }
     CASE(Retain): {
-        retain(t, (HeapObject*)stack[READ_U16(1)]);
+        retain(t, (HeapObject*)(size_t)stack[READ_U16(1)]);
         pc += 3;
         NEXT();
     }
@@ -1542,14 +1626,14 @@ beginSwitch:
     CASE(FABS): {
         u16 dst = READ_U16(1);
         f64 val = BITCAST(f64, stack[READ_U16(3)]);
-        stack[dst] = BITCAST(u64, fabs(val));
+        stack[dst] = BITCAST(u64, __builtin_fabs(val));
         pc += 5;
         NEXT();
     }
     CASE(F32ABS): {
         u16 dst = READ_U16(1);
         f32 val = *(f32*)&stack[READ_U16(3)];
-        stack[dst] = BITCAST(u32, fabsf(val));
+        stack[dst] = BITCAST(u32, __builtin_fabsf(val));
         pc += 5;
         NEXT();
     }
@@ -1600,6 +1684,14 @@ beginSwitch:
         DUMP_OP()
         panicStaticMsg(t, "Reached trap.");
         RETURN(RES_PANIC);
+    }
+    CASE(TRAP_DEBUG): {
+        DUMP_OP()
+#if TRACE
+        __builtin_debugtrap();
+#endif
+        pc += 1;
+        NEXT();
     }
     CASE(END): {
         // t->c.pc = pc + 2;

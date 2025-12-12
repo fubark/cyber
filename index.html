@@ -1054,7 +1054,7 @@ strong {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 482-830adda</div>
+    <div class="sub-title">v0.4-dev 487-99baa59</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="api.html">API Docs</a></li>
@@ -3612,8 +3612,8 @@ print(gen.status())
 <li><a href="#compile-time-types" title="">Compile-time types.</a><ul>
 <li><a href="#type-type" title=""><code>type</code> type.</a></li>
 <li><a href="#fnsym-type" title=""><code>fnsym</code> type.</a></li>
-<li><a href="#str_lit-type" title=""><code>str_lit</code> type.</a></li>
-<li><a href="#int_lit-type" title=""><code>int_lit</code> type.</a></li>
+<li><a href="#evalstr-type" title=""><code>EvalStr</code> type.</a></li>
+<li><a href="#evalint-type" title=""><code>EvalInt</code> type.</a></li>
 </ul>
 </li>
 <li><a href="#attributes" title="">Attributes.</a></li>
@@ -3782,11 +3782,11 @@ fn my_hash(s str) -> int:
 m := IntMap[str, my_hash]{}
 </code></pre>
 <a href="#metaprogramming">^topic</a>
-<h3 id="str_lit-type"><code>str_lit</code> type. <a href="#str_lit-type">#</a></h3>
-<p><code>str_lit</code> can be expanded to a <code>str</code>, <code>[]byte</code>, zero terminated <code>Ptr[byte]</code>, <code>int</code>, or <code>byte</code>.</p>
+<h3 id="evalstr-type"><code>EvalStr</code> type. <a href="#evalstr-type">#</a></h3>
+<p><code>EvalStr</code> can be expanded to a <code>str</code>, <code>[]byte</code>, zero terminated <code>Ptr[byte]</code>, <code>int</code>, or <code>byte</code>.</p>
 <a href="#metaprogramming">^topic</a>
-<h3 id="int_lit-type"><code>int_lit</code> type. <a href="#int_lit-type">#</a></h3>
-<p><code>int_lit</code> can be expanded to different integer types. Currently, it has the extent of an <code>int</code> type.</p>
+<h3 id="evalint-type"><code>EvalInt</code> type. <a href="#evalint-type">#</a></h3>
+<p><code>EvalInt</code> can be expanded to different integer types. Currently, it has the extent of an <code>int</code> type.</p>
 <a href="#metaprogramming">^topic</a>
 <h2 id="attributes">Attributes. <a href="#attributes">#</a></h2>
 <p><em>TBD</em></p>

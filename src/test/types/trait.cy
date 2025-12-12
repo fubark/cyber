@@ -8,7 +8,7 @@ type Circle:
     radius float
 
 fn (&Circle) area() -> float:
-    return 3.14 * $radius**2
+    return 3.14 * self.radius**2
 
 type Rectangle:
     with Shape
@@ -16,7 +16,7 @@ type Rectangle:
     height float
 
 fn (&Rectangle) area() -> float:
-    return $width * $height
+    return self.width * self.height
 
 var s ^Dyn[Shape] = ^Circle{radius=2}
 test.eqNear(s.area(), 12.56)

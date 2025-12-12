@@ -70,7 +70,6 @@ pub const TokenType = enum(u8) {
     cunion_k,
     dec,
     dec_u,
-    dollar,
     dot,
     dot2,
     dot_bang,
@@ -402,7 +401,6 @@ pub const Tokenizer = struct {
                 consumeIdent(t);
                 try t.pushToken(.at_ident, start);
             },
-            '$' => try t.pushToken(.dollar, start),
             '-' => {
                 const next = peek(t);
                 if (next == '-') {
@@ -1215,6 +1213,6 @@ test "tokenizer internals." {
     try tt.eq(@alignOf(Token), 4);
     try tt.eq(@sizeOf(TokenizeState), 5);
 
-    try tt.eq(111, std.enums.values(TokenType).len);
+    try tt.eq(110, std.enums.values(TokenType).len);
     try tt.eq(39, keywords.kvs.len);
 }

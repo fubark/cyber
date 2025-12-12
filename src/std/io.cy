@@ -30,8 +30,8 @@ fn Scanner :: @init(scope reader &%T, buf_size int) -> scope Scanner[T]:
 
 fn (&Scanner[]) read_full() -> !void:
     -- Read until buffer is filled or end of file.
-    while $end < $buf.len():
-        $end += $reader.read($buf.span()[$end..]) !else |err|:
+    while self.end < self.buf.len():
+        self.end += self.reader.read(self.buf.span()[self.end..]) !else |err|:
             if err == error.EndOfFile:
                 break
             return err
@@ -44,42 +44,42 @@ type NextRange:
     advance_end int
 
 fn (&Scanner[]) next(next_fn ScannerNextFn) -> !?[]byte:
-    if $cur == $end and $end < $buf.len():
+    if self.cur == self.end and self.end < self.buf.len():
         -- EOF
         return none
 
-    if $cur == $end:
-        $cur = 0
-        $end = 0
-        $read_full()!
+    if self.cur == self.end:
+        self.cur = 0
+        self.end = 0
+        self.read_full()!
 
-    if next_fn($buf.span()[$cur..$end])! |range|:
-        slice := $buf[$cur+range.start..$cur+range.end]
-        $cur += range.advance_end
+    if next_fn(self.buf.span()[self.cur..self.end])! |range|:
+        slice := self.buf[self.cur+range.start..self.cur+range.end]
+        self.cur += range.advance_end
         return slice
 
     -- Start building the result.
-    res := $buf[$cur..$end]
-    $cur = $end
+    res := self.buf[self.cur..self.end]
+    self.cur = self.end
 
     while true:
-        if $cur == $end and $end < $buf.len():
+        if self.cur == self.end and self.end < self.buf.len():
             -- EOF
             return none
 
-        if $cur == $end:
-            $cur = 0
-            $end = 0
-            $read_full()!
+        if self.cur == self.end:
+            self.cur = 0
+            self.end = 0
+            self.read_full()!
 
-        if next_fn($buf.span()[$cur..$end])! |range|:
-            slice := $buf[$cur+range.start..$cur+range.end]
-            $cur += range.advance_end
+        if next_fn(self.buf.span()[self.cur..self.end])! |range|:
+            slice := self.buf[self.cur+range.start..self.cur+range.end]
+            self.cur += range.advance_end
             return res + slice
 
         -- Save partial.
-        res += $buf[$cur..$end]
-        $cur = $end
+        res += self.buf[self.cur..self.end]
+        self.cur = self.end
     return none
 
 --| Returns the next line that ends with `\n`, `\r`, `\r\n`, or until the EOF.
@@ -93,7 +93,7 @@ fn (&Scanner[]) next_line() -> !?[]byte:
         if span[advance_end] == '\n':
             advance_end += 1
         return NextRange{start=0, end=idx, advance_end=advance_end}
-    return $next(next)
+    return self.next(next)
 
 type Writer trait:
     fn write(bytes [&]byte) -> !int
@@ -107,16 +107,16 @@ type StrReader:
     idx int = 0
 
 fn (&StrReader) read(buf [&]byte) -> !int:
-    vlen := $val.len()
-    if $idx == vlen:
+    vlen := self.val.len()
+    if self.idx == vlen:
         return error.EndOfFile
 
-    rest := as[[&]byte] $val.as_ptr_span()[$idx..]
+    rest := as[[&]byte] self.val.as_ptr_span()[self.idx..]
     if rest.length < buf.length:
         buf[0..rest.length].set(rest)
-        $idx = vlen
+        self.idx = vlen
         return rest.length
     else:
         buf.set(rest[0..buf.len()])
-        $idx += buf.len()
+        self.idx += buf.len()
         return buf.len()

@@ -13,11 +13,11 @@ fn Foo[] :: foo(a T) -> T:
     return ret
 
 fn (&Foo[]) get() -> T:
-    ret := as[T] $a
+    ret := as[T] self.a
     return ret
 
 fn (&Foo[]) set(a T):
-    $a = a
+    self.a = a
 
 -- Static function.
 test.eq(Foo[int].foo(123), 123)

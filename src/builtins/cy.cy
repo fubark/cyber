@@ -68,8 +68,6 @@ type Node enum:
     case dec_lit             Literal
     case dec_u               void
     case deref               void
-    case dollar              void
-    case dollar_lit          void
     case dot                 void
     case dot_lit             Literal
     case else_block          void
@@ -235,7 +233,7 @@ fn (&Node) end() -> int:
                 case .fallthrough:
                     switch node.data:
                         else:
-                            return $pos() + 4
+                            return self.pos() + 4
         -- .catchStmt      => {
         --     const catch_stmt = self.cast(.catchStmt);
         --     return catch_stmt.stmts[catch_stmt.stmts.len-1].end();
@@ -519,7 +517,7 @@ fn (&Node) end() -> int:
         else: panic("TODO end: %{meta.choice_tag(self.*)}")
 
 fn (&Node) pos() -> int:
-    switch $.*:
+    switch self.*:
         -- .null           => cy.NullId,
         -- .all            => self.cast(.all).pos,
         case .access_expr |node|: return node.left.pos()
@@ -642,7 +640,7 @@ fn (&Node) pos() -> int:
 type ZNode
 
 fn (&ZNode) type() -> Node.Tag:
-    tag_ptr := as[Ptr[byte]](@unsafeCast(int, $) - 1)
+    tag_ptr := as[Ptr[byte]](@unsafeCast(int, self) - 1)
     return @intToEnum(Node.Tag, tag_ptr.*)
 
 type CaseData enum:
@@ -767,7 +765,7 @@ type Literal:
     value str
 
 fn (&Literal) end() -> int:
-    return $pos + $value.len()
+    return self.pos + self.value.len()
 
 type SwitchBlock:
     expr ^Node
@@ -813,7 +811,7 @@ type Ident:
     name str
 
 fn (&Ident) end() -> int:
-    return $pos + $name.len()
+    return self.pos + self.name.len()
 
 type TypeConstDecl:
     name ^Node
@@ -1126,42 +1124,42 @@ type ParseResult:
     comments []Comment
 
 fn (&ParseResult) node_text(node ^Node) -> str:
-    return $src[node.pos()..node.end()]
+    return self.src[node.pos()..node.end()]
 
 fn (&ParseResult) stmt_docs(stmt ^Node) -> ?str:
-    comment_idx := binary_search_lower($comments.len(), stmt.pos(), &|pos, idx|):
-        if pos < $comments[idx].pos:
+    comment_idx := binary_search_lower(self.comments.len(), stmt.pos(), &|pos, idx|):
+        if pos < self.comments[idx].pos:
             return .lt
-        else pos > $comments[idx].pos:
+        else pos > self.comments[idx].pos:
             return .gt
         else:
             return .eq
 
-    if comment_idx == $comments.len():
+    if comment_idx == self.comments.len():
         return none
 
     if comment_idx > 0:
         comment_idx -= 1
 
-    comment := $comments[comment_idx]
-    comment_text := $src[comment.pos..comment.end]
+    comment := self.comments[comment_idx]
+    comment_text := self.src[comment.pos..comment.end]
 
     if comment_text.len() < 3 or !comment_text.starts_with('--|'):
         return none
 
-    if !is_adjacent_stmt($src, comment.end, stmt.pos()):
+    if !is_adjacent_stmt(self.src, comment.end, stmt.pos()):
         return none
 
     res := comment_text[3..].trim(' ')
 
     -- Accumulate adjacent comments.
     for comment_idx-1..>=0 |i|:
-        comment = $comments[i]
-        comment_text = $src[comment.pos..comment.end]
+        comment = self.comments[i]
+        comment_text = self.src[comment.pos..comment.end]
         if comment_text.len() < 3 or !comment_text.starts_with('--|'):
             break
 
-        if !is_adjacent_stmt($src, comment.end, $comments[i+1].pos):
+        if !is_adjacent_stmt(self.src, comment.end, self.comments[i+1].pos):
             break
 
         res = comment_text[3..].trim(' ') + ' ' + res
@@ -1198,7 +1196,7 @@ type ZParser:
     inner Ptr[void]
 
 fn (&ZParser) @deinit():
-    destroy_parser($inner)
+    destroy_parser(self.inner)
 
 fn new_parser() -> ZParser:
     return {inner=_new_parser()}
@@ -1247,30 +1245,30 @@ fn (&Value) object_type() -> int:
     panic('Unsupported')
 
 fn (&Value) as_int() -> int:
-    return (as[Ptr[int]] $ptr).*
+    return (as[Ptr[int]] self.ptr).*
 
 fn (&Value) as_bool() -> bool:
-    return (as[Ptr[bool]] $ptr).*
+    return (as[Ptr[bool]] self.ptr).*
 
 fn (&Value) as_float() -> float:
-    return (as[Ptr[float]] $ptr).*
+    return (as[Ptr[float]] self.ptr).*
 
 fn (&Value) as_str() -> str:
-    s := as[Ptr[str]] $ptr
+    s := as[Ptr[str]] self.ptr
     return str(s.ptr[0..s.len()])
 
 fn (&Value) to_host(val_t int) -> Object:
     switch val_t:
         case TypeBool:
-            return Object(^$as_bool())
+            return Object(^self.as_bool())
         case TypeInt:
-            return Object(^$as_int())
+            return Object(^self.as_int())
         case TypeFloat:
-            return Object(^$as_float())
+            return Object(^self.as_float())
         case TypeStr:
-            return Object(^$as_str())
+            return Object(^self.as_str())
         else:
-            return Object(^TypeValue{val_t=val_t, ptr=$ptr})
+            return Object(^TypeValue{val_t=val_t, ptr=self.ptr})
 
 type TypeValue:
     val_t int
@@ -1293,7 +1291,7 @@ fn VM :: @init() -> VM
 fn (&VM) @deinit()
 
 fn (&VM) eval(code str) -> EvalResult:
-    return $eval('eval', code, {})
+    return self.eval('eval', code, {})
 
 #[bind]
 fn (&VM) eval(uri str, code str, config EvalConfig) -> EvalResult
@@ -1347,7 +1345,7 @@ type ReadLineFn = fn(prefix str) -> Future[str]
 
 fn (&REPL) read(read_line ReadLineFn) -> ?str:
     while:
-        prefix := $prefix()
+        prefix := self.prefix()
         future := read_line(prefix)
         input := future.await()
 
@@ -1355,48 +1353,48 @@ fn (&REPL) read(read_line ReadLineFn) -> ?str:
             return none
 
         if input.ends_with(':'):
-            $input_buffer += input
-            $indent += 1
+            self.input_buffer += input
+            self.indent += 1
             continue
 
-        if $input_buffer.len() == 0:
+        if self.input_buffer.len() == 0:
             return input
 
         if input.len() == 0:
-            $indent -= 1
-            if $indent > 0:
+            self.indent -= 1
+            if self.indent > 0:
                 continue
             else:
                 -- Build input and submit.
-                input = $input_buffer
-                $input_buffer = ''
+                input = self.input_buffer
+                self.input_buffer = ''
                 return input
         else:
-            $input_buffer += "\n"
-            $input_buffer += ' '.repeat($indent * 4)
-            $input_buffer += input
+            self.input_buffer += "\n"
+            self.input_buffer += ' '.repeat(self.indent * 4)
+            self.input_buffer += input
             continue
 
 fn (&REPL) eval_print(code str):
-    res := $vm.eval('eval', code, { persist_main=true })
+    res := self.vm.eval('eval', code, { persist_main=true })
     if res.code != Success:
         if res.code == ErrorCompile:
-            report := $vm.compile_error_summary()
+            report := self.vm.compile_error_summary()
             eprint(report)
         else res.code == ErrorPanic:
-            report := $vm.panic_summary()
+            report := self.vm.panic_summary()
             eprint(report)
         else:
             eprint('Unknown error')
         return
 
     if res.val_t != TypeVoid:
-        dump := $vm.value_desc(res.val_t, res.value)
+        dump := self.vm.value_desc(res.val_t, res.value)
         print(dump)
 
 fn (&REPL) prefix() -> str:
-    head := if ($indent == 0) '> ' else '| '
-    s := ' '.repeat($indent * 4)
+    head := if (self.indent == 0) '> ' else '| '
+    s := ' '.repeat(self.indent * 4)
     return s + head
 
 type UnaryOp enum:

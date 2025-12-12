@@ -259,7 +259,7 @@ fn error :: @init(val symbol) -> error:
 
 --| Return the underlying `symbol`.
 fn (error) sym() -> symbol:
-    return as $
+    return as self
 
 #[bind] type EvalInt _
 
@@ -350,19 +350,19 @@ fn Raw[] :: @init(x %T) -> Self:
 #[reserve] fn (Raw[]) `>>`(right Self) -> Self
 
 fn (Raw[]) fmt() -> str:
-    return $fmt(.hex)
+    return self.fmt(.hex)
 
 --| Formats the integer (interpreted as unsigned) using a NumberFormat.
 fn (Raw[]) fmt(format NumberFormat) -> str:
     switch format:
         case .bin:
-            return '0b' + raw_fmt($, format)
+            return '0b' + raw_fmt(self, format)
         case .oct:
-            return '0o' + raw_fmt($, format)
+            return '0o' + raw_fmt(self, format)
         case .hex:
-            return '0x' + raw_fmt($, format)
+            return '0x' + raw_fmt(self, format)
         else:
-            return raw_fmt($, format)
+            return raw_fmt(self, format)
 
 #[bind] fn raw_fmt(x r64, format NumberFormat) -> str
 
@@ -518,7 +518,7 @@ fn (Int[]) asr(right Self) -> Self:
 fn @asr(x Int[%Bits], amt Int[Bits])
 
 fn (Int[]) `**`(e Self) -> Self:
-    b := $
+    b := self 
     if e < 0:
         if b == 1 and e == -1:
             return 1
@@ -537,11 +537,11 @@ fn (Int[]) `**`(e Self) -> Self:
     return result
 
 fn (Int[]) fmt() -> str:
-    return $fmt(.dec)
+    return self.fmt(.dec)
 
 --| Formats the integer using a NumberFormat.
 fn (Int[]) fmt(format NumberFormat) -> str:
-    return int_fmt($, format)
+    return int_fmt(self, format)
 
 -- --| `opts.pad` provides the ASCII rune that is used for padding with a string length of `config.width`.
 -- #[bind='int.fmt2']
@@ -551,11 +551,11 @@ fn (Int[]) fmt(format NumberFormat) -> str:
 #[bind] fn int_fmt(x int, format NumberFormat) -> str
 
 fn (Int[]) ufmt() -> str:
-    return $ufmt(.dec)
+    return self.ufmt(.dec)
 
 --| Formats the integer (interpreted as unsigned) using a NumberFormat.
 fn (Int[]) ufmt(format NumberFormat) -> str:
-    return (as[r64] $).fmt(format)
+    return (as[r64] self).fmt(format)
 
 #[bind] fn @bitTrunc(%T type, src Code) -> T
 
@@ -632,9 +632,9 @@ fn Float[] :: @init(x %T) -> Self:
 #[reserve] fn (Float[]) `%`(right Self) -> Self
 fn (Float[]) `**`(right Self) -> Self:
     #if Bits == 64:
-        return float_pow($, right)
+        return float_pow(self, right)
     #else:
-        return float_pow32($, right)
+        return float_pow32(self, right)
 
 fn (Float[]) abs() -> Self:
     return @fabs(self)
@@ -643,9 +643,9 @@ fn (Float[]) abs() -> Self:
 
 fn (Float[]) fmt() -> str:
     #if Self == float:
-        return f64_fmt($)
+        return f64_fmt(self)
     #else Self == f32:
-        return f32_fmt($)
+        return f32_fmt(self)
     #else:
         meta.unsupported()
 
@@ -660,49 +660,49 @@ fn Object :: @init(ref ^%T) -> Object:
     return {inner=as ref}
 
 fn (&Object) @copy() -> Self:
-    @retain($inner)
+    @retain(self.inner)
     return {
-        inner = $inner,
+        inner = self.inner,
     }
 
 fn (&Object) @deinit():
-    if @releaseOnly($inner):
-        @destructBox($inner)
+    if @releaseOnly(self.inner):
+        @destructBox(self.inner)
 
 fn (&Object) downcast(%Ref type) -> Ref:
     #exp_t := type.info(Ref).!ref.child
-    if $type() == type.id(exp_t):
-        @retain($inner)
-        return as $inner
+    if self.type() == type.id(exp_t):
+        @retain(self.inner)
+        return as self.inner
     else:
-        panic('Downcast expected `%{type.name(Ref)}` typeid=%{type.id(exp_t)}, found typeid=%{$type()}.')
+        panic('Downcast expected `%{type.name(Ref)}` typeid=%{type.id(exp_t)}, found typeid=%{self.type()}.')
     
 #[bind] fn (&Object) type() -> int
 
 fn (&Object) toString() -> str:
-    obj_type := $type()
+    obj_type := self.type()
     switch obj_type:
         case type.id(bool):
-            value := (as[^bool] $inner).*
+            value := (as[^bool] self.inner).*
             return if (value) 'true' else 'false'
         case type.id(r8)
         case type.id(r16)
         case type.id(r32)
         case type.id(r64):
-            return (as[^r64] $inner).*.fmt()
+            return (as[^r64] self.inner).*.fmt()
         case type.id(i8)
         case type.id(i16)
         case type.id(i32)
         case type.id(int):
-            return (as[^int] $inner).*.fmt()
+            return (as[^int] self.inner).*.fmt()
         case type.id(float):
-            return (as[^float] $inner).*.fmt()
+            return (as[^float] self.inner).*.fmt()
         case type.id(error):
-            return 'error.' + (as[^error] $inner).*.sym().name()
+            return 'error.' + (as[^error] self.inner).*.sym().name()
         case type.id(symbol):
-            return '@' + (as[^symbol] $inner).*.name()
+            return '@' + (as[^symbol] self.inner).*.name()
         case type.id(str):
-            return (as[^str] $inner).*
+            return (as[^str] self.inner).*
         else:
             return 'Object'
 
@@ -728,21 +728,21 @@ fn RawBuffer[] :: @init(nelems int) -> ^Self:
     return as move ptr
 
 fn (&RawBuffer[]) @size() -> int:
-    return 8 + $length * type.size(T)
+    return 8 + self.length * type.size(T)
 
 fn (&RawBuffer[]) elems() -> PtrSpan[T]:
-    return (as[Ptr[T]] *$data)[0..$length]
+    return (as[Ptr[T]] *self.data)[0..self.length]
 
 fn (&RawBuffer[]) elems_ptr() -> Ptr[T]:
-    return as *$data
+    return as *self.data
 
 fn (&RawBuffer[]) len() -> int:
-    return $length
+    return self.length
 
 fn (&RawBuffer[]) @deinit():
     #if type.managed(T):
-        buf := as[Ptr[T]] *$data
-        for 0..$length |i|:
+        buf := as[Ptr[T]] *self.data
+        for 0..self.length |i|:
             @destruct(T, buf + i)
 
 --| An implicit trait that describes a type that allows implicit copying.
@@ -778,42 +778,42 @@ type Ex[T Any]:
 fn (&Ex[]) ex_borrow() -> RtExBorrow[T]:
     -- TODO: Check for trait instead.
     #if meta.has_decl(T, '$acquire_ex_borrow'):
-        if !$inner.@acquire_borrow():
+        if !self.inner.@acquire_borrow():
             panic('Cannot acquire exclusive borrow.')
-        return @unsafeCast(&&T, &$inner)
+        return @unsafeCast(&&T, &self.inner)
     #else:
-        if $inner.ex_borrow:
+        if self.inner.ex_borrow:
             panic('Cannot acquire exclusive borrow.')
-        $inner.ex_borrow = true
+        self.inner.ex_borrow = true
         return @unsafeCast(&&T, &inner.child)
 
 fn (&Ex[]) borrow() -> RtBorrow[T]:
     #if meta.has_decl(T, '$acquire_ex_borrow'):
-        switch $inner.@acquire_borrow():
+        switch self.inner.@acquire_borrow():
             case @ex_borrowed:
                 panic('Cannot acquire borrow.')
             case @borrowed:
                 return {
-                    ptr = &$inner,
+                    ptr = &self.inner,
                     acquired = false,
                 }
             case @acquired:
                 return {
-                    ptr = &$inner,
+                    ptr = &self.inner,
                     acquired = true,
                 }
     #else:
-        if $inner.ex_borrow:
+        if self.inner.ex_borrow:
             panic('Cannot acquire borrow.')
-        if $inner.borrow:
+        if self.inner.borrow:
             return {
-                ptr = &$inner.child,
+                ptr = &self.inner.child,
                 acquired = false,
             }
         else:
-            $inner.borrow = true
+            self.inner.borrow = true
             return {
-                ptr = &$inner.child,
+                ptr = &self.inner.child,
                 acquired = true,
             }
 
@@ -827,21 +827,21 @@ type RtExBorrow[T Any]:
 
 fn (&RtExBorrow[]) @deinit():
     #if meta.has_decl(T, '$acquire_ex_borrow'):
-        $inner.@release_ex_borrow()
+        self.inner.@release_ex_borrow()
     #else:
-        (as[ExDefaultInner[T]] $ptr).ex_borrow = false
+        (as[ExDefaultInner[T]] self.ptr).ex_borrow = false
 
 type RtBorrow[T Any]:
     ptr  Ptr[T]
     acquired bool
 
 fn (&RtBorrow[]) @deinit():
-    if !$acquired:
+    if !self.acquired:
         return
     #if meta.has_decl(T, '$acquire_ex_borrow'):
-        $ptr.@release_borrow()
+        self.ptr.@release_borrow()
     #else:
-        (as[ExDefaultInner[T]] $ptr).borrow = false
+        (as[ExDefaultInner[T]] self.ptr).borrow = false
 
 #[bind]
 type EvalBuffer[T Any] _
@@ -912,57 +912,57 @@ fn Buffer[] :: @init(n int, value T) -> Self:
     } 
 
 fn (&Buffer[]) @acquire_ex_borrow() -> bool:
-    if ($header && (1 << 63)) == 0:
-        $header ||= 1 << 63
+    if (self.header && (1 << 63)) == 0:
+        self.header ||= 1 << 63
         return true
     return false
 
 fn (&Buffer[]) @release_ex_borrow():
-    $header &&= ~(3 << 62)
+    self.header &&= ~(3 << 62)
 
 fn (&Buffer[]) @acquire_borrow() -> AcquireBorrowKind:
-    if ($header && (1 << 63)) != 0:
+    if (self.header && (1 << 63)) != 0:
         return @ex_borrowed
-    if ($header && (1 << 62)) == 0:
-        $header ||= 1 << 62
+    if (self.header && (1 << 62)) == 0:
+        self.header ||= 1 << 62
         return @acquired
     return @borrowed
 
 fn (&Buffer[]) @release_borrow():
-    $header &&= ~(3 << 62)
+    self.header &&= ~(3 << 62)
 
 fn (scope &Buffer[]) @index_addr(idx int) -> scope &T:
-    if idx.uge($length):
+    if idx.uge(self.length):
         panic_oob(idx)
     return @scope_ptr_to_borrow('self', self.base + idx)
 
 fn (&&Buffer[]) `<<`(elem T):
-    if $length == $cap():
+    if self.length == self.cap():
         panic('No more buffer space.')
-    @ptr_init($base + $length, elem)
-    $length += 1
+    @ptr_init(self.base + self.length, elem)
+    self.length += 1
 
 fn (scope &Buffer[]) span() -> scope [&]T:
-    return $[..]
+    return self[..]
 
 fn (scope &Buffer[]) @slice() -> scope [&]T:
     return {
         base   = @scope_ptr_to_borrow('self', self.base),
-        length = $length,
+        length = self.length,
     }
 
 fn (scope &Buffer[]) @slice(start int) -> scope [&]T:
-    if start > $length:
+    if start > self.length:
         panic_oob(start)
     return {
         base   = @scope_ptr_to_borrow('self', self.base + start),
-        length = $length - start,
+        length = self.length - start,
     }
 
 fn (scope &Buffer[]) @slice(start int, end int) -> scope [&]T:
-    if start > $length:
+    if start > self.length:
         panic_oob(start)
-    if end > $length:
+    if end > self.length:
         panic_oob(end)
     if end < start:
         panic('InvalidArgument')
@@ -973,42 +973,42 @@ fn (scope &Buffer[]) @slice(start int, end int) -> scope [&]T:
 
 fn (&Buffer[]) @deinit():
     #if type.managed(T):
-        for 0..$length |i|:
-            @destruct(T, $base + i)
-    free($base)
+        for 0..self.length |i|:
+            @destruct(T, self.base + i)
+    free(self.base)
 
 fn (&Buffer[]) cap() -> int:
-    return $header && ~(3 << 62)
+    return self.header && ~(3 << 62)
 
 fn (&Buffer[]) iterator() -> int:
     return 0
 
 fn (&Buffer[]) last() -> T:
-    return $[$length-1]
+    return self[self.length-1]
 
 fn (&Buffer[]) len() -> int:
-    return $length
+    return self.length
 
 fn (&Buffer[]) next(idx &int) -> ?T:
-    if idx.* == $length:
+    if idx.* == self.length:
         return none
 
-    val := $[idx.*]
+    val := self[idx.*]
     idx.* += 1
     return val
 
 --| Decreases the size of the Buffer to `new_len` elements.
 --| If the new size is smaller, elements at the end of the Buffer are removed.
 fn (&&Buffer[]) size_down(new_len int):
-    if new_len.ugt($length):
+    if new_len.ugt(self.length):
         panic('Invalid argument.')
-    if new_len == $length:
+    if new_len == self.length:
         return
 
     #if type.managed(T):
-        for new_len..$length |i|:
-            @destruct(T, $buf + i)
-    $length = new_len
+        for new_len..self.length |i|:
+            @destruct(T, self.buf + i)
+    self.length = new_len
 
 --| A dynamically sized data structure that contains a sequence of elements.
 --| Two copies initially point to the same element buffer and allow read/write to the elements.
@@ -1066,131 +1066,131 @@ fn Slice[] :: @init(n int, val T) -> Self:
 
 fn (&Slice[]) @deinit():
     #if type.managed(T):
-        buf := @unsafeCast(Ptr[RawBuffer[T]], $buf)
+        buf := @unsafeCast(Ptr[RawBuffer[T]], self.buf)
         if buf == none: return
         if !@isUniqueRef(buf): return
 
-        if $header >> 63 != 0:
+        if self.header >> 63 != 0:
             base := as[Ptr[T]] buf.elems_ptr()
             -- `header` contains the active length for a sub-slice.
-            for 0..$header && ~(1 << 63) |i|:
+            for 0..self.header && ~(1 << 63) |i|:
                 @destruct(T, base + i)
         else:
-            for 0..$_len |i|:
-                @destruct(T, $ptr + i)
+            for 0..self._len |i|:
+                @destruct(T, self.ptr + i)
 
 #[unsafe]
 fn (&Slice[]) as_ptr_span() -> PtrSpan[byte]:
     return {
-        ptr = $ptr,
-        length = $_len,
+        ptr = self.ptr,
+        length = self._len,
     }
 
 fn (scope &Slice[]) @index_addr(idx int) -> scope &T:
-    if idx.uge($_len):
+    if idx.uge(self._len):
         panic_oob(idx)
-    return @scope_ptr_to_borrow('self', as[Ptr[T]] $ptr + idx)
+    return @scope_ptr_to_borrow('self', as[Ptr[T]] self.ptr + idx)
 
 -- Old $index_addr kept for reference.
 -- fn (&Slice[]) @index_addr(idx int) -> RefChild[PartialBuffer[T], T]:
---     if idx.uge($length):
+--     if idx.uge(self.length):
 --         panic_oob(idx)
 --     return {
---         parent = $buf.?,
---         ptr    = $ptr + idx,
+--         parent = self.buf.?,
+--         ptr    = self.ptr + idx,
 --     }
 
 fn (&Slice[]) @index(idx int) -> T:
-    if idx.uge($_len):
+    if idx.uge(self._len):
         panic_oob(idx)
-    return $ptr[idx]
+    return self.ptr[idx]
 
 fn (&Slice[]) @set_index(idx int, val T):
-    if idx.uge($_len):
+    if idx.uge(self._len):
         panic_oob(idx)
-    $ptr[idx] = val
+    self.ptr[idx] = val
 
 fn (&Slice[]) @slice() -> []T:
-    if $header >> 63 != 0:
+    if self.header >> 63 != 0:
         -- sub-slice, preserve parent slice length in `header`.
         return {
-            buf   = $buf,
-            ptr   = $ptr,
-            _len  = $_len,
-            header = $header,
+            buf   = self.buf,
+            ptr   = self.ptr,
+            _len  = self._len,
+            header = self.header,
         }
     else:
         -- slice, return with sub-slice flag.
         return {
-            buf   = $buf,
-            ptr   = $ptr,
-            _len  = $_len,
-            header = $_len || (1 << 63),
+            buf   = self.buf,
+            ptr   = self.ptr,
+            _len  = self._len,
+            header = self._len || (1 << 63),
         }
 
 fn (&Slice[]) @slice(start int) -> []T:
-    if start > $_len:
+    if start > self._len:
         panic_oob(start)
 
-    if $header >> 63 != 0:
+    if self.header >> 63 != 0:
         -- sub-slice, preserve parent slice length in `header`.
         return {
-            buf   = $buf,
-            ptr   = $ptr + start,
-            _len  = $_len - start,
-            header = $header,
+            buf   = self.buf,
+            ptr   = self.ptr + start,
+            _len  = self._len - start,
+            header = self.header,
         }
     else:
         -- slice, return with sub-slice flag.
         return {
-            buf   = $buf,
-            ptr   = $ptr + start,
-            _len  = $_len - start,
-            header = $_len || (1 << 63),
+            buf   = self.buf,
+            ptr   = self.ptr + start,
+            _len  = self._len - start,
+            header = self._len || (1 << 63),
         }
 
 fn (&Slice[]) @slice(start int, end int) -> []T:
-    if start > $_len:
+    if start > self._len:
         panic_oob(start)
-    if end > $_len:
+    if end > self._len:
         panic_oob(end)
     if end < start:
         panic('InvalidArgument')
-    if $header >> 63 != 0:
+    if self.header >> 63 != 0:
         -- sub-slice, preserve parent slice length in `header`.
         return {
-            buf   = $buf,
-            ptr   = $ptr + start,
+            buf   = self.buf,
+            ptr   = self.ptr + start,
             _len  = end - start,
-            header = $header,
+            header = self.header,
         }
     else:
         -- slice, return with sub-slice flag.
         return {
-            buf   = $buf,
-            ptr   = $ptr + start,
+            buf   = self.buf,
+            ptr   = self.ptr + start,
             _len  = end - start,
-            header = $_len || (1 << 63),
+            header = self._len || (1 << 63),
         }
 
 fn (&Slice[]) set(o Self):
-    $span().set(o.span())
+    self.span().set(o.span())
 
 --| Alias for `append`.
 fn (&Slice[]) `+`(val T) -> Self:
-    return Self.append[0]($, val)
+    return Self.append[0](self, val)
 
 --| Alias for `append`.
 fn (&Slice[]) `+`(slice [&]T) -> Self:
-    return Self.append[1]($, slice)
+    return Self.append[1](self, slice)
 
 --| Alias for `append`.
 fn (&Slice[]) `+`(arr AsSpan[T]) -> Self:
-    return Self.append[2]($, arr)
+    return Self.append[2](self, arr)
 
 --| Appends a value to the end of the `Slice`.
 fn (&Slice[]) append(val T) -> Self:
-    res := $clone_on_resize($_len + 1)
+    res := self.clone_on_resize(self._len + 1)
     @ptr_init(res.ptr + res._len, val)
     res._len += 1
     return res
@@ -1198,77 +1198,77 @@ fn (&Slice[]) append(val T) -> Self:
 --| Appends the elements of a `Span` to the end of this `Slice`.
 fn (&Slice[]) append(span [&]T) -> Self:
     if span.len() == 0:
-        return $.*
+        return self.*
     
-    res := $clone_on_resize($_len + span.length)
+    res := self.clone_on_resize(self._len + span.length)
     res.ptr[res._len..res._len + span.length].init(as span)
     res._len += span.length
     return res
 
 --| Appends the elements of a `AsSpan` to the end of this array.
 fn (&Slice[]) append(arr AsSpan[T]) -> Self:
-    return $append(arr.span())
+    return self.append(arr.span())
 
 -- fn (&Slice[]) cap() -> int:
---     return $cap
+--     return self.cap
 
 fn (&Slice[]) clear() -> Self:
-    return $size_down(0)
+    return self.size_down(0)
 
 -- fn (&Slice[]) clone() -> Self:
---     new_buf := alloc(T, $length).ptr
---     new_buf[0..$length].init($buf[0..$length])
+--     new_buf := alloc(T, self.length).ptr
+--     new_buf[0..self.length].init(self.buf[0..self.length])
 --     return {
 --         buf    = new_buf,
---         length = $length,
---         cap    = $length,
+--         length = self.length,
+--         cap    = self.length,
 --     }
 
 fn (&Slice[]) contains(needle T) -> bool:
-    return $span().contains(needle)
+    return self.span().contains(needle)
 
 fn (&Slice[]) clone_on_resize(new_cap int) -> Self:
-    sub_slice := ($header >> 63 != 0)
-    if !sub_slice and @isUniqueRef(@unsafeCast(Ptr[void], $buf)) and new_cap <= $header:
-        return $.*
+    sub_slice := (self.header >> 63 != 0)
+    if !sub_slice and @isUniqueRef(@unsafeCast(Ptr[void], self.buf)) and new_cap <= self.header:
+        return self.*
 
-    if new_cap < $_len:
-        new_cap = $_len
+    if new_cap < self._len:
+        new_cap = self._len
 
     if !sub_slice:
-        if new_cap > $header:
-            new_cap = compute_new_cap($header, new_cap)
+        if new_cap > self.header:
+            new_cap = compute_new_cap(self.header, new_cap)
         else:
-            new_cap = compute_new_cap($_len, new_cap)
+            new_cap = compute_new_cap(self._len, new_cap)
     else:
-        new_cap = compute_new_cap($_len, new_cap)
+        new_cap = compute_new_cap(self._len, new_cap)
 
     -- Copy underlying buffer to new buffer.
     buf := new_slice_buffer(T, new_cap)
     elems_ptr := as[Ptr[T]] buf.elems_ptr()
-    elems_ptr[0..$_len].init($ptr[0..$_len])
+    elems_ptr[0..self._len].init(self.ptr[0..self._len])
     return {
         buf = buf,
         ptr = elems_ptr,
-        _len = $_len,
+        _len = self._len,
         header = new_cap,
     }
 
 -- fn (&&Slice[]) ensureUnusedCap(unused int):
---     cap := $cap()
---     if cap - $_len < unused:
---         $ensure_cap(cap + 1)
+--     cap := self.cap()
+--     if cap - self._len < unused:
+--         self.ensure_cap(cap + 1)
 
 --| Returns the first index of `needle` in the array or `none` if not found.
 fn (&Slice[]) index(needle T) -> ?int:
-    return $[..].index(needle)
+    return self[..].index(needle)
 
 --| Inserts a value at index `idx`.
 fn (&Slice[]) insert(idx int, val T) -> Self:
-    if idx.ugt($_len):
+    if idx.ugt(self._len):
         panic_oob(idx)
 
-    cur := $clone_on_resize($_len + 1)
+    cur := self.clone_on_resize(self._len + 1)
 
     if idx == cur._len:
         -- Appending to end.
@@ -1290,24 +1290,24 @@ fn (&Slice[]) iterator() -> int:
 
 --| Returns a new string that joins the elements with `separator`.
 fn (&Slice[]) join(sep str) -> str:
-    if $_len == 0:
+    if self._len == 0:
         return ''
-    res := str($ptr[0])
-    for 1..$_len |i|:
-        res += sep + str($ptr[i])
+    res := str(self.ptr[0])
+    for 1..self._len |i|:
+        res += sep + str(self.ptr[i])
     return res
 
 fn (&Slice[]) last() -> T:
-    return $[$_len-1]
+    return self[self._len-1]
 
 fn (&Slice[]) len() -> int:
-    return $_len
+    return self._len
 
 -- fn (sink Slice[]) as_buffer() -> Buffer[T]:
---     buf := $buf
---     length := $length
---     cap := $cap()
---     @consume($)
+--     buf := self.buf
+--     length := self.length
+--     cap := self.cap()
+--     @consume(self)
 --     return {
 --         base   = buf,
 --         length = length,
@@ -1315,16 +1315,16 @@ fn (&Slice[]) len() -> int:
 --     }
 
 fn (&Slice[]) next(idx &int) -> ?T:
-    if idx.* >= $_len:
+    if idx.* >= self._len:
         return none
 
-    val := $[idx.*]
+    val := self[idx.*]
     idx.* += 1
     return val
 
 --| Removes an element at index `idx`.
 fn (&Slice[]) remove(idx int) -> Self:
-    cur := $clone_on_resize(0)
+    cur := self.clone_on_resize(0)
     @destruct(T, cur.ptr + idx)
     -- Move rest to the left.
     size := type.size(T) * (cur._len-idx-1)
@@ -1335,12 +1335,12 @@ fn (&Slice[]) remove(idx int) -> Self:
 --| Decreases the size of the `Slice` to `new_len` elements.
 --| If the new size is smaller, elements at the end of the `Slice` are removed.
 fn (&Slice[]) size_down(new_len int) -> Self:
-    if new_len.ugt($_len):
+    if new_len.ugt(self._len):
         panic('Invalid argument.')
-    if new_len == $_len:
+    if new_len == self._len:
         return
 
-    cur := $clone_on_resize(0)
+    cur := self.clone_on_resize(0)
     #if type.managed(T):
         cur.ptr[new_len..cur._len].destruct()
     cur._len = new_len
@@ -1349,12 +1349,12 @@ fn (&Slice[]) size_down(new_len int) -> Self:
 --| Increases the size of the `Slice` to `new_len` elements. If the new size is bigger, `init` values
 --| are appended to the `Slice`.
 fn (&Slice[]) size_up(new_len int, init T) -> Self:
-    if new_len.ult($_len):
+    if new_len.ult(self._len):
         panic('Invalid argument.')
-    if new_len == $_len:
+    if new_len == self._len:
         return
 
-    cur := $clone_on_resize(new_len)
+    cur := self.clone_on_resize(new_len)
 
     -- Initialize new slots with `init` value.
     cur.ptr[cur._len..new_len].init(init)
@@ -1362,17 +1362,17 @@ fn (&Slice[]) size_up(new_len int, init T) -> Self:
     return cur
 
 fn (&Slice[]) set_last(val T) -> void:
-    $[$_len-1] = val
+    self[self._len-1] = val
 
 --| Sorts the array with the given `less` function.
 --| If element `a` should be ordered before `b`, the function should return `true` otherwise `false`.
 fn (&Slice[]) sort(less &OpaqueFunc[LessFn[T]]):
-    return $span().sort(less)
+    return self.span().sort(less)
 
 fn (scope &Slice[]) span() -> scope [&]T:
     return {
-        base   = as $ptr,
-        length = $_len,
+        base   = as self.ptr,
+        length = self._len,
     }
 
 -- --| Returns the first index of any `bytes` in `set` or `none` if not found.
@@ -1408,33 +1408,33 @@ fn Span[] :: @init_sequence(scope span [&]T) -> scope [&]T:
     return span
 
 fn (&Span[]) @index_addr(idx int) -> Ptr[T]:
-    if idx.uge($length):
+    if idx.uge(self.length):
         panic_oob(idx)
-    return as[Ptr[T]] $base + idx
+    return as[Ptr[T]] self.base + idx
 
 fn (scope &Span[]) @slice() -> scope [&]T:
-    return $.*
+    return self.*
 
 fn (scope &Span[]) @slice(start int) -> scope [&]T:
-    return $[start..$length]
+    return self[start..self.length]
 
 fn (scope &Span[]) @slice(start int, end int) -> scope [&]T:
-    if start > $length:
+    if start > self.length:
         panic_oob(start)
-    if end > $length:
+    if end > self.length:
         panic_oob(end)
     if end < start:
         panic('InvalidArgument')
     return {
-        base   = as ((as[Ptr[T]] $base) + start),
+        base   = as ((as[Ptr[T]] self.base) + start),
         length = end - start,
     }
 
 fn (scope &Span[]) as_bytes() -> scope [&]byte:
-    return as (as[Ptr[byte]] $base)[0..$length * type.size(T)]
+    return as (as[Ptr[byte]] self.base)[0..self.length * type.size(T)]
 
 fn (scope &Span[]) span() -> scope [&]T:
-    return $.*
+    return self.*
 
 fn (&Span[]) `==`(o Self) -> bool:
     a_len := a.len()
@@ -1448,43 +1448,43 @@ fn (&Span[]) `==`(o Self) -> bool:
     return true 
 
 fn (&Span[]) contains(needle T) -> bool:
-    return $index(needle) != none
+    return self.index(needle) != none
 
 fn (&Span[]) index(needle T) -> ?int:
-    return (as[Ptr[T]] $base)[0..$length].index(needle)
+    return (as[Ptr[T]] self.base)[0..self.length].index(needle)
 
 fn (&Span[]) iterator() -> int:
     return 0
 
 fn (&Span[]) len() -> int:
-    return $length
+    return self.length
 
 fn (&Span[]) next(idx &int) -> ?T:
-    if idx.* == $length:
+    if idx.* == self.length:
         return none
 
-    val := $[idx.*]
+    val := self[idx.*]
     idx.* += 1
     return val
 
 fn (&Span[]) init(o Self):
-    @unsafeCast(&PtrSpan[T], $).init(as[PtrSpan[T]] o)
+    @unsafeCast(&PtrSpan[T], self).init(as[PtrSpan[T]] o)
 
 fn (&Span[]) init(val T):
-    @unsafeCast(&PtrSpan[T], $).init(val)
+    @unsafeCast(&PtrSpan[T], self).init(val)
 
 fn (&Span[]) set(o Self):
-    @unsafeCast(&PtrSpan[T], $).set(as[PtrSpan[T]] o)
+    @unsafeCast(&PtrSpan[T], self).set(as[PtrSpan[T]] o)
 
 fn (&Span[]) set(val T):
-    @unsafeCast(&PtrSpan[T], $).set(val)
+    @unsafeCast(&PtrSpan[T], self).set(val)
 
 --| Sorts the span with the given `less` function.
 --| If element `a` should be ordered before `b`, the function should return `true` otherwise `false`.
 fn (&Span[]) sort(less &OpaqueFunc[LessFn[T]]):
     -- Simple insertion sort, will be upgraded to pdqsort later on.
-    buf := as[Ptr[T]] $base
-    for 1..$length |i|:
+    buf := as[Ptr[T]] self.base
+    for 1..self.length |i|:
         cur := buf[i]
         ii := i-1
         while ii >= 0:
@@ -1496,18 +1496,18 @@ fn (&Span[]) sort(less &OpaqueFunc[LessFn[T]]):
 
 --| Returns whether the `Span` ends with `target`.
 fn (&Span[]) ends_with(target Self) -> bool:
-    if $len() < target.len():
+    if self.len() < target.len():
         return false
-    for $[$len()-target.len()..] |i, elem|:
+    for self[self.len()-target.len()..] |i, elem|:
         if elem != target[i]:
             return false
     return true
 
 --| Returns whether the `Span` starts with `target`.
 fn (&Span[]) starts_with(target Self) -> bool:
-    if $len() < target.len():
+    if self.len() < target.len():
         return false
-    for $[0..target.len()] |i, elem|:
+    for self[0..target.len()] |i, elem|:
         if elem != target[i]:
             return false
     return true
@@ -1540,70 +1540,74 @@ fn ArrayStore[] :: @init_sequence(init [&]T) -> Self:
 
 fn (&ArrayStore[]) @deinit():
     #if type.managed(T):
-        for 0..$length |i|:
-            @destruct(T, $buf + i)
-    free($buf)
+        for 0..self.length |i|:
+            @destruct(T, self.buf + i)
+    free(self.buf)
 
 fn (&ArrayStore[]) @index(idx int) -> T:
-    if idx.uge($length):
+    if idx.uge(self.length):
         panic_oob(idx)
-    return $buf[idx]
+    return self.buf[idx]
 
 fn (&ArrayStore[]) @set_index(idx int, val T):
-    if idx.uge($length):
+    if idx.uge(self.length):
         panic_oob(idx)
-    $buf[idx] = val
+    self.buf[idx] = val
 
 --| Alias for `append`.
 fn (&ArrayStore[]) `<<`(val T):
-    Self.append[0]($, val)
+    Self.append[0](self, val)
 
 --| Alias for `append`.
 fn (&ArrayStore[]) `<<`(arr AsSpan[T]):
-    Self.append[2]($, arr.span())
+    Self.append[2](self, arr.span())
 
 --| Appends a value to the end of the array.
 fn (&ArrayStore[]) append(val T):
-    $ensure_cap($length + 1)
-    @ptr_init($buf + $length, val)
-    $length += 1
+    self.ensure_cap(self.length + 1)
+    @ptr_init(self.buf + self.length, val)
+    self.length += 1
 
 --| Appends the elements of a `Span` to the end of this `ArrayStore`.
 fn (&ArrayStore[]) append(slice [&]T):
     if slice.len() == 0:
         return
-    $ensure_cap($length + slice.length)
-    $buf[$length..$length + slice.length].init(as slice)
-    $length += slice.length
+    self.ensure_cap(self.length + slice.length)
+    self.buf[self.length..self.length + slice.length].init(as slice)
+    self.length += slice.length
+
+    self.ensure_cap(self.length + slice.length)
+    self.buf[self.length..self.length + slice.length].init(as slice)
+    self.length += slice.length
 
 --| Appends the elements of a `AsSpan` to the end of this `ArrayStore`.
 fn (&ArrayStore[]) append(arr AsSpan[T]):
-    $append(arr.span())
+    self.append(arr.span())
 
 fn (&ArrayStore[]) ensure_cap(new_cap int):
-    if $cap >= new_cap:
+    if self.cap >= new_cap:
         return
 
-    final_cap := compute_new_cap($cap, new_cap)
-    if $buf != none:
+    final_cap := compute_new_cap(self.cap, new_cap)
+    if self.buf != none:
         new_buf := alloc(T, final_cap).ptr
 
         -- TODO: Move old elements to new buffer.
-        new_buf[0..$length].init($buf[0..$length])
+        new_buf[0..self.length].init(self.buf[0..self.length])
         #if type.managed(T):
-            for 0..$length |i|:
-                @destruct(T, $buf + i)
-        free($buf)
+            for 0..self.length |i|:
+                @destruct(T, self.buf + i)
+        free(self.buf)
 
-        $buf = new_buf
-        $cap = final_cap
+        self.buf = new_buf
+        self.cap = final_cap
     else:
         new_buf := alloc(T, final_cap).ptr
-        $buf = new_buf
-        $cap = final_cap
+        self.buf = new_buf
+        self.cap = final_cap
 
 fn (&ArrayStore[]) len() -> int:
-    return $length
+    return self.length
 
 --| A dynamically sized data structure that contains a sequence of elements.
 --| Can be cloned or sliced into mutable spans.
@@ -1620,9 +1624,9 @@ type Array[T Any]:
 
 fn (&Array[]) @deinit():
     #if type.managed(T):
-        for 0..$length |i|:
-            @destruct(T, $buf + i)
-    free($buf)
+        for 0..self.length |i|:
+            @destruct(T, self.buf + i)
+    free(self.buf)
 
 fn Array[] :: @init_sequence(init [&]T) -> Self:
     if init.length == 0:
@@ -1651,190 +1655,190 @@ fn Array[] :: @init(n int, val T) -> Self:
     }
 
 fn (&Array[]) @acquire_ex_borrow() -> bool:
-    if ($header && (1 << 63)) == 0:
-        $header ||= 1 << 63
+    if (self.header && (1 << 63)) == 0:
+        self.header ||= 1 << 63
         return true
     return false
 
 fn (&Array[]) own_msb() -> int:
-    return $header && (3 << 62)
+    return self.header && (3 << 62)
 
 fn (&Array[]) @release_ex_borrow():
-    $header &&= ~(3 << 62)
+    self.header &&= ~(3 << 62)
 
 fn (&Array[]) @acquire_borrow() -> AcquireBorrowKind:
-    if ($header && (1 << 63)) != 0:
+    if (self.header && (1 << 63)) != 0:
         return @ex_borrowed
-    if ($header && (1 << 62)) == 0:
-        $header ||= 1 << 62
+    if (self.header && (1 << 62)) == 0:
+        self.header ||= 1 << 62
         return @acquired
     return @borrowed
 
 fn (&Array[]) @release_borrow():
-    $header &&= ~(3 << 62)
+    self.header &&= ~(3 << 62)
 
 fn (scope &Array[]) @index_addr(idx int) -> scope &T:
-    if idx.uge($length):
+    if idx.uge(self.length):
         panic_oob(idx)
-    return @scope_ptr_to_borrow('self', as[Ptr[T]] $buf + idx)
+    return @scope_ptr_to_borrow('self', as[Ptr[T]] self.buf + idx)
 
 fn (&Array[]) @index(idx int) -> T:
-    if idx.uge($length):
+    if idx.uge(self.length):
         panic_oob(idx)
-    return $buf[idx]
+    return self.buf[idx]
 
 fn (&Array[]) @set_index(idx int, val T):
-    if idx.uge($length):
+    if idx.uge(self.length):
         panic_oob(idx)
-    $buf[idx] = val
+    self.buf[idx] = val
 
 fn (scope &Array[]) span() -> scope [&]T:
-    return $[..]
+    return self[..]
 
 fn (scope &Array[]) @slice() -> scope [&]T:
     return {
-        base   = as $buf,
-        length = $length,
+        base   = as self.buf,
+        length = self.length,
     }
 
 fn (scope &Array[]) @slice(start int) -> scope [&]T:
-    if start > $length:
+    if start > self.length:
         panic_oob(start)
     return {
-        base   = as ($buf + start),
-        length = $length - start,
+        base   = as (self.buf + start),
+        length = self.length - start,
     }
 
 fn (scope &Array[]) @slice(start int, end int) -> scope [&]T:
-    if start > $length:
+    if start > self.length:
         panic_oob(start)
-    if end > $length:
+    if end > self.length:
         panic_oob(end)
     if end < start:
         panic('InvalidArgument')
     return {
-        base   = as ($buf + start),
+        base   = as (self.buf + start),
         length = end - start,
     }
 
 --| Alias for `append`.
 fn (&&Array[]) `<<`(val T):
-    Self.append[0]($, val)
+    Self.append[0](self, val)
 
 --| Alias for `append`.
 fn (&&Array[]) `<<`(span [&]T):
-    Self.append[1]($, span)
+    Self.append[1](self, span)
 
 --| Alias for `append`.
 fn (&&Array[]) `<<`(arr AsSpan[T]):
-    Self.append[2]($, move arr)
+    Self.append[2](self, move arr)
 
 --| Appends a value to the end of the array.
 fn (&&Array[]) append(val T):
-    $ensure_cap($length + 1)
-    @ptr_init($buf + $length, val)
-    $length += 1
+    self.ensure_cap(self.length + 1)
+    @ptr_init(self.buf + self.length, val)
+    self.length += 1
 
 --| Appends the elements of a span to the end of this array.
 fn (&&Array[]) append(span [&]T):
     if span.len() == 0:
         return
-    $ensure_cap($length + span.length)
-    $buf[$length..$length + span.length].init(as span)
-    $length += span.length
+    self.ensure_cap(self.length + span.length)
+    self.buf[self.length..self.length + span.length].init(as span)
+    self.length += span.length
 
 --| Appends the elements of a `AsSpan` to the end of this array.
 fn (&&Array[]) append(arr AsSpan[T]):
-    $append(arr[..])
+    self.append(arr[..])
 
 fn (&Array[]) cap() -> int:
-    return $header && ~(3 << 62)
+    return self.header && ~(3 << 62)
 
 fn (&&Array[]) clear():
-    $size_down(0)
+    self.size_down(0)
 
 fn (&Array[]) clone() -> Self:
-    new_buf := alloc(T, $length).ptr
-    new_buf[0..$length].init($buf[0..$length])
+    new_buf := alloc(T, self.length).ptr
+    new_buf[0..self.length].init(self.buf[0..self.length])
     return {
         buf    = new_buf,
-        length = $length,
-        cap    = $length,
+        length = self.length,
+        cap    = self.length,
     }
 
 fn (&Array[]) contains(needle T) -> bool:
-    return $[..].contains(needle)
+    return self[..].contains(needle)
 
 -- NOTE: This used to be used for copy-on-resize.
 -- fn (&Array[]) copyIfShared():
---     if $buf == none:
+--     if self.buf == none:
 --         return
---     if $isUniqueRef(@unsafeCast(Ptr[void], $buf)):
+--     if self.isUniqueRef(@unsafeCast(Ptr[void], self.buf)):
 --         return
 
 --     -- Perform copy.
 --     -- Copy shared buffer to new buffer.
---     new_buf := PartialBuffer[T].new($length)
+--     new_buf := PartialBuffer[T].new(self.length)
 --     new_ptr := new_buf.elemsPtr()
---     new_ptr[0..$length].init($ptr[0..$length])
+--     new_ptr[0..self.length].init(self.ptr[0..self.length])
 --     #if type.managed(T):
---         for 0..$length |i|:
---             @destruct(T, $ptr + i)
---     $buf = new_buf
---     $buf.?.length = $length
---     $ptr = new_ptr
+--         for 0..self.length |i|:
+--             @destruct(T, self.ptr + i)
+--     self.buf = new_buf
+--     self.buf.?.length = self.length
+--     self.ptr = new_ptr
 
 fn (&&Array[]) ensure_cap(new_cap int):
-    cap := $cap()
+    cap := self.cap()
     if cap >= new_cap:
         return
 
     final_cap := compute_new_cap(cap, new_cap)
-    if $buf != none:
+    if self.buf != none:
         new_buf := alloc(T, final_cap).ptr
 
         -- TODO: Move old elements to new buffer.
-        new_buf[0..$length].init($buf[0..$length])
+        new_buf[0..self.length].init(self.buf[0..self.length])
         #if type.managed(T):
-            for 0..$length |i|:
-                @destruct(T, $buf + i)
-        free($buf)
+            for 0..self.length |i|:
+                @destruct(T, self.buf + i)
+        free(self.buf)
 
-        $buf = new_buf
-        $header = $own_msb() || final_cap
+        self.buf = new_buf
+        self.header = self.own_msb() || final_cap
     else:
         new_buf := alloc(T, final_cap).ptr
-        $buf = new_buf
-        $header = $own_msb() || final_cap
+        self.buf = new_buf
+        self.header = self.own_msb() || final_cap
 
 fn (&&Array[]) ensureUnusedCap(unused int):
-    cap := $cap()
-    if cap - $length < unused:
-        $ensure_cap(cap + 1)
+    cap := self.cap()
+    if cap - self.length < unused:
+        self.ensure_cap(cap + 1)
 
 --| Returns the first index of `needle` in the array or `none` if not found.
 fn (&Array[]) index(needle T) -> ?int:
-    return $[..].index(needle)
+    return self[..].index(needle)
 
 --| Inserts a value at index `idx`.
 fn (&&Array[]) insert(idx int, val T):
-    if idx.ugt($length):
+    if idx.ugt(self.length):
         panic_oob(idx)
 
-    $ensure_cap($length + 1)
+    self.ensure_cap(self.length + 1)
 
-    if idx == $length:
+    if idx == self.length:
         -- Appending to end.
-        @ptr_init($buf + $length, val)
-        $length += 1
+        @ptr_init(self.buf + self.length, val)
+        self.length += 1
         return
 
-    if idx < $length:
-        @ptr_init($buf + $length, $buf[$length-1])
-    if idx + 1 < $length:
-        $buf[idx+1..$length].set_backwards($buf[idx..$length-1])
-    $buf[idx] = val
-    $length += 1
+    if idx < self.length:
+        @ptr_init(self.buf + self.length, self.buf[self.length-1])
+    if idx + 1 < self.length:
+        self.buf[idx+1..self.length].set_backwards(self.buf[idx..self.length-1])
+    self.buf[idx] = val
+    self.length += 1
 
 --| Returns a new iterator over the slice elements.
 fn (&Array[]) iterator() -> int:
@@ -1842,24 +1846,24 @@ fn (&Array[]) iterator() -> int:
 
 --| Returns a new string that joins the elements with `separator`.
 fn (&Array[]) join(sep str) -> str:
-    if $length == 0:
+    if self.length == 0:
         return ''
-    res := str($buf[0])
-    for 1..$length |i|:
-        res += sep + str($buf[i])
+    res := str(self.buf[0])
+    for 1..self.length |i|:
+        res += sep + str(self.buf[i])
     return res
 
 fn (&Array[]) last() -> T:
-    return $[$length-1]
+    return self[self.length-1]
 
 fn (&Array[]) len() -> int:
-    return $length
+    return self.length
 
 fn (sink Array[]) as_buffer() -> Buffer[T]:
-    buf := $buf
-    length := $length
-    cap := $cap()
-    @consume($)
+    buf := self.buf
+    length := self.length
+    cap := self.cap()
+    @consume(self)
     return {
         base   = buf,
         length = length,
@@ -1867,55 +1871,55 @@ fn (sink Array[]) as_buffer() -> Buffer[T]:
     }
 
 fn (&Array[]) next(idx &int) -> ?T:
-    if idx.* == $length:
+    if idx.* == self.length:
         return none
 
-    val := $[idx.*]
+    val := self[idx.*]
     idx.* += 1
     return val
 
 --| Removes an element at index `idx`.
 fn (&&Array[]) remove(idx int):
-    @destruct(T, $buf + idx)
+    @destruct(T, self.buf + idx)
     -- Move rest to the left.
-    size := type.size(T) * ($length-idx-1)
-    @memmove(as ($buf + idx), as ($buf + idx + 1), size)
-    $length -= 1
+    size := type.size(T) * (self.length-idx-1)
+    @memmove(as (self.buf + idx), as (self.buf + idx + 1), size)
+    self.length -= 1
 
 --| Decreases the size of the array to `new_len` elements.
 --| If the new size is smaller, elements at the end of the array are removed.
 fn (&&Array[]) size_down(new_len int):
-    if new_len.ugt($length):
+    if new_len.ugt(self.length):
         panic('Invalid argument.')
-    if new_len == $length:
+    if new_len == self.length:
         return
 
     #if type.managed(T):
-        for new_len..$length |i|:
-            @destruct(T, $buf + i)
-    $length = new_len
+        for new_len..self.length |i|:
+            @destruct(T, self.buf + i)
+    self.length = new_len
 
 --| Increases the size of the array to `new_len` elements. If the new size is bigger, `init` values
 --| are appended to the array.
 fn (&&Array[]) size_up(new_len int, init T):
-    if new_len.ult($length):
+    if new_len.ult(self.length):
         panic('Invalid argument.')
-    if new_len == $length:
+    if new_len == self.length:
         return
 
-    $ensure_cap(new_len)
+    self.ensure_cap(new_len)
 
     -- Initialize new slots with zero value.
-    $buf[$length..new_len].init(init)
-    $length = new_len
+    self.buf[self.length..new_len].init(init)
+    self.length = new_len
 
 fn (&Array[]) setLast(val T) -> void:
-    $[$length-1] = val
+    self[self.length-1] = val
 
 --| Sorts the array with the given `less` function.
 --| If element `a` should be ordered before `b`, the function should return `true` otherwise `false`.
 fn (&Array[]) sort(less &OpaqueFunc[LessFn[T]]):
-    return $[0..].sort(less)
+    return self[0..].sort(less)
 
 -- --| Returns the first index of any `bytes` in `set` or `none` if not found.
 -- #[bind] fn Array.findAny(self, set []T) -> ?int
@@ -1993,7 +1997,7 @@ type Table:
 -- type Table ^MapValue.Auto[str, Object]
 
 -- fn Table.@init_record(pairs InitSpan[Pair[str, Object]]) -> Table:
---     new := ^MapValue.Auto[str, Object].$init_record(pairs)
+--     new := ^MapValue.Auto[str, Object].self.init_record(pairs)
 --     return new as Self
 
 -- fn Table.@get(self, name str) -> Object:
@@ -2048,9 +2052,9 @@ fn (&StaticMap[]) is_vacant(slot int) -> bool:
     return @vacs[slot]
 
 fn (&StaticMap[]) set(key K, val V):
-    final_slot := $cap
+    final_slot := self.cap
 
-    mask := $cap - 1
+    mask := self.cap - 1
     hash := HASH(key)
     slot := hash && mask
 
@@ -2059,7 +2063,7 @@ fn (&StaticMap[]) set(key K, val V):
         final_slot = slot
         @keys[final_slot] = key
         @vacs[final_slot] = false
-        $len += 1
+        self.len += 1
     else:
         first := slot
         while:
@@ -2067,7 +2071,7 @@ fn (&StaticMap[]) set(key K, val V):
                 final_slot = slot
                 @keys[final_slot] = key
                 @vacs[final_slot] = false
-                $len += 1
+                self.len += 1
                 break
 
             if EQ(@keys[slot], key):
@@ -2082,15 +2086,15 @@ fn (&StaticMap[]) set(key K, val V):
             empty = @isVacant(slot)
 
     -- No slot found.
-    if final_slot == $cap:
+    if final_slot == self.cap:
         panic('NoSpace')
 
-    $vals[final_slot] = val
+    self.vals[final_slot] = val
 
 fn (&StaticMap[]) get(key K) -> ?Ptr[V]:
-    final_slot := $cap
+    final_slot := self.cap
 
-    mask := $cap - 1
+    mask := self.cap - 1
     hash := HASH(key)
     slot := hash && mask
 
@@ -2103,7 +2107,7 @@ fn (&StaticMap[]) get(key K) -> ?Ptr[V]:
         if empty:
             return none
         if EQ(@keys[slot], key):
-            return *$vals[slot]
+            return *self.vals[slot]
 
         -- Linear probing.
         slot = (slot + 1) && mask
@@ -2119,9 +2123,9 @@ fn (&StaticMap[]) @index(key K) -> Ptr[V]:
         panic('MissingKey')
 
 -- fn (&StaticMap[]) @deinit(mem Memory) void:
---     free($vacs[0..$cap])
---     free($keys[0..$cap])
---     free($vals[0..$cap])
+--     free(self.vacs[0..self.cap])
+--     free(self.keys[0..self.cap])
+--     free(self.vals[0..self.cap])
 
 type StaticMap :: Auto[K Any, V Any] = StaticMap[K, V, AutoHash[K], AutoEq[K]]
 
@@ -2134,40 +2138,40 @@ fn Map[] :: @init_record(pairs [&]Pair[K, V]) -> Self:
     return meta.init_type(Self, {base=move new}) 
 
 fn (&Map[]) @index(key K) -> V:
-    return $base.@index(key)
+    return self.base.@index(key)
 
 fn (&Map[]) @set_index(key K, val V):
-    $base.@set_index(key, val)
+    self.base.@set_index(key, val)
 
 fn (&Map[]) clear():
-    $base.clear()
+    self.base.clear()
 
 fn (&Map[]) get(key K) -> ?V:
-    return $base.get(key)
+    return self.base.get(key)
 
 fn (&Map[]) iterator() -> int:
-    return $base.iterator()
+    return self.base.iterator()
 
 fn (&Map[]) keys() -> []K:
-    return $base.keys() 
+    return self.base.keys() 
 
 fn (&Map[]) next(idx &int) -> ?MapEntry[K, V]:
-    return $base.next(idx)
+    return self.base.next(idx)
 
 fn (&Map[]) set(key K, val V):
-    $base.set(key, val)
+    self.base.set(key, val)
 
 fn (&Map[]) size() -> int:
-    return $base.size()
+    return self.base.size()
 
 fn (&Map[]) try_remove(key K) -> bool:
-    return $base.try_remove(key)
+    return self.base.try_remove(key)
 
 fn (&Map[]) remove(key K):
-    $base.remove(key)
+    self.base.remove(key)
 
 fn (&Map[]) contains(key K) -> bool:
-    return $base.contains(key)
+    return self.base.contains(key)
 
 --| Generic hash map implemented with open addressing and linear probing.
 type HashMap[K Any, V Any, const HASH HashFn[K], const EQ EqFn[K]]:
@@ -2204,56 +2208,56 @@ fn HashMap[] :: @init_record(pairs [&]Pair[K, V]) -> Self:
     return move new
 
 fn (&HashMap[]) @index(key K) -> V:
-    slot := $findSlot(key)
+    slot := self.findSlot(key)
     if slot == -1:
         panic('MissingKey')
-    return $vals[slot]
+    return self.vals[slot]
 
 fn (&HashMap[]) @set_index(key K, val V):
-    $set(key, val)
+    self.set(key, val)
 
 fn (&HashMap[]) clear():
-    for 0..$cap |i|:
-        if $meta[i] == 1:
+    for 0..self.cap |i|:
+        if self.meta[i] == 1:
             #if type.managed(K):
-                @destruct(K, *$_keys[i])
+                @destruct(K, *self._keys[i])
             #if type.managed(V):
-                @destruct(V, *$vals[i])
-            $meta[i] = 0
-    $len = 0
-    $nvac = $cap
+                @destruct(V, *self.vals[i])
+            self.meta[i] = 0
+    self.len = 0
+    self.nvac = self.cap
 
 --| Returns whether there is a value mapped to `key`.
 fn (&HashMap[]) contains(key K) -> bool:
-    return $findSlot(key) != -1
+    return self.findSlot(key) != -1
 
 --| Returns value mapped to `key` or returns `none`.
 fn (&HashMap[]) get(key K) -> ?V:
-    slot := $findSlot(key)
+    slot := self.findSlot(key)
     if slot == -1:
         return none
-    return $vals[slot]
+    return self.vals[slot]
 
 fn (&HashMap[]) grow():
-    if $cap == 0:
-        $resize(2 ** 3)
+    if self.cap == 0:
+        self.resize(2 ** 3)
     else:
-        $resize($cap << 1)
+        self.resize(self.cap << 1)
 
 --| Assumes there is at least 1 vacant slot.
 --| If the entry already exists, the sign bit is set on the result.
 --| This returns the first tombstone slot if the key is missing unlike `findSlot`.
 -fn (&HashMap[]) findSetSlot(key K) -> int:
-    mask := $cap - 1
+    mask := self.cap - 1
     hash := HASH(key)
     slot := hash && mask
-    slot_info := $meta[slot]
+    slot_info := self.meta[slot]
     if slot_info == 0:
         return slot
 
     first_tomb := -1
     if slot_info == 1:
-        if EQ($_keys[slot], key):
+        if EQ(self._keys[slot], key):
             return slot || int.min
     else:
         first_tomb = slot
@@ -2261,30 +2265,30 @@ fn (&HashMap[]) grow():
     -- Perform linear probing.
     while:
         slot = (slot + 1) && mask
-        slot_info = $meta[slot]
+        slot_info = self.meta[slot]
         if slot_info == 0:
             if first_tomb != -1:
                 return first_tomb
             return slot
 
         if slot_info == 1:
-            if EQ($_keys[slot], key):
+            if EQ(self._keys[slot], key):
                 return slot || int.min
 
 --| Returns -1 if not found.
 fn (&HashMap[]) findSlot(key K) -> int:
-    if $cap == 0:
+    if self.cap == 0:
         return -1
-    mask := $cap - 1
+    mask := self.cap - 1
     hash := HASH(key)
     slot := hash && mask
-    slot_info := $meta[slot]
+    slot_info := self.meta[slot]
 
     if slot_info == 0:
         return -1
 
     if slot_info == 1:
-        if EQ($_keys[slot], key):
+        if EQ(self._keys[slot], key):
             return slot
             
     -- Perform linear probing.
@@ -2294,12 +2298,12 @@ fn (&HashMap[]) findSlot(key K) -> int:
         if slot == first:
             return -1
 
-        slot_info = $meta[slot]
+        slot_info = self.meta[slot]
         if slot_info == 0:
             return -1
 
         if slot_info == 1:
-            if EQ($_keys[slot], key):
+            if EQ(self._keys[slot], key):
                 return slot
 
 --| Iterates over the map elements.
@@ -2314,14 +2318,14 @@ fn (&HashMap[]) keys() -> []K:
     return res
 
 fn (&HashMap[]) next(idx &int) -> ?MapEntry[K, V]:
-    while idx.* != $cap:
-        if $meta[idx.*] != 1:
+    while idx.* != self.cap:
+        if self.meta[idx.*] != 1:
             idx.* += 1
             continue
 
         res := MapEntry[K, V]{
-            key   = $_keys[idx.*],
-            value = $vals[idx.*],
+            key   = self._keys[idx.*],
+            value = self.vals[idx.*],
         }
         idx.* += 1
         return res
@@ -2330,45 +2334,45 @@ fn (&HashMap[]) next(idx &int) -> ?MapEntry[K, V]:
 
 --| Removes the element with the given key `key`.
 fn (&HashMap[]) try_remove(key K) -> bool:
-    slot := $findSlot(key)
+    slot := self.findSlot(key)
     if slot == -1:
         return false
 
-    mask := $cap - 1
+    mask := self.cap - 1
     next := (slot + 1) && mask
-    if $meta[next] == 0:
+    if self.meta[next] == 0:
         -- Adjacent slot is empty, reset to empty.
-        $meta[slot] = 0
-        $nvac += 1
+        self.meta[slot] = 0
+        self.nvac += 1
     else:
-        $meta[slot] = 2
+        self.meta[slot] = 2
 
-    @destruct(K, *$_keys[slot])
-    @destruct(V, *$vals[slot])
+    @destruct(K, *self._keys[slot])
+    @destruct(V, *self.vals[slot])
 
-    $len -= 1
+    self.len -= 1
     return true
 
 --| Removes the element with the given key `key` or panic.
 fn (&HashMap[]) remove(key K):
-    if !$try_remove(key):
+    if !self.try_remove(key):
         panic('Missing key %{key}')
 
 --| Perform rehashing.
 fn (&HashMap[]) resize(new_cap int):
-    old_meta := $meta
-    old_keys := $_keys
-    old_vals := $vals
-    old_cap  := $cap
+    old_meta := self.meta
+    old_keys := self._keys
+    old_vals := self.vals
+    old_cap  := self.cap
 
-    $meta = alloc(byte, new_cap).ptr
-    $meta[0..new_cap].set(0)
-    $_keys = alloc(K, new_cap).ptr
+    self.meta = alloc(byte, new_cap).ptr
+    self.meta[0..new_cap].set(0)
+    self._keys = alloc(K, new_cap).ptr
 
-    $vals = alloc(V, new_cap).ptr
-    $len = 0
-    $nvac = new_cap * HashMap.LoadFactor / 100
-    $cap = new_cap
+    self.vals = alloc(V, new_cap).ptr
+    self.len = 0
+    self.nvac = new_cap * HashMap.LoadFactor / 100
+    self.cap = new_cap
 
     if old_cap == 0:
         return
@@ -2376,7 +2380,7 @@ fn (&HashMap[]) resize(new_cap int):
     for old_meta[0..old_cap] |i, slot_data|:
         if slot_data != 1:
             continue
-        $set(old_keys[i], old_vals[i])
+        self.set(old_keys[i], old_vals[i])
 
     for 0..old_cap |i|:
         if old_meta[i] == 1:
@@ -2389,39 +2393,39 @@ fn (&HashMap[]) resize(new_cap int):
     free(old_vals)
 
 fn (&HashMap[]) set(key K, val V):
-    if $nvac == 0:
-        $grow()
+    if self.nvac == 0:
+        self.grow()
 
-    slot := $findSetSlot(key)
+    slot := self.findSetSlot(key)
     if slot && int.min == 0:
         -- Initialize.
-        @ptr_init($_keys + slot, key)
-        $meta[slot] = 1
-        @ptr_init($vals + slot, val)
+        @ptr_init(self._keys + slot, key)
+        self.meta[slot] = 1
+        @ptr_init(self.vals + slot, val)
     else:
         -- Replace.
-        $vals[slot && int.max] = val
+        self.vals[slot && int.max] = val
 
-    $nvac -= 1
-    $len += 1
+    self.nvac -= 1
+    self.len += 1
 
 fn (&HashMap[]) size() -> int:
-    return $len
+    return self.len
 
 fn (&HashMap[]) @deinit():
-    if $cap == 0:
+    if self.cap == 0:
         return
 
-    for 0..$cap |i|:
-        if $meta[i] == 1:
+    for 0..self.cap |i|:
+        if self.meta[i] == 1:
             #if type.managed(K):
-                @destruct(K, *$_keys[i])
+                @destruct(K, *self._keys[i])
             #if type.managed(V):
-                @destruct(V, *$vals[i])
+                @destruct(V, *self.vals[i])
 
-    free($meta)
-    free($_keys)
-    free($vals)
+    free(self.meta)
+    free(self._keys)
+    free(self.vals)
 
 fn @memeq(a []%T, b []T) -> bool:
     a_len := a.len()
@@ -2628,7 +2632,7 @@ fn @copy(src Ptr[%T]) -> T:
             --     (field.name) := meta.access(val, field.name)
             -- new T = undefined
             -- #for fields -> i, field:
-            --     $setInit(meta.access(new, field.name), move $ident(field.name))
+            --     self.setInit(meta.access(new, field.name), move self.ident(field.name))
             -- return move new
             #else:
                 return @copyStruct(T, src)
@@ -3013,44 +3017,44 @@ fn Wyhash :: hash(seed int, input AsSpan[byte]) -> int:
 --| This is subtly different from other hash function update calls. Wyhash requires the last
 --| full 48-byte block to be run through final1 if is exactly aligned to 48-bytes.
 fn (&Wyhash) update(input [&]byte):
-    $cur_len += input.length
+    self.cur_len += input.length
 
-    if input.length <= 48 - $buf_len:
-        $buf[$buf_len..][0..input.length].set(input)
-        $buf_len += input.length
+    if input.length <= 48 - self.buf_len:
+        self.buf[self.buf_len..][0..input.length].set(input)
+        self.buf_len += input.length
         return
 
     i := 0
-    if $buf_len > 0:
-        i = 48 - $buf_len
-        $buf[$buf_len..][0..i].set(input[0..i])
-        $round(*$buf[0])
-        $buf_len = 0
+    if self.buf_len > 0:
+        i = 48 - self.buf_len
+        self.buf[self.buf_len..][0..i].set(input[0..i])
+        self.round(*self.buf[0])
+        self.buf_len = 0
 
     while i + 48 < input.length:
-        $round(*input[i])
+        self.round(*input[i])
         i += 48
 
     remaining_bytes := input[i..]
     if remaining_bytes.length < 16 and i >= 48:
         rem := 16 - remaining_bytes.length
-        $buf[$buf.len()-rem..].set(input[i-rem..i])
-    $buf[0..remaining_bytes.length].set(remaining_bytes)
-    $buf_len = remaining_bytes.length
+        self.buf[self.buf.len()-rem..].set(input[i-rem..i])
+    self.buf[0..remaining_bytes.length].set(remaining_bytes)
+    self.buf_len = remaining_bytes.length
 
 fn (&Wyhash) final() -> int:
-    input := $buf[0..$buf_len]
-    newSelf := $shallowCopy() -- ensure idempotency
+    input := self.buf[0..self.buf_len]
+    newSelf := self.shallowCopy() -- ensure idempotency
 
-    if $cur_len <= 16:
+    if self.cur_len <= 16:
         newSelf.smallKey(input)
     else:
         offset := 0
-        if $buf_len < 16:
+        if self.buf_len < 16:
             scratch := [16]byte(0)
-            rem := 16 - $buf_len
-            scratch[0..rem].set($buf[$buf.len()-rem..][0..rem])
-            scratch[rem..][0..$buf_len].set($buf[0..$buf_len])
+            rem := 16 - self.buf_len
+            scratch[0..rem].set(self.buf[self.buf.len()-rem..][0..rem])
+            scratch[rem..][0..self.buf_len].set(self.buf[0..self.buf_len])
 
             -- Same as input but with additional bytes preceeding start in case of a short buffer
             input = scratch[0..16]
@@ -3065,10 +3069,10 @@ fn (&Wyhash) final() -> int:
 --| Copies the core wyhash state but not any internal buffers.
 fn (&Wyhash) shallowCopy() -> Self:
     return {
-        a       = $a,
-        b       = $b,
-        state   = $state,
-        cur_len = $cur_len,
+        a       = self.a,
+        b       = self.b,
+        state   = self.state,
+        cur_len = self.cur_len,
         buf     = {0} ** 48,
         buf_len = 0,
     }
@@ -3080,14 +3084,14 @@ fn (&Wyhash) smallKey(input [&]byte):
     if input.length >= 4:
         end := input.length - 4
         quarter := (input.length >> 3) << 2
-        $a = (@zext(int, Wyhash.readI32(*input[0])) << 32) || @zext(int, Wyhash.readI32(*input[quarter]))
-        $b = (@zext(int, Wyhash.readI32(*input[end])) << 32) || @zext(int, Wyhash.readI32(*input[end - quarter]))
+        self.a = (@zext(int, Wyhash.readI32(*input[0])) << 32) || @zext(int, Wyhash.readI32(*input[quarter]))
+        self.b = (@zext(int, Wyhash.readI32(*input[end])) << 32) || @zext(int, Wyhash.readI32(*input[end - quarter]))
     else input.length > 0:
-        $a = (@zext(int, input[0]) << 16) || (@zext(int, input[input.length >> 1]) << 8) || @zext(int, input[input.length - 1])
-        $b = 0
+        self.a = (@zext(int, input[0]) << 16) || (@zext(int, input[input.length >> 1]) << 8) || @zext(int, input[input.length - 1])
+        self.b = 0
     else:
-        $a = 0
-        $b = 0
+        self.a = 0
+        self.b = 0
 
 --@inline
 fn (&Wyhash) round(input Ptr[byte]):
@@ -3096,7 +3100,7 @@ fn (&Wyhash) round(input Ptr[byte]):
     #for 0..3 |i|:
         a = Wyhash.readInt(*input[8 * (2 * i)])
         b = Wyhash.readInt(*input[8 * (2 * i + 1)])
-        $state[i] = Wyhash.mix(a ~ Wyhash.secret[i + 1], b ~ $state[i])
+        self.state[i] = Wyhash.mix(a ~ Wyhash.secret[i + 1], b ~ self.state[i])
 
 fn Wyhash :: rot(x int) -> int:
     return (x >> 32) || (x << 32)
@@ -3124,7 +3128,7 @@ fn Wyhash :: readI32(ptr Ptr[byte]) -> i32:
 
 --@inline
 fn (&Wyhash) final0():
-    $state[0] ~= $state[1] ~ $state[2]
+    self.state[0] ~= self.state[1] ~ self.state[2]
 
 --@inline
 --| input_lb must be at least 16-bytes long (in shorter key cases the smallKey function will be
@@ -3137,32 +3141,32 @@ fn (&Wyhash) final1(input_lb [&]byte, start_pos int):
 
     i := 0
     while i + 16 < input.length:
-        $state[0] = Wyhash.mix(Wyhash.readInt(*input[i]) ~ Wyhash.secret[1], Wyhash.readInt(*input[i + 8]) ~ $state[0])
+        self.state[0] = Wyhash.mix(Wyhash.readInt(*input[i]) ~ Wyhash.secret[1], Wyhash.readInt(*input[i + 8]) ~ self.state[0])
         i += 16
 
-    $a = Wyhash.readInt(*input_lb[input_lb.length - 16])
-    $b = Wyhash.readInt(*input_lb[input_lb.length - 8])
+    self.a = Wyhash.readInt(*input_lb[input_lb.length - 16])
+    self.b = Wyhash.readInt(*input_lb[input_lb.length - 8])
 
 --@inline
 fn (&Wyhash) final2() -> int:
-    $a ~= Wyhash.secret[1]
-    $b ~= $state[0]
-    Wyhash.mum(*$a, *$b)
-    return Wyhash.mix($a ~ Wyhash.secret[0] ~ $cur_len, $b ~ Wyhash.secret[1])
+    self.a ~= Wyhash.secret[1]
+    self.b ~= self.state[0]
+    Wyhash.mum(*self.a, *self.b)
+    return Wyhash.mix(self.a ~ Wyhash.secret[0] ~ self.cur_len, self.b ~ Wyhash.secret[1])
 
 #[bind]
 type StrBuffer:
     inner RawBuffer[byte]
 
 fn (&StrBuffer) @size() -> int:
-    return $inner.@size()
+    return self.inner.@size()
 
 --| TODO: Mutable string type.
 #[bind]
 type Str:
     inner Array[byte]
 
---| Immutable string type. Short strings are interned.
+--| Immutable string type.
 #[bind]
 type str:
     -- When `buf` is none, the string is a slice of a static string.
@@ -3268,36 +3272,36 @@ fn str :: ascii_upper(ch byte) -> byte:
     return ch ~ mask
 
 fn (&str) @send(thread Thread) -> str:
-    len := $len()
-    res := if ($isAscii()) @init_astr_undef(thread, len)
+    len := self.len()
+    res := if (self.isAscii()) @init_astr_undef(thread, len)
         else @init_ustr_undef(thread, len)
-    @memcpy(res.ptr, $ptr, len)
+    @memcpy(res.ptr, self.ptr, len)
     return move res
 
 --| Returns the byte value (0-255) at the given index `idx`.
 #[bind]
 fn (&str) @index(idx int) -> byte:
-    if idx >= $len():
+    if idx >= self.len():
         panic_oob(idx)
-    return $ptr[idx]
+    return self.ptr[idx]
 
 --| Returns a new string that concats this string and `s`.
 #[bind]
 fn (&str) `+`(s str) -> str:
-    return $concat(s)
+    return self.concat(s)
 
 fn (&str) `**`(n int) -> str:
-    return $repeat(n)
+    return self.repeat(n)
 
 --| Returns a substring from `start` (inclusive) to `end` (exclusive) byte indexes.
 #[bind]
 fn (&str) @slice(start int) -> str:
-    return $[start..$len()]
+    return self[start..self.len()]
 
 --| Returns a substring from `start` (inclusive) to `end` (exclusive) byte indexes.
 #[bind='str.@slice2']
 fn (&str) @slice(start int, end int) -> str:
-    length := $len()
+    length := self.len()
     if start > length:
         panic_oob(start)
     if end > length:
@@ -3306,38 +3310,38 @@ fn (&str) @slice(start int, end int) -> str:
         panic('InvalidArgument')
 
     new_len := end - start
-    if $hasAsciiFlag():
+    if self.hasAsciiFlag():
         new_len = new_len || (1 << 63)
     return {
-        buf    = $buf,
-        ptr    = $ptr + start,
+        buf    = self.buf,
+        ptr    = self.ptr + start,
         header = new_len,
     }
 
 fn (&str) to_bytes() -> []byte:
-    len := $len()
+    len := self.len()
     new := []byte(len, 0)
-    @memcpy(new.ptr, $ptr, len)
+    @memcpy(new.ptr, self.ptr, len)
     return new
 
 #[unsafe]
 fn (&str) as_ptr_span() -> PtrSpan[byte]:
     return {
-        ptr = $ptr,
-        length = $len(),
+        ptr = self.ptr,
+        length = self.len(),
     }
 
 --| Returns the rune at byte index `idx`. The replacement character (0xFFFD) is returned for an invalid UTF-8 rune.
 #[bind]
 fn (&str) rune_at(idx int) -> r32:
-    if idx.uge($len()):
+    if idx.uge(self.len()):
         panic('OutOfBounds')
-    if $hasAsciiFlag():
-        return $ptr[idx]
+    if self.hasAsciiFlag():
+        return self.ptr[idx]
     else:
-        if !utf8Check($ptr + idx, $len() - idx):
+        if !utf8Check(self.ptr + idx, self.len() - idx):
             return 0xFFFD
-        return utf8Decode($ptr + idx)
+        return utf8Decode(self.ptr + idx)
 
 --| Source: https://github.com/sheredom/utf8.h
 fn utf8Check(s Ptr[byte], remaining int) -> bool:
@@ -3449,35 +3453,35 @@ fn utf8SeqLen(first byte) -> int:
         return 1
 
 fn (&str) beforeLast() -> str:
-    return $[0..$len()-1]
+    return self[0..self.len()-1]
 
 --| Returns a new string that concats this string and `s`.
 #[bind]
 fn (&str) concat(s str) -> str:
-    len := $len()
+    len := self.len()
     s_len := s.len()
-    res := if ($isAscii() and s.isAscii()) @newAstrUndef(len + s_len)
+    res := if (self.isAscii() and s.isAscii()) @newAstrUndef(len + s_len)
         else @newUstrUndef(len + s_len)
-    @memcpy(res.ptr, $ptr, len)
+    @memcpy(res.ptr, self.ptr, len)
     @memcpy(res.ptr + len, s.ptr, s_len)
     return move res
 
 fn (&str) contains(needle str) -> bool:
-    return $index(needle) != none
+    return self.index(needle) != none
 
 -- Compare lexicographically.
 fn (str) compare(right str) -> CompareOrder:
-    n := if ($len() < right.len()) $len() else right.len()
+    n := if (self.len() < right.len()) self.len() else right.len()
     for 0..n |i|:
-        left_byte := $ptr[i]
+        left_byte := self.ptr[i]
         right_byte := right.ptr[i]
         if left_byte < right_byte:
             return .lt
         else left_byte > right_byte:
             return .gt
-    if $len() < right.len():
+    if self.len() < right.len():
         return .lt
-    else $len() > right.len():
+    else self.len() > right.len():
         return .gt
     else:
         return .eq
@@ -3485,11 +3489,11 @@ fn (str) compare(right str) -> CompareOrder:
 --| Returns the number of runes in the string.
 #[bind]
 fn (&str) count() -> int:
-    len := $len()
+    len := self.len()
     idx := 0
     res := 0
     while idx < len:
-        cp_len := utf8SeqLen($ptr[idx])
+        cp_len := utf8SeqLen(self.ptr[idx])
         res += 1
         idx += cp_len
     return res
@@ -3505,27 +3509,27 @@ fn (&str) count() -> int:
 --| Returns whether the string ends with `suffix`.
 #[bind]
 fn (&str) ends_with(suffix str) -> bool:
-    return $ptr[0..$len()].ends_with(suffix.ptr[0..suffix.len()])
+    return self.ptr[0..self.len()].ends_with(suffix.ptr[0..suffix.len()])
 
 --| Returns the first byte index of substring `needle` in the string or `none` if not found. SIMD accelerated.
 #[bind]
 fn (&str) index(needle str) -> ?int:
-    end := $len() - needle.len() + 1
+    end := self.len() - needle.len() + 1
     first := needle[0]
     for 0..end |i|:
-        if $ptr[i] == first:
-            if $[i..i+needle.len()] == needle:
+        if self.ptr[i] == first:
+            if self[i..i+needle.len()] == needle:
                 return i
     return none
 
 --| Returns the first byte index of a rune `needle` in the string or `none` if not found. SIMD accelerated.
 #[bind]
 fn (&str) index_rune(needle int) -> ?int:
-    len := $len()
+    len := self.len()
     i := 0
     while i < len:
-        rune_len := utf8SeqLen($ptr[i])
-        rune := utf8Decode($ptr + i)
+        rune_len := utf8SeqLen(self.ptr[i])
+        rune := utf8Decode(self.ptr + i)
         if rune == needle:
             return i
         i += rune_len
@@ -3534,8 +3538,8 @@ fn (&str) index_rune(needle int) -> ?int:
 --| Returns the first index of `byte` in the array or `none` if not found.
 #[bind='str.index_byte']
 fn (&str) index(b byte) -> ?int:
-    for 0..$len() |i|:
-        if $ptr[i] == b:
+    for 0..self.len() |i|:
+        if self.ptr[i] == b:
             return i
     return none
 
@@ -3546,29 +3550,29 @@ fn (&str) index_newline() -> ?int
 --| Returns the first index of any byte in `set` or `none` if not found.
 #[bind='str.index_any_byte']
 fn (&str) index_any(set [&]byte) -> ?int:
-    for 0..$len() |i|:
-        if set.index($ptr[i]) != none:
+    for 0..self.len() |i|:
+        if set.index(self.ptr[i]) != none:
             return i
     return none
 
 fn (&str) index_any(set AsSpan[byte]) -> ?int:
-    return $index_any(set.span())
+    return self.index_any(set.span())
 
 --| Returns the first byte index of any rune in `runes` or `none` if not found. SIMD accelerated.
 #[bind='str.index_any_rune']
 fn (&str) index_any_rune(runes [&]int) -> ?int:
-    len := $len()
+    len := self.len()
     i := 0
     while i < len:
-        rune_len := utf8SeqLen($ptr[i])
-        rune := utf8Decode($ptr + i)
+        rune_len := utf8SeqLen(self.ptr[i])
+        rune := utf8Decode(self.ptr + i)
         if runes.index(rune) != none:
             return i
         i += rune_len
     return none
 
 fn (&str) index_any_rune(runes AsSpan[int]) -> ?int:
-    return $index_any(runes.span())
+    return self.index_any(runes.span())
 
 fn (&str) iterator() -> int:
     return 0
@@ -3576,7 +3580,7 @@ fn (&str) iterator() -> int:
 --| Replaces each placeholder `{}` from the receiver string with the corresponding value in `args` converted to a string.
 --| TODO: This should accept tuple instead of []Object.
 fn (&str) fmt(args %T) -> str:
-    return $fmt('{}', move args)
+    return self.fmt('{}', move args)
 
 fn (&str) fmt(placeholder str, args %T) -> str:
     res := ''
@@ -3588,16 +3592,16 @@ fn (&str) fmt(placeholder str, args %T) -> str:
         begin:
             #field := struct_t.fields[i]
 
-            found_idx := $[cur..].index(placeholder) ?else:
+            found_idx := self[cur..].index(placeholder) ?else:
                 panic('Not enough placeholders. %{i}')
 
-            res += $[cur..cur+found_idx] + to_print_string(meta.access(args, #{field.name}))
+            res += self[cur..cur+found_idx] + to_print_string(meta.access(args, #{field.name}))
             cur += found_idx + placeholder.len()
 
-    if cur < $len():
-        if $[cur..].index(placeholder) != none:
+    if cur < self.len():
+        if self[cur..].index(placeholder) != none:
             panic('Not enough arguments.')
-        res += $[cur..]
+        res += self[cur..]
 
     return res
 
@@ -3606,41 +3610,41 @@ fn (&str) fmt(placeholder str, args %T) -> str:
 #[bind]
 fn (&str) fmtBytes(format NumberFormat) -> str:
     res := ''
-    for 0..$len() |i|:
-        res += $[i].fmt(format)
+    for 0..self.len() |i|:
+        res += self[i].fmt(format)
     return res
 
 fn (&str) hasAsciiFlag() -> bool:
-    return ($header && (1 << 63)) != 0
+    return (self.header && (1 << 63)) != 0
 
 fn (&str) intAt(idx int) -> int:
-    return int.decode($ptr + idx, .little)
+    return int.decode(self.ptr + idx, .little)
 
 fn (&str) intAt(idx int, endian Endian) -> int:
-    return int.decode($ptr + idx, endian)
+    return int.decode(self.ptr + idx, endian)
 
 fn (&str) i32At(idx int) -> i32:
-    return i32.decode($ptr + idx, .little)
+    return i32.decode(self.ptr + idx, .little)
 
 fn (&str) i32At(idx int, endian Endian) -> i32:
-    return i32.decode($ptr + idx, endian)
+    return i32.decode(self.ptr + idx, endian)
 
 --| Returns a new string with `str` inserted at byte index `idx`.
 #[bind]
 fn (&str) insert(idx int, s str) -> str:
-    return $[0..idx] + s + $[idx..]
+    return self[0..idx] + s + self[idx..]
 
 --| Returns a new array with `byte` inserted at index `idx`.
 #[bind='str.insert_byte']
 fn (&str) insert(idx int, b byte) -> str:
-    len := $len()
+    len := self.len()
     is_ascii := b < 0x80
     res := if (@isAscii() and is_ascii) @newAstrUndef(len + 1)
         else @newUstrUndef(len + 1)
-    @memcpy(res.ptr, $ptr, idx)
+    @memcpy(res.ptr, self.ptr, idx)
     res.ptr[idx] = b
     if idx < len:
-        @memcpy(res.ptr + idx + 1, $ptr + idx, len - idx)
+        @memcpy(res.ptr + idx + 1, self.ptr + idx, len - idx)
     return move res
 
 --| Returns whether the string contains all ASCII runes.
@@ -3650,27 +3654,27 @@ fn (&str) isAscii() -> bool:
     if @hasAsciiFlag():
         return true
     -- TODO: Port SIMD case.
-    for 0..$len() |i|:
-        if $[i] && 0x80 > 0:
+    for 0..self.len() |i|:
+        if self[i] && 0x80 > 0:
             return false
     return true
 
 fn (&str) last() -> byte:
-    return $[$len()-1]
+    return self[self.len()-1]
 
 fn (&str) lastIndexOf(needle str) -> ?int:
-    start := $len() - needle.len()
+    start := self.len() - needle.len()
     first := needle[0]
     for start..>=0 |i|:
-        if $ptr[i] == first:
-            if $[i..i+needle.len()] == needle:
+        if self.ptr[i] == first:
+            if self[i..i+needle.len()] == needle:
                 return i
     return none
 
 --| Returns the byte length of the string. See `count()` to obtain the number of runes.
 #[bind]
 fn (&str) len() -> int:
-    return $header && ~(1 << 63)
+    return self.header && ~(1 << 63)
 
 --| Returns whether this string is lexicographically before `other`.
 #[bind]
@@ -3680,16 +3684,16 @@ fn (str) less(other str) -> bool:
 --| Returns this string in lowercase.
 #[bind]
 fn (&str) lower() -> str:
-    len := $len()
+    len := self.len()
     res := if (@isAscii()) @newAstrUndef(len) else @newUstrUndef(len)
     for 0..len |i|:
-        res.ptr[i] = $ptr[i].lower()
+        res.ptr[i] = self.ptr[i].lower()
     return res
 
 fn (&str) next(idx &int) -> ?byte:
-    if idx.*.uge($len()):
+    if idx.*.uge(self.len()):
         return none
-    res := $[idx.*]
+    res := self[idx.*]
     idx.* += 1
     return res
 
@@ -3698,12 +3702,12 @@ fn (&str) next(idx &int) -> ?byte:
 fn (&str) replace(needle str, replacement str) -> str:
     res := ''
     i := 0
-    while $[i..].index(needle) |found_idx|:
-        res += $[i..i+found_idx] + replacement
+    while self[i..].index(needle) |found_idx|:
+        res += self[i..i+found_idx] + replacement
         i += found_idx + needle.len()
 
-    if i < $len():
-        res += $[i..]
+    if i < self.len():
+        res += self[i..]
 
     return res
 
@@ -3712,24 +3716,24 @@ fn (&str) replace(needle str, replacement str) -> str:
 fn (&str) repeat(n int) -> str:
     res := ''
     for 0..n:
-        res += $.*
+        res += self.*
     return res
 
 --| Returns the n'th rune.
 fn (&str) seek(n int) -> r32:
-    return $rune_at($seek_pos(n))
+    return self.rune_at(self.seek_pos(n))
 
 --| Returns the starting byte index for the n'th rune.
 #[bind]
 fn (&str) seek_pos(n int) -> int:
-    len := $len()
+    len := self.len()
     i := 0
     rune_i := 0
     while i < len:
         if rune_i == n:
             return i
-        rune_len := utf8SeqLen($ptr[i])
-        rune := utf8Decode($ptr + i)
+        rune_len := utf8SeqLen(self.ptr[i])
+        rune := utf8Decode(self.ptr + i)
         i += rune_len
         rune_i += 1
 
@@ -3740,36 +3744,36 @@ fn (&str) seek_pos(n int) -> int:
 --| Returns the UTF-8 rune starting at byte index `idx` as a string.
 #[bind]
 fn (&str) runeStrAt(idx int) -> str:
-    rune_len := utf8SeqLen($ptr[idx])
-    return $[idx..idx+rune_len]
+    rune_len := utf8SeqLen(self.ptr[idx])
+    return self[idx..idx+rune_len]
 
 fn (&str) set(idx int, x byte) -> str:
-    return $[0..idx] + str.initRune(x) + $[idx+1..]
+    return self[0..idx] + str.initRune(x) + self[idx+1..]
 
 --| Returns a list of UTF-8 strings split at occurrences of `sep`.
 fn (&str) split(sep str) -> []str:
     res := []str{}
-    if $len() == 0:
+    if self.len() == 0:
         res += ''
         return res
 
     i := 0
-    while $[i..].index(sep) |found_idx|:
-        res += $[i..i+found_idx]
+    while self[i..].index(sep) |found_idx|:
+        res += self[i..i+found_idx]
         i += found_idx + sep.len()
 
-    if i < $len():
-        res += $[i..]
+    if i < self.len():
+        res += self[i..]
 
     return res
 
 --| Returns whether the `str` starts with `prefix`.
 #[bind]
 fn (&str) starts_with(prefix str) -> bool:
-    return $ptr[0..$len()].starts_with(prefix.ptr[0..prefix.len()])
+    return self.ptr[0..self.len()].starts_with(prefix.ptr[0..prefix.len()])
 
 fn (&str) trimLeft(delim str) -> str:
-    res := $.*
+    res := self.*
     while res.len() >= delim.len():
         i := delim.len()
         if res[0..i] != delim:
@@ -3778,13 +3782,13 @@ fn (&str) trimLeft(delim str) -> str:
     return res
 
 fn (&str) trimLeft(delims AsSpan[str]) -> str:
-    res := $.*
+    res := self.*
     for delims |delim|:
         res = res.trimLeft(delim)
     return res
 
 fn (&str) trimRight(delim str) -> str:
-    res := $.*
+    res := self.*
     while res.len() >= delim.len():
         i := res.len() - delim.len()
         if res[i..] != delim:
@@ -3793,25 +3797,25 @@ fn (&str) trimRight(delim str) -> str:
     return res
 
 fn (&str) trimRight(delims AsSpan[str]) -> str:
-    res := $.*
+    res := self.*
     for delims |delim|:
         res = res.trimRight(delim)
     return res
 
 --| Returns the string with both ends trimmed.
 fn (&str) trim(delim str) -> str:
-    return $trimLeft(delim).trimRight(delim)
+    return self.trimLeft(delim).trimRight(delim)
 
 fn (&str) trim(delims AsSpan[str]) -> str:
-    return $trimLeft(delims).trimRight(delims)
+    return self.trimLeft(delims).trimRight(delims)
 
 --| Returns this string in uppercase.
 #[bind]
 fn (&str) upper() -> str:
-    len := $len()
-    res := if ($isAscii()) @newAstrUndef(len) else @newUstrUndef(len)
+    len := self.len()
+    res := if (self.isAscii()) @newAstrUndef(len) else @newUstrUndef(len)
     for 0..len |i|:
-        res.ptr[i] = $ptr[i].upper()
+        res.ptr[i] = self.ptr[i].upper()
     return res
 
 #[bind] 
@@ -3821,32 +3825,32 @@ type GenericVector[T Any] _
 type PartialVector[T Any, const N int] _
 
 fn (scope &PartialVector[]) @index_addr(idx int) -> scope &T:
-    if idx.uge($len()):
+    if idx.uge(self.len()):
         panic_oob(idx)
-    elem_addr := @unsafeCast(int, $) + 8
+    elem_addr := @unsafeCast(int, self) + 8
     return @scope_ptr_to_borrow('self', as[Ptr[T]] elem_addr + idx)
 
 --| Alias for `append`.
 fn (&PartialVector[]) `<<`(x T):
-    Self.append($, x)
+    Self.append(self, x)
 
 fn (&PartialVector[]) append(x T):
-    _len := $len()
+    _len := self.len()
     if _len == N:
-        panic('`%{type.name(Self)}` already has the max number of elements `%{$len()}`.')
-    addr := @unsafeCast(int, $)
+        panic('`%{type.name(Self)}` already has the max number of elements `%{self.len()}`.')
+    addr := @unsafeCast(int, self)
     @ptr_init((as[Ptr[T]] (addr + 8)) + _len, x)
     (as[Ptr[int]] addr).* += 1
 
 --| Returns the number of elements in the partial array.
 fn (&PartialVector[]) len() -> int:
     -- Get addr first to avoid implicit elem[0] cast for `Ptr[int]`.
-    addr := @unsafeCast(int, $)
+    addr := @unsafeCast(int, self)
     return (as[Ptr[int]] addr).*
 
 #[unsafe]
 fn (&PartialVector[]) setLength(len int):
-    addr := @unsafeCast(int, $)
+    addr := @unsafeCast(int, self)
     (as[Ptr[int]] addr).* = len
 
 #[bind]
@@ -3858,19 +3862,19 @@ fn Vector[] :: @init(elem T) -> Self:
 fn (&Vector[]) @copy() -> Self:
     new := as[Self] undef
     for 0..N |i|:
-        @ptr_init(*new[0] + i, $[i])
+        @ptr_init(*new[0] + i, self[i])
     return move new
 
 fn (scope &Vector[]) @index_addr(idx int) -> scope &T:
     if idx.uge(N):
         panic_oob(idx)
-    return @scope_ptr_to_borrow('self', as[Ptr[T]] $ + idx)
+    return @scope_ptr_to_borrow('self', as[Ptr[T]] self + idx)
 
 fn (scope &Vector[]) @slice() -> scope [&]T:
-    return $[0..N]
+    return self[0..N]
 
 fn (scope &Vector[]) @slice(start int) -> scope [&]T:
-    return $[start..N]
+    return self[start..N]
 
 --| Returns a slice of this vector from `start` (inclusive) to `end` (exclusive) indexes.
 fn (scope &Vector[]) @slice(start int, end int) -> scope [&]T:
@@ -3881,13 +3885,13 @@ fn (scope &Vector[]) @slice(start int, end int) -> scope [&]T:
     if end.ult(start):
         panic('InvalidArgument')
     return {
-        base   = as *$[start],
+        base   = as *self[start],
         length = end - start,
     }
 
 fn (&Vector[]) `+`(o Vector[T, %M]) -> Vector[T, N + M]:
     new := as[Vector[T, N + M]] undef
-    new[0..N].init($[0..])
+    new[0..N].init(self[0..])
     new[N..].init(o)
     return move new
 
@@ -3896,14 +3900,14 @@ fn (&Vector[]) ct_repeat(%M int) -> Vector[T, N * M]
 
 fn (&Vector[]) `**`(%M int) -> Vector[T, N * M]:
     #if meta.is_inline_eval():
-        return $ct_repeat(M)
+        return self.ct_repeat(M)
     #else:
         var new Vector[T, N*M] = undef
         #if !type.managed(T):
-            @memset(as *new[0], as *$[0], type.size(T) * N, M)
+            @memset(as *new[0], as *self[0], type.size(T) * N, M)
         #else:
             for 0..M |i|:
-                new[i*N..i*N+N].init($[0..])
+                new[i*N..i*N+N].init(self[0..])
         return move new
 
 -- --| Returns a new array that concats this array and `other`.
@@ -3923,14 +3927,14 @@ fn (&Vector[]) len() -> int:
 fn (&Vector[]) next(idx &int) -> ?T:
     if idx.* >= N:
         return none
-    res := $[idx.*]
+    res := self[idx.*]
     idx.* += 1
     return res
 
 #[unsafe]
 fn (&Vector[]) as_ptr_span() -> PtrSpan[T]:
     return {
-        ptr = *$[0],
+        ptr = *self[0],
         length = N,
     }
 
@@ -3977,23 +3981,23 @@ fn @ref_addr(ref ^%T) -> int
 
 fn (Ptr[]) @slice(start int, end int) -> PtrSpan[T]:
     return {
-        ptr    = $ + start,
+        ptr    = self + start,
         length = end - start,
     }
 
 #[bind]
 fn (Ptr[]) `+`(offset int) -> Ptr[T]:
-    return *$[offset]
+    return *self[offset]
 
 fn (Ptr[]) `-`(right Self) -> int:
-    return ((as[int] $) - (as[int] right)) / type.size(T)
+    return ((as[int] self) - (as[int] right)) / type.size(T)
 
 fn (Ptr[]) `<`(right Self) -> bool:
-    return ((as[int] $) < (as[int] right))
+    return ((as[int] self) < (as[int] right))
 
 --| Sets the value assuming the underlying memory is uninitialized.
 -- fn Ptr[].init(self Self, val T):
---     $init_(type.id(T), val)
+--     self.init_(type.id(T), val)
 
 -- #[bind] fn Ptr[].init_(self Self, type_id int, val T)
 
@@ -4041,8 +4045,8 @@ type Future[T Any]:
     inner ^FutureValue[T]
 
 fn (&Future[]) await() -> T:
-    @await_(as[&FutureValue[T]] $.inner)
-    return meta.access_option_payload($inner.data)
+    @await_(as[&FutureValue[T]] self.inner)
+    return meta.access_option_payload(self.inner.data)
 
 type FutureValue[T Any]:
     cont_head int -- index to `vm.task_nodes` or NullId
@@ -4065,13 +4069,13 @@ type FutureValue[T Any]:
 --         cb = cb,
 --         next = none,
 --     }
---     if $cont_head == none:
---         $cont_head = task
---         $cont_tail = task
+--     if self.cont_head == none:
+--         self.cont_head = task
+--         self.cont_tail = task
 --         return
 
---     $cont_tail.?.next = task
---     $cont_tail = task
+--     self.cont_tail.?.next = task
+--     self.cont_tail = task
 
 const NullId = (1 << 32) - 1
 
@@ -4105,15 +4109,15 @@ fn FutureResolver :: new(%T type) -> FutureResolver[T]:
     return {future_=Future(T)}
 
 fn (&FutureResolver[]) complete(val T):
-    if $future_.inner.completed:
+    if self.future_.inner.completed:
         panic('Future is already completed.')
 
-    $future_.inner.completed = true
-    $future_.inner.data = val
-    @notifyFutureComplete($future_)
+    self.future_.inner.completed = true
+    self.future_.inner.data = val
+    @notifyFutureComplete(self.future_)
 
 fn (&FutureResolver[]) future() -> Future[T]:
-    return $future_
+    return self.future_
 
 #[bind]
 type Ref[T Any] _
@@ -4131,38 +4135,38 @@ type PtrSpan[T Any]:
     length int    = 0
 
 fn (&PtrSpan[]) @index_addr(idx int) -> Ptr[T]:
-    if idx.uge($length):
+    if idx.uge(self.length):
         panic_oob(idx)
-    return *$ptr[idx]
+    return *self.ptr[idx]
 
 fn (&PtrSpan[]) @slice(start int) -> PtrSpan[T]:
-    return $ptr[start..$length]
+    return self.ptr[start..self.length]
 
 fn (&PtrSpan[]) @slice(start int, end int) -> PtrSpan[T]:
-    if start.ugt($length):
+    if start.ugt(self.length):
         panic_oob(start)
-    if end.ugt($length):
+    if end.ugt(self.length):
         panic_oob(end)
     if start.ugt(end):
         panic('InvalidArgument')
 
-    return $ptr[start..end]
+    return self.ptr[start..end]
 
 #[unsafe]
 fn (&PtrSpan[]) span() -> [&]T:
-    return as $.*
+    return as self.*
 
 fn (&PtrSpan[]) @set_index(idx int, val T):
-    $ptr[idx] = val
+    self.ptr[idx] = val
 
 fn (&PtrSpan[]) toBytes() -> PtrSpan[byte]:
-    return (as[Ptr[byte]] $ptr)[0..$length * type.size(T)]
+    return (as[Ptr[byte]] self.ptr)[0..self.length * type.size(T)]
 
 --| Returns whether the array ends with `suffix`.
 fn (&PtrSpan[]) ends_with(suffix PtrSpan[T]) -> bool:
-    if suffix.length > $length:
+    if suffix.length > self.length:
         return false
-    for $[$length-suffix.length..] |i, elem|:
+    for self[self.length-suffix.length..] |i, elem|:
         if elem != suffix[i]:
             return false
     return true
@@ -4175,8 +4179,8 @@ fn (&PtrSpan[]) ends_with(suffix PtrSpan[T]) -> bool:
 
 --| Returns the first index of `needle` in the slice or `none` if not found.
 fn (&PtrSpan[]) index(needle T) -> ?int:
-    for 0..$length |i|:
-        if $[i] == needle:
+    for 0..self.length |i|:
+        if self[i] == needle:
             return i
     return none
 
@@ -4184,12 +4188,12 @@ fn (&PtrSpan[]) iterator() -> int:
     return 0
 
 fn (&PtrSpan[]) len() -> int:
-    return $length
+    return self.length
 
 fn (&PtrSpan[]) next(idx &int) -> ?T:
-    if idx.* >= $length:
+    if idx.* >= self.length:
         return none
-    res := $[idx.*]
+    res := self[idx.*]
     idx.* += 1
     return res
 
@@ -4199,43 +4203,43 @@ fn (&PtrSpan[]) next(idx &int) -> ?T:
 
 --| Returns whether the `PtrSpan` starts with `target`.
 fn (&PtrSpan[]) starts_with(target PtrSpan[T]) -> bool:
-    return $span().starts_with(as target)
+    return self.span().starts_with(as target)
 
 fn (&PtrSpan[]) init(o Self):
-    if o.length != $length:
+    if o.length != self.length:
         panic('InvalidLen')
 
     #if type.managed(T):
-        for 0..$length |i|:
-            @ptr_init($ptr + i, o[i])
+        for 0..self.length |i|:
+            @ptr_init(self.ptr + i, o[i])
     #else:
-        @memcpy(as $ptr, as o.ptr, $length * type.size(T))
+        @memcpy(as self.ptr, as o.ptr, self.length * type.size(T))
 
 fn (&PtrSpan[]) init(val T):
-    for 0..$length |i|:
-        @ptr_init($ptr + i, val)
+    for 0..self.length |i|:
+        @ptr_init(self.ptr + i, val)
 
 fn (&PtrSpan[]) set(o Self):
-    if o.length != $length:
+    if o.length != self.length:
         panic('InvalidLen')
     #if type.managed(T):
-        for 0..$length |i|:
-            $[i] = o[i]
+        for 0..self.length |i|:
+            self[i] = o[i]
     #else:
-        @memmove(as $ptr, as o.ptr, type.size(T) * $length)
+        @memmove(as self.ptr, as o.ptr, type.size(T) * self.length)
 
 fn (&PtrSpan[]) set(val T):
     #if type.managed(T):
-        for 0..$length |i|:
-            $ptr[i] = val
+        for 0..self.length |i|:
+            self.ptr[i] = val
     #else:
-        @memset(as $ptr, as *val, type.size(T), $length)
+        @memset(as self.ptr, as *val, type.size(T), self.length)
 
 fn (&PtrSpan[]) set_backwards(o Self):
-    if o.length != $length:
+    if o.length != self.length:
         panic('InvalidLen')
-    for $length-1..>=0 |i|:
-        $[i] = o[i]
+    for self.length-1..>=0 |i|:
+        self[i] = o[i]
 
 -- --| Returns a slice with ends trimmed from `delims`. `mode` can be @left, @right, or @ends.
 -- #[bind] fn PtrSpan[].trim(self, mode symbol, delims PtrSpan[T]) PtrSpan[T]
@@ -4267,8 +4271,8 @@ type Generator[FnPtr Any]:
     done    bool
 
 fn (&Generator[]) @deinit():
-    $end()
-    $deinit()
+    self.end()
+    self.deinit()
 
 #[bind] fn (&Generator[]) deinit()
 

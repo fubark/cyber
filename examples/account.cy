@@ -6,13 +6,13 @@ fn Account :: @init(name str) -> Account:
     return {name=name, balance=0}
 
 fn (&Account) deposit(amt float):
-    $balance += amt
+    self.balance += amt
 
 fn (&Account) withdraw(amt float) -> !void:
-    if amt > $balance:
+    if amt > self.balance:
         return error.InsufficientFunds
     else:
-        $balance -= amt
+        self.balance -= amt
 
 fn (&Account) show(title str):
     print('%{title}, %{self.name}, %{self.balance}')

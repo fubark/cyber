@@ -39,7 +39,6 @@ type TokenType enum:
     case cunion_k
     case dec
     case dec_u
-    case dollar
     case dot
     case dot2
     case dot_bang
@@ -150,10 +149,10 @@ fn Token :: indent(start_pos i32, indent i32) -> Token:
     }
 
 fn (&Token) tag() -> TokenType:
-    return @intToEnum(TokenType, int($head && 0xff))
+    return @intToEnum(TokenType, int(self.head && 0xff))
 
 fn (&Token) pos() -> i32:
-    return $head >> 8
+    return self.head >> 8
 
 type StringDelim enum:
     case sq_single
@@ -261,41 +260,41 @@ fn Tokenizer :: @init(src str) -> Tokenizer:
     }
 
 fn (&Tokenizer) isAtEnd() -> bool:
-    return $src.len() == $next_pos
+    return self.src.len() == self.next_pos
 
 fn (&Tokenizer) consume() -> byte:
-    ch := $peek()
-    $advance()
+    ch := self.peek()
+    self.advance()
     return ch
 
 fn (&Tokenizer) peek() -> byte:
-    return $src[$next_pos]
+    return self.src[self.next_pos]
 
 fn (&Tokenizer) peekAhead(steps int) -> ?byte:
-    if $next_pos < $src.len() - steps:
-        return $src[$next_pos + steps]
+    if self.next_pos < self.src.len() - steps:
+        return self.src[self.next_pos + steps]
     else: return none
 
 fn (&Tokenizer) advance():
-    $next_pos += 1
+    self.next_pos += 1
 
 fn (&Tokenizer) tokenize() -> !void:
-    $tokens = $tokens.clear()
-    $next_pos = 0
+    self.tokens = self.tokens.clear()
+    self.next_pos = 0
 
-    if $src.len() >= 3:
-        if $src[0] == 0xEF and $src[1] == 0xBB and $src[2] == 0xBF:
+    if self.src.len() >= 3:
+        if self.src[0] == 0xEF and self.src[1] == 0xBB and self.src[2] == 0xBF:
             -- Skip UTF-8 BOM.
-            $next_pos = 3
+            self.next_pos = 3
 
-    if $src.len() >= $next_pos + 2:
-        if $src[$next_pos] == '#' and $src[$next_pos+1] == '!':
+    if self.src.len() >= self.next_pos + 2:
+        if self.src[self.next_pos] == '#' and self.src[self.next_pos+1] == '!':
             -- Ignore shebang line.
-            while !$isAtEnd():
-                if $peek() == '\n':
-                    $advance()
+            while !self.isAtEnd():
+                if self.peek() == '\n':
+                    self.advance()
                     break
-                $advance()
+                self.advance()
 
     state := TokenizeState{
         tag = .whitespace,
@@ -305,22 +304,22 @@ fn (&Tokenizer) tokenize() -> !void:
             case .whitespace:
                 -- First parse indent spaces.
                 while:
-                    if !$tokenizeIndentOne():
+                    if !self.tokenizeIndentOne():
                         state.tag = .token
                         break
 
             case .token:
                 while:
-                    state = $tokenizeOne(state)!
+                    state = self.tokenizeOne(state)!
                     if state.tag != .token:
                         break
 
             case .stringt_part:
-                state = $tokenizeStringOne($next_pos, state)!
+                state = self.tokenizeStringOne(self.next_pos, state)!
 
             case .stringt_expr:
                 while:
-                    next_state := $tokenizeOne(state)!
+                    next_state := self.tokenizeOne(state)!
                     if next_state.tag != .token:
                         state = next_state
                         break
@@ -330,21 +329,21 @@ fn (&Tokenizer) tokenize() -> !void:
 
 -- Consumes the next token skipping whitespace and returns the next tokenizer state.
 fn (&Tokenizer) tokenizeOne(state TokenizeState) -> !TokenizeState:
-    if $isAtEnd():
+    if self.isAtEnd():
         return {tag=.end}
 
-    start := $next_pos
+    start := self.next_pos
 
-    ch := $consume()
+    ch := self.consume()
     switch ch:
         case '(':
-            $pushToken(.left_paren, start)
+            self.pushToken(.left_paren, start)
 
         case ')':
-            $pushToken(.right_paren, start)
+            self.pushToken(.right_paren, start)
 
         case '{':
-            $pushToken(.left_brace, start)
+            self.pushToken(.left_brace, start)
 
             if state.tag == .stringt_expr:
                 next := state
@@ -352,7 +351,7 @@ fn (&Tokenizer) tokenizeOne(state TokenizeState) -> !TokenizeState:
                 return next
 
         case '}':
-            $pushToken(.right_brace, start)
+            self.pushToken(.right_brace, start)
             if state.tag == .stringt_expr:
                 next := state
                 if state.open_braces == 0:
@@ -363,685 +362,683 @@ fn (&Tokenizer) tokenizeOne(state TokenizeState) -> !TokenizeState:
 
         case '[':
             if state.after_whitespace:
-                $pushToken(.space_left_bracket, start)
+                self.pushToken(.space_left_bracket, start)
             else:
-                $pushToken(.left_bracket, start)
+                self.pushToken(.left_bracket, start)
 
-        case ']': $pushToken(.right_bracket, start)
+        case ']': self.pushToken(.right_bracket, start)
 
-        case ',': $pushToken(.comma, start)
+        case ',': self.pushToken(.comma, start)
 
         case '.':
-            switch $peek():
+            switch self.peek():
                 case '!':
-                    $advance()
-                    $pushToken(.dot_bang, start)
+                    self.advance()
+                    self.pushToken(.dot_bang, start)
 
                 case '.':
-                    $advance()
-                    if $peek() == '>':
-                        $advance()
-                        if $peek() == '=':
-                            $advance()
-                            $pushToken(.dot_dot_rangle_equal, start)
+                    self.advance()
+                    if self.peek() == '>':
+                        self.advance()
+                        if self.peek() == '=':
+                            self.advance()
+                            self.pushToken(.dot_dot_rangle_equal, start)
                         else:
-                            $pushToken(.dot_dot_rangle, start)
-                    else $peek() == '=':
-                        $advance()
-                        $pushToken(.dot_dot_equal, start)
+                            self.pushToken(.dot_dot_rangle, start)
+                    else self.peek() == '=':
+                        self.advance()
+                        self.pushToken(.dot_dot_equal, start)
                     else:
-                        $pushToken(.dot2, start)
+                        self.pushToken(.dot2, start)
 
                 case '?':
-                    $advance()
-                    $pushToken(.dot_question, start)
+                    self.advance()
+                    self.pushToken(.dot_question, start)
 
                 case '*':
-                    $advance()
-                    $pushToken(.dot_star, start)
+                    self.advance()
+                    self.pushToken(.dot_star, start)
 
                 else:
-                    $pushToken(.dot, start)
+                    self.pushToken(.dot, start)
 
-        case ';': $pushToken(.semicolon, start)
+        case ';': self.pushToken(.semicolon, start)
 
         case ':':
-            if $peek() == '=':
-                $pushToken(.colon_equal, start)
-            else $peek() == ':':
-                $pushToken(.colon2, start)
+            if self.peek() == '=':
+                self.pushToken(.colon_equal, start)
+            else self.peek() == ':':
+                self.pushToken(.colon2, start)
             else:
-                $pushToken(.colon, start)
+                self.pushToken(.colon, start)
 
         case '@':
-            $consumeIdent()
-            $pushToken(.at_ident, start)
-
-        case '$': $pushToken(.dollar, start)
+            self.consumeIdent()
+            self.pushToken(.at_ident, start)
 
         case '-':
-            next := $peek()
+            next := self.peek()
             if next == '-':
-                $advance()
+                self.advance()
                 -- Single line comment. Ignore chars until eol.
-                while !$isAtEnd():
-                    if $peek() == '\n':
-                        if $parse_comments:
-                            $comments = $comments + $src[start..$next_pos]
+                while !self.isAtEnd():
+                    if self.peek() == '\n':
+                        if self.parse_comments:
+                            self.comments = self.comments + self.src[start..self.next_pos]
 
                         -- Don't consume new line or the current indentation could augment with the next line.
-                        return $tokenizeOne(state)
-                    $advance()
+                        return self.tokenizeOne(state)
+                    self.advance()
 
-                if $parse_comments:
-                    $comments = $comments + $src[start..$next_pos]
+                if self.parse_comments:
+                    self.comments = self.comments + self.src[start..self.next_pos]
                 return {tag=.end}
             else next == '>':
-                $advance()
-                $pushToken(.minus_right_angle, start)
+                self.advance()
+                self.pushToken(.minus_right_angle, start)
             else:
-                $pushToken(.minus, start)
+                self.pushToken(.minus, start)
 
-        case '%': $pushToken(.percent, start)
+        case '%': self.pushToken(.percent, start)
 
         case '&':
-            if $peek() == '&':
-                $advance()
-                $pushToken(.double_ampersand, start)
+            if self.peek() == '&':
+                self.advance()
+                self.pushToken(.double_ampersand, start)
             else:
-                $pushToken(.ampersand, start)
+                self.pushToken(.ampersand, start)
 
         case '|':
-            if $peek() == '|':
-                $advance()
-                $pushToken(.double_vert_bar, start)
+            if self.peek() == '|':
+                self.advance()
+                self.pushToken(.double_vert_bar, start)
             else:
-                $pushToken(.vert_bar, start)
+                self.pushToken(.vert_bar, start)
 
-        case '~': $pushToken(.tilde, start)
+        case '~': self.pushToken(.tilde, start)
 
-        case '+': $pushToken(.plus, start)
+        case '+': self.pushToken(.plus, start)
 
         case '_':
-            next := $peek()
+            next := self.peek()
             if (next >= 'A' and next <= 'Z') or (next >= 'a' and next <= 'z') or next == '_':
-                $tokenizeKeywordOrIdent(start)
+                self.tokenizeKeywordOrIdent(start)
             else:
-                $pushToken(.underscore, start)
+                self.pushToken(.underscore, start)
 
-        case '^': $pushToken(.caret, start)
+        case '^': self.pushToken(.caret, start)
 
         case '*':
-            if $peek() == '*':
-                $advance()
-                $pushToken(.double_star, start)
+            if self.peek() == '*':
+                self.advance()
+                self.pushToken(.double_star, start)
             else:
-                $pushToken(.star, start)
+                self.pushToken(.star, start)
 
-        case '/': $pushToken(.slash, start)
+        case '/': self.pushToken(.slash, start)
 
         case '!':
-            if $peek() == '=':
-                $advance()
-                $pushToken(.bang_equal, start)
+            if self.peek() == '=':
+                self.advance()
+                self.pushToken(.bang_equal, start)
             else:
-                $pushToken(.bang, start)
+                self.pushToken(.bang, start)
 
         case '=':
-            if !$isAtEnd():
-                switch $peek():
+            if !self.isAtEnd():
+                switch self.peek():
                     case '=':
-                        $advance()
-                        $pushToken(.equal_equal, start)
+                        self.advance()
+                        self.pushToken(.equal_equal, start)
                     case '>':
-                        $advance()
-                        $pushToken(.equal_right_angle, start)
+                        self.advance()
+                        self.pushToken(.equal_right_angle, start)
                     else:
-                        $pushToken(.equal, start)
+                        self.pushToken(.equal, start)
             else:
-                $pushToken(.equal, start)
+                self.pushToken(.equal, start)
 
         case '<':
-            ch2 := $peek()
+            ch2 := self.peek()
             if ch2 == '=':
-                $pushToken(.left_angle_equal, start)
-                $advance()
+                self.pushToken(.left_angle_equal, start)
+                self.advance()
             else ch2 == '<':
-                $pushToken(.double_left_angle, start)
-                $advance()
+                self.pushToken(.double_left_angle, start)
+                self.advance()
             else ch2 == '>':
-                $pushToken(.left_right_angle, start)
-                $advance()
+                self.pushToken(.left_right_angle, start)
+                self.advance()
             else:
-                $pushToken(.left_angle, start)
+                self.pushToken(.left_angle, start)
 
         case '>':
-            ch2 := $peek()
+            ch2 := self.peek()
             if ch2 == '=':
-                $pushToken(.right_angle_equal, start)
-                $advance()
+                self.pushToken(.right_angle_equal, start)
+                self.advance()
             else ch2 == '>':
-                $pushToken(.double_right_angle, start)
-                $advance()
+                self.pushToken(.double_right_angle, start)
+                self.advance()
             else:
-                $pushToken(.right_angle, start)
+                self.pushToken(.right_angle, start)
 
         case ' ', '\r', '\t':
             -- Consume whitespace.
-            while !$isAtEnd():
-                ch2 := $peek()
+            while !self.isAtEnd():
+                ch2 := self.peek()
                 switch ch2:
-                    case ' ', '\r', '\t': $advance()
+                    case ' ', '\r', '\t': self.advance()
                     else:
                         next := state
                         next.after_whitespace = true
-                        return $tokenizeOne(next)
+                        return self.tokenizeOne(next)
 
             return {tag=.end}
 
         case '\n':
-            $pushToken(.new_line, start)
+            self.pushToken(.new_line, start)
             return {tag=.whitespace}
 
         case '`':
-            if $isNext('`', 0):
-                if $isNext('`', 1):
-                    $advance()
-                    $advance()
-                    $consumeRawStringMulti()!
-                    $pushToken(.raw_string_multi, start)
+            if self.isNext('`', 0):
+                if self.isNext('`', 1):
+                    self.advance()
+                    self.advance()
+                    self.consumeRawStringMulti()!
+                    self.pushToken(.raw_string_multi, start)
                 else:
-                    $advance()
-                    $pushToken(.raw_string, start)
+                    self.advance()
+                    self.pushToken(.raw_string, start)
             else:
-                $consumeRawString()!
-                $pushToken(.raw_string, start)
+                self.consumeRawString()!
+                self.pushToken(.raw_string, start)
 
         case '"':
-            if $peek() == '"':
-                if $peekAhead(1) |ch2|:
+            if self.peek() == '"':
+                if self.peekAhead(1) |ch2|:
                     if ch2 == '"':
-                        $advance()
-                        $advance()
-                        return $tokenizeStringOne(start, {
+                        self.advance()
+                        self.advance()
+                        return self.tokenizeStringOne(start, {
                             tag = state.tag,
                             string_delim = .triple,
                         })
-            return $tokenizeStringOne(start, {
+            return self.tokenizeStringOne(start, {
                 tag = state.tag,
                 string_delim = .single,
             })
 
         case '\'':
-            if $peek() == '\'':
-                if $peekAhead(1) |ch2|:
+            if self.peek() == '\'':
+                if self.peekAhead(1) |ch2|:
                     if ch2 == '\'':
-                        $advance()
-                        $advance()
-                        -- $tokenizeMultiLineRawString(start)!
+                        self.advance()
+                        self.advance()
+                        -- self.tokenizeMultiLineRawString(start)!
                         -- return state
-                        return $tokenizeStringOne(start, {
+                        return self.tokenizeStringOne(start, {
                             tag = state.tag,
                             string_delim = .sq_triple,
                         })
-            -- $tokenizeSingleLineRawString(start)!
-            return $tokenizeStringOne(start, {
+            -- self.tokenizeSingleLineRawString(start)!
+            return self.tokenizeStringOne(start, {
                 tag = state.tag,
                 string_delim = .sq_single,
             })
 
-        case '#': $pushToken(.pound, start)
+        case '#': self.pushToken(.pound, start)
 
-        case '?': $pushToken(.question, start)
+        case '?': self.pushToken(.question, start)
 
         else:
             switch ch:
                 case 'A'..'Z', 'a'..'z':
-                    $tokenizeKeywordOrIdent(start)
+                    self.tokenizeKeywordOrIdent(start)
                     return {tag=.token}
 
                 case '0'..'9':
-                    $tokenizeNumber(start)!
+                    self.tokenizeNumber(start)!
                     return {tag=.token}
 
                 else:
-                    if $ignore_errors:
-                        $pushToken(.err, start)
+                    if self.ignore_errors:
+                        self.pushToken(.err, start)
                         return {tag=.token}
                     else:
-                        return $reportErrorAt('unknown character: %{ch.fmt(.ch)} (%{ch}) at %{start}', start)
+                        return self.reportErrorAt('unknown character: %{ch.fmt(.ch)} (%{ch}) at %{start}', start)
     return {tag=.token}
 
 -- Returns true if an indent or new line token was parsed.
 fn (&Tokenizer) tokenizeIndentOne() -> bool:
-    if $isAtEnd():
+    if self.isAtEnd():
         return false
 
-    ch := $peek()
+    ch := self.peek()
     switch ch:
         case ' ':
-            start := $next_pos
-            $advance()
+            start := self.next_pos
+            self.advance()
             count := 1
             while:
-                if $isAtEnd():
+                if self.isAtEnd():
                     break
 
-                ch = $peek()
+                ch = self.peek()
                 if ch == ' ':
                     count += 1
-                    $advance()
+                    self.advance()
                 else: break
-            $pushIndentToken(count, start, true)
+            self.pushIndentToken(count, start, true)
             return true
 
         case '\t':
-            start := $next_pos
-            $advance()
+            start := self.next_pos
+            self.advance()
             count := 1
             while true:
-                if $isAtEnd():
+                if self.isAtEnd():
                     break
 
-                ch = $peek()
+                ch = self.peek()
                 if ch == '\t':
                     count += 1
-                    $advance()
+                    self.advance()
                 else: break
-            $pushIndentToken(count, start, false)
+            self.pushIndentToken(count, start, false)
             return true
 
         case '\n':
-            $pushToken(.new_line, $next_pos)
-            $advance()
+            self.pushToken(.new_line, self.next_pos)
+            self.advance()
             return true
 
         else: return false
 
 -- Returns the next tokenizer state.
 fn (&Tokenizer) tokenizeStringOne(start int, state TokenizeState) -> !TokenizeState:
-    save := $next_pos
+    save := self.next_pos
     while:
-        if $isAtEnd():
-            if $ignore_errors:
-                $next_pos = save
-                $pushToken(.err, save)
+        if self.isAtEnd():
+            if self.ignore_errors:
+                self.next_pos = save
+                self.pushToken(.err, save)
                 return {tag=.token}
             else:
-                return $reportErrorAt('UnterminatedString', save)
+                return self.reportErrorAt('UnterminatedString', save)
 
-        switch $peek():
+        switch self.peek():
             case '"':
                 switch state.string_delim:
                     case .single:
                         if state.has_template_expr:
-                            $pushToken(.stringt_part, start)
-                            end := $next_pos
-                            $advance()
-                            $pushToken(.stringt, end)
+                            self.pushToken(.stringt_part, start)
+                            end := self.next_pos
+                            self.advance()
+                            self.pushToken(.stringt, end)
                         else:
-                            $advance()
-                            $pushToken(.string, start)
+                            self.advance()
+                            self.pushToken(.string, start)
                         return {tag=.token}
 
                     case .triple:
-                        ch2 := $peekAhead(1) ?else 0
+                        ch2 := self.peekAhead(1) ?else 0
                         if ch2 == '"':
-                            ch2 = $peekAhead(2) ?else 0
+                            ch2 = self.peekAhead(2) ?else 0
                             if ch2 == '"':
                                 if state.has_template_expr:
-                                    $pushToken(.stringt_part, start)
-                                    end := $next_pos
-                                    $advance()
-                                    $advance()
-                                    $advance()
-                                    $pushToken(.stringt_multi, end)
+                                    self.pushToken(.stringt_part, start)
+                                    end := self.next_pos
+                                    self.advance()
+                                    self.advance()
+                                    self.advance()
+                                    self.pushToken(.stringt_multi, end)
                                 else:
-                                    $advance()
-                                    $advance()
-                                    $advance()
-                                    $pushToken(.string_multi, start)
+                                    self.advance()
+                                    self.advance()
+                                    self.advance()
+                                    self.pushToken(.string_multi, start)
                                 return {tag=.token}
-                        $advance()
+                        self.advance()
                     else:
-                        $advance()
+                        self.advance()
 
             case '\'':
                 switch state.string_delim:
                     case .sq_single:
                         if state.has_template_expr:
-                            $pushToken(.stringt_part, start)
-                            end := $next_pos
-                            $advance()
-                            $pushToken(.stringt, end)
+                            self.pushToken(.stringt_part, start)
+                            end := self.next_pos
+                            self.advance()
+                            self.pushToken(.stringt, end)
                         else:
-                            $advance()
-                            $pushToken(.sq_string, start)
+                            self.advance()
+                            self.pushToken(.sq_string, start)
                         return {tag=.token}
 
                     case .sq_triple:
-                        ch2 := $peekAhead(1) ?else 0
+                        ch2 := self.peekAhead(1) ?else 0
                         if ch2 == '\'':
-                            ch2 = $peekAhead(2) ?else 0
+                            ch2 = self.peekAhead(2) ?else 0
                             if ch2 == '\'':
                                 if state.has_template_expr:
-                                    $pushToken(.stringt_part, start)
-                                    end := $next_pos
-                                    $advance()
-                                    $advance()
-                                    $advance()
-                                    $pushToken(.stringt_multi, end)
+                                    self.pushToken(.stringt_part, start)
+                                    end := self.next_pos
+                                    self.advance()
+                                    self.advance()
+                                    self.advance()
+                                    self.pushToken(.stringt_multi, end)
                                 else:
-                                    $advance()
-                                    $advance()
-                                    $advance()
-                                    $pushToken(.sq_string_multi, start)
+                                    self.advance()
+                                    self.advance()
+                                    self.advance()
+                                    self.pushToken(.sq_string_multi, start)
                                 return {tag=.token}
-                        $advance()
+                        self.advance()
                     else:
-                        $advance()
+                        self.advance()
 
             case '%':
-                ch2 := $peekAhead(1) ?else 0
+                ch2 := self.peekAhead(1) ?else 0
                 if ch2 == '{':
                     next := state
                     if state.has_template_expr:
                         -- Encounter first expression.
                         switch state.string_delim:
                             case .sq_single
-                            case .single: $pushToken2(.stringt, start, save)
+                            case .single: self.pushToken2(.stringt, start, save)
                             case .sq_triple
-                            case .triple: $pushToken2(.stringt_multi, start, save)
+                            case .triple: self.pushToken2(.stringt_multi, start, save)
 
-                        $pushToken(.stringt_part, save)
+                        self.pushToken(.stringt_part, save)
                         next.has_template_expr = true
 
                     else:
-                        $pushToken(.stringt_part, start)
+                        self.pushToken(.stringt_part, start)
 
-                    expr_start := $next_pos
-                    $advance()
-                    $advance()
-                    $pushToken(.stringt_expr, expr_start)
+                    expr_start := self.next_pos
+                    self.advance()
+                    self.advance()
+                    self.pushToken(.stringt_expr, expr_start)
                     next.tag = .stringt_expr
                     next.open_braces = 0
                     return next
 
                 else:
-                    $advance()
+                    self.advance()
 
             case '\\':
                 -- Escape the next character.
-                $advance()
-                if $isAtEnd():
-                    if $ignore_errors:
-                        $next_pos = start
-                        $pushToken(.err, start)
+                self.advance()
+                if self.isAtEnd():
+                    if self.ignore_errors:
+                        self.next_pos = start
+                        self.pushToken(.err, start)
                         return {tag=.token}
 
                     else:
-                        return $reportErrorAt('UnterminatedString', start)
+                        return self.reportErrorAt('UnterminatedString', start)
 
-                $advance()
+                self.advance()
 
             case '\n':
                 if state.string_delim == .single or state.string_delim == .sq_single:
-                    if $ignore_errors:
-                        $next_pos = start
-                        $pushToken(.err, start)
+                    if self.ignore_errors:
+                        self.next_pos = start
+                        self.pushToken(.err, start)
                         return {tag=.token}
                     else:
-                        return $reportErrorAt('Encountered new line in single line literal.', $next_pos)
-                $advance()
+                        return self.reportErrorAt('Encountered new line in single line literal.', self.next_pos)
+                self.advance()
 
             else:
-                $advance()
+                self.advance()
 
 fn (&Tokenizer) consumeDigits():
     while:
-        if $isAtEnd():
+        if self.isAtEnd():
             return
 
-        ch := $peek()
+        ch := self.peek()
         if ch >= '0' and ch <= '9':
-            $advance()
+            self.advance()
             continue
         else: break
 
 -- Assume first character is consumed already.
 fn (&Tokenizer) consumeIdent():
     while: 
-        if $isAtEnd():
+        if self.isAtEnd():
             return
-        ch := $peek()
+        ch := self.peek()
         switch ch:
             case '0'..'9', 'A'..'Z', 'a'..'z', '_':
-                $advance()
+                self.advance()
                 continue
             else:
                 return
 
 fn (&Tokenizer) consumeRawStringMulti() -> !void:
     while:
-        if $isAtEnd():
-            return $reportError('Expected raw string.')
-        switch $peek():
+        if self.isAtEnd():
+            return self.reportError('Expected raw string.')
+        switch self.peek():
             case '`':
-                $advance()
-                if $isNext('`', 0):
-                    $advance()
+                self.advance()
+                if self.isNext('`', 0):
+                    self.advance()
                 else:
                     continue
 
-                if $isNext('`', 0):
-                    $advance()
+                if self.isNext('`', 0):
+                    self.advance()
                     return
             else:
-                $advance()
+                self.advance()
 
 fn (&Tokenizer) consumeRawString() -> !void:
     while:
-        if $isAtEnd():
-            return $reportError('Expected raw string.')
-        switch $peek():
+        if self.isAtEnd():
+            return self.reportError('Expected raw string.')
+        switch self.peek():
             case '`':
-                $advance()
+                self.advance()
                 return
             case '\n':
-                return $reportError('Expected raw string on a single line.')
+                return self.reportError('Expected raw string on a single line.')
             else:
-                $advance()
+                self.advance()
 
 fn (&Tokenizer) isNext(ch byte, lookahead int) -> bool:
-    if $next_pos >= $src.len() - lookahead:
+    if self.next_pos >= self.src.len() - lookahead:
         return false
-    return $src[$next_pos + lookahead] == ch
+    return self.src[self.next_pos + lookahead] == ch
 
 fn (&Tokenizer) tokenizeKeywordOrIdent(start int):
-    $consumeIdent()
-    if $keywords.get($src[start..$next_pos]) |token_t|:
-        $pushToken(token_t, start)
+    self.consumeIdent()
+    if self.keywords.get(self.src[start..self.next_pos]) |token_t|:
+        self.pushToken(token_t, start)
     else:
-        $pushToken(.ident, start)
+        self.pushToken(.ident, start)
 
 fn (&Tokenizer) tokenizeSingleLineRawString(start int) -> !void:
-    save := $next_pos
+    save := self.next_pos
     while:
-        if $isAtEnd():
-            if $ignore_errors:
-                $next_pos = save
-                $pushToken(.err, start)
-            else: return $reportErrorAt('UnterminatedString', start)
+        if self.isAtEnd():
+            if self.ignore_errors:
+                self.next_pos = save
+                self.pushToken(.err, start)
+            else: return self.reportErrorAt('UnterminatedString', start)
 
-        if $peek() == '\'':
-            $advance()
-            $pushToken(.sq_string, start)
+        if self.peek() == '\'':
+            self.advance()
+            self.pushToken(.sq_string, start)
             return
-        else $peek() == '\n':
-            return $reportErrorAt('Encountered new line in single line literal.', $next_pos)
+        else self.peek() == '\n':
+            return self.reportErrorAt('Encountered new line in single line literal.', self.next_pos)
         else:
-            $advance()
+            self.advance()
 
 fn (&Tokenizer) tokenizeMultiLineRawString(start int) -> !void:
-    save := $next_pos
+    save := self.next_pos
     while:
-        if $isAtEnd():
-            if $ignore_errors:
-                $next_pos = save
-                $pushToken(.err, start)
-            else: return $reportErrorAt('UnterminatedString', start)
+        if self.isAtEnd():
+            if self.ignore_errors:
+                self.next_pos = save
+                self.pushToken(.err, start)
+            else: return self.reportErrorAt('UnterminatedString', start)
 
-        if $peek() == '\'':
-            ch := $peekAhead(1) ?else:
-                $advance()
+        if self.peek() == '\'':
+            ch := self.peekAhead(1) ?else:
+                self.advance()
                 continue
 
-            ch2 := $peekAhead(2) ?else:
-                $advance()
+            ch2 := self.peekAhead(2) ?else:
+                self.advance()
                 continue
 
             if ch == '\'' and ch2 == '\'':
-                $advance()
-                $advance()
-                $advance()
-                $pushToken(.sq_string_multi, start)
+                self.advance()
+                self.advance()
+                self.advance()
+                self.pushToken(.sq_string_multi, start)
                 return
             else:
-                $advance()
+                self.advance()
                 continue
         else:
-            $advance()
+            self.advance()
 
 -- Assumes first digit is consumed.
 fn (&Tokenizer) tokenizeNumber(start int) -> !void:
-    if $isAtEnd():
-        $pushToken(.dec, start)
+    if self.isAtEnd():
+        self.pushToken(.dec, start)
         return
 
-    ch := $peek()
+    ch := self.peek()
     if (ch >= '0' and ch <= '9') or ch == '.' or ch == 'e' or ch == 'u':
-        $consumeDigits()
-        if $isAtEnd():
-            $pushToken(.dec, start)
+        self.consumeDigits()
+        if self.isAtEnd():
+            self.pushToken(.dec, start)
             return
 
-        if $peek() == 'u':
-            $advance()
-            $pushToken(.dec_u, start)
+        if self.peek() == 'u':
+            self.advance()
+            self.pushToken(.dec_u, start)
             return
 
         isFloat := false
-        ch = $peek()
+        ch = self.peek()
         if ch == '.':
-            next := $peekAhead(1) ?else:
-                $pushToken(.dec, start)
+            next := self.peekAhead(1) ?else:
+                self.pushToken(.dec, start)
                 return
 
             if next < '0' or next > '9':
-                $pushToken(.dec, start)
+                self.pushToken(.dec, start)
                 return
 
-            $advance()
-            $advance()
-            $consumeDigits()
-            if $isAtEnd():
-                $pushToken(.float, start)
+            self.advance()
+            self.advance()
+            self.consumeDigits()
+            if self.isAtEnd():
+                self.pushToken(.float, start)
                 return
-            ch = $peek()
+            ch = self.peek()
             isFloat = true
 
         if ch == 'e':
-            $advance()
-            if $isAtEnd():
-                return $reportError('Expected number.')
-            ch = $peek()
+            self.advance()
+            if self.isAtEnd():
+                return self.reportError('Expected number.')
+            ch = self.peek()
             if ch == '-':
-                $advance()
-                if $isAtEnd():
-                    return $reportError('Expected number.')
-                ch = $peek()
+                self.advance()
+                if self.isAtEnd():
+                    return self.reportError('Expected number.')
+                ch = self.peek()
             if ch < '0' and ch > '9':
-                return $reportError('Expected number.')
+                return self.reportError('Expected number.')
 
-            $consumeDigits()
+            self.consumeDigits()
             isFloat = true
 
         if isFloat:
-            $pushToken(.float, start)
+            self.pushToken(.float, start)
         else:
-            $pushToken(.dec, start)
+            self.pushToken(.dec, start)
         return
 
-    if $src[$next_pos-1] == '0':
+    if self.src[self.next_pos-1] == '0':
         -- Less common integer notation.
         if ch == 'x':
             -- Hex integer.
-            $advance()
+            self.advance()
             while:
-                if $isAtEnd():
+                if self.isAtEnd():
                     break
-                ch = $peek()
+                ch = self.peek()
                 if (ch >= '0' and ch <= '9') or (ch >= 'A' and ch <= 'Z') or (ch >= 'a' and ch <= 'z'):
-                    $advance()
+                    self.advance()
                     continue
                 else: break
-            $pushToken(.hex, start)
+            self.pushToken(.hex, start)
             return
         else ch == 'o':
             -- Oct integer.
-            $advance()
+            self.advance()
             while:
-                if $isAtEnd():
+                if self.isAtEnd():
                     break
 
-                ch = $peek()
+                ch = self.peek()
                 if ch >= '0' and ch <= '8':
-                    $advance()
+                    self.advance()
                     continue
                 else: break
-            $pushToken(.oct, start)
+            self.pushToken(.oct, start)
             return
         else ch == 'b':
             -- Bin integer.
-            $advance()
+            self.advance()
             while:
-                if $isAtEnd():
+                if self.isAtEnd():
                     break
 
-                ch = $peek()
+                ch = self.peek()
                 if ch == '0' or ch == '1':
-                    $advance()
+                    self.advance()
                     continue
                 else: break
-            $pushToken(.bin, start)
+            self.pushToken(.bin, start)
             return
         else ch == 'u':
-            $advance()
-            $pushToken(.dec_u, start)
+            self.advance()
+            self.pushToken(.dec_u, start)
             return
         else:
             if str.is_ascii_alpha(ch):
-                return $reportError('Unsupported integer notation: %{ch.fmt()}')
+                return self.reportError('Unsupported integer notation: %{ch.fmt()}')
 
     -- Push single digit number.
-    $pushToken(.dec, start)
+    self.pushToken(.dec, start)
     return
 
 fn (&Tokenizer) pushIndentToken(count int, start_pos int, spaces bool):
-    $tokens = $tokens + Token.indent(i32(start_pos), if (spaces) i32(count) else i32(count) || 0x80000000)
+    self.tokens = self.tokens + Token.indent(i32(start_pos), if (spaces) i32(count) else i32(count) || 0x80000000)
 
 fn (&Tokenizer) pushToken(token_t TokenType, start_pos int):
-    $tokens = $tokens + Token(token_t, i32(start_pos), i32($next_pos))
+    self.tokens = self.tokens + Token(token_t, i32(start_pos), i32(self.next_pos))
 
 fn (&Tokenizer) pushToken2(token_t TokenType, start_pos int, end_pos int):
-    $tokens = $tokens + Token(token_t, i32(start_pos), i32(end_pos))
+    self.tokens = self.tokens + Token(token_t, i32(start_pos), i32(end_pos))
 
 fn (&Tokenizer) reportError(msg str) -> error:
-    return $reportErrorAt(msg, $next_pos)
+    return self.reportErrorAt(msg, self.next_pos)
 
 fn (&Tokenizer) reportErrorAt(msg str, pos int) -> error:
-    $has_error = true
-    $report_fn($ctx, msg, pos)!
+    self.has_error = true
+    self.report_fn(self.ctx, msg, pos)!
     return error.TokenError
 
 fn defaultReportFn(ctx Ptr[void], msg str, pos int) -> !void:

@@ -56,20 +56,20 @@ fn DirIteratorImpl :: @init() -> DirIteratorImpl:
 
 fn (&DirIteratorImpl) next(dir &os.Dir) -> !?os.DirEntry:
     while:
-        if !$init:
+        if !self.init:
             res := lc.lseek(dir.fd, lc.off_t(0), lc.SEEK_SET)
             if res == -1:
                 return os.fromErrno()
-            $init = true
-        if $idx >= $end:
-            rc := linux_lc.getdents64(dir.fd, *$buf[0], as $buf.len())
+            self.init = true
+        if self.idx >= self.end:
+            rc := linux_lc.getdents64(dir.fd, *self.buf[0], as self.buf.len())
             if rc == 0: return none
             if rc == -1: return os.fromErrno()
-            $idx = 0
-            $end = rc
+            self.idx = 0
+            self.end = rc
 
-        entry := as[Ptr[linux_lc.dirent64]] *$buf[$idx]
-        $idx += entry.reclen
+        entry := as[Ptr[linux_lc.dirent64]] *self.buf[self.idx]
+        self.idx += entry.reclen
         name := c.from_strz(*entry.name)
         if name == '.':
             continue

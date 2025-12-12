@@ -472,23 +472,23 @@ type DirIteratorImpl:
 --| Returns none when no more entries.
 --| Automatically skips '.' and '..' entries.
 fn (&DirIteratorImpl) next(dir &os.Dir) -> !?os.DirEntry:
-    if $first_call:
+    if self.first_call:
         -- First call - initialize FindFirstFileW
         -- Use dir.path directly to avoid string copy/double-free issues
         pattern := dir.path + "\\*"
         pattern16 := utf8ToUtf16Le(pattern)!
-        $handle = kernel32.FindFirstFileW(pattern16.ptr, &$find_data)
-        if $handle == none:
+        self.handle = kernel32.FindFirstFileW(pattern16.ptr, &self.find_data)
+        if self.handle == none:
             return fromWin32Error()
-        $first_call = false
+        self.first_call = false
     else:
         -- Subsequent calls - use FindNextFileW
-        if kernel32.FindNextFileW($handle, &$find_data) == FALSE:
+        if kernel32.FindNextFileW(self.handle, &self.find_data) == FALSE:
             err := kernel32.GetLastError()
             -- Close handle when iteration completes (defense in depth)
-            if $handle != none:
-                _ = kernel32.FindClose($handle)
-                $handle = none
+            if self.handle != none:
+                _ = kernel32.FindClose(self.handle)
+                self.handle = none
             if err == core.ERROR_NO_MORE_FILES:
                 return none
             else:
@@ -496,26 +496,26 @@ fn (&DirIteratorImpl) next(dir &os.Dir) -> !?os.DirEntry:
                 return fromWin32Error()
     
     -- Skip "." and ".." entries
-    if $find_data.cFileName[0] == 0x2E:  -- '.'
-        if $find_data.cFileName[1] == 0:
-            return $next(dir)  -- Skip "."
+    if self.find_data.cFileName[0] == 0x2E:  -- '.'
+        if self.find_data.cFileName[1] == 0:
+            return self.next(dir)  -- Skip "."
         else:
-            if $find_data.cFileName[1] == 0x2E and $find_data.cFileName[2] == 0:
-                return $next(dir)  -- Skip ".."
+            if self.find_data.cFileName[1] == 0x2E and self.find_data.cFileName[2] == 0:
+                return self.next(dir)  -- Skip ".."
     
     -- Convert filename from UTF-16LE to UTF-8
     -- Find null terminator to get actual length
     var name_len int = 0
-    while name_len < 260 and $find_data.cFileName[name_len] != 0:
+    while name_len < 260 and self.find_data.cFileName[name_len] != 0:
         name_len += 1
     -- Create a slice from the fixed array
     name_slice := []WCHAR(name_len, 0)
     for 0..name_len |i|:
-        name_slice[i] = $find_data.cFileName[i]
+        name_slice[i] = self.find_data.cFileName[i]
     name := utf16LeToUtf8(name_slice)!
     
     -- Determine file kind from attributes
-    kind := fileKindFromAttributes($find_data.dwFileAttributes)
+    kind := fileKindFromAttributes(self.find_data.dwFileAttributes)
     
     return os.DirEntry{
         name = name,

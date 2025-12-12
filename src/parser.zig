@@ -3590,16 +3590,6 @@ pub const Parser = struct {
                     .pos = self.tokenPos(start),
                 });
             },
-            .dollar => {
-                self.advance();
-                const name = (try self.parseOptName()) orelse {
-                    return self.newTokenNode(.dollar, start);
-                };
-                return self.ast.newNodeErase(.dollar_lit, .{
-                    .name = name,
-                    .pos = self.tokenPos(start),
-                });
-            },
             .underscore => {
                 self.advance();
                 return try self.newTokenNode(.void_lit, start);
@@ -4506,7 +4496,6 @@ pub const Parser = struct {
         }
 
         switch (expr.type()) {
-            .dollar_lit,
             .callExpr,
             .accessExpr,
             .deref,

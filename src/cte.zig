@@ -721,36 +721,6 @@ fn evalCallExpr(c: *cy.Chunk, call: *ast.CallExpr) !Expr {
                 return c.reportErrorFmt("Unsupported {}", &.{v(@tagName(callee))}, node);
             },
         }
-    } else if (call.callee.type() == .dollar_lit) {
-        const cx = sema.getResolveContext(c);
-        if (cx.type != .func or !cx.data.func.isMethod()) {
-            return c.reportErrorFmt("Can only infer `self` from a method body.", &.{}, call.callee);
-        }
-
-        const self_param = cx.ct_params.get("self").?;
-
-        const callee = call.callee.cast(.dollar_lit);
-        const right_name = callee.name.name();
-
-        // Look for sym under left type's module.
-        const right_sym = try c.accessResolvedSymOrFail(self_param.getType(), right_name, callee.name);
-
-        if (right_sym.type == .func) {
-            const res = try c.semaCallFuncSymRec(right_sym.cast(.func), callee.name, sema.ExprResult.initCtValue2(self_param.getType(), self_param.value), call.args.slice(), true, node);
-            return Expr.initValue(res.data.ct_value);
-        // } else if (rightSym.type == .func_template) {
-        //     const template = rightSym.cast(.func_template);
-        //     if (template.callable) {
-        //         return c.semaCallGenericFuncRec(template, callee.left, leftRes, call.args, node);
-        //     } else {
-        //         return c.reportErrorFmt("Function template must be expanded first.", &.{v(right_name)}, callee.left);
-        //     }
-        // } else {
-        //     const callee_v = try c.semaExpr(call.callee, .{});
-        //     return c.semaCallValue(callee_v, call.callee, call.args, callee.right);
-        } else {
-            return c.reportErrorFmt("Unsupported {}", &.{v(right_sym.type)}, node);
-        }
     } else {
         const callee = try evalExprInfer(c, call.callee);
         defer deinitExpr(c, callee);
@@ -1918,21 +1888,6 @@ pub fn evalExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: ExprCstr) anyerror!E
                     return Expr.initSym(sym);
                 },
             }
-        },
-        .dollar => {
-            const cx = sema.getResolveContext(c);
-            const res = Expr.initCtVar(cx.ct_params.getPtr("self").?);
-            return Expr.initValue(try exprToValue(c, res, node));
-        },
-        .dollar_lit => {
-            const dollar_lit = node.cast(.dollar_lit);
-
-            const cx = sema.getResolveContext(c);
-            const self_param = cx.ct_params.getPtr("self") orelse {
-                return c.reportError("Expected `self`.", node);
-            };
-            const self_param_value = try exprToValue(c, Expr.initCtVar(self_param), node);
-            return accessValue(c, self_param_value, dollar_lit.name.name(), dollar_lit.name);
         },
         .callExpr => {
             const call_expr = node.cast(.callExpr);

@@ -1191,7 +1191,7 @@ type Base:
     a int
 
 fn (&Base) double() -> int:
-    return $a * 2
+    return self.a * 2
 
 type Container:
     b use Base
@@ -1267,15 +1267,15 @@ map := MyMap{a=123, b=234, c=345}
 ## Methods.
 Methods are functions that are invoked with a parent value (receiver).
 
-They are declared by specifying the receiver's type before the function name and the other parameters. Inside a method body, `$` or `self` are used to reference the receiver's members as well as invoking other methods:
+They are declared by specifying the receiver's type before the function name and the other parameters. Inside a method body, `self` references the receiver's members as well as invoking other methods:
 ```cy
 type Node:
     value int
     next  ?^Node
 
 fn (&Node) inc(n int):
-    $value += n
-    $inc_one()
+    self.value += n
+    self.inc_one()
 
 fn (&Node) inc_one():
     self.value += 1
@@ -1338,12 +1338,12 @@ type Vec2:
 
 fn (&Vec2) `+`(o Vec2) -> Vec2:
     return {
-        x = $x + o.x,
-        y = $y + o.y,
+        x = self.x + o.x,
+        y = self.y + o.y,
     }
 
 fn (&Vec2) `-`() -> Vec2:
-    return {x=-$x, y=-$y}
+    return {x=-self.x, y=-self.y}
 
 a := Vec2{x=1, y=2}
 b := a + Vec2{x=3, y=4}
@@ -1356,10 +1356,10 @@ type MyCollection:
     arr []int
 
 fn (&MyCollection) @index(idx int) -> int:
-    return $arr[idx * 2]
+    return self.arr[idx * 2]
 
 fn (&MyCollection) @set_index(idx int, value int):
-    $arr[idx * 2] = val 
+    self.arr[idx * 2] = val 
 
 a := MyCollection{arr={1, 2, 3, 4}}
 print(a[1])
@@ -1414,8 +1414,8 @@ Function and methods can still be declared inside the type's namespace:
 type Vec2(x float, y float)
 
 fn (&Vec2) scale(s float):
-    $x *= s
-    $y *= s
+    self.x *= s
+    self.y *= s
 ```
 
 Tuples can be initialized with member values corresponding to the order they were declared:
@@ -1573,7 +1573,7 @@ type Circle:
     radius float
 
 fn (&Circle) area() -> float:
-    return 3.14 * $radius^2
+    return 3.14 * self.radius^2
 
 type Rectangle:
     with Shape
@@ -1581,7 +1581,7 @@ type Rectangle:
     height float
 
 fn (&Rectangle) area() -> float:
-    return $width * $height
+    return self.width * self.height
 ```
 A type that intends to implement a trait but does not satisfy the trait's interface results in a compile error.
 
@@ -1615,7 +1615,7 @@ type MyContainer[T Any]:
     value T
 
 fn (&MyContainer[]) get() -> T:
-    return $value
+    return self.value
 ```
 
 When the type template is expanded, a variant of the type is generated:
@@ -2269,8 +2269,8 @@ type MyArray:
 
 -- Performs deep copy.
 fn (&MyArray) @copy() -> Self:
-    new_ptr := alloc(byte, $len)
-    @memcpy(new_ptr, $ptr, $len)
+    new_ptr := alloc(byte, self.len)
+    @memcpy(new_ptr, self.ptr, self.len)
     return {ptr=new_ptr}
 ```
 
@@ -2310,7 +2310,7 @@ type Foo:
     a int
 
 fn (&Foo) @clone() -> Self:
-    return {a=$a}
+    return {a=self.a}
 ```
 
 ### Moving.
@@ -2432,7 +2432,7 @@ type Foo:
     a int
 
 fn (&Foo) mutate():
-    $a = 123
+    self.a = 123
 ```
 
 Invoking methods automatically attempts to obtain the correct borrow type as specified by the method:
@@ -2446,7 +2446,7 @@ f.mutate()
 Functions can only return borrows if the scope is bound to a borrow parameter. This is possible with the `scope` modifier:
 ```cy
 fn (scope &FooArray) @index_addr(idx int) -> scope &Foo:
-    return &$inner[idx]
+    return &self.inner[idx]
 ```
 The `scope` binding informs the callsite that the returned borrow belongs to the same scope as a borrowed argument. This ensures the returned borrow's lifetime does not exceed the lifetime of the borrowed argument.
 
@@ -2458,7 +2458,7 @@ type FooIterator:
 
 fn (scope &FooArray) iterator() -> scope FooIterator:
     return {
-        rec = $,
+        rec = self,
         idx = 0,
     }
 ```
@@ -2467,10 +2467,10 @@ fn (scope &FooArray) iterator() -> scope FooIterator:
 The `sink` modifier accepts and consumes a value argument: *This is not much different from a `move` operation, so this feature may be removed.*
 ```cy
 fn (sink Array[]) as_buffer() -> Buffer[T]:
-    buf := $buf
-    length := $length
-    cap := $cap()
-    @consume($)
+    buf := self.buf
+    length := self.length
+    cap := self.cap()
+    @consume(self)
     return {
         base   = buf,
         length = length,
@@ -2490,7 +2490,7 @@ type File:
     fd int
 
 fn (&File) @deinit():
-    C.close($fd)
+    C.close(self.fd)
 ```
 
 On thread panic, the runtime begins its **fatal** deinitialization procedure.
@@ -3184,8 +3184,8 @@ type IntMap[K Any, const HASH fnsym(K)->int]
     len int
 
 fn (&IntMap[]) get(key K) -> int:
-    slot := HASH(key) % $len
-    return $ptr[slot]
+    slot := HASH(key) % self.len
+    return self.ptr[slot]
 
 fn my_hash(s str) -> int:
     return s.len()

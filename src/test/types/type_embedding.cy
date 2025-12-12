@@ -5,7 +5,7 @@ type Base:
     a int
 
 fn (&Base) double() -> int:
-    return $a * 2
+    return self.a * 2
 
 type Container:
     b use Base

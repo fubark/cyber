@@ -34,8 +34,6 @@ pub const NodeType = enum(u8) {
     decLit,
     dec_u,
     deref,
-    dollar,
-    dollar_lit,
     dot,
     dot_lit,
     else_block,
@@ -928,8 +926,6 @@ fn NodeData(comptime node_t: NodeType) type {
         .decLit         => Literal,
         .dec_u          => Literal,
         .deref          => DerefExpr,
-        .dollar         => Token,
-        .dollar_lit     => PrefixLit,
         .dot            => Token,
         .dot_lit        => Literal,
         .else_block     => ElseBlock,
@@ -1134,8 +1130,6 @@ pub const Node = struct {
             .decLit         => self.cast(.decLit).src,
             .dec_u          => self.cast(.dec_u).src,
             .deref          => self.cast(.deref).left.src(),
-            .dollar         => self.cast(.dollar).src,
-            .dollar_lit     => self.cast(.dollar_lit).name.src(),
             .dot            => self.cast(.dot).src,
             .dot_lit        => self.cast(.dot_lit).src,
             .else_block     => self.cast(.else_block).src,
@@ -1261,8 +1255,6 @@ pub const Node = struct {
             .decLit         => self.cast(.decLit).pos,
             .dec_u          => self.cast(.dec_u).pos,
             .deref          => self.cast(.deref).left.pos(),
-            .dollar         => self.cast(.dollar).pos,
-            .dollar_lit     => self.cast(.dollar_lit).pos,
             .dot            => self.cast(.dot).pos,
             .dot_lit        => self.cast(.dot_lit).pos,
             .else_block     => self.cast(.else_block).pos,
@@ -1437,8 +1429,6 @@ pub const Node = struct {
             .dec_u          => self.cast(.dec_u).end(),
             .deref          => self.cast(.deref).end,
             // .dot_array_lit  => self.cast(.dot_array_lit).pos,
-            .dollar         => self.cast(.dollar).pos + 1,
-            .dollar_lit     => self.cast(.dollar_lit).name.end(),
             .dot            => self.cast(.dot).pos + 1,
             .dot_lit        => self.cast(.dot_lit).end(),
             .else_block     => {
@@ -1780,7 +1770,7 @@ pub const UnaryOp = enum(u8) {
 };
 
 test "ast internals." {
-    try t.eq(122, std.enums.values(NodeType).len);
+    try t.eq(120, std.enums.values(NodeType).len);
     try t.eq(1, @sizeOf(NodeHeader));
 }
 

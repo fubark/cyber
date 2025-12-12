@@ -600,20 +600,20 @@ type ArgsResult:
     rest []str
 
 fn (&ArgsResult) at(name str) -> str:
-    return $get(name) ?else panic("Missing option `%{name}`.")
+    return self.get(name) ?else panic("Missing option `%{name}`.")
 
 fn (&ArgsResult) contains(name str) -> bool:
-    return $get(name) != none
+    return self.get(name) != none
 
 fn (&ArgsResult) get(name str) -> ?str:
-    for $opts |opt|:
+    for self.opts |opt|:
         if opt.name == name:
             return opt.value
     return none
 
 fn (&ArgsResult) getAll(name str) -> []str:
     res := []str{}
-    for $opts |opt|:
+    for self.opts |opt|:
         if opt.name == name:
             res += opt.value
     return res
@@ -626,29 +626,29 @@ type File:
     closed bool = false
 
 fn (&File) @deinit():
-    $close()
+    self.close()
 
 --| Closes the file handle. File ops invoked afterwards will return `error.Closed`.
 fn (&File) close() -> void:
-    if $closed:
+    if self.closed:
         return
 
     #if meta.system() == .windows:
-        if kernel32.CloseHandle($fd) == windows.FALSE:
+        if kernel32.CloseHandle(self.fd) == windows.FALSE:
             panic("Unexpected. %{windows.fromWin32Error()}")
     #else:
-        if lc.close($fd) != 0:
+        if lc.close(self.fd) != 0:
             panic("Unexpected. %{fromErrno()}")
 
-    $closed = true
+    self.closed = true
 
 --| Returns info about the file.
 fn (&File) info() -> !FileInfo:
     #if meta.system() == .linux:
-        return linux.file_info($fd)
+        return linux.file_info(self.fd)
     #else meta.system() == .macos:
         cstat := lc.Stat{}
-        if lc.fstat($fd, &cstat) != 0:
+        if lc.fstat(self.fd, &cstat) != 0:
             return fromErrno()
         return fileInfo(&cstat)
     #else meta.system() == .windows:
@@ -659,7 +659,7 @@ fn (&File) info() -> !FileInfo:
             nFileSizeLow=undef, nNumberOfLinks=undef,
             nFileIndexHigh=undef, nFileIndexLow=undef,
         }
-        if kernel32.GetFileInformationByHandle($fd, &info) == windows.FALSE:
+        if kernel32.GetFileInformationByHandle(self.fd, &info) == windows.FALSE:
             return windows.fromWin32Error()
         return windows.fileInfoFromHandle(&info)
     #else:
@@ -669,19 +669,19 @@ fn (&File) info() -> !FileInfo:
 fn (&File) read(buf [&]byte) -> !int:
     #if meta.system() == .windows:
         var bytes_read windows.DWORD = 0
-        result := kernel32.ReadFile($fd, as buf.base, windows.DWORD(buf.length), &bytes_read, none)
+        result := kernel32.ReadFile(self.fd, as buf.base, windows.DWORD(buf.length), &bytes_read, none)
         if result == windows.FALSE:
             return windows.fromWin32Error()
         return as[int] bytes_read
     #else:
-        read := lc.read($fd, as buf.base, buf.length)
+        read := lc.read(self.fd, as buf.base, buf.length)
         if read == -1:
             return fromErrno()
         return read
 
 fn (&File) read(bytes int) -> ![]byte:
     buf := []byte(bytes, 0)
-    read := $read(buf.span())!
+    read := self.read(buf.span())!
     buf = buf.size_down(read)
     return buf
 
@@ -690,7 +690,7 @@ fn (&File) read_all() -> ![]byte:
     res := []byte{}
     buf := [4096]byte(0)
     while:
-        read := $read_fill(buf[..])!
+        read := self.read_fill(buf[..])!
         res += buf[0..read]
         if read < buf.len():
             break
@@ -702,7 +702,7 @@ fn (&File) read_fill(as_buf AsSpan[byte]) -> !int:
     buf := as_buf.span()
     i := 0
     while i < buf.len():
-        read := $read(buf[i..])!
+        read := self.read(buf[i..])!
         if read == 0:
             break
         i += read
@@ -720,27 +720,27 @@ fn (&File) readLine() -> !str:
 --| Seeks the read/write position by `pos` bytes from the current position.
 fn (&File) seek(n int) -> !void:
     #if meta.system() == .windows:
-        windows.seek_file($fd, n, windows.core.FILE_CURRENT)!
+        windows.seek_file(self.fd, n, windows.core.FILE_CURRENT)!
     #else:
-        res := lc.lseek($fd, lc.off_t(n), lc.SEEK_CUR)
+        res := lc.lseek(self.fd, lc.off_t(n), lc.SEEK_CUR)
         if res == -1:
             return fromErrno()
 
 --| Seeks the read/write position by `pos` bytes from the end. Positive `pos` is invalid.
 fn (&File) seekFromEnd(n int) -> !void:
     #if meta.system() == .windows:
-        windows.seek_file_from_end($fd, n)!
+        windows.seek_file_from_end(self.fd, n)!
     #else:
-        res := lc.lseek($fd, lc.off_t(n), lc.SEEK_END)
+        res := lc.lseek(self.fd, lc.off_t(n), lc.SEEK_END)
         if res == -1:
             return fromErrno()
 
 --| Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid.
 fn (&File) seekFromStart(n int) -> !void:
     #if meta.system() == .windows:
-        windows.seek_file_from_start($fd, n)!
+        windows.seek_file_from_start(self.fd, n)!
     #else:
-        res := lc.lseek($fd, lc.off_t(n), lc.SEEK_SET)
+        res := lc.lseek(self.fd, lc.off_t(n), lc.SEEK_SET)
         if res == -1:
             return fromErrno()
 
@@ -748,13 +748,13 @@ fn (&File) seekFromStart(n int) -> !void:
 fn (&File) write(val str) -> !int:
     #if meta.system() == .windows:
         var bytes_written windows.DWORD = 0
-        result := kernel32.WriteFile($fd, as val.ptr, windows.DWORD(val.len()), &bytes_written, none)
+        result := kernel32.WriteFile(self.fd, as val.ptr, windows.DWORD(val.len()), &bytes_written, none)
         if result == windows.FALSE:
             return windows.fromWin32Error()
         return as[int] bytes_written
         
     #else:
-        written := lc.write($fd, as val.ptr, val.len())
+        written := lc.write(self.fd, as val.ptr, val.len())
         if written == -1:
             return fromErrno()
         return written
@@ -763,20 +763,20 @@ fn (&File) write(val str) -> !int:
 fn (&File) write(buf []byte) -> !int:
     #if meta.system() == .windows:
         var bytes_written windows.DWORD = 0
-        result := kernel32.WriteFile($fd, as buf.ptr, windows.DWORD(buf.len()), &bytes_written, none)
+        result := kernel32.WriteFile(self.fd, as buf.ptr, windows.DWORD(buf.len()), &bytes_written, none)
         if result == windows.FALSE:
             return windows.fromWin32Error()
         return as[int] bytes_written
 
     #else:
-        written := lc.write($fd, as buf.ptr, buf.len())
+        written := lc.write(self.fd, as buf.ptr, buf.len())
         if written == -1:
             return fromErrno()
         return written
 
 fn (&File) write_all(val str) -> !void:
     slice := val.ptr[0..val.len()]
-    $write_all(val.as_ptr_span())!
+    self.write_all(val.as_ptr_span())!
 
 fn (&File) write_all(as_val AsSpan[byte]) -> !void:
     val := as_val.span()
@@ -788,7 +788,7 @@ fn (&File) write_all(as_val AsSpan[byte]) -> !void:
         -- Copy bytes from span to buffer
         for 0..remaining.length |j|:
             buf[j] = remaining[j]
-        i += $write(buf)!
+        i += self.write(buf)!
 
 type Dir:
     with NoCopy
@@ -797,34 +797,34 @@ type Dir:
     path str = '' -- TODO: Required by AI DirIterator implementation. Replace with NtQueryDirectoryFile.
 
 fn (&Dir) @deinit():
-    $close()
+    self.close()
 
 fn (&Dir) close():
-    if $closed:
+    if self.closed:
         return
 
     #if meta.system() == .windows:
         -- Windows Dir doesn't use fd directly, iterator handles are closed separately
         pass
     #else:
-        res := lc.close($fd)
+        res := lc.close(self.fd)
         if res != 0:
             panic("Unexpected. %{fromErrno()}")
 
-    $closed = true
+    self.closed = true
 
 --| Returns info about the directory.
 fn (&Dir) info() -> !FileInfo:
     #if meta.system() == .linux:
-        return linux.file_info($fd)
+        return linux.file_info(self.fd)
     #else meta.system() == .macos:
         cstat := lc.Stat{}
-        if lc.fstat($fd, &cstat) != 0:
+        if lc.fstat(self.fd, &cstat) != 0:
             return fromErrno()
         return fileInfo(&cstat)
     #else meta.system() == .windows:
         -- Use path to get directory info
-        return fileInfo($path)
+        return fileInfo(self.path)
     #else:
         panic('Dir.info not supported on this platform')
 
@@ -854,7 +854,7 @@ type DirIterator:
 
 --| Returns the next directory entry.
 fn (&DirIterator) next(dir &Dir) -> !?DirEntry:
-    return $impl.next(dir)
+    return self.impl.next(dir)
 
 type DirIteratorStub
 

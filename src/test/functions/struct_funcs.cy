@@ -4,30 +4,30 @@ type Node:
     value int
 
 fn (&Node) get() -> int:
-    return $value
+    return self.value
 
 fn (&Node) get2(param int) -> int:
-    return $value + param
+    return self.value + param
 
 fn (&Node) get3(param int, param2 int) -> int:
-    return $value + param - param2
+    return self.value + param - param2
 
 fn (&Node) get4() -> int:
-    a := $value
-    return a + $value
+    a := self.value
+    return a + self.value
 
 fn (^Node) get5() -> int:
     f := fn() => self.value
     return f()
 
 fn (&Node) set():
-    $value = 1
+    self.value = 1
 
 fn (&Node) set2(param int):
-    $value += param
+    self.value += param
 
 fn (&Node) set3(param int):
-    $value = 1 + param
+    self.value = 1 + param
 
 fn Node :: getFn() -> int:
     return 123

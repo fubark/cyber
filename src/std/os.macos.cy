@@ -53,20 +53,20 @@ fn DirIteratorImpl :: @init() -> DirIteratorImpl:
 fn (&DirIteratorImpl) next(dir &os.Dir) -> !?os.DirEntry:
     #if meta.system() == .macos:
         while:
-            if !$init:
+            if !self.init:
                 res := lc.lseek(dir.fd, lc.off_t(0), lc.SEEK_SET)
                 if res == -1:
                     return os.fromErrno()
-                $init = true
-            if $idx >= $end:
-                rc := lc.macos.__getdirentries64(dir.fd, *$buf[0], as $buf.len(), *$seek)
+                self.init = true
+            if self.idx >= self.end:
+                rc := lc.macos.__getdirentries64(dir.fd, *self.buf[0], as self.buf.len(), *self.seek)
                 if rc == 0: return none
                 if rc == -1: return os.fromErrno()
-                $idx = 0
-                $end = rc
+                self.idx = 0
+                self.end = rc
 
-            entry := as[Ptr[lc.macos.dirent]] *$buf[$idx]
-            $idx += entry.reclen
+            entry := as[Ptr[lc.macos.dirent]] *self.buf[self.idx]
+            self.idx += entry.reclen
             name := str(entry.name[0..entry.namlen])
             if name == '.':
                 continue

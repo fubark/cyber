@@ -464,9 +464,9 @@ fn (Mat1x3[]) `*`(m Mat3x3) -> Mat3x1:
     a20 := m[r2 + 0]
     a21 := m[r2 + 1]
     a22 := m[r2 + 2]
-    b00 := $[0]
-    b10 := $[1]
-    b20 := $[2]
+    b00 := self[0]
+    b10 := self[1]
+    b20 := self[2]
     return {
         a00 * b00 + a01 * b10 + a02 * b20,
         a10 * b00 + a11 * b10 + a12 * b20,
@@ -491,15 +491,15 @@ fn (Mat3[]) `*`(m Self) -> Self:
     a20 := m[r2 + 0]
     a21 := m[r2 + 1]
     a22 := m[r2 + 2]
-    b00 := $[r0 + 0]
-    b01 := $[r0 + 1]
-    b02 := $[r0 + 2]
-    b10 := $[r1 + 0]
-    b11 := $[r1 + 1]
-    b12 := $[r1 + 2]
-    b20 := $[r2 + 0]
-    b21 := $[r2 + 1]
-    b22 := $[r2 + 2]
+    b00 := self[r0 + 0]
+    b01 := self[r0 + 1]
+    b02 := self[r0 + 2]
+    b10 := self[r1 + 0]
+    b11 := self[r1 + 1]
+    b12 := self[r1 + 2]
+    b20 := self[r2 + 0]
+    b21 := self[r2 + 1]
+    b22 := self[r2 + 2]
     return {
         -- First row.
         a00 * b00 + a01 * b10 + a02 * b20,
@@ -542,10 +542,10 @@ fn (Mat1x4[]) `*`(m Mat4[T]) -> Mat4x1[T]:
     a31 := m.inner[r3 + 1]
     a32 := m.inner[r3 + 2]
     a33 := m.inner[r3 + 3]
-    b00 := $inner[0]
-    b10 := $inner[1]
-    b20 := $inner[2]
-    b30 := $inner[3]
+    b00 := self.inner[0]
+    b10 := self.inner[1]
+    b20 := self.inner[2]
+    b30 := self.inner[3]
     return {
         a00 * b00 + a01 * b10 + a02 * b20 + a03 * b30,
         a10 * b00 + a11 * b10 + a12 * b20 + a13 * b30,
@@ -599,22 +599,22 @@ fn (Mat4[]) `*`(m Self) -> Self:
     a31 := m.inner[r3 + 1]
     a32 := m.inner[r3 + 2]
     a33 := m.inner[r3 + 3]
-    b00 := $inner[r0 + 0]
-    b01 := $inner[r0 + 1]
-    b02 := $inner[r0 + 2]
-    b03 := $inner[r0 + 3]
-    b10 := $inner[r1 + 0]
-    b11 := $inner[r1 + 1]
-    b12 := $inner[r1 + 2]
-    b13 := $inner[r1 + 3]
-    b20 := $inner[r2 + 0]
-    b21 := $inner[r2 + 1]
-    b22 := $inner[r2 + 2]
-    b23 := $inner[r2 + 3]
-    b30 := $inner[r3 + 0]
-    b31 := $inner[r3 + 1]
-    b32 := $inner[r3 + 2]
-    b33 := $inner[r3 + 3]
+    b00 := self.inner[r0 + 0]
+    b01 := self.inner[r0 + 1]
+    b02 := self.inner[r0 + 2]
+    b03 := self.inner[r0 + 3]
+    b10 := self.inner[r1 + 0]
+    b11 := self.inner[r1 + 1]
+    b12 := self.inner[r1 + 2]
+    b13 := self.inner[r1 + 3]
+    b20 := self.inner[r2 + 0]
+    b21 := self.inner[r2 + 1]
+    b22 := self.inner[r2 + 2]
+    b23 := self.inner[r2 + 3]
+    b30 := self.inner[r3 + 0]
+    b31 := self.inner[r3 + 1]
+    b32 := self.inner[r3 + 2]
+    b33 := self.inner[r3 + 3]
     return Self({
         -- First row.
         a00 * b00 + a01 * b10 + a02 * b20 + a03 * b30,
@@ -871,7 +871,7 @@ fn Transform3D[] :: scaling(x, y, z T) -> Self:
 
 fn (&Transform3D[]) `*`(x Self) -> Self:
     return {
-        mat = $mat * x.mat
+        mat = self.mat * x.mat
     }
 
 --     pub fn invert(self: *Transform) bool {
@@ -885,17 +885,17 @@ fn (&Transform3D[]) `*`(x Self) -> Self:
 
 fn (&Transform3D[]) scale(x f32, y f32) -> Self:
     return {
-        mat = $mat * Self.scaling(x, y).mat,
+        mat = self.mat * Self.scaling(x, y).mat,
     }
 
 fn (&Transform3D[]) scale(x f32, y f32, z f32) -> Self:
     return {
-        mat = $mat * Self.scaling(x, y, z).mat
+        mat = self.mat * Self.scaling(x, y, z).mat
     }
 
 fn (&Transform3D[]) translate(x f32, y f32) -> Self:
     return {
-        mat = $mat * Self.translation(x, y).mat
+        mat = self.mat * Self.translation(x, y).mat
     }
 
 -- test "Interpolate" {
@@ -997,48 +997,48 @@ fn Vec2[] :: @init(x, y T) -> Self:
     return {x = x, y = y}
 
 fn (Vec2[]) `-`() -> Self:
-    return {x=-$x, y=-$y}
+    return {x=-self.x, y=-self.y}
 
 -- Component subtraction.
 fn (Vec2[]) `-`(v Self) -> Self:
-    return {x=$x - v.x, y=$y - v.y}
+    return {x=self.x - v.x, y=self.y - v.y}
 
 -- Component addition.
 fn (Vec2[]) `+`(v Self) -> Self:
-    return {x=$x + v.x, y=$y + v.y}
+    return {x=self.x + v.x, y=self.y + v.y}
 
 -- Scalar multiplication.
 fn (Vec2[]) `*`(scale T) -> Self:
-    return {x=$x * scale, y=$y * scale}
+    return {x=self.x * scale, y=self.y * scale}
 
 -- Component multiplication.
 fn (Vec2[]) `*`(v Self) -> Self:
-    return {x=$x * v.x, y=$y * v.y}
+    return {x=self.x * v.x, y=self.y * v.y}
 
 -- Scalar division.
 fn (Vec2[]) `/`(scale T) -> Self:
-    return {x=$x / scale, y=$y / scale}
+    return {x=self.x / scale, y=self.y / scale}
 
 -- Cross product.
 fn (Vec2[]) cross(v Self) -> T:
-    return $x*v.y - $y*v.x
+    return self.x*v.y - self.y*v.x
 
 -- Dot product.
 fn (Vec2[]) dot(v Self) -> T:
-    return $x*v.x + $y*v.y
+    return self.x*v.x + self.y*v.y
 
 fn (Vec2[]) len() -> T:
-    return sqrt($x*$x + $y*$y)
+    return sqrt(self.x*self.x + self.y*self.y)
 
 fn (Vec2[]) lenSq() -> T:
-    return $x*$x + $y*$y
+    return self.x*self.x + self.y*self.y
 
 fn (Vec2[]) normalize() -> T:
-    length := $len()
-    return {x=$x/length, y=$y/length}
+    length := self.len()
+    return {x=self.x/length, y=self.y/length}
 
 fn (Vec2[]) scaleTo(len T) -> Self:
-    factor := len / $len()
+    factor := len / self.len()
     return {x=x*factor, y=y*factor}
 
 type Vec3[T Any]:
@@ -1055,47 +1055,47 @@ fn Vec3[] :: @init(x, y, z T) -> Self:
 
 -- Scalar multiplication.
 fn (Vec3[]) `*`(s T) -> Self:
-    return {x=$x*s, y=$y*s, z=$z*s}
+    return {x=self.x*s, y=self.y*s, z=self.z*s}
 
 -- Component addition.
 fn (Vec3[]) `+`(v Self) -> Self:
-    return {x=$x+v.x, y=$y+v.y, z=$z+v.z}
+    return {x=self.x+v.x, y=self.y+v.y, z=self.z+v.z}
 
 -- Component addition.
 fn (Vec3[]) `+`(v Self, x, y, z T) -> Self:
-    return {x=$x+x, y=$y+y, z=$z+z}
+    return {x=self.x+x, y=self.y+y, z=self.z+z}
 
 fn (Vec3[]) cross(v Self) -> Self:
     return {
-        x = $y*v.z - $z*v.y,
-        y = $z*v.x - $x*v.z,
-        z = $x*v.y - $y*v.x,
+        x = self.y*v.z - self.z*v.y,
+        y = self.z*v.x - self.x*v.z,
+        z = self.x*v.y - self.y*v.x,
     }
 
 fn (Vec3[]) dot(v Self) -> T:
-    return $x*v.x + $y*v.y + $z*v.z
+    return self.x*v.x + self.y*v.y + self.z*v.z
 
 fn (Vec3[]) len() -> T:
-    return sqrt($x*$x + $y*$y + $z*$z)
+    return sqrt(self.x*self.x + self.y*self.y + self.z*self.z)
 
 -- Linear interpolation for t: [0,1]
 fn (Vec3[]) lerp(v Self, tt T) -> Self:
     return {
-        x = $x + (v.x - $x)*tt,
-        y = $y + (v.y - $y)*tt,
-        z = $z + (v.z - $z)*tt,
+        x = self.x + (v.x - self.x)*tt,
+        y = self.y + (v.y - self.y)*tt,
+        z = self.z + (v.z - self.z)*tt,
     }
 
 fn (Vec3[]) normalize() -> Self:
-    length := $len()
-    return {x=$x/length, y=$y/length, z=$z/length}
+    length := self.len()
+    return {x=self.x/length, y=self.y/length, z=self.z/length}
 
 -- Rotates the vector along an arbitrary axis. Assumes axis vector is normalized.
 fn (Vec3[]) rotateAxis(axis Self, rad T) -> Self:
-    v_para := axis * $dot(axis)
-    v_perp := $ + v_para*-1
+    v_para := axis * self.dot(axis)
+    v_perp := self + v_para*-1
     v_perp_term := v_perp*cos(rad)
-    axv_term := axis.cross($) * sin(rad)
+    axv_term := axis.cross(self) * sin(rad)
     return {
         x = v_para.x + v_perp_term.x + axv_term.x,
         y = v_para.y + v_perp_term.y + axv_term.y,
@@ -1107,8 +1107,8 @@ fn (Vec3[]) rotateY(rad T) -> Self:
     half_rad := rad * 0.5
     a := Self.unit_x
     b := Self(cos(half_rad), 0, sin(half_rad))
-    ra_dot := a * ($dot(a) * -2)
-    ra := $ + ra_dot
+    ra_dot := a * (self.dot(a) * -2)
+    ra := self + ra_dot
     rb_dot := b * (ra.dot(b) * -2)
     rba := ra.add(rb_dot)
     return rba
@@ -1151,18 +1151,18 @@ fn Vec4[] :: @init(x, y, z, w T) -> Self:
 
 -- Component addition.
 fn (Vec4[]) `+`(v Self) -> Self:
-    return {x=$x+v.x, y=$y+v.y, z=$z+v.z, w=$w+v.w}
+    return {x=self.x+v.x, y=self.y+v.y, z=self.z+v.z, w=self.w+v.w}
 
 -- Scalar multiplication.
 fn (Vec4[]) `*`(s T) -> Self:
-    return {x=$x*s, y=$y*s, z=$z*s, w=$w*s}
+    return {x=self.x*s, y=self.y*s, z=self.z*s, w=self.w*s}
 
 -- Scalar division.
 fn (Vec4[]) `/`(s T) -> Self:
-    return {x=$x/s, y=$y/s, z=$z/s, w=$w/s}
+    return {x=self.x/s, y=self.y/s, z=self.z/s, w=self.w/s}
 
 fn (Vec4[]) divW() -> Self:
-    return {x=$x/$w, y=$y/$w, z=$z/$w, 1}
+    return {x=self.x/self.w, y=self.y/self.w, z=self.z/self.w, 1}
 
 fn (Vec4[]) dot(v Self) -> T:
-    return $x*v.x + $y*v.y + $z*v.z + $w*v.w
+    return self.x*v.x + self.y*v.y + self.z*v.z + self.w*v.w

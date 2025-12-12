@@ -6,7 +6,7 @@ type Foo:
 
 fn (&Foo) @copy() -> Foo:
     copy = true
-    return Foo{a=$a}
+    return Foo{a=self.a}
 
 a := Foo{a=123}
 test.eq(false, copy)

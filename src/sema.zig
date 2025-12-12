@@ -1549,16 +1549,6 @@ fn semaAssignStmt(c: *cy.Chunk, node: *ast.Node, left_n: *ast.Node, right: *ast.
             }
             return;
         },
-        .dollar_lit => {
-            const left = left_n.cast(.dollar_lit);
-            const self = try lookupSelfExpr(c, node);
-            try semaAssignToAccessStmt(c, var_start, left_n, self, left.name, left.name.name(), right, opts, node);
-            try popLocals(c, var_start, node);
-            if (cy.Trace) {
-                try check_locals(c, var_start, node);
-            }
-            return;
-        },
         .accessExpr => {
             const left = left_n.cast(.accessExpr);
 
@@ -6327,10 +6317,6 @@ pub fn semaExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: Cstr) anyerror!ExprR
             const name = node.cast(.at_lit).as_at_infer_name();
             return sema_at_symbol(c, name, node);
         },
-        .dollar_lit => {
-            const self = try lookupSelfExpr(c, node);
-            return semaAccessField(c, node, self, node.cast(.dollar_lit).name);
-        },
         .void_lit => {
             return c.semaVoid(node);
         },
@@ -6401,9 +6387,6 @@ pub fn semaExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: Cstr) anyerror!ExprR
             }
             const val = try std.fmt.parseInt(u64, literal, 16);
             return c.semaConst(val, c.sema.i64_t, node);
-        },
-        .dollar => {
-            return lookupSelfExpr(c, node);
         },
         .ident => {
             return try semaIdent(c, cstr, false, node);
@@ -7520,27 +7503,6 @@ pub fn semaCallExpr(c: *cy.Chunk, node: *ast.Node, opt_target: ?*cy.Type) !ExprR
                 const callee_v = try c.semaExpr(call.callee, .{});
                 return c.semaCallValue(callee_v, call.callee, call.args.slice(), callee.right);
             }
-        }
-    } else if (call.callee.type() == .dollar_lit) {
-        const self = try lookupSelfExpr(c, call.callee);
-        const callee = call.callee.cast(.dollar_lit);
-        const right_name = callee.name.name();
-
-        // Look for sym under left type's module.
-        const rightSym = try c.accessResolvedSymOrFail(self.type, right_name, callee.name);
-
-        if (rightSym.type == .func) {
-            return c.semaCallFuncSymRec(rightSym.cast(.func), call.callee, self, call.args.slice(), false, node);
-        } else if (rightSym.type == .func_template) {
-            // const template = rightSym.cast(.func_template);
-            // if (template.callable) {
-            //     return c.semaCallGenericFuncRec(template, call.callee, self, call.args, node);
-            // } else {
-                return c.reportErrorFmt("Function template must be expanded first.", &.{v(right_name)}, call.callee);
-            // }
-        } else {
-            const callee_v = try c.semaExpr(call.callee, .{});
-            return c.semaCallValue(callee_v, call.callee, call.args.slice(), callee.name);
         }
     } else if (call.callee.type() == .dot) {
         const target_t = opt_target orelse {

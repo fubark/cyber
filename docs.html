@@ -1054,7 +1054,7 @@ strong {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 490-ecb7df2</div>
+    <div class="sub-title">v0.4-dev 491-e4804c0</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="api.html">API Docs</a></li>
@@ -2016,7 +2016,7 @@ n := Node{val=123, next=none}
     a int
 
 fn (&Base) double() -> int:
-    return $a * 2
+    return self.a * 2
 
 type Container:
     b use Base
@@ -2082,14 +2082,14 @@ map := MyMap{a=123, b=234, c=345}
 <a href="#custom-types">^topic</a>
 <h2 id="methods">Methods. <a href="#methods">#</a></h2>
 <p>Methods are functions that are invoked with a parent value (receiver).</p>
-<p>They are declared by specifying the receiver's type before the function name and the other parameters. Inside a method body, <code>$</code> or <code>self</code> are used to reference the receiver's members as well as invoking other methods:</p>
+<p>They are declared by specifying the receiver's type before the function name and the other parameters. Inside a method body, <code>self</code> references the receiver's members as well as invoking other methods:</p>
 <pre><code class="language-cy">type Node:
     value int
     next  ?^Node
 
 fn (&Node) inc(n int):
-    $value += n
-    $inc_one()
+    self.value += n
+    self.inc_one()
 
 fn (&Node) inc_one():
     self.value += 1
@@ -2125,12 +2125,12 @@ fn (Ptr[Node]) inc(n int)
 
 fn (&Vec2) `+`(o Vec2) -> Vec2:
     return {
-        x = $x + o.x,
-        y = $y + o.y,
+        x = self.x + o.x,
+        y = self.y + o.y,
     }
 
 fn (&Vec2) `-`() -> Vec2:
-    return {x=-$x, y=-$y}
+    return {x=-self.x, y=-self.y}
 
 a := Vec2{x=1, y=2}
 b := a + Vec2{x=3, y=4}
@@ -2141,10 +2141,10 @@ c := -a
     arr []int
 
 fn (&MyCollection) @index(idx int) -> int:
-    return $arr[idx * 2]
+    return self.arr[idx * 2]
 
 fn (&MyCollection) @set_index(idx int, value int):
-    $arr[idx * 2] = val 
+    self.arr[idx * 2] = val 
 
 a := MyCollection{arr={1, 2, 3, 4}}
 print(a[1])
@@ -2190,8 +2190,8 @@ type Vec(x float, y float)
 <pre><code class="language-cy">type Vec2(x float, y float)
 
 fn (&Vec2) scale(s float):
-    $x *= s
-    $y *= s
+    self.x *= s
+    self.y *= s
 </code></pre>
 <p>Tuples can be initialized with member values corresponding to the order they were declared:</p>
 <pre><code class="language-cy">v := Vec2{3, 4}
@@ -2327,7 +2327,7 @@ print(s.!line)     --> 20
     radius float
 
 fn (&Circle) area() -> float:
-    return 3.14 * $radius^2
+    return 3.14 * self.radius^2
 
 type Rectangle:
     with Shape
@@ -2335,7 +2335,7 @@ type Rectangle:
     height float
 
 fn (&Rectangle) area() -> float:
-    return $width * $height
+    return self.width * self.height
 </code></pre>
 <p>A type that intends to implement a trait but does not satisfy the trait's interface results in a compile error.</p>
 <a href="#custom-types">^topic</a>
@@ -2366,7 +2366,7 @@ Unlike function parameters, template parameters accept types rather than values 
     value T
 
 fn (&MyContainer[]) get() -> T:
-    return $value
+    return self.value
 </code></pre>
 <p>When the type template is expanded, a variant of the type is generated:</p>
 <pre><code class="language-cy">a := MyContainer[str]{id=123, value='abc'}
@@ -2956,8 +2956,8 @@ type Foo:  -- Copyable struct.
 
 -- Performs deep copy.
 fn (&MyArray) @copy() -> Self:
-    new_ptr := alloc(byte, $len)
-    @memcpy(new_ptr, $ptr, $len)
+    new_ptr := alloc(byte, self.len)
+    @memcpy(new_ptr, self.ptr, self.len)
     return {ptr=new_ptr}
 </code></pre>
 <p>A type that implements the <code>NoCopy</code> trait prevents implicit copying:</p>
@@ -2989,7 +2989,7 @@ b := clone(a)
     a int
 
 fn (&Foo) @clone() -> Self:
-    return {a=$a}
+    return {a=self.a}
 </code></pre>
 <a href="#memory">^topic</a>
 <h3 id="moving">Moving. <a href="#moving">#</a></h3>
@@ -3093,7 +3093,7 @@ fn append_to(elem &int, arr &&Array[int]):
     a int
 
 fn (&Foo) mutate():
-    $a = 123
+    self.a = 123
 </code></pre>
 <p>Invoking methods automatically attempts to obtain the correct borrow type as specified by the method:</p>
 <pre><code class="language-cy">f := Foo{a=1}
@@ -3104,7 +3104,7 @@ f.mutate()
 <h3 id="scope-parameter"><code>scope</code> parameter. <a href="#scope-parameter">#</a></h3>
 <p>Functions can only return borrows if the scope is bound to a borrow parameter. This is possible with the <code>scope</code> modifier:</p>
 <pre><code class="language-cy">fn (scope &FooArray) @index_addr(idx int) -> scope &Foo:
-    return &$inner[idx]
+    return &self.inner[idx]
 </code></pre>
 <p>The <code>scope</code> binding informs the callsite that the returned borrow belongs to the same scope as a borrowed argument. This ensures the returned borrow's lifetime does not exceed the lifetime of the borrowed argument.</p>
 <p>Any type that contains a borrow member becomes a borrow container and requires the <code>scope</code> binding:</p>
@@ -3114,7 +3114,7 @@ f.mutate()
 
 fn (scope &FooArray) iterator() -> scope FooIterator:
     return {
-        rec = $,
+        rec = self,
         idx = 0,
     }
 </code></pre>
@@ -3122,10 +3122,10 @@ fn (scope &FooArray) iterator() -> scope FooIterator:
 <h3 id="sink-parameter"><code>sink</code> parameter. <a href="#sink-parameter">#</a></h3>
 <p>The <code>sink</code> modifier accepts and consumes a value argument: <em>This is not much different from a <code>move</code> operation, so this feature may be removed.</em></p>
 <pre><code class="language-cy">fn (sink Array[]) as_buffer() -> Buffer[T]:
-    buf := $buf
-    length := $length
-    cap := $cap()
-    @consume($)
+    buf := self.buf
+    length := self.length
+    cap := self.cap()
+    @consume(self)
     return {
         base   = buf,
         length = length,
@@ -3145,7 +3145,7 @@ Under normal conditions, the procedure follows these steps:</p>
     fd int
 
 fn (&File) @deinit():
-    C.close($fd)
+    C.close(self.fd)
 </code></pre>
 <p>On thread panic, the runtime begins its <strong>fatal</strong> deinitialization procedure.
 Value deinitializers are only invoked for types that implement <code>Unwind</code>. <em>TBD</em>
@@ -3767,8 +3767,8 @@ fn less(a Shape, b Shape):
     len int
 
 fn (&IntMap[]) get(key K) -> int:
-    slot := HASH(key) % $len
-    return $ptr[slot]
+    slot := HASH(key) % self.len
+    return self.ptr[slot]
 
 fn my_hash(s str) -> int:
     return s.len()

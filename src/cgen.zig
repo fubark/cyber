@@ -884,7 +884,7 @@ pub fn genVmHeaders(w: anytype) !void {
         \\typedef struct Thread {{
         \\    size_t id;
         \\    void* vm;
-        \\    u8* pc;
+        \\    u16* pc;
         \\    u64* fp;
         \\    u64* fp_end;
         \\    Value* stack_ptr;

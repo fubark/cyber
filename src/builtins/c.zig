@@ -370,7 +370,7 @@ pub fn initBindLib(t: *cy.Thread) !C.Ret {
     // Perform runtime relocations.
     for (t.c.vm.compiler.chunks.items) |c| {
         for (c.rt_relocations.items) |rel| {
-            const ptr: *align(1) [6]u8 = @ptrCast(&c.buf.ops.items[rel.pc]);
+            const ptr: *align(2) [6]u8 = @ptrCast(&c.buf.ops.items[rel.pc]);
             switch (rel.kind) {
                 .extern_func_ptr => {
                     const rt_id = c.compiler.genSymMap.get(rel.data.extern_func_ptr).?.func.id;

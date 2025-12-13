@@ -658,7 +658,7 @@ pub const Thread = struct {
             base_ptr[1] = Value{ .retPcPtr = pc + cy.bytecode.CallPtrInstLen };
             base_ptr[2] = Value{ .retFramePtr = fp };
             return PcFp{
-                .pc = @ptrCast(ptr),
+                .pc = @ptrCast(@alignCast(ptr)),
                 .fp = base_ptr,
             };
         }
@@ -698,7 +698,7 @@ pub const Thread = struct {
             base_ptr[1] = Value{ .retPcPtr = pc + cy.bytecode.CallTraitInstLen };
             base_ptr[2] = Value{ .retFramePtr = fp };
             return PcFp{
-                .pc = @ptrCast(func_ptr),
+                .pc = @ptrCast(@alignCast(func_ptr)),
                 .fp = base_ptr,
             };
         }

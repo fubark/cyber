@@ -87,7 +87,7 @@ pub fn genAll(c: *cy.Compiler) !void {
         log.tracev("prep chunk", .{});
 
         // Perform big allocation for instruction buffer for more consistent heap allocation.
-        try chunk.buf.ops.ensureTotalCapacityPrecise(c.alloc, 4096);
+        try chunk.buf.ops.ensureTotalCapacityPrecise(c.alloc, 4096 / 2);
 
         for (chunk.syms.items) |sym| {
             try prepareSym(c, sym);
@@ -131,7 +131,7 @@ pub fn genAll(c: *cy.Compiler) !void {
     // Perform static relocations.
     for (c.newChunks()) |chunk| {
         for (chunk.relocations.items) |rel| {
-            const ptr: *align(1) [6]u8 = @ptrCast(&chunk.buf.ops.items[rel.pc]);
+            const ptr: *align(2) [6]u8 = @ptrCast(&chunk.buf.ops.items[rel.pc]);
             switch (rel.kind) {
                 .extern_func_ptr => {
                     return error.Unexpected;
@@ -572,7 +572,7 @@ fn genNopLabel2(c: *Chunk, label: []const u8, node: *ast.Node) !void {
     const res = try c.buf.getOrPushConstString(label);
     const ptr_len = (@as(u64, @intFromPtr(res.slice.ptr)) & 0xffffffffffff) | (@as(u64, res.slice.len) << 48);
     const pc = c.buf.ops.items.len;
-    try c.pushCode(.nops, &.{ 0, 0, 0, 0, 0, 0, 0, 0 }, node);
+    try c.pushCode(.nops, &.{ 0, 0, 0, 0 }, node);
     c.buf.setOpArgU64(pc + 1, ptr_len);
 }
 
@@ -591,7 +591,7 @@ fn mainBlock(c: *Chunk, stmt: *ir.MainBlock, node: *ast.Node) !void {
         child_opt = child.next;
     }
 
-    try mainEnd(c);
+    try mainEnd(c, node);
     try popProc(c);
 
     c.buf.mainStackSize = c.getMaxUsedRegisters();
@@ -608,7 +608,7 @@ pub fn genFuncBlock(c: *Chunk, stmt: *ir.FuncBlock, node: *ast.Node) !void {
 
     // Reserve a nop32 inst to hold a function id to access debug info.
     const header_pc = c.buf.ops.items.len;
-    try c.buf.pushOpSlice(.nop32, &.{0, 0, 0, 0});
+    try c.buf.pushOpSlice(.nop32, &.{0, 0});
 
     const pc = c.buf.ops.items.len;
     try c.buf.markers.put(c.alloc, @intCast(pc), func);
@@ -634,14 +634,14 @@ pub fn genFuncBlock(c: *Chunk, stmt: *ir.FuncBlock, node: *ast.Node) !void {
 
     const chk_stk_pc = c.buf.ops.items.len;
     try c.buf.func_table.append(c.alloc, chk_stk_pc);
-    try c.pushFCode(.chk_stk, &.{ 0, 0, 0, 0 }, node);
+    try c.pushFCode(.chk_stk, &.{ 0, 0 }, node);
 
     try genStmts(c, stmt.bodyHead);
 
-    c.buf.setOpArgU16(chk_stk_pc + 1, c.cur_proc.ret_size);
+    c.buf.ops.items[chk_stk_pc + 1].val = c.cur_proc.ret_size;
 
     const stack_size = c.getMaxUsedRegisters();
-    c.buf.setOpArgU16(chk_stk_pc + 3, stack_size);
+    c.buf.ops.items[chk_stk_pc + 2].val = stack_size;
 
     const rt_func = cy.vm.FuncSymbol.initFunc(undefined);
     completeFunc(c.compiler, id, func, rt_func);
@@ -654,29 +654,22 @@ fn gen_breakpoint(c: *Chunk, node: *ast.Node) !void {
 
 fn gen_await(c: *Chunk, stmt: *ir.Await, node: *ast.Node) !void {
     const childv = try genExpr(c, stmt.expr, Cstr.localOrTemp());
-    const pc = c.buf.ops.items.len;
-    try c.pushCode(.await_op, &.{0, 0}, node);
-    c.buf.setOpArgU16(pc + 1, childv.reg);
+    try c.pushCode(.await_op, &.{childv.reg}, node);
     try pop_temp_value(c, childv, node);
 }
 
 fn gen_yield_stmt(c: *Chunk, stmt: *ir.Yield, node: *ast.Node) !void {
     const pc = c.buf.ops.items.len;
-    try c.pushCode(.ret_y, &.{0, 0, 0, @intFromBool(stmt.end)}, node);
-    c.buf.setOpArgU16(pc + 1, @intCast(stmt.ret_opt_t.reg_size()));
+    try c.pushCode(.ret_y, &.{@intCast(stmt.ret_opt_t.reg_size()), 0, @intFromBool(stmt.end)}, node);
     try genStmts(c, stmt.deinit_head);
-    c.buf.setOpArgs1(pc + 3, @intCast(c.buf.ops.items.len - pc));
+    c.buf.ops.items[pc + 2].val = @intCast(c.buf.ops.items.len - pc);
 }
 
 fn gen_gen_next(c: *Chunk, expr: *ir.GenNext, cstr: Cstr, node: *ast.Node) !GenValue {
     // Assumes expr.base.type is the option next type.
     const inst = try beginCall(c, cstr, expr.base.type, false, node);
     const gen = try genExpr(c, expr.gen, Cstr.localOrTemp());
-    const pc = c.buf.ops.items.len;
-    try c.pushCode(.gen_next, &.{0, 0, 0, 0, 0, 0}, node);
-    c.buf.setOpArgU16(pc + 1, inst.ret.reg);
-    c.buf.setOpArgU16(pc + 3, inst.base);
-    c.buf.setOpArgU16(pc + 5, gen.reg);
+    try c.pushCode(.gen_next, &.{inst.ret.reg, inst.base, gen.reg}, node);
     try pop_temp_value(c, gen, node);
     return endCall(c, inst, expr.base.type, node);
 }
@@ -689,11 +682,7 @@ fn gen_gen_end(c: *Chunk, expr: *ir.GenEnd, cstr: Cstr, node: *ast.Node) !GenVal
 
     const gen = try genExpr(c, expr.gen, Cstr.localOrTemp());
     const ret = c.cur_proc.reg_end;
-    const pc = c.buf.ops.items.len;
-    try c.pushCode(.gen_end, &.{0, 0, 0, 0, 0, 0}, node);
-    c.buf.setOpArgU16(pc + 1, ret);
-    c.buf.setOpArgU16(pc + 3, @intCast(ret + next_t.reg_size()));
-    c.buf.setOpArgU16(pc + 5, gen.reg);
+    try c.pushCode(.gen_end, &.{ret, @intCast(ret + next_t.reg_size()), gen.reg}, node);
     try pop_temp_value(c, gen, node);
     return GenValue.discard();
 }
@@ -709,19 +698,11 @@ fn gen_cast(c: *Chunk, expr: *ir.Cast, cstr: Cstr, node: *ast.Node) !GenValue {
     const childv = try genExpr(c, expr.expr, Cstr.localOrTemp());
 
     if (types.toRtConcreteType(expr.type)) |type_| {
-        const pc = c.buf.ops.items.len;
-        try c.pushFCode(.cast, &.{ 0, 0, 0, 0, 0, 0, @intFromBool(expr.type.isRefPointer()) }, node);
-        c.buf.setOpArgU16(pc + 1, dst.reg);
-        c.buf.setOpArgU16(pc + 3, childv.reg);
         const shape_t = type_.pointeeOrSelf();
-        c.buf.setOpArgU16(pc + 5, @intCast(shape_t.id()));
+        try c.pushFCode(.cast, &.{ dst.reg, childv.reg, @intCast(shape_t.id()), @intFromBool(expr.type.isRefPointer()) }, node);
     } else {
         // Cast to abstract type.
-        const pc = c.buf.ops.items.len;
-        try c.pushFCode(.castAbstract, &.{ 0, 0, 0, 0, 0, 0 }, node);
-        c.buf.setOpArgU16(pc + 1, dst.reg);
-        c.buf.setOpArgU16(pc + 3, childv.reg);
-        c.buf.setOpArgU16(pc + 5, @intCast(expr.type.id()));
+        try c.pushFCode(.castAbstract, &.{ dst.reg, childv.reg, @intCast(expr.type.id()) }, node);
     }
 
     try pop_temp_value(c, childv, node);
@@ -742,21 +723,17 @@ fn gen_addr_global(c: *Chunk, global: *cy.Sym, cstr: Cstr, node: *ast.Node) !Gen
         try genNopLabel2(c, label, node);
     }
     const pc = c.buf.len();
-    try c.pushCode(.const_64, &.{0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, node);
-    c.buf.setOpArgU32(pc + 1, dst.reg);
+    try c.pushCode(.const_64, &.{dst.reg, 0, 0, 0, 0}, node);
     if (global.type == .extern_var) {
-        try c.rt_relocations.append(c.alloc, .{ .kind = .global, .pc = pc + 3, .data = .{ .global = global_id } });
+        try c.rt_relocations.append(c.alloc, .{ .kind = .global, .pc = pc + 2, .data = .{ .global = global_id } });
     } else {
-        try c.relocations.append(c.alloc, .{ .kind = .global, .pc = pc + 3, .data = .{ .global = global_id } });
+        try c.relocations.append(c.alloc, .{ .kind = .global, .pc = pc + 2, .data = .{ .global = global_id } });
     }
     return dst;
 }
 
 fn push_addr(c: *Chunk, dst: Reg, reg: Reg, node: *ast.Node) !void {
-    const pc = c.buf.len();
-    try c.pushCode(.addr, &.{ 0, 0, 0, 0 }, node);
-    c.buf.setOpArgU16(pc + 1, dst);
-    c.buf.setOpArgU16(pc + 3, reg);
+    try c.pushCode(.addr, &.{ dst, reg }, node);
 }
 
 fn genAddressOf2(c: *Chunk, expr: *ir.Expr, cstr: Cstr, node: *ast.Node) !GenValue {
@@ -817,11 +794,7 @@ fn genAddressOfField(c: *cy.Chunk, data: *ir.Field, cstr: Cstr, node: *ast.Node)
         recv = try genAddressOf2(c, rec.rec, Cstr.localOrTemp(), node);
     }
 
-    const pc = c.buf.ops.items.len;
-    try c.pushCode(.add_i16, &.{ 0, 0, 0, 0, 0, 0}, node);
-    c.buf.setOpArgU16(pc + 1, dst.reg);
-    c.buf.setOpArgU16(pc + 3, recv.reg);
-    c.buf.setOpArgU16(pc + 5, @intCast(rec.off + offset));
+    try c.pushCode(.add_i16, &.{ dst.reg, recv.reg, @intCast(rec.off + offset)}, node);
 
     try pop_temp_value(c, recv, node);
     return dst;
@@ -1004,25 +977,19 @@ fn gen_init_zero(c: *Chunk, expr: *ir.InitZero, cstr: Cstr, node: *ast.Node) !Ge
     const dst_ptr = try reserve_reg(c, c.sema.ptr_void_t);
     try push_addr(c, dst_ptr, dst.reg, node);
 
-    const pc = c.buf.ops.items.len;
-
-    try c.pushCode(.memsetz, &.{ 0, 0, 0, 0, 0, 0 }, node);
-    c.buf.setOpArgU16(pc + 1, dst_ptr);
-    c.buf.setOpArgU16(pc + 5, @intCast(expr.size));
+    try c.pushCode(.memsetz, &.{ dst_ptr, 0, @intCast(expr.size) }, node);
 
     try pop_regs(c, dst_ptr, node);
     return dst;
 }
 
 fn gen_break(c: *Chunk, stmt: *ir.Break, node: *ast.Node) !void {
-    _ = node;
-    const pc = try c.pushEmptyJumpExt(null);
+    const pc = try c.pushEmptyJump(node);
     try c.blockJumpStack.append(c.alloc, .{ .jumpT = .brk, .pc = pc, .block_offset = stmt.block_offset });
 }
 
 fn gen_continue(c: *Chunk, stmt: *ir.Continue, node: *ast.Node) !void {
-    _ = node;
-    const pc = try c.pushEmptyJumpExt(null);
+    const pc = try c.pushEmptyJump(node);
     try c.blockJumpStack.append(c.alloc, .{ .jumpT = .cont, .pc = pc, .block_offset = stmt.block_offset });
 }
 
@@ -1062,57 +1029,31 @@ fn gen_set_field(c: *Chunk, stmt: *ir.SetField, node: *ast.Node) !void {
 
 fn push_store(c: *cy.Chunk, dst_ptr: Reg, offset: u16, src: Reg, src_t: *cy.Type, node: *ast.Node) !void {
     const size = src_t.size();
-    const pc = c.buf.ops.items.len;
     switch (size) {
         32 => {
-            try c.pushCode(.store_4w, &.{ 0, 0, 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(pc + 1, dst_ptr);
-            c.buf.setOpArgU16(pc + 3, offset);
-            c.buf.setOpArgU16(pc + 5, src);
+            try c.pushCode(.store_4w, &.{ dst_ptr, offset, src }, node);
         },
         24 => {
-            try c.pushCode(.store_3w, &.{ 0, 0, 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(pc + 1, dst_ptr);
-            c.buf.setOpArgU16(pc + 3, offset);
-            c.buf.setOpArgU16(pc + 5, src);
+            try c.pushCode(.store_3w, &.{ dst_ptr, offset, src }, node);
         },
         16 => {
-            try c.pushCode(.store_2w, &.{ 0, 0, 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(pc + 1, dst_ptr);
-            c.buf.setOpArgU16(pc + 3, offset);
-            c.buf.setOpArgU16(pc + 5, src);
+            try c.pushCode(.store_2w, &.{ dst_ptr, offset, src }, node);
         },
         8 => {
-            try c.pushCode(.store_64, &.{ 0, 0, 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(pc + 1, dst_ptr);
-            c.buf.setOpArgU16(pc + 3, offset);
-            c.buf.setOpArgU16(pc + 5, src);
+            try c.pushCode(.store_64, &.{ dst_ptr, offset, src }, node);
         },
         4 => {
-            try c.pushCode(.store_32, &.{ 0, 0, 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(pc + 1, dst_ptr);
-            c.buf.setOpArgU16(pc + 3, offset);
-            c.buf.setOpArgU16(pc + 5, src);
+            try c.pushCode(.store_32, &.{ dst_ptr, offset, src }, node);
         },
         2 => {
-            try c.pushCode(.store_16, &.{ 0, 0, 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(pc + 1, dst_ptr);
-            c.buf.setOpArgU16(pc + 3, offset);
-            c.buf.setOpArgU16(pc + 5, src);
+            try c.pushCode(.store_16, &.{ dst_ptr, offset, src }, node);
         },
         1 => {
-            try c.pushCode(.store_8, &.{ 0, 0, 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(pc + 1, dst_ptr);
-            c.buf.setOpArgU16(pc + 3, offset);
-            c.buf.setOpArgU16(pc + 5, src);
+            try c.pushCode(.store_8, &.{ dst_ptr, offset, src }, node);
         },
         0 => {},
         else => {
-            try c.pushCode(.store_n, &.{ 0, 0, 0, 0, 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(pc + 1, dst_ptr);
-            c.buf.setOpArgU16(pc + 3, offset);
-            c.buf.setOpArgU16(pc + 5, src);
-            c.buf.setOpArgU16(pc + 7, @intCast(src_t.size()));
+            try c.pushCode(.store_n, &.{ dst_ptr, offset, src, @intCast(src_t.size()) }, node);
         },
     }
 }
@@ -1126,11 +1067,7 @@ fn genUnwrapAddr(c: *Chunk, expr: *ir.UnwrapAddr, cstr: Cstr, node: *ast.Node) !
     const dst = try bc.selectReg(c, expr.base.type, cstr, node);
     const choice = try genExpr(c, expr.choice, Cstr.localOrTemp());
 
-    const pc = c.buf.ops.items.len;
-    try c.pushFCode(.unwrap_addr, &.{ 0, 0, 0, 0, expr.tag, 8 }, node);
-    c.buf.setOpArgU16(pc + 1, dst.reg);
-    c.buf.setOpArgU16(pc + 3, choice.reg);
-
+    try c.pushFCode(.unwrap_addr, &.{ dst.reg, choice.reg, expr.tag, 8 }, node);
     try pop_temp_value(c, choice, node);
     return dst;
 }
@@ -1138,10 +1075,7 @@ fn genUnwrapAddr(c: *Chunk, expr: *ir.UnwrapAddr, cstr: Cstr, node: *ast.Node) !
 fn genUnwrapNZ(c: *Chunk, expr: *ir.UnwrapNZ, cstr: Cstr, node: *ast.Node) !GenValue {
     const dst = try bc.selectReg(c, expr.base.type, cstr, node);
     const option = try genExpr(c, expr.option, Cstr.localOrTemp());
-    const pc = c.buf.ops.items.len;
-    try c.pushFCode(.unwrap_nz, &.{ 0, 0, 0, 0}, node);
-    c.buf.setOpArgU16(pc + 1, dst.reg);
-    c.buf.setOpArgU16(pc + 3, option.reg);
+    try c.pushFCode(.unwrap_nz, &.{ dst.reg, option.reg}, node);
     try pop_temp_value(c, option, node);
     return dst;
 }
@@ -1150,15 +1084,9 @@ fn gen_i2f(c: *Chunk, expr: *ir.UnOp2, cstr: Cstr, node: *ast.Node) !GenValue {
     const dst = try bc.selectReg(c, expr.base.type, cstr, node);
     const src = try genExpr(c, expr.expr, Cstr.localOrTemp());
     if (expr.base.type.id() == bt.F64) {
-        const pc = c.buf.ops.items.len;
-        try c.pushCode(.i2f, &.{ 0, 0, 0, 0}, node);
-        c.buf.setOpArgU16(pc + 1, dst.reg);
-        c.buf.setOpArgU16(pc + 3, src.reg);
+        try c.pushCode(.i2f, &.{ dst.reg, src.reg}, node);
     } else {
-        const pc = c.buf.ops.items.len;
-        try c.pushCode(.i2f32, &.{ 0, 0, 0, 0}, node);
-        c.buf.setOpArgU16(pc + 1, dst.reg);
-        c.buf.setOpArgU16(pc + 3, src.reg);
+        try c.pushCode(.i2f32, &.{ dst.reg, src.reg}, node);
     }
     try pop_temp_value(c, src, node);
     return dst;
@@ -1174,15 +1102,9 @@ fn gen_fabs(c: *Chunk, expr: *ir.UnOp2, cstr: Cstr, node: *ast.Node) !GenValue {
     const dst = try bc.selectReg(c, expr.base.type, cstr, node);
     const src = try genExpr(c, expr.expr, Cstr.localOrTemp());
     if (expr.base.type.id() == bt.F64) {
-        const pc = c.buf.ops.items.len;
-        try c.pushCode(.fabs, &.{0, 0, 0, 0}, node);
-        c.buf.setOpArgU16(pc + 1, dst.reg);
-        c.buf.setOpArgU16(pc + 3, src.reg);
+        try c.pushCode(.fabs, &.{dst.reg, src.reg}, node);
     } else {
-        const pc = c.buf.ops.items.len;
-        try c.pushCode(.f32abs, &.{ 0, 0, 0, 0}, node);
-        c.buf.setOpArgU16(pc + 1, dst.reg);
-        c.buf.setOpArgU16(pc + 3, src.reg);
+        try c.pushCode(.f32abs, &.{ dst.reg, src.reg}, node);
     }
     try pop_temp_value(c, src, node);
     return dst;
@@ -1192,15 +1114,9 @@ fn gen_f2i(c: *Chunk, expr: *ir.UnOp2, cstr: Cstr, node: *ast.Node) !GenValue {
     const dst = try bc.selectReg(c, expr.base.type, cstr, node);
     const src = try genExpr(c, expr.expr, Cstr.localOrTemp());
     if (expr.expr.type.id() == bt.F64) {
-        const pc = c.buf.ops.items.len;
-        try c.pushCode(.f2i, &.{ 0, 0, 0, 0}, node);
-        c.buf.setOpArgU16(pc + 1, dst.reg);
-        c.buf.setOpArgU16(pc + 3, src.reg);
+        try c.pushCode(.f2i, &.{ dst.reg, src.reg}, node);
     } else {
-        const pc = c.buf.ops.items.len;
-        try c.pushCode(.f32_2i, &.{ 0, 0, 0, 0}, node);
-        c.buf.setOpArgU16(pc + 1, dst.reg);
-        c.buf.setOpArgU16(pc + 3, src.reg);
+        try c.pushCode(.f32_2i, &.{ dst.reg, src.reg}, node);
     }
     try pop_temp_value(c, src, node);
     return dst;
@@ -1239,43 +1155,33 @@ fn gen_undef(c: *Chunk, expr: *ir.SimpleExpr, cstr: Cstr, node: *ast.Node) !GenV
 
 fn gen_true(c: *Chunk, cstr: Cstr, node: *ast.Node) !GenValue {
     const dst = try bc.selectReg(c, c.sema.bool_t, cstr, node);
-    const pc = c.buf.ops.items.len;
-    try c.buf.pushOp2(.true, 0, 0);
-    c.buf.setOpArgU16(pc + 1, dst.reg);
+    try c.pushCode(.true, &.{dst.reg}, node);
     return dst;
 }
 
 fn gen_false(c: *Chunk, cstr: Cstr, node: *ast.Node) !GenValue {
     const dst = try bc.selectReg(c, c.sema.bool_t, cstr, node);
-    const pc = c.buf.ops.items.len;
-    try c.buf.pushOp2(.false, 0, 0);
-    c.buf.setOpArgU16(pc + 1, dst.reg);
+    try c.pushCode(.false, &.{dst.reg}, node);
     return dst;
 }
 
 fn gen_const8(c: *Chunk, expr: *ir.Const8, cstr: Cstr, node: *ast.Node) !GenValue {
     const dst = try bc.selectReg(c, expr.base.type, cstr, node);
-    const pc = c.buf.ops.items.len;
-    try c.pushCode(.const_8, &.{ 0, 0, expr.val }, node);
-    c.buf.setOpArgU16(pc + 1, dst.reg);
+    try c.pushCode(.const_16, &.{ dst.reg, expr.val }, node);
     return dst;
 }
 
 fn gen_const16(c: *Chunk, expr: *ir.Const16, cstr: Cstr, node: *ast.Node) !GenValue {
     const dst = try bc.selectReg(c, expr.base.type, cstr, node);
-    const pc = c.buf.ops.items.len;
-    try c.pushCode(.const_16, &.{ 0, 0, 0, 0 }, node);
-    c.buf.setOpArgU16(pc + 1, dst.reg);
-    c.buf.setOpArgU16(pc + 3, @bitCast(expr.val));
+    try c.pushCode(.const_16, &.{ dst.reg, expr.val }, node);
     return dst;
 }
 
 fn gen_const32(c: *Chunk, expr: *ir.Const32, cstr: Cstr, node: *ast.Node) !GenValue {
     const dst = try bc.selectReg(c, expr.base.type, cstr, node);
     const pc = c.buf.ops.items.len;
-    try c.pushCode(.const_32, &.{ 0, 0, 0, 0, 0, 0 }, node);
-    c.buf.setOpArgU16(pc + 1, dst.reg);
-    c.buf.setOpArgU32(pc + 3, expr.val);
+    try c.pushCode(.const_32, &.{ dst.reg, 0, 0 }, node);
+    c.buf.setOpArgU32(pc + 2, expr.val);
     return dst;
 }
 
@@ -1284,10 +1190,7 @@ fn genIsZero(c: *Chunk, expr: *ir.IsZero, cstr: Cstr, node: *ast.Node) !GenValue
 
     const childv = try genExpr(c, expr.child, Cstr.localOrTemp());
 
-    const pc = c.buf.ops.items.len;
-    try c.pushCode(.is_zero, &.{0, 0, 0, 0}, node);
-    c.buf.setOpArgU16(pc + 1, dst.reg);
-    c.buf.setOpArgU16(pc + 3, childv.reg);
+    try c.pushCode(.is_zero, &.{dst.reg, childv.reg}, node);
     try pop_temp_value(c, childv, node);
     return dst;
 }
@@ -1295,9 +1198,7 @@ fn genIsZero(c: *Chunk, expr: *ir.IsZero, cstr: Cstr, node: *ast.Node) !GenValue
 fn gen_retain(c: *Chunk, expr: *ir.Retain, cstr: Cstr, node: *ast.Node) !GenValue {
     const child = try genExpr(c, expr.expr, cstr);
 
-    const pc = c.buf.ops.items.len;
-    try c.pushCode(.retain, &.{ 0, 0 }, node);
-    c.buf.setOpArgU16(pc + 1, child.reg);
+    try c.pushCode(.retain, &.{ child.reg }, node);
     return child;
 }
 
@@ -1322,9 +1223,8 @@ fn pushConstString(c: *Chunk, str: []const u8, dst: Reg, node: *ast.Node) !void 
     const res = try c.buf.getOrPushConstString(str);
     const ptr_len = (@as(u64, @intFromPtr(res.slice.ptr)) & 0xffffffffffff) | (@as(u64, res.slice.len) << 48);
     const pc = c.buf.ops.items.len;
-    try c.pushCode(.const_str, &.{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, @intFromBool(res.ascii) }, node);
-    c.buf.setOpArgU16(pc + 1, dst);
-    c.buf.setOpArgU64(pc + 3, ptr_len);
+    try c.pushCode(.const_str, &.{ dst, 0, 0, 0, 0, @intFromBool(res.ascii) }, node);
+    c.buf.setOpArgU64(pc + 2, ptr_len);
 }
 
 fn genUnOp2(c: *Chunk, expr: *ir.UnOp2, op: cy.OpCode, cstr: Cstr, node: *ast.Node) !GenValue {
@@ -1342,10 +1242,7 @@ fn genUnOp(c: *Chunk, expr: *ir.UnOp, cstr: Cstr, node: *ast.Node) !GenValue {
 
     switch (expr.op) {
         .lnot => {
-            const pc = c.buf.len();
-            try c.pushCode(.lnot, &.{0, 0, 0, 0}, node);
-            c.buf.setOpArgU16(pc + 1, dst.reg);
-            c.buf.setOpArgU16(pc + 3, childv.reg);
+            try c.pushCode(.lnot, &.{dst.reg, childv.reg}, node);
         },
         .minus,
         .bitwiseNot => {
@@ -1380,10 +1277,7 @@ fn gen_call_trait(c: *Chunk, expr: *ir.CallTrait, cstr: Cstr, node: *ast.Node) !
         _ = try genExpr(c, arg, Cstr.toTemp(temp));
     }
 
-    const start = c.buf.ops.items.len;
-    try c.pushFCode(.call_trait, &.{0, 0, 0, 0 }, node);
-    c.buf.setOpArgU16(start + 1, @intCast(inst.base));
-    c.buf.setOpArgU16(start + 3, @intCast(expr.vtable_idx));
+    try c.pushFCode(.call_trait, &.{inst.base, @intCast(expr.vtable_idx) }, node);
 
     return endCall(c, inst, ret_t, node);
 }
@@ -1395,9 +1289,7 @@ fn genCallIntrinsic(c: *Chunk, call: *ir.Call, cstr: Cstr, intrinsic: Intrinsic,
         },
         .dtor_str => {
             const borrow = try genExpr(c, call.args[0], Cstr.localOrTemp());
-            const pc = c.buf.len();
-            try c.pushCode(.dtor_str, &.{0, 0}, node);
-            c.buf.setOpArgU16(pc + 1, borrow.reg);
+            try c.pushCode(.dtor_str, &.{borrow.reg}, node);
             try pop_temp_value(c, borrow, node);
             return GenValue.discard();
         },
@@ -1405,11 +1297,7 @@ fn genCallIntrinsic(c: *Chunk, call: *ir.Call, cstr: Cstr, intrinsic: Intrinsic,
             const dst = try bc.selectReg(c, call.base.type, cstr, node);
             const borrow_a = try genExpr(c, call.args[0], Cstr.localOrTemp());
             const borrow_b = try genExpr(c, call.args[1], Cstr.localOrTemp());
-            const pc = c.buf.len();
-            try c.pushCode(.cmp_str, &.{0, 0, 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(pc + 1, dst.reg);
-            c.buf.setOpArgU16(pc + 3, borrow_a.reg);
-            c.buf.setOpArgU16(pc + 5, borrow_b.reg);
+            try c.pushCode(.cmp_str, &.{dst.reg, borrow_a.reg, borrow_b.reg }, node);
             try pop_temp_value(c, borrow_b, node);
             try pop_temp_value(c, borrow_a, node);
             return dst;
@@ -1441,9 +1329,8 @@ fn genCallExternPtr(c: *Chunk, expr: *ir.CallPtr, func_ptr: *cy.types.FuncPtr, c
 
     // Invoke extern function pointer dispatch.
     const start = c.buf.ops.items.len;
-    try c.pushFCode(.call_host, &.{ 0, 0, 0, 0, 0, 0, 0, 0 }, node);
-    c.buf.setOpArgU16(start + 1, inst.base);
-    try c.rt_relocations.append(c.alloc, .{.kind = .extern_func_ptr, .pc = start + 3, .data = .{.extern_func_ptr = func_ptr}});
+    try c.pushFCode(.call_host, &.{ inst.base, 0, 0, 0 }, node);
+    try c.rt_relocations.append(c.alloc, .{.kind = .extern_func_ptr, .pc = start + 2, .data = .{.extern_func_ptr = func_ptr}});
 
     return endCall(c, inst, ret_t, node);
 }
@@ -1511,9 +1398,7 @@ fn gen_call_union(c: *Chunk, expr: *ir.CallUnion, cstr: Cstr, node: *ast.Node) !
         _ = try genExpr(c, arg, Cstr.toTemp(temp));
     }
 
-    const pc = c.buf.len();
-    try c.pushFCode(.call_union, &.{0, 0}, node);
-    c.buf.setOpArgU16(pc + 1, inst.base);
+    try c.pushFCode(.call_union, &.{inst.base}, node);
 
     try pop_regs(c, arg_start, node);
     return endCall(c, inst, ret_t, node);
@@ -1539,9 +1424,7 @@ fn gen_call_ptr(c: *Chunk, expr: *ir.CallPtr, cstr: Cstr, node: *ast.Node) !GenV
         _ = try genExpr(c, arg, Cstr.toTemp(temp));
     }
 
-    const pc = c.buf.len();
-    try c.pushFCode(.call_ptr, &.{0, 0}, node);
-    c.buf.setOpArgU16(pc + 1, inst.base);
+    try c.pushFCode(.call_ptr, &.{inst.base}, node);
 
     return endCall(c, inst, ret_t, node);
 }
@@ -1549,73 +1432,43 @@ fn gen_call_ptr(c: *Chunk, expr: *ir.CallPtr, cstr: Cstr, node: *ast.Node) !GenV
 fn pushCmp(c: *Chunk, val_t: *cy.Type, dst: Reg, left: Reg, right: Reg, node: *ast.Node) !void {
     switch (val_t.id()) {
         bt.Void => {
-            const pc = c.buf.len();
-            try c.buf.pushOp2(.true, 0, 0);
-            c.buf.setOpArgU16(pc + 1, dst);
+            try c.pushCode(.true, &.{dst}, node);
         },
         bt.Bool,
         bt.R8,
         bt.I8 => {
-            const pc = c.buf.len();
-            try c.pushCode(.cmp_8, &.{0, 0, 0, 0, 0, 0}, node);
-            c.buf.setOpArgU16(pc + 1, dst);
-            c.buf.setOpArgU16(pc + 3, left);
-            c.buf.setOpArgU16(pc + 5, right);
+            try c.pushCode(.cmp_8, &.{dst, left, right}, node);
         },
         bt.F32 => {
-            const pc = c.buf.len();
-            try c.pushCode(.feq32, &.{0, 0, 0, 0, 0, 0}, node);
-            c.buf.setOpArgU16(pc + 1, dst);
-            c.buf.setOpArgU16(pc + 3, left);
-            c.buf.setOpArgU16(pc + 5, right);
+            try c.pushCode(.feq32, &.{dst, left, right}, node);
         },
         bt.F64 => {
-            const pc = c.buf.len();
-            try c.pushCode(.feq, &.{0, 0, 0, 0, 0, 0}, node);
-            c.buf.setOpArgU16(pc + 1, dst);
-            c.buf.setOpArgU16(pc + 3, left);
-            c.buf.setOpArgU16(pc + 5, right);
+            try c.pushCode(.feq, &.{dst, left, right}, node);
         },
         bt.R32,
         bt.I32 => {
             try push_zext(c, left, left, 32, node);
             try push_zext(c, right, right, 32, node);
-            const pc = c.buf.len();
-            try c.pushCode(.cmp, &.{0, 0, 0, 0, 0, 0}, node);
-            c.buf.setOpArgU16(pc + 1, dst);
-            c.buf.setOpArgU16(pc + 3, left);
-            c.buf.setOpArgU16(pc + 5, right);
+            try c.pushCode(.cmp, &.{dst, left, right}, node);
         },
         bt.R16,
         bt.I16 => {
             try push_zext(c, left, left, 16, node);
             try push_zext(c, right, right, 16, node);
-            const pc = c.buf.len();
-            try c.pushCode(.cmp, &.{0, 0, 0, 0, 0, 0}, node);
-            c.buf.setOpArgU16(pc + 1, dst);
-            c.buf.setOpArgU16(pc + 3, left);
-            c.buf.setOpArgU16(pc + 5, right);
+            try c.pushCode(.cmp, &.{dst, left, right}, node);
         },
         bt.R64,
         bt.Symbol,
         bt.Error,
         bt.I64 => {
-            const pc = c.buf.len();
-            try c.pushCode(.cmp, &.{0, 0, 0, 0, 0, 0}, node);
-            c.buf.setOpArgU16(pc + 1, dst);
-            c.buf.setOpArgU16(pc + 3, left);
-            c.buf.setOpArgU16(pc + 5, right);
+            try c.pushCode(.cmp, &.{dst, left, right}, node);
         },
         else => {
             switch (val_t.kind()) {
                 .pointer,
                 .func_ptr,
                 .enum_t => {
-                    const pc = c.buf.len();
-                    try c.pushCode(.cmp, &.{0, 0, 0, 0, 0, 0}, node);
-                    c.buf.setOpArgU16(pc + 1, dst);
-                    c.buf.setOpArgU16(pc + 3, left);
-                    c.buf.setOpArgU16(pc + 5, right);
+                    try c.pushCode(.cmp, &.{dst, left, right}, node);
                 },
                 else => {
                     return c.reportErrorFmt("Unsupported comparison: {}", &.{v(val_t.name())}, node);
@@ -1638,11 +1491,7 @@ fn genCompare(c: *Chunk, expr: *ir.Compare, cstr: Cstr, node: *ast.Node) !GenVal
                 .ge => .fge,
                 else => return error.TODO,
             };
-            const pc = c.buf.len();
-            try c.pushCode(code, &.{ 0, 0, 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(pc + 1, dst.reg);
-            c.buf.setOpArgU16(pc + 3, left.reg);
-            c.buf.setOpArgU16(pc + 5, right.reg);
+            try c.pushCode(code, &.{ dst.reg, left.reg, right.reg }, node);
         } else {
             const code: cy.OpCode = switch (expr.cond) {
                 .lt => .flt32,
@@ -1651,11 +1500,7 @@ fn genCompare(c: *Chunk, expr: *ir.Compare, cstr: Cstr, node: *ast.Node) !GenVal
                 .ge => .fge32,
                 else => return error.TODO,
             };
-            const pc = c.buf.len();
-            try c.pushCode(code, &.{ 0, 0, 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(pc + 1, dst.reg);
-            c.buf.setOpArgU16(pc + 3, left.reg);
-            c.buf.setOpArgU16(pc + 5, right.reg);
+            try c.pushCode(code, &.{ dst.reg, left.reg, right.reg }, node);
         }
     } else {
         var bits: u32 = undefined;
@@ -1685,17 +1530,9 @@ fn genCompare(c: *Chunk, expr: *ir.Compare, cstr: Cstr, node: *ast.Node) !GenVal
             .ge => .ge,
             else => return error.TODO,
         };
-        var pc = c.buf.len();
-        try c.pushCode(code, &.{ 0, 0, 0, 0, 0, 0 }, node);
-        c.buf.setOpArgU16(pc + 1, dst.reg);
-        c.buf.setOpArgU16(pc + 3, left.reg);
-        c.buf.setOpArgU16(pc + 5, right.reg);
+        try c.pushCode(code, &.{ dst.reg, left.reg, right.reg }, node);
         if (unsigned) {
-            pc = c.buf.len();
-            try c.pushCode(.ucmp, &.{ 0, 0, 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(pc + 1, dst.reg);
-            c.buf.setOpArgU16(pc + 3, left.reg);
-            c.buf.setOpArgU16(pc + 5, right.reg);
+            try c.pushCode(.ucmp, &.{ dst.reg, left.reg, right.reg }, node);
         }
     }
     try pop_temp_value(c, right, node);
@@ -1825,10 +1662,7 @@ fn genBinOp(c: *Chunk, expr: *ir.BinOp, cstr: Cstr, node: *ast.Node) !GenValue {
     }
 
     if (expr.op == .bang_equal) {
-        const pc = c.buf.len();
-        try c.pushFCode(.lnot, &.{0, 0, 0, 0}, node);
-        c.buf.setOpArgU16(pc + 1, dst.reg);
-        c.buf.setOpArgU16(pc + 3, dst.reg);
+        try c.pushFCode(.lnot, &.{dst.reg, dst.reg}, node);
     }
 
     try pop_temp_value(c, rightv, node);
@@ -1844,12 +1678,7 @@ fn gen_trait(c: *Chunk, expr: *ir.Trait, cstr: Cstr, node: *ast.Node) !GenValue 
     const key = VtableKey{ .type = expr.impl_t.id(), .trait = expr.generic_t.base.id() };
     const vtable_idx = c.compiler.gen_vtables.get(key).?;
 
-    const pc = c.buf.len();
-    try c.pushFCode(.trait, &.{ 0, 0, 0, 0, 0, 0, 0, 0 }, node);
-    c.buf.setOpArgU16(pc + 1, dst.reg);
-    c.buf.setOpArgU16(pc + 3, ref.reg);
-    c.buf.setOpArgU16(pc + 5, @intCast(expr.trait_t.id()));
-    c.buf.setOpArgU16(pc + 7, @intCast(vtable_idx));
+    try c.pushFCode(.trait, &.{ dst.reg, ref.reg, @intCast(expr.trait_t.id()), @intCast(vtable_idx) }, node);
 
     try pop_temp_value(c, ref, node);
     return dst;
@@ -1858,10 +1687,7 @@ fn gen_trait(c: *Chunk, expr: *ir.Trait, cstr: Cstr, node: *ast.Node) !GenValue 
 fn gen_captured(c: *Chunk, expr: *ir.Captured, cstr: Cstr, node: *ast.Node) !GenValue {
     const dst = try bc.selectReg(c, expr.base.type, cstr, node);
 
-    const pc = c.buf.len();
-    try c.pushCode(.captured, &.{ 0, 0, 0, 0, expr.idx }, node);
-    c.buf.setOpArgU16(pc + 1, dst.reg);
-    c.buf.setOpArgU16(pc + 3, c.cur_proc.closure_local);
+    try c.pushCode(.captured, &.{ dst.reg, c.cur_proc.closure_local, expr.idx }, node);
     return dst;
 }
 
@@ -1873,58 +1699,32 @@ pub fn toLocalReg(c: *Chunk, ir_id: u8) Reg {
 }
 
 fn push_load_32(c: *cy.Chunk, dst: Reg, src: Reg, src_off: u16, debugNode: *ast.Node) !void {
-    const pc = c.buf.ops.items.len;
-    try c.pushCode(.load_32, &.{ 0, 0, 0, 0, 0, 0 }, debugNode);
-    c.buf.setOpArgU16(pc + 1, dst);
-    c.buf.setOpArgU16(pc + 3, src);
-    c.buf.setOpArgU16(pc + 5, src_off);
+    try c.pushCode(.load_32, &.{ dst, src, src_off }, debugNode);
 }
 
 fn push_load_16(c: *cy.Chunk, dst: Reg, src: Reg, src_off: u16, debugNode: *ast.Node) !void {
-    const pc = c.buf.ops.items.len;
-    try c.pushCode(.load_16, &.{ 0, 0, 0, 0, 0, 0 }, debugNode);
-    c.buf.setOpArgU16(pc + 1, dst);
-    c.buf.setOpArgU16(pc + 3, src);
-    c.buf.setOpArgU16(pc + 5, src_off);
+    try c.pushCode(.load_16, &.{ dst, src, src_off }, debugNode);
 }
 
 fn push_load_8(c: *cy.Chunk, dst: Reg, src: Reg, src_off: u16, debugNode: *ast.Node) !void {
-    const pc = c.buf.ops.items.len;
-    try c.pushCode(.load_8, &.{ 0, 0, 0, 0, 0, 0 }, debugNode);
-    c.buf.setOpArgU16(pc + 1, dst);
-    c.buf.setOpArgU16(pc + 3, src);
-    c.buf.setOpArgU16(pc + 5, src_off);
+    try c.pushCode(.load_8, &.{ dst, src, src_off }, debugNode);
 }
 
 fn push_load_64(c: *cy.Chunk, dst: Reg, src: Reg, offset: u16, debugNode: *ast.Node) !void {
-    const pc = c.buf.ops.items.len;
-    try c.pushCode(.load_64, &.{ 0, 0, 0, 0, 0, 0 }, debugNode);
-    c.buf.setOpArgU16(pc + 1, dst);
-    c.buf.setOpArgU16(pc + 3, src);
-    c.buf.setOpArgU16(pc + 5, offset);
+    try c.pushCode(.load_64, &.{ dst, src, offset }, debugNode);
 }
 
 fn push_load(c: *cy.Chunk, dst: Reg, src_ptr: Reg, src_off: u16, src_t: *cy.Type, node: *ast.Node) !void {
     const size = src_t.size();
-    const pc = c.buf.ops.items.len;
     switch (size) {
         32 => {
-            try c.pushCode(.load_4w, &.{ 0, 0, 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(pc + 1, dst);
-            c.buf.setOpArgU16(pc + 3, src_ptr);
-            c.buf.setOpArgU16(pc + 5, src_off);
+            try c.pushCode(.load_4w, &.{ dst, src_ptr, src_off }, node);
         },
         24 => {
-            try c.pushCode(.load_3w, &.{ 0, 0, 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(pc + 1, dst);
-            c.buf.setOpArgU16(pc + 3, src_ptr);
-            c.buf.setOpArgU16(pc + 5, src_off);
+            try c.pushCode(.load_3w, &.{ dst, src_ptr, src_off }, node);
         },
         16 => {
-            try c.pushCode(.load_2w, &.{ 0, 0, 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(pc + 1, dst);
-            c.buf.setOpArgU16(pc + 3, src_ptr);
-            c.buf.setOpArgU16(pc + 5, src_off);
+            try c.pushCode(.load_2w, &.{ dst, src_ptr, src_off }, node);
         },
         8 => {
             try push_load_64(c, dst, src_ptr, src_off, node);
@@ -1940,11 +1740,7 @@ fn push_load(c: *cy.Chunk, dst: Reg, src_ptr: Reg, src_off: u16, src_t: *cy.Type
         },
         0 => {},
         else => {
-            try c.pushCode(.load_n, &.{ 0, 0, 0, 0, 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(pc + 1, dst);
-            c.buf.setOpArgU16(pc + 3, src_ptr);
-            c.buf.setOpArgU16(pc + 5, src_off);
-            c.buf.setOpArgU16(pc + 7, @intCast(src_t.size()));
+            try c.pushCode(.load_n, &.{ dst, src_ptr, src_off, @intCast(src_t.size()) }, node);
         },
     }
 }
@@ -1964,23 +1760,18 @@ fn gen_funcptr2(c: *Chunk, dst: Reg, func: *cy.Func, node: *ast.Node) !void {
     switch (func.type) {
         .extern_ => {
             const rt_id = c.compiler.genSymMap.get(func).?.extern_func.id;
-            const start = c.buf.ops.items.len;
-            try c.pushCode(.extern_func, &.{ 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(start + 1, dst);
-            c.buf.setOpArgU16(start + 3, @intCast(rt_id));
+            try c.pushCode(.extern_func, &.{ dst, @intCast(rt_id) }, node);
         },
         .hostFunc => {
             const start = c.buf.ops.items.len;
-            try c.pushCode(.fn_host, &.{0, 0, 0, 0, 0, 0, 0, 0}, node);
-            c.buf.setOpArgU16(start + 1, dst);
-            c.buf.setOpArgU48(start + 3, @intCast(@intFromPtr(func.data.hostFunc.ptr)));
+            try c.pushCode(.fn_host, &.{dst, 0, 0, 0}, node);
+            c.buf.setOpArgU48(start + 2, @intCast(@intFromPtr(func.data.hostFunc.ptr)));
         },
         .userLambda,
         .userFunc => {
             const start = c.buf.ops.items.len;
-            try c.pushCode(.fn_vm, &.{0, 0, 0, 0, 0, 0, 0, 0}, node);
-            c.buf.setOpArgU16(start + 1, dst);
-            try c.relocations.append(c.alloc, .{.kind = .func, .pc = start + 3, .data = .{.func = func}});
+            try c.pushCode(.fn_vm, &.{dst, 0, 0, 0}, node);
+            try c.relocations.append(c.alloc, .{.kind = .func, .pc = start + 2, .data = .{.func = func}});
         },
         else => {
             @panic("unexpected");
@@ -1998,11 +1789,7 @@ fn genFuncUnion(c: *Chunk, expr: *ir.Func, cstr: Cstr, node: *ast.Node) !GenValu
     const dst = try bc.selectReg(c, expr.base.type, cstr, node);
     const childv = try genExpr(c, expr.expr, Cstr.localOrTemp());
 
-    const pc = c.buf.len();
-    try c.pushCode(.fn_union, &.{ 0, 0, 0, 0, 0, 0 }, node);
-    c.buf.setOpArgU16(pc + 1, dst.reg);
-    c.buf.setOpArgU16(pc + 3, childv.reg);
-    c.buf.setOpArgU16(pc + 5, @intCast(expr.base.type.id()));
+    try c.pushCode(.fn_union, &.{ dst.reg, childv.reg, @intCast(expr.base.type.id()) }, node);
     try pop_temp_value(c, childv, node);
     return dst;
 }
@@ -2155,7 +1942,7 @@ fn gen_set_local(c: *Chunk, stmt: *ir.SetLocal, node: *ast.Node) !void {
 fn gen_ret(c: *Chunk, stmt: *ir.Return, node: *ast.Node) !void {
     _ = stmt;
     if (c.cur_proc.type == .main) {
-        try c.buf.pushOp(.end);
+        try c.pushCode(.end, &.{}, node);
     } else {
         try push_ret(c, c.cur_proc.ret_size, node);
     }
@@ -2167,24 +1954,21 @@ fn push_ret(c: *Chunk, ret_size: u16, node: *ast.Node) !void {
     } else if (c.cur_proc.ret_size == 1) {
         try c.pushCode(.ret, &.{}, node);
     } else {
-        const pc = c.buf.ops.items.len;
-        try c.pushCode(.ret_n, &.{0, 0}, node);
-        c.buf.setOpArgU16(pc + 1, c.cur_proc.ret_size);
+        try c.pushCode(.ret_n, &.{c.cur_proc.ret_size}, node);
     }
 }
 
 fn gen_ret_gen(c: *Chunk, stmt: *ir.ReturnGen, node: *ast.Node) !void {
     const pc = c.buf.ops.items.len;
-    try c.pushFCode(.ret_gen, &.{ 0, 0, 0, 0, 0, 0, 0 }, node);
-    c.buf.setOpArgU16(pc + 1, @intCast(stmt.gen_t.id()));
+
     var reg_size = stmt.gen_t.reg_size();
     if (stmt.next_t.reg_size() > reg_size) {
         reg_size = stmt.next_t.reg_size();
     }
-    c.buf.setOpArgU16(pc + 3, @intCast(reg_size));
-    c.buf.setOpArgU16(pc + 5, c.cur_proc.reg_end);
+
+    try c.pushFCode(.ret_gen, &.{ @intCast(stmt.gen_t.id()), @intCast(reg_size), c.cur_proc.reg_end, 0 }, node);
     try genStmts(c, stmt.deinit_head);
-    c.buf.setOpArgs1(pc + 7, @intCast(c.buf.ops.items.len - pc));
+    c.buf.ops.items[pc + 4].val = @intCast(c.buf.ops.items.len - pc);
 }
 
 fn gen_ret_expr(c: *Chunk, stmt: *ir.ReturnExpr, node: *ast.Node) !void {
@@ -2194,7 +1978,7 @@ fn gen_ret_expr(c: *Chunk, stmt: *ir.ReturnExpr, node: *ast.Node) !void {
         childv = try genExpr(c, stmt.expr, Cstr.ret);
         try pop_temp_value(c, childv, node);
 
-        try c.buf.pushOp(.end);
+        try c.pushCode(.end, &.{}, node);
     } else {
         _ = try genExpr(c, stmt.expr, Cstr.toLocal(0));
         try push_ret(c, c.cur_proc.ret_size, node);
@@ -2293,35 +2077,19 @@ pub fn push_mov(c: *Chunk, dst: Reg, src: Reg, reg_size: u16, node: *ast.Node) !
     switch (reg_size) {
         0 => {},
         1 => {
-            const pc = c.buf.ops.items.len;
-            try c.pushCode(.mov, &.{0, 0, 0, 0}, node);
-            c.buf.setOpArgU16(pc + 1, dst);
-            c.buf.setOpArgU16(pc + 3, src);
+            try c.pushCode(.mov, &.{dst, src}, node);
         },
         2 => {
-            const pc = c.buf.ops.items.len;
-            try c.pushCode(.mov_2, &.{0, 0, 0, 0}, node);
-            c.buf.setOpArgU16(pc + 1, dst);
-            c.buf.setOpArgU16(pc + 3, src);
+            try c.pushCode(.mov_2, &.{dst, src}, node);
         },
         3 => {
-            const pc = c.buf.ops.items.len;
-            try c.pushCode(.mov_3, &.{0, 0, 0, 0}, node);
-            c.buf.setOpArgU16(pc + 1, dst);
-            c.buf.setOpArgU16(pc + 3, src);
+            try c.pushCode(.mov_3, &.{dst, src}, node);
         },
         4 => {
-            const pc = c.buf.ops.items.len;
-            try c.pushCode(.mov_4, &.{0, 0, 0, 0}, node);
-            c.buf.setOpArgU16(pc + 1, dst);
-            c.buf.setOpArgU16(pc + 3, src);
+            try c.pushCode(.mov_4, &.{dst, src}, node);
         },
         else => {
-            const pc = c.buf.ops.items.len;
-            try c.pushCode(.mov_n, &.{0, 0, 0, 0, 0, 0}, node);
-            c.buf.setOpArgU16(pc + 1, dst);
-            c.buf.setOpArgU16(pc + 3, src);
-            c.buf.setOpArgU16(pc + 5, reg_size);
+            try c.pushCode(.mov_n, &.{dst, src, reg_size}, node);
         },
     }
 }
@@ -2407,17 +2175,15 @@ fn gen_for_range_stmt(c: *Chunk, stmt: *ir.ForRangeStmt, node: *ast.Node) !void 
     const cont_pc = c.buf.ops.items.len;
 
     // Update counter.
-    const pc = c.buf.ops.items.len;
-    try c.pushCode(.add_i16, &.{ 0, 0, 0, 0, 0, 0}, node);
-    c.buf.setOpArgU16(pc + 1, counter);
-    c.buf.setOpArgU16(pc + 3, counter);
+    var inc: u16 = undefined;
     if (stmt.increment) {
-        c.buf.setOpArgU16(pc + 5, 1);
+        inc = 1;
     } else {
-        c.buf.setOpArgU16(pc + 5, @bitCast(@as(i16, -1)));
+        inc = @bitCast(@as(i16, -1));
     }
+    try c.pushCode(.add_i16, &.{ counter, counter, inc}, node);
 
-    try c.pushJumpBackTo(iter_pc);
+    try c.pushJumpBackTo(iter_pc, node);
     c.patchJumpNotCondToCurPc(exit_jump);
 
     c.blockJumpStack.items.len = c.patchForBlockJumps(jumpStackSave, block_offset, c.buf.ops.items.len, cont_pc);
@@ -2517,7 +2283,6 @@ fn elseBlocks(c: *cy.Chunk, else_head: ?*ir.Expr) !void {
 }
 
 fn gen_switch_stmt(c: *Chunk, stmt: *ir.SwitchStmt, node: *ast.Node) !void {
-    _ = node;
     const childBreakJumpsStart: u32 = @intCast(c.blockJumpStack.items.len);
     _ = childBreakJumpsStart;
 
@@ -2529,7 +2294,7 @@ fn gen_switch_stmt(c: *Chunk, stmt: *ir.SwitchStmt, node: *ast.Node) !void {
 
     var prevCaseMissJump: u32 = cy.NullId;
     for (cases) |case| {
-        const caseNodeId = case.node;
+        const case_n = case.node;
         const case_data = case.cast(.switch_case);
         const isElse = case_data.numConds == 0;
 
@@ -2549,7 +2314,7 @@ fn gen_switch_stmt(c: *Chunk, stmt: *ir.SwitchStmt, node: *ast.Node) !void {
                 const condv = try genExpr(c, cond.expr, Cstr.localOrTemp());
 
                 const miss_jump = try c.pushEmptyJumpNotCond(condv.reg, cond_n);
-                const match_jump = try c.pushEmptyJump();
+                const match_jump = try c.pushEmptyJump(cond_n);
                 try c.listDataStack.append(c.alloc, .{ .pc = match_jump });
                 c.patchJumpNotCondToCurPc(miss_jump);
                 // Miss continues to next cond.
@@ -2558,7 +2323,7 @@ fn gen_switch_stmt(c: *Chunk, stmt: *ir.SwitchStmt, node: *ast.Node) !void {
             }
 
             // No cond matches. Jump to next case.
-            prevCaseMissJump = try c.pushEmptyJump();
+            prevCaseMissJump = try c.pushEmptyJump(case_n);
 
             if (!case_data.fallthrough) {
                 // Jump here from all matching conds.
@@ -2573,11 +2338,11 @@ fn gen_switch_stmt(c: *Chunk, stmt: *ir.SwitchStmt, node: *ast.Node) !void {
             prevCaseMissJump = cy.NullId;
         }
 
-        try pushBlock(c, caseNodeId);
+        try pushBlock(c, case_n);
         try genStmts(c, case_data.body_head);
         try popBlock(c);
 
-        const caseBodyEndJump = try c.pushEmptyJump();
+        const caseBodyEndJump = try c.pushEmptyJump(node);
         try c.listDataStack.append(c.alloc, .{ .jumpToEndPc = caseBodyEndJump });
 
         condMatchJumpsStart = c.listDataStack.items.len;
@@ -2658,17 +2423,14 @@ fn gen_lambda(c: *Chunk, expr: *ir.Lambda, cstr: Cstr, node: *ast.Node) !GenValu
     } else {
         const captures = expr.captures[0..expr.numCaptures];
         const start = c.buf.ops.items.len;
-        try c.pushCode(.closure, &.{
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, @as(u8, @intCast(captures.len)), @intFromBool(expr.pinned_closure),
-        }, node);
-        c.buf.setOpArgU16(start + 1, dst.reg);
-        c.buf.setOpArgU16(start + 3, @intCast(expr.base.type.id()));
-        try c.relocations.append(c.alloc, .{.kind = .func, .pc = start + 5, .data = .{.func = func}});
-
-        const operandStart = try c.buf.reserveData(captures.len*2);
+        const len_data: u16 = @as(u16, @intCast(captures.len)) | (@as(u16, @intFromBool(expr.pinned_closure)) << 15);
+        try c.pushCodeExt(.closure, &.{
+            dst.reg, @intCast(expr.base.type.id()), 0, 0, 0, len_data, 
+        }, captures.len, node);
+        try c.relocations.append(c.alloc, .{.kind = .func, .pc = start + 3, .data = .{.func = func}});
         for (captures, 0..) |irVar, i| {
             const reg = toLocalReg(c, irVar);
-            c.buf.setOpArgU16(operandStart + i*2, reg);
+            c.buf.ops.items[start + 7 + i].val = reg;
         }
     }
     return dst;
@@ -2831,9 +2593,8 @@ pub const Proc = struct {
 
 fn genConst64_(c: *cy.Chunk, val: u64, dst: Reg, node: *ast.Node) !void {
     const pc = c.buf.len();
-    try c.pushCode(.const_64, &.{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, node);
-    c.buf.setOpArgU16(pc + 1, dst);
-    c.buf.setOpArgU64(pc + 3, val);
+    try c.pushCode(.const_64, &.{ dst, 0, 0, 0, 0 }, node);
+    c.buf.setOpArgU64(pc + 2, val);
 }
 
 const LocalId = u8;
@@ -2909,11 +2670,9 @@ pub const GenValue = struct {
 fn pushRelease(c: *Chunk, slot_id: Reg, optional: bool, deinit_obj: *cy.Func, node: *ast.Node) !void {
     const pc = c.buf.ops.items.len;
     if (optional) {
-        try c.pushCode(.release_opt, &.{0, 0, 0, 0}, node);
-        c.buf.setOpArgU16(pc + 1, slot_id);
+        try c.pushCode(.release_opt, &.{slot_id, 0}, node);
     } else {
-        try c.pushCode(.release, &.{0, 0, 0, 0}, node);
-        c.buf.setOpArgU16(pc + 1, slot_id);
+        try c.pushCode(.release, &.{slot_id, 0}, node);
     }
 
     // const name = try c.sema.allocTypeName(val_t);
@@ -2926,7 +2685,7 @@ fn pushRelease(c: *Chunk, slot_id: Reg, optional: bool, deinit_obj: *cy.Func, no
     try pushCall(c, @intCast(ret), deinit_obj, node);
 
     // Patch jump.
-    c.buf.setOpArgU16(pc + 3, @intCast(c.buf.ops.items.len - pc));
+    c.buf.ops.items[pc + 2].val = @intCast(c.buf.ops.items.len - pc);
 }
 
 fn gen_const64(c: *Chunk, expr: *ir.Const64, cstr: Cstr, node: *ast.Node) !GenValue {
@@ -2944,10 +2703,8 @@ fn gen_const64(c: *Chunk, expr: *ir.Const64, cstr: Cstr, node: *ast.Node) !GenVa
 
 fn genConstInt(c: *Chunk, val: i64, dst: Reg, node: *ast.Node) !void {
     // TODO: Can be constU8.
-    if (val >= 0 and val <= std.math.maxInt(i8)) {
-        const start = c.buf.ops.items.len;
-        try c.pushCode(.const_8s, &.{ 0, 0, @bitCast(@as(i8, @intCast(val))) }, node);
-        c.buf.setOpArgU16(start + 1, dst); 
+    if (val >= 0 and val <= std.math.maxInt(i16)) {
+        try c.pushCode(.const_16s, &.{ dst, @bitCast(@as(i16, @intCast(val))) }, node);
         return;
     }
     // const idx = try c.buf.getOrPushConst(false, cy.Value.initInt(@intCast(val)));
@@ -2977,24 +2734,20 @@ fn pushCall(c: *cy.Chunk, base: Reg, func: *cy.Func, node: *ast.Node) !void {
     const start = c.buf.ops.items.len;
     switch (func.type) {
         .userFunc => {
-            try c.pushFCode(.call, &.{ 0, 0, 0, 0, 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(start + 1, base);
-            try c.relocations.append(c.alloc, .{.kind = .func, .pc = start + 3, .data = .{.func = func}});
+            try c.pushFCode(.call, &.{ base, 0, 0, 0 }, node);
+            try c.relocations.append(c.alloc, .{.kind = .func, .pc = start + 2, .data = .{.func = func}});
         },
         .hostFunc => {
-            try c.pushFCode(.call_host, &.{ 0, 0, 0, 0, 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(start + 1, base);
-            c.buf.setOpArgU48(start + 3, @intCast(@intFromPtr(func.data.hostFunc.ptr)));
+            try c.pushFCode(.call_host, &.{ base, 0, 0, 0 }, node);
+            c.buf.setOpArgU48(start + 2, @intCast(@intFromPtr(func.data.hostFunc.ptr)));
         },
         .extern_ => {
-            try c.pushFCode(.call_host, &.{ 0, 0, 0, 0, 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(start + 1, base);
-            try c.rt_relocations.append(c.alloc, .{.kind = .func, .pc = start + 3, .data = .{.func = func}});
+            try c.pushFCode(.call_host, &.{ base, 0, 0, 0 }, node);
+            try c.rt_relocations.append(c.alloc, .{.kind = .func, .pc = start + 2, .data = .{.func = func}});
         },
         .vm_extern_variant => {
-            try c.pushFCode(.call_host, &.{ 0, 0, 0, 0, 0, 0, 0, 0 }, node);
-            c.buf.setOpArgU16(start + 1, base);
-            try c.rt_relocations.append(c.alloc, .{.kind = .func, .pc = start + 3, .data = .{.func = func}});
+            try c.pushFCode(.call_host, &.{ base, 0, 0, 0 }, node);
+            try c.rt_relocations.append(c.alloc, .{.kind = .func, .pc = start + 2, .data = .{.func = func}});
         },
         else => {
             std.debug.panic("Unexpected: {}", .{func.type});
@@ -3011,22 +2764,15 @@ fn pushCall(c: *cy.Chunk, base: Reg, func: *cy.Func, node: *ast.Node) !void {
 }
 
 fn pushInlineUnExpr(c: *cy.Chunk, code: cy.OpCode, dst: Reg, child: Reg, node: *ast.Node) !void {
-    const pc = c.buf.ops.items.len;
-    try c.pushFCode(code, &.{ 0, 0, 0, 0 }, node);
-    c.buf.setOpArgU16(pc + 1, dst); 
-    c.buf.setOpArgU16(pc + 3, child); 
+    try c.pushFCode(code, &.{ dst, child }, node);
 }
 
 fn pushInlineBinExpr(c: *cy.Chunk, code: cy.OpCode, dst: Reg, left: Reg, right: Reg, node: *ast.Node) !void {
-    const pc = c.buf.ops.items.len;
-    try c.pushFCode(code, &.{ 0, 0, 0, 0, 0, 0 }, node);
-    c.buf.setOpArgU16(pc + 1, dst); 
-    c.buf.setOpArgU16(pc + 3, left); 
-    c.buf.setOpArgU16(pc + 5, right); 
+    try c.pushFCode(code, &.{ dst, left, right }, node);
 }
 
-fn mainEnd(c: *cy.Chunk) !void {
-    try c.buf.pushOp(.end);
+fn mainEnd(c: *cy.Chunk, node: *ast.Node) !void {
+    try c.pushCode(.end, &.{}, node);
 }
 
 fn getIntUnaryOpCode(op: cy.UnaryOp) cy.OpCode {
@@ -3081,11 +2827,7 @@ fn getIntOpCode(op: cy.BinaryExprOp) cy.OpCode {
 }
 
 fn push_new(c: *cy.Chunk, dst: Reg, type_: *cy.Type, val_size: u16, node: *ast.Node) !void {
-    const start = c.buf.ops.items.len;
-    try c.pushCode(.new, &.{ 0, 0, 0, 0, 0, 0 }, node);
-    c.buf.setOpArgU16(start + 1, dst); 
-    c.buf.setOpArgU16(start + 3, @intCast(type_.id())); 
-    c.buf.setOpArgU16(start + 5, val_size); 
+    try c.pushCode(.new, &.{ dst, @intCast(type_.id()), val_size }, node);
 }
 
 fn push_struct_init_to(c: *cy.Chunk, dst_ptr: Reg, fields: []const cy.types.Field, args: []const Reg, node: *ast.Node) !void {
@@ -3095,11 +2837,7 @@ fn push_struct_init_to(c: *cy.Chunk, dst_ptr: Reg, fields: []const cy.types.Fiel
 }
 
 fn push_new_init(c: *cy.Chunk, dst: Reg, type_: *cy.Type, val_size: u16, fields: []const cy.types.Field, args: []const Reg, node: *ast.Node) !void {
-    const start = c.buf.ops.items.len;
-    try c.pushCode(.new, &.{ 0, 0, 0, 0, 0, 0 }, node);
-    c.buf.setOpArgU16(start + 1, dst); 
-    c.buf.setOpArgU16(start + 3, @intCast(type_.id())); 
-    c.buf.setOpArgU16(start + 5, val_size); 
+    try c.pushCode(.new, &.{ dst, @intCast(type_.id()), val_size }, node);
     for (fields, 0..) |field, i| {
         try push_store(c, dst, @intCast(field.offset), args[i], field.type, node);
     }
@@ -3310,7 +3048,7 @@ pub const RelocationKind = enum(u8) {
 
 pub const Relocation = struct {
     kind: RelocationKind,
-    // relative pos to a *align(1) u48
+    // relative pos to a *align(2) u48
     pc: usize,
     data: union {
         extern_func_ptr: *cy.types.FuncPtr,
@@ -3320,15 +3058,9 @@ pub const Relocation = struct {
 }; 
 
 fn push_zext(c: *cy.Chunk, dst: Reg, src: Reg, bits: u8, node: *ast.Node) !void {
-    const pc = c.buf.len();
-    try c.pushCode(.zext, &.{ 0, 0, 0, 0, bits }, node);
-    c.buf.setOpArgU16(pc + 1, dst);
-    c.buf.setOpArgU16(pc + 3, src);
+    try c.pushCode(.zext, &.{ dst, src, bits }, node);
 }
 
 fn push_sext(c: *cy.Chunk, dst: Reg, src: Reg, bits: u8, node: *ast.Node) !void {
-    const pc = c.buf.len();
-    try c.pushCode(.sext, &.{ 0, 0, 0, 0, bits }, node);
-    c.buf.setOpArgU16(pc + 1, dst);
-    c.buf.setOpArgU16(pc + 3, src);
+    try c.pushCode(.sext, &.{ dst, src, bits }, node);
 }

@@ -929,7 +929,7 @@ fn zAllocFuncUnion(t: *cy.Thread, type_id: cy.TypeId, func_ptr: Value) callconv(
     };
 }
 
-fn zAllocClosure(t: *cy.Thread, fp: [*]cy.Value, func_pc: [*]cy.Inst, union_t: cy.TypeId, captures: [*]cy.Inst, ncaptures: u8, pinned_closure: bool) callconv(.c) vmc.ValueResult {
+fn zAllocClosure(t: *cy.Thread, fp: [*]cy.Value, func_pc: [*]cy.Inst, union_t: cy.TypeId, captures: [*]cy.Inst, ncaptures: u16, pinned_closure: bool) callconv(.c) vmc.ValueResult {
     const func_union = t.heap.allocClosure(fp, func_pc, union_t, captures, ncaptures, pinned_closure) catch {
         return .{
             .val = undefined,

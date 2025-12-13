@@ -333,7 +333,6 @@ pub fn create_vmc_mod(b: *std.Build, opts: Options) !*std.Build.Module {
     mod.defineCMacro("DEBUG", if (optimize == .Debug) "1" else "0");
     mod.defineCMacro("TRACE", if (opts.trace) "1" else "0");
     mod.defineCMacro("IS_32BIT", if (is32Bit(opts.target)) "1" else "0");
-    mod.defineCMacro("HAS_CYC", if (opts.cyc) "1" else "0");
     return b.createModule(.{
         .root_source_file = mod.getOutput(),
     });
@@ -628,11 +627,6 @@ pub fn buildCVM(b: *std.Build, opts: Options) !*std.Build.Step.Compile {
         try cflags.append(b.allocator, "-DIS_32BIT=1");
     } else {
         try cflags.append(b.allocator, "-DIS_32BIT=0");
-    }
-    if (opts.cyc) {
-        try cflags.append(b.allocator, "-DHAS_CYC=1");
-    } else {
-        try cflags.append(b.allocator, "-DHAS_CYC=0");
     }
 
     // Disable traps for arithmetic/bitshift overflows.

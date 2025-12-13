@@ -121,7 +121,7 @@ fn dump_str(val &%T, indent int) -> str:
             #case .vector |info|:
                 children := []str{}
                 for 0..#{info.len} |i|:
-                    children <<= dump(val[i])
+                    children += dump(val[i])
                 return '{%{children.join(', ')}}'
 
             #else:

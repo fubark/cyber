@@ -137,11 +137,10 @@ typedef struct IndexSlice {
 #define OBJ_TYPEID(o) (((ObjectHeader*)(((intptr_t)o) - 8))->meta & TYPE_MASK)
 #define OBJHEADER_TYPEID(o) (o->meta & TYPE_MASK)
 
-#define CALL_INST_LEN 9
-#define CALL_TRAIT_INST_LEN 5
-#define CALL_PTR_INST_LEN 3
-#define CALL_UNION_INST_LEN 3
-#define INST_COINIT_LEN 7
+#define CALL_INST_LEN 5
+#define CALL_TRAIT_INST_LEN 3
+#define CALL_PTR_INST_LEN 2
+#define CALL_UNION_INST_LEN 2
 
 #define CALL_ARG_START 4
 
@@ -153,10 +152,9 @@ typedef enum {
 
     CodeCONST_STR,
     
-    /// Sets an immediate i8 value as an integer to a dst local.
-    CodeCONST_8S,
+    /// Sets an immediate i16 value as an integer to a dst local.
+    CodeCONST_16S,
 
-    CodeCONST_8,
     CodeCONST_16,
     CodeCONST_32,
 
@@ -342,7 +340,7 @@ enum {
 
 #define BuiltinEnd 34
 
-typedef uint8_t Inst;
+typedef uint16_t Inst;
 typedef uint64_t Value;
 typedef uint8_t Ret;
 
@@ -749,7 +747,7 @@ typedef struct Heap {
 
 typedef struct ZHeap {
 #if !defined(__wasm__)
-    u64 padding[14];
+    u8 padding[112];
 #endif
     Heap c;
 } ZHeap;
@@ -910,7 +908,7 @@ PcFpResult zCallPtr(ZThread* t, Inst* pc, Value* stack, uint16_t base);
 PcFpResult zCallUnion(ZThread* t, Inst* pc, Value* stack, uint16_t base);
 HeapObjectResult zAllocPoolObject(ZThread* t, TypeId id);
 HeapObjectResult zAllocBigObject(ZThread* t, TypeId id, size_t size);
-ValueResult zAllocClosure(ZThread* t, Value* fp, Inst* func_pc, TypeId ptr_t, Inst* captures, u8 ncaptures, bool stack_func);
+ValueResult zAllocClosure(ZThread* t, Value* fp, Inst* func_pc, TypeId ptr_t, Inst* captures, u16 ncaptures, bool stack_func);
 ValueResult zAllocFuncUnion(ZThread* t, TypeId id, Value func_ptr);
 void z_log(ZThread* t, const char* msg, size_t len);
 bool zCheckDoubleFree(ZThread* t, HeapObject* obj);

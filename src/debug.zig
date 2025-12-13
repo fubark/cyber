@@ -245,7 +245,7 @@ pub fn write_trace_at_pc(vm: *cy.VM, w: *std.Io.Writer, pc_opt: ?*anyopaque, tit
         try write_user_error(vm.compiler, w, title, msg, src_chunk, sym.loc);
     } else {
         try w.print("{s}: {s}\nMissing debug sym for {}, pc: {*}.\n", .{
-            title, msg, @as([*]cy.Inst, @ptrCast(pc))[0].opcode(), pc});
+            title, msg, @as([*]cy.Inst, @ptrCast(@alignCast(pc)))[0].opcode(), pc});
     }
 }
 

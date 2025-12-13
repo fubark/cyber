@@ -8,5 +8,5 @@ fn fib(n int) -> int:
     return fib(n - 1) + fib(n - 2)
 
 res := fib(30)
-print('time: %{(os.now()! - start) * 1000}')
+print('time: %{float(os.now()! - start) / 1000000}')
 print(res)

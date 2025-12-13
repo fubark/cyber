@@ -15,7 +15,7 @@
 __thread ZThread* cur_thread = NULL;
 
 // Dump assembly.
-// zig cc -c src/vm.c -S -O2 -DDEBUG=0 -DCGOTO=1 -DTRACE=0 -DIS_32BIT=0 -DHAS_CYC=1
+// zig cc -c src/vm.c -S -O2 -DDEBUG=0 -DCGOTO=1 -DTRACE=0
 
 #define STATIC_ASSERT(cond, msg) typedef char static_assertion_##msg[(cond)?1:-1]
 
@@ -340,73 +340,69 @@ static Value buildGenCallInfo(bool cont, u8 call_inst_off, u8 stack_size) {
     } while (false)
 
 #define INTEGER_UNOP(...) \
-    u16 dst = READ_U16(1); \
-    i64 val = BITCAST(i64, stack[READ_U16(3)]); \
+    u16 dst = pc[1]; \
+    i64 val = BITCAST(i64, stack[pc[2]]); \
     /* Body... */ \
     __VA_ARGS__; \
-    pc += 5; \
+    pc += 3; \
     NEXT(); \
 
 #define INTEGER_BINOP(...) \
-    u16 dst = READ_U16(1); \
-    i64 left = BITCAST(i64, stack[READ_U16(3)]); \
-    i64 right = BITCAST(i64, stack[READ_U16(5)]); \
+    u16 dst = pc[1]; \
+    i64 left = BITCAST(i64, stack[pc[2]]); \
+    i64 right = BITCAST(i64, stack[pc[3]]); \
     /* Body... */ \
     __VA_ARGS__; \
-    pc += 7; \
+    pc += 4; \
     NEXT();
 
 #define UINT_BINOP(...) \
-    u16 dst = READ_U16(1); \
-    u64 left = stack[READ_U16(3)]; \
-    u64 right = stack[READ_U16(5)]; \
+    u16 dst = pc[1]; \
+    u64 left = stack[pc[2]]; \
+    u64 right = stack[pc[3]]; \
     /* Body... */ \
     __VA_ARGS__; \
-    pc += 7; \
+    pc += 4; \
     NEXT();
 
 #define FLOAT_UNOP(...) \
-    u16 dst = READ_U16(1); \
-    f64 val = VALUE_AS_FLOAT(stack[READ_U16(3)]); \
+    u16 dst = pc[1]; \
+    f64 val = VALUE_AS_FLOAT(stack[pc[2]]); \
     /* Body... */ \
     __VA_ARGS__; \
-    pc += 5; \
+    pc += 3; \
     NEXT();
 
 #define FLOAT_BINOP(...) \
-    u16 dst = READ_U16(1); \
-    f64 left = VALUE_AS_FLOAT(stack[READ_U16(3)]); \
-    f64 right = VALUE_AS_FLOAT(stack[READ_U16(5)]); \
+    u16 dst = pc[1]; \
+    f64 left = VALUE_AS_FLOAT(stack[pc[2]]); \
+    f64 right = VALUE_AS_FLOAT(stack[pc[3]]); \
     /* Body... */ \
     __VA_ARGS__; \
-    pc += 7; \
+    pc += 4; \
     NEXT();
 
 #define F32_UNOP(...) \
-    u16 dst = READ_U16(1); \
-    f32 val = *(f32*)&stack[READ_U16(3)]; \
+    u16 dst = pc[1]; \
+    f32 val = *(f32*)&stack[pc[2]]; \
     /* Body... */ \
     __VA_ARGS__; \
-    pc += 5; \
+    pc += 3; \
     NEXT();
 
 #define F32_BINOP(...) \
-    u16 dst = READ_U16(1); \
-    f32 left = *(f32*)&stack[READ_U16(3)]; \
-    f32 right = *(f32*)&stack[READ_U16(5)]; \
+    u16 dst = pc[1]; \
+    f32 left = *(f32*)&stack[pc[2]]; \
+    f32 right = *(f32*)&stack[pc[3]]; \
     /* Body... */ \
     __VA_ARGS__; \
-    pc += 7; \
+    pc += 4; \
     NEXT();
 
 ResultCode execBytecode(ZThread* t) {
-    #define READ_I16(offset) ((int16_t)(pc[offset] | ((uint16_t)pc[offset + 1] << 8)))
-    #define READ_U16(offset) (pc[offset] | ((uint16_t)pc[offset + 1] << 8))
-    #define WRITE_U16(offset, u) pc[offset] = u & 0xff; pc[offset+1] = u >> 8
-    #define READ_U32(offset) ((uint32_t)pc[offset] | ((uint32_t)pc[offset+1] << 8) | ((uint32_t)pc[offset+2] << 16) | ((uint32_t)pc[offset+3] << 24))
-    #define READ_U32_FROM(from, offset) ((uint32_t)from[offset] | ((uint32_t)from[offset+1] << 8) | ((uint32_t)from[offset+2] << 16) | ((uint32_t)from[offset+3] << 24))
-    #define READ_U48(offset) ((uint64_t)pc[offset] | ((uint64_t)pc[offset+1] << 8) | ((uint64_t)pc[offset+2] << 16) | ((uint64_t)pc[offset+3] << 24) | ((uint64_t)pc[offset+4] << 32) | ((uint64_t)pc[offset+5] << 40))
-    #define READ_U64(offset) ((uint64_t)pc[offset] | ((uint64_t)pc[offset+1] << 8) | ((uint64_t)pc[offset+2] << 16) | ((uint64_t)pc[offset+3] << 24) | ((uint64_t)pc[offset+4] << 32) | ((uint64_t)pc[offset+5] << 40) | ((u64)pc[offset+6] << 48) | ((u64)pc[offset+7] << 56))
+    #define READ_U32(offset) ((uint32_t)pc[offset] | ((uint32_t)pc[offset+1] << 16))
+    #define READ_U48(offset) ((uint64_t)pc[offset] | ((uint64_t)pc[offset+1] << 16) | ((uint64_t)pc[offset+2] << 32))
+    #define READ_U64(offset) ((uint64_t)pc[offset] | ((uint64_t)pc[offset+1] << 16) | ((uint64_t)pc[offset+2] << 32) | ((uint64_t)pc[offset+3] << 48))
 
 #if TRACE
     #define PRE_TRACE() \
@@ -436,8 +432,7 @@ ResultCode execBytecode(ZThread* t) {
     static void* jumpTable[] = {
         JENTRY(CONST_64),
         JENTRY(CONST_STR),
-        JENTRY(CONST_8S),
-        JENTRY(CONST_8),
+        JENTRY(CONST_16S),
         JENTRY(CONST_16),
         JENTRY(CONST_32),
         JENTRY(True),
@@ -601,106 +596,100 @@ beginSwitch:
     switch ((OpCode)*pc) {
 #endif
     CASE(CONST_64): {
-        u16 dst = READ_U16(1);
-        stack[dst] = READ_U64(3);
-        pc += 11;
+        u16 dst = pc[1];
+        stack[dst] = READ_U64(2);
+        pc += 6;
         NEXT();
     }
     CASE(CONST_STR): {
-        u16 dst = READ_U16(1);
-        u64 ptr_len = READ_U64(3);
+        u16 dst = pc[1];
+        u64 ptr_len = READ_U64(2);
         u8* ptr = (u8*)(ptr_len & 0xffffffffffff);
         u32 len = ptr_len >> 48;
-        bool ascii = pc[11];
+        bool ascii = pc[6];
         String res = static_str(t, ptr, len, ascii);
         *(String*)&stack[dst] = res;
-        pc += 12;
-        NEXT();
-    }
-    CASE(CONST_8S): {
-        i64 i = (i64)BITCAST(i8, pc[3]);
-        stack[READ_U16(1)] = BITCAST(u64, i);
-        pc += 4;
-        NEXT();
-    }
-    CASE(CONST_8): {
-        u8 val = pc[3];
-        stack[READ_U16(1)] = val;
-        pc += 4;
-        NEXT();
-    }
-    CASE(CONST_16): {
-        u16 val = READ_U16(3);
-        *(u16*)(stack + READ_U16(1)) = val;
-        pc += 5;
-        NEXT();
-    }
-    CASE(CONST_32): {
-        u32 val = READ_U32(3);
-        *(u32*)(stack + READ_U16(1)) = val;
         pc += 7;
         NEXT();
     }
-    CASE(True): {
-        stack[READ_U16(1)] = true;
+    CASE(CONST_16S): {
+        i64 i = (i64)(i16)pc[2];
+        stack[pc[1]] = BITCAST(u64, i);
         pc += 3;
+        NEXT();
+    }
+    CASE(CONST_16): {
+        u16 val = pc[2];
+        stack[pc[1]] = val;
+        pc += 3;
+        NEXT();
+    }
+    CASE(CONST_32): {
+        u32 val = READ_U32(2);
+        *(u32*)(stack + pc[1]) = val;
+        pc += 4;
+        NEXT();
+    }
+    CASE(True): {
+        stack[pc[1]] = true;
+        pc += 2;
         NEXT();
     }
     CASE(False): {
-        stack[READ_U16(1)] = false;
-        pc += 3;
+        stack[pc[1]] = false;
+        pc += 2;
         NEXT();
     }
     CASE(LNOT): {
-        stack[READ_U16(1)] = !(*(bool*)&stack[READ_U16(3)]);
-        pc += 5;
+        stack[pc[1]] = !(*(bool*)&stack[pc[2]]);
+        pc += 3;
         NEXT();
     }
     CASE(IsZero): {
-        u16 dst = READ_U16(1);
-        u64 val = stack[READ_U16(3)];
+        u16 dst = pc[1];
+        u64 val = stack[pc[2]];
         stack[dst] = val == 0;
-        pc += 5;
+        pc += 3;
         NEXT();
     }
     CASE(MOV): {
-        stack[READ_U16(1)] = stack[READ_U16(3)];
-        pc += 5;
+        stack[pc[1]] = stack[pc[2]];
+        pc += 3;
         NEXT();
     }
     CASE(MOV_2): {
-        u16 dst = READ_U16(1);
-        u16 src = READ_U16(3);
+        u16 dst = pc[1];
+        u16 src = pc[2];
         stack[dst] = stack[src];
         stack[dst+1] = stack[src+1];
-        pc += 5;
+        pc += 3;
         NEXT();
     }
     CASE(MOV_3): {
-        u16 dst = READ_U16(1);
-        u16 src = READ_U16(3);
+        u16 dst = pc[1];
+        u16 src = pc[2];
         stack[dst] = stack[src];
         stack[dst+1] = stack[src+1];
         stack[dst+2] = stack[src+2];
-        pc += 5;
+        pc += 3;
         NEXT();
     }
     CASE(MOV_4): {
-        u16 dst = READ_U16(1);
-        u16 src = READ_U16(3);
+        u16 dst = pc[1];
+        u16 src = pc[2];
         stack[dst] = stack[src];
         stack[dst+1] = stack[src+1];
         stack[dst+2] = stack[src+2];
         stack[dst+3] = stack[src+3];
-        pc += 5;
+        pc += 3;
         NEXT();
     }
     CASE(MOV_N): {
-        u16 dst = READ_U16(1);
-        u16 src = READ_U16(3);
-        u16 n = READ_U16(5);
+        u16 dst = pc[1];
+        u16 src = pc[2];
+        u16 n = pc[3];
         memcpy(stack + dst, stack + src, 8 * n);
-        pc += 7;
+        pc += 4;
         NEXT();
     }
     // CASE(SetIndexList): {
@@ -795,7 +784,7 @@ beginSwitch:
     // CASE(List): {
     //     u8 startLocal = pc[1];
     //     u8 numElems = pc[2];
-    //     u16 type_id = READ_U16(3);
+    //     u16 type_id = pc[3];
     //     ValueResult res = zAllocList(vm, type_id, stack + startLocal, numElems);
     //     if (UNLIKELY(res.code != RES_SUCCESS)) {
     //         RETURN(res.code);
@@ -840,57 +829,57 @@ beginSwitch:
     //     NEXT();
     // }
     CASE(JUMP_F): {
-        if (*(bool*)&stack[READ_U16(1)]) {
-            pc += 5;
+        if (*(bool*)&stack[pc[1]]) {
+            pc += 3;
         } else {
-            pc += READ_U16(3);
+            pc += pc[2];
         }
         NEXT();
     }
     CASE(JUMP_T): {
-        if (!*(bool*)&stack[READ_U16(1)]) {
-            pc += (uintptr_t)READ_I16(3);
+        if (!*(bool*)&stack[pc[1]]) {
+            pc += (uintptr_t)(int16_t)pc[2];
         } else {
-            pc += 5;
+            pc += 3;
         }
         NEXT();
     }
     CASE(JUMP): {
-        pc += READ_I16(1);
+        pc += (int16_t)pc[1];
         NEXT();
     }
     CASE(ReleaseOpt): {
-        if (stack[READ_U16(1)] == 0) {
-            pc += (uintptr_t)READ_I16(3);
+        if (stack[pc[1]] == 0) {
+            pc += (uintptr_t)(int16_t)pc[2];
             NEXT();
         }
-        if (!releaseOnly(t, (HeapObject*)stack[READ_U16(1)])) {
-            pc += (uintptr_t)READ_I16(3);
+        if (!releaseOnly(t, (HeapObject*)stack[pc[1]])) {
+            pc += (uintptr_t)(int16_t)pc[2];
             NEXT();
-        }
-        pc += 5;
-        NEXT();
-    }
-    CASE(Release): {
-        if (!releaseOnly(t, (HeapObject*)(size_t)stack[READ_U16(1)])) {
-            pc += (uintptr_t)READ_I16(3);
-            NEXT();
-        }
-        pc += 5;
-        NEXT();
-    }
-    CASE(DTOR_STR): {
-        String* str = (String*)stack[READ_U16(1)];
-        if (str->buf != 0) {
-            Buffer* buf = (Buffer*)str->buf;
-            release(t, (HeapObject*)buf);
         }
         pc += 3;
         NEXT();
     }
+    CASE(Release): {
+        if (!releaseOnly(t, (HeapObject*)(size_t)stack[pc[1]])) {
+            pc += (uintptr_t)(int16_t)pc[2];
+            NEXT();
+        }
+        pc += 3;
+        NEXT();
+    }
+    CASE(DTOR_STR): {
+        String* str = (String*)stack[pc[1]];
+        if (str->buf != 0) {
+            Buffer* buf = (Buffer*)str->buf;
+            release(t, (HeapObject*)buf);
+        }
+        pc += 2;
+        NEXT();
+    }
     CASE(CHK_STK): {
-        u16 ret_size = READ_U16(1);
-        u16 frame_size = READ_U16(3);
+        u16 ret_size = pc[1];
+        u16 frame_size = pc[2];
         // Update fp before stack check so it can be reliably at ret.
         stack -= ret_size;
 
@@ -900,23 +889,23 @@ beginSwitch:
         if (stack + frame_size >= t->c.stack_end) {
             RETURN(RES_STACK_OVERFLOW);
         }
-        pc += 5;
+        pc += 3;
         NEXT();
     }
     CASE(CALL): {
         DUMP_OP()
-        u16 base = READ_U16(1);
+        u16 base = pc[1];
         uintptr_t ret_fp = (uintptr_t)stack;
         stack += base;
         stack[0] = VALUE_CALLINFO(false, CALL_INST_LEN, 0);
         stack[1] = (uintptr_t)(pc + CALL_INST_LEN);
         stack[2] = ret_fp;
-        pc = (Inst*)READ_U48(3);
+        pc = (Inst*)READ_U48(2);
         NEXT();
     }
     CASE(CALL_HOST): {
         DUMP_OP()
-        u16 base = READ_U16(1);
+        u16 base = pc[1];
 
         t->c.pc = NULL;
         t->c.fp = stack + base;
@@ -929,7 +918,7 @@ beginSwitch:
         stack[base+1] = (Value)pc;
         stack[base+2] = (Value)stack;
 
-        HostFn fn = (HostFn)READ_U48(3);
+        HostFn fn = (HostFn)READ_U48(2);
         Ret res = fn(t);
         if (res != 0) {
             RETURN(RES_PANIC);
@@ -939,8 +928,8 @@ beginSwitch:
     }
     CASE(CALL_TRAIT): {
         DUMP_OP()
-        u16 base = READ_U16(1);
-        u16 vtable_idx = READ_U16(3);
+        u16 base = pc[1];
+        u16 vtable_idx = pc[2];
         PcFpResult res = zCallTrait(t, pc, stack, vtable_idx, base);
         if (res.code != RES_SUCCESS) {
             RETURN(res.code);
@@ -963,14 +952,14 @@ beginSwitch:
     }
     CASE(RET_N): {
         DUMP_OP()
-        u16 ret_size = READ_U16(1);
+        u16 ret_size = pc[1];
         pc = (Inst*)stack[ret_size+1];
         stack = (Value*)stack[ret_size+2];
         NEXT();
     }
     CASE(CALL_PTR): {
         DUMP_OP()
-        u16 base = READ_U16(1);
+        u16 base = pc[1];
 
         PcFpResult res = zCallPtr(t, pc, stack, base);
         if (LIKELY(res.code == RES_SUCCESS)) {
@@ -982,7 +971,7 @@ beginSwitch:
     }
     CASE(CALL_UNION): {
         DUMP_OP()
-        u16 base = READ_U16(1);
+        u16 base = pc[1];
 
         PcFpResult res = zCallUnion(t, pc, stack, base);
         if (LIKELY(res.code == RES_SUCCESS)) {
@@ -993,115 +982,116 @@ beginSwitch:
         RETURN(res.code);
     }
     CASE(LOAD_8): {
-        u16 dst = READ_U16(1);
-        u8* ptr = (u8*)stack[READ_U16(3)];
-        u16 offset = READ_U16(5);
+        u16 dst = pc[1];
+        u8* ptr = (u8*)stack[pc[2]];
+        u16 offset = pc[3];
         stack[dst] = *(ptr + offset);
-        pc += 7;
+        pc += 4;
         NEXT();
     }
     CASE(LOAD_16): {
-        u16 dst = READ_U16(1);
-        u8* ptr = (u8*)stack[READ_U16(3)];
-        u16 offset = READ_U16(5);
+        u16 dst = pc[1];
+        u8* ptr = (u8*)stack[pc[2]];
+        u16 offset = pc[3];
         stack[dst] = *(u16*)(ptr + offset);
-        pc += 7;
+        pc += 4;
         NEXT();
     }
     CASE(LOAD_32): {
-        u16 dst = READ_U16(1);
-        u8* ptr = (u8*)stack[READ_U16(3)];
-        u16 offset = READ_U16(5);
+        u16 dst = pc[1];
+        u8* ptr = (u8*)stack[pc[2]];
+        u16 offset = pc[3];
         stack[dst] = *(u32*)(ptr + offset);
-        pc += 7;
+        pc += 4;
         NEXT();
     }
     CASE(LOAD_64): {
-        u16 dst = READ_U16(1);
-        u8* ptr = (u8*)stack[READ_U16(3)];
-        u16 offset = READ_U16(5);
+        u16 dst = pc[1];
+        u8* ptr = (u8*)stack[pc[2]];
+        u16 offset = pc[3];
         stack[dst] = *(Value*)(ptr + offset);
-        pc += 7;
+        pc += 4;
         NEXT();
     }
     CASE(LOAD_2W): {
-        u16 dst = READ_U16(1);
-        u8* ptr = ((u8*)stack[READ_U16(3)]) + READ_U16(5);
+        u16 dst = pc[1];
+        u8* ptr = ((u8*)stack[pc[2]]) + pc[3];
         Value* src = (Value*)ptr;
         stack[dst] = src[0];
         stack[dst+1] = src[1];
-        pc += 7;
+        pc += 4;
         NEXT();
     }
     CASE(LOAD_3W): {
-        u16 dst = READ_U16(1);
-        u8* ptr = ((u8*)stack[READ_U16(3)]) + READ_U16(5);
+        u16 dst = pc[1];
+        u8* ptr = ((u8*)stack[pc[2]]) + pc[3];
         Value* src = (Value*)ptr;
         stack[dst] = src[0];
         stack[dst+1] = src[1];
         stack[dst+2] = src[2];
-        pc += 7;
+        pc += 4;
         NEXT();
     }
     CASE(LOAD_4W): {
-        u16 dst = READ_U16(1);
-        u8* ptr = ((u8*)stack[READ_U16(3)]) + READ_U16(5);
+        u16 dst = pc[1];
+        u8* ptr = ((u8*)stack[pc[2]]) + pc[3];
         Value* src = (Value*)ptr;
         stack[dst] = src[0];
         stack[dst+1] = src[1];
         stack[dst+2] = src[2];
         stack[dst+3] = src[3];
-        pc += 7;
+        pc += 4;
         NEXT();
     }
     CASE(LOAD_N): {
-        u8* dst = (u8*)&stack[READ_U16(1)];
-        u8* ptr = (u8*)stack[READ_U16(3)];
-        u16 offset = READ_U16(5);
-        u16 size = READ_U16(7);
+        u8* dst = (u8*)&stack[pc[1]];
+        u8* ptr = (u8*)stack[pc[2]];
+        u16 offset = pc[3];
+        u16 size = pc[4];
         memcpy(dst, ptr + offset, size);
-        pc += 9;
+        pc += 5;
         NEXT();
     }
     CASE(CLOSURE): {
-        u16 dst = READ_U16(1);
-        u16 union_t = READ_U16(3);
-        Inst* func_pc = (Inst*)READ_U48(5);
-        u8 numCaptured = pc[11];
-        bool pinned_closure = pc[12];
-        Inst* captured_regs = pc + 13;
+        u16 dst = pc[1];
+        u16 union_t = pc[2];
+        Inst* func_pc = (Inst*)READ_U48(3);
+        u16 captured_info = pc[6];
+        u16 numCaptured = captured_info & 0x7fff;
+        bool pinned_closure = (captured_info & 0x8000) != 0;
+        Inst* captured_regs = pc + 7;
         ValueResult res = zAllocClosure(t, stack, func_pc, union_t, captured_regs, numCaptured, pinned_closure);
         if (res.code != RES_SUCCESS) {
             RETURN(res.code);
         }
         stack[dst] = res.val;
-        pc += 13 + numCaptured * 2;
+        pc += 7 + numCaptured;
         NEXT();
     }
     CASE(CMP_8): {
-        u16 dst = READ_U16(1);
-        Value left = stack[READ_U16(3)];
-        Value right = stack[READ_U16(5)];
+        u16 dst = pc[1];
+        Value left = stack[pc[2]];
+        Value right = stack[pc[3]];
         stack[dst] = ((u8)left == (u8)right);
-        pc += 7;
+        pc += 4;
         NEXT();
     }
     CASE(CMP): {
-        u16 dst = READ_U16(1);
-        Value left = stack[READ_U16(3)];
-        Value right = stack[READ_U16(5)];
+        u16 dst = pc[1];
+        Value left = stack[pc[2]];
+        Value right = stack[pc[3]];
         stack[dst] = (left == right);
-        pc += 7;
+        pc += 4;
         NEXT();
     }
     CASE(CMP_STR): {
-        u16 dst = READ_U16(1);
-        Value a = stack[READ_U16(3)];
-        Value b = stack[READ_U16(5)];
+        u16 dst = pc[1];
+        Value a = stack[pc[2]];
+        Value b = stack[pc[3]];
         u64 len = VALUE_GET_STRLEN(a);
         if (len != VALUE_GET_STRLEN(b)) {
             stack[dst] = false;
-            pc += 7;
+            pc += 4;
             NEXT();
         }
 
@@ -1110,7 +1100,7 @@ beginSwitch:
         while (len > 0) {
             if (*a_ptr != *b_ptr) {
                 stack[dst] = 0;
-                pc += 7;
+                pc += 4;
                 NEXT();
             }
             a_ptr += 1;
@@ -1118,7 +1108,7 @@ beginSwitch:
             len -= 1;
         }
         stack[dst] = 1;
-        pc += 7;
+        pc += 4;
         NEXT();
     }
     CASE(FEQ32): {
@@ -1182,14 +1172,14 @@ beginSwitch:
         INTEGER_BINOP(stack[dst] = left >= right)
     }
     CASE(UCMP): {
-        u16 dst = READ_U16(1);
-        u16 left = READ_U16(3);
-        u16 right = READ_U16(5);
-        u64 sign_xor = (stack[READ_U16(3)] >> 63) ^ (stack[READ_U16(5)] >> 63);
+        u16 dst = pc[1];
+        u16 left = pc[2];
+        u16 right = pc[3];
+        u64 sign_xor = (stack[pc[2]] >> 63) ^ (stack[pc[3]] >> 63);
         if (sign_xor != 0) {
             stack[dst] = !(stack[dst]);
         }
-        pc += 7;
+        pc += 4;
         NEXT();
     }
     CASE(FADD): {
@@ -1211,52 +1201,52 @@ beginSwitch:
         FLOAT_UNOP(stack[dst] = VALUE_FLOAT(-val))
     }
     CASE(NEW): {
-        u16 dst = READ_U16(1);
-        u16 val_t = READ_U16(3);
-        u16 size = READ_U16(5);
+        u16 dst = pc[1];
+        u16 val_t = pc[2];
+        u16 size = pc[3];
         HeapObjectResult res = allocObjectInit(t, val_t, size);
         if (res.code != RES_SUCCESS) {
             RETURN(res.code);
         }
         stack[dst] = (Value)res.obj;
-        pc += 7;
+        pc += 4;
         NEXT();
     }
     CASE(Trait): {
-        u16 dst = READ_U16(1);
-        Value impl = stack[READ_U16(3)];
-        u16 type_id = READ_U16(5);
-        u16 vtable = READ_U16(7);
+        u16 dst = pc[1];
+        Value impl = stack[pc[2]];
+        u16 type_id = pc[3];
+        u16 vtable = pc[4];
         stack[dst] = vtable;
         stack[dst+1] = impl;
-        pc += 9;
-        NEXT();
-    }
-    CASE(ADDR): {
-        u16 dst = READ_U16(1);
-        HeapObject* obj = (HeapObject*)(&stack[READ_U16(3)]);
-        stack[dst] = (Value)obj;
         pc += 5;
         NEXT();
     }
+    CASE(ADDR): {
+        u16 dst = pc[1];
+        HeapObject* obj = (HeapObject*)(&stack[pc[2]]);
+        stack[dst] = (Value)obj;
+        pc += 3;
+        NEXT();
+    }
     CASE(UnwrapAddr): {
-        u16 dst = READ_U16(1);
-        Value* ptr = (Value*)stack[READ_U16(3)];
-        if (VALUE_AS_INTEGER(ptr[0]) == (i64)pc[5]) {
-            stack[dst] = ((u64)ptr) + pc[6];
-            pc += 7;
+        u16 dst = pc[1];
+        Value* ptr = (Value*)stack[pc[2]];
+        if (VALUE_AS_INTEGER(ptr[0]) == (i64)pc[3]) {
+            stack[dst] = ((u64)ptr) + pc[4];
+            pc += 5;
             NEXT();
         } else {
-            z_panic_unexpected_choice(t, (i64)pc[5], VALUE_AS_INTEGER(ptr[0]));
+            z_panic_unexpected_choice(t, (i64)pc[3], VALUE_AS_INTEGER(ptr[0]));
             RETURN(RES_PANIC);
         }
     }
     CASE(UnwrapNZ): {
-        u16 dst = READ_U16(1);
-        Value val = stack[READ_U16(3)];
+        u16 dst = pc[1];
+        Value val = stack[pc[2]];
         if (val != 0) {
             stack[dst] = val;
-            pc += 5;
+            pc += 3;
             NEXT();
         } else {
             z_panic_unexpected_choice(t, 1, 0);
@@ -1264,86 +1254,86 @@ beginSwitch:
         }
     }
     CASE(STORE_8): {
-        u8* dst = (u8*)stack[READ_U16(1)];
-        u16 offset = READ_U16(3);
-        *(dst + offset) = *(u8*)&stack[READ_U16(5)];
-        pc += 7;
+        u8* dst = (u8*)stack[pc[1]];
+        u16 offset = pc[2];
+        *(dst + offset) = *(u8*)&stack[pc[3]];
+        pc += 4;
         NEXT();
     }
     CASE(STORE_16): {
-        u8* dst = (u8*)stack[READ_U16(1)];
-        u16 offset = READ_U16(3);
-        *(u16*)(dst + offset) = *(u16*)&stack[READ_U16(5)];
-        pc += 7;
+        u8* dst = (u8*)stack[pc[1]];
+        u16 offset = pc[2];
+        *(u16*)(dst + offset) = *(u16*)&stack[pc[3]];
+        pc += 4;
         NEXT();
     }
     CASE(STORE_32): {
-        u8* dst = (u8*)stack[READ_U16(1)];
-        u16 offset = READ_U16(3);
-        *(u32*)(dst + offset) = *(u32*)&stack[READ_U16(5)];
-        pc += 7;
+        u8* dst = (u8*)stack[pc[1]];
+        u16 offset = pc[2];
+        *(u32*)(dst + offset) = *(u32*)&stack[pc[3]];
+        pc += 4;
         NEXT();
     }
     CASE(STORE_64): {
-        u8* dst = (u8*)stack[READ_U16(1)];
-        u16 offset = READ_U16(3);
-        *(Value*)(dst + offset) = stack[READ_U16(5)];
-        pc += 7;
+        u8* dst = (u8*)stack[pc[1]];
+        u16 offset = pc[2];
+        *(Value*)(dst + offset) = stack[pc[3]];
+        pc += 4;
         NEXT();
     }
     CASE(STORE_2W): {
-        u8* dst = (u8*)stack[READ_U16(1)];
-        u16 offset = READ_U16(3);
-        u16 src = READ_U16(5);
+        u8* dst = (u8*)stack[pc[1]];
+        u16 offset = pc[2];
+        u16 src = pc[3];
         *(Value*)(dst + offset) = stack[src];
         *(Value*)(dst + offset + 8) = stack[src + 1];
-        pc += 7;
+        pc += 4;
         NEXT();
     }
     CASE(STORE_3W): {
-        u8* dst = (u8*)stack[READ_U16(1)];
-        u16 offset = READ_U16(3);
-        u16 src = READ_U16(5);
+        u8* dst = (u8*)stack[pc[1]];
+        u16 offset = pc[2];
+        u16 src = pc[3];
         *(Value*)(dst + offset) = stack[src];
         *(Value*)(dst + offset + 8) = stack[src + 1];
         *(Value*)(dst + offset + 16) = stack[src + 2];
-        pc += 7;
+        pc += 4;
         NEXT();
     }
     CASE(STORE_4W): {
-        u8* dst = (u8*)stack[READ_U16(1)];
-        u16 offset = READ_U16(3);
-        u16 src = READ_U16(5);
+        u8* dst = (u8*)stack[pc[1]];
+        u16 offset = pc[2];
+        u16 src = pc[3];
         *(Value*)(dst + offset) = stack[src];
         *(Value*)(dst + offset + 8) = stack[src + 1];
         *(Value*)(dst + offset + 16) = stack[src + 2];
         *(Value*)(dst + offset + 24) = stack[src + 3];
-        pc += 7;
+        pc += 4;
         NEXT();
     }
     CASE(STORE_N): {
-        u8* dst = (u8*)stack[READ_U16(1)];
-        u16 offset = READ_U16(3);
-        u8* src = (u8*)&stack[READ_U16(5)];
-        u16 size = READ_U16(7);
+        u8* dst = (u8*)stack[pc[1]];
+        u16 offset = pc[2];
+        u8* src = (u8*)&stack[pc[3]];
+        u16 size = pc[4];
         memcpy(dst + offset, src, size);
-        pc += 9;
+        pc += 5;
         NEXT();
     }
     CASE(MEMSETZ): {
-        u8* dst = (u8*)stack[READ_U16(1)];
-        u16 offset = READ_U16(3);
-        u16 size = READ_U16(5);
+        u8* dst = (u8*)stack[pc[1]];
+        u16 offset = pc[2];
+        u16 size = pc[3];
         memset(dst + offset, 0, size);
-        pc += 7;
+        pc += 4;
         NEXT();
     }
     CASE(RET_GEN): {
-        u16 type_id = READ_U16(1);
-        u16 ret_size = READ_U16(3);
-        u16 reg_end = READ_U16(5);
-        u8 resume_off = pc[7];
-        Inst* deinit_pc = pc + 8;
+        u16 type_id = pc[1];
+        u16 ret_size = pc[2];
+        u16 reg_end = pc[3];
+        u16 resume_off = pc[4];
+        Inst* deinit_pc = pc + 5;
         Inst* resume_pc = pc + resume_off;
         if (resume_pc == deinit_pc) {
             deinit_pc = NULL;
@@ -1357,18 +1347,18 @@ beginSwitch:
         NEXT();
     }
     CASE(RET_Y): {
-        u16 ret_size = READ_U16(1);
+        u16 ret_size = pc[1];
         Generator* gen = (Generator*)stack[ret_size + 2];
         gen->running = false;
-        if (pc[4] == 1) {
+        if (pc[3] == 1) {
             gen->done = true;
         } else {
-            gen->resume_pc = pc + pc[3];
-            if (pc[3] == 5) {
+            gen->resume_pc = pc + pc[2];
+            if (pc[2] == 4) {
                 // If resume pc is the next inst, then there is no deinit pc.
                 gen->deinit_pc = NULL;
             } else {
-                gen->deinit_pc = pc + 5;
+                gen->deinit_pc = pc + 4;
             }
         }
         pc = (Inst*)stack[ret_size + 1];
@@ -1376,9 +1366,9 @@ beginSwitch:
         NEXT();
     }
     CASE(GEN_NEXT): {
-        u16 ret = READ_U16(1);
-        u16 base = READ_U16(3);
-        Generator* gen = (Generator*)stack[READ_U16(5)];
+        u16 ret = pc[1];
+        u16 base = pc[2];
+        Generator* gen = (Generator*)stack[pc[3]];
         if (gen->running) {
             panicStaticMsg(t, "Generator is already running.");
             RETURN(RES_PANIC);
@@ -1389,8 +1379,8 @@ beginSwitch:
         }
 
         Value* base_ptr = stack + base;
-        base_ptr[0] = buildGenCallInfo(true, 7, 128);
-        base_ptr[1] = (u64)(pc + 7);
+        base_ptr[0] = buildGenCallInfo(true, 4, 128);
+        base_ptr[1] = (u64)(pc + 4);
         base_ptr[2] = (u64)gen;
         gen->prev_fp = stack;
         gen->running = true;
@@ -1403,27 +1393,27 @@ beginSwitch:
         NEXT();
     }
     CASE(GEN_END): {
-        u16 ret = READ_U16(1);
-        u16 base = READ_U16(3);
-        Generator* gen = (Generator*)stack[READ_U16(5)];
+        u16 ret = pc[1];
+        u16 base = pc[2];
+        Generator* gen = (Generator*)stack[pc[3]];
         if (gen->running) {
             panicStaticMsg(t, "Generator is already running.");
             RETURN(RES_PANIC);
         }
         if (gen->done) {
-            pc += 7;
+            pc += 4;
             NEXT();
         }
 
         if (gen->deinit_pc == NULL) {
             gen->done = true;
-            pc += 7;
+            pc += 4;
             NEXT();
         }
 
         Value* base_ptr = stack + base;
-        base_ptr[0] = buildGenCallInfo(true, 7, 128);
-        base_ptr[1] = (u64)(pc + 7);
+        base_ptr[0] = buildGenCallInfo(true, 4, 128);
+        base_ptr[1] = (u64)(pc + 4);
         base_ptr[2] = (u64)gen;
         gen->prev_fp = stack;
         gen->running = true;
@@ -1436,8 +1426,8 @@ beginSwitch:
         NEXT();
     }
     CASE(AWAIT): {
-        Value future = stack[READ_U16(1)];
-        pc += 3;
+        Value future = stack[pc[1]];
+        pc += 2;
         t->c.pc = pc;
         t->c.fp = stack;
         ResultCode code = zAwait(t, future);
@@ -1455,27 +1445,27 @@ beginSwitch:
         NEXT();
     }
     CASE(Retain): {
-        retain(t, (HeapObject*)(size_t)stack[READ_U16(1)]);
-        pc += 3;
+        retain(t, (HeapObject*)(size_t)stack[pc[1]]);
+        pc += 2;
         NEXT();
     }
     CASE(Captured): {
-        u16 dst = READ_U16(1);
-        HeapObject* closure = (HeapObject*)stack[READ_U16(3)];
-        HeapObject* obj = (HeapObject*)closureGetCapturedValuesPtr(&closure->func_union)[pc[5]];
+        u16 dst = pc[1];
+        HeapObject* closure = (HeapObject*)stack[pc[2]];
+        HeapObject* obj = (HeapObject*)closureGetCapturedValuesPtr(&closure->func_union)[pc[3]];
         stack[dst] = (Value)obj;
-        pc += 6;
+        pc += 4;
         NEXT();
     }
     CASE(Cast): {
-        u16 dst = READ_U16(1);
-        Value val = stack[READ_U16(3)];
-        u16 expTypeId = READ_U16(5);
-        bool exp_ref = pc[7];
+        u16 dst = pc[1];
+        Value val = stack[pc[2]];
+        u16 expTypeId = pc[3];
+        bool exp_ref = pc[4];
         u32 shape_t = getRefeeType(val);
         if (shape_t == expTypeId) {
             stack[dst] = val;
-            pc += 8;
+            pc += 5;
             NEXT();
         } else {
             panicStaticMsg(t, "Failed to downcast.");
@@ -1483,12 +1473,12 @@ beginSwitch:
         }
     }
     CASE(CastAbstract): {
-        u16 dst = READ_U16(1);
-        Value val = stack[READ_U16(3)];
-        u16 expTypeId = READ_U16(5);
+        u16 dst = pc[1];
+        Value val = stack[pc[2]];
+        u16 expTypeId = pc[3];
         if (expTypeId == TYPE_OBJECT) {
             stack[dst] = val;
-            pc += 7;
+            pc += 4;
             NEXT();
         } else {
             panicStaticMsg(t, "Failed to downcast.");
@@ -1521,11 +1511,11 @@ beginSwitch:
         UINT_BINOP(stack[dst] = left + right)
     }
     CASE(AddI16): {
-        u16 dst = READ_U16(1);
-        u64 left = stack[READ_U16(3)];
-        u16 right = READ_U16(5);
+        u16 dst = pc[1];
+        u64 left = stack[pc[2]];
+        u16 right = pc[3];
         stack[dst] = BITCAST(u64, left) + BITCAST(u64, (i64)BITCAST(i16, right));
-        pc += 7;
+        pc += 4;
         NEXT();
     }
     CASE(Sub): {
@@ -1581,103 +1571,103 @@ beginSwitch:
     }
     CASE(ZEXT): {
         // TODO: Inline assembly.
-        u16 dst = READ_U16(1);
-        u64 val = stack[READ_U16(3)];
-        stack[dst] = val & (((u64)1 << pc[5]) - 1);
-        pc += 6;
+        u16 dst = pc[1];
+        u64 val = stack[pc[2]];
+        stack[dst] = val & (((u64)1 << pc[3]) - 1);
+        pc += 4;
         NEXT();
     }
     CASE(SEXT): {
         // TODO: Inline assembly.
-        u16 dst = READ_U16(1);
-        u64 val = stack[READ_U16(3)];
-        stack[dst] = (i64)(val << (64 - pc[5])) >> (64 - pc[5]);
-        pc += 6;
+        u16 dst = pc[1];
+        u64 val = stack[pc[2]];
+        stack[dst] = (i64)(val << (64 - pc[3])) >> (64 - pc[3]);
+        pc += 4;
         NEXT();
     }
     CASE(F2I): {
-        u16 dst = READ_U16(1);
-        f64 val = BITCAST(f64, stack[READ_U16(3)]);
+        u16 dst = pc[1];
+        f64 val = BITCAST(f64, stack[pc[2]]);
         stack[dst] = BITCAST(u64, (i64)val);
-        pc += 5;
+        pc += 3;
         NEXT();
     }
     CASE(F32_2I): {
-        u16 dst = READ_U16(1);
-        f32 val = *(f32*)&stack[READ_U16(3)];
+        u16 dst = pc[1];
+        f32 val = *(f32*)&stack[pc[2]];
         stack[dst] = BITCAST(u64, (i64)val);
-        pc += 5;
+        pc += 3;
         NEXT();
     }
     CASE(I2F): {
-        u16 dst = READ_U16(1);
-        i64 val = BITCAST(i64, stack[READ_U16(3)]);
+        u16 dst = pc[1];
+        i64 val = BITCAST(i64, stack[pc[2]]);
         stack[dst] = BITCAST(u64, (f64)val);
-        pc += 5;
+        pc += 3;
         NEXT();
     }
     CASE(I2F32): {
-        u16 dst = READ_U16(1);
-        i64 val = BITCAST(i64, stack[READ_U16(3)]);
+        u16 dst = pc[1];
+        i64 val = BITCAST(i64, stack[pc[2]]);
         stack[dst] = BITCAST(u32, (f32)val);
-        pc += 5;
+        pc += 3;
         NEXT();
     }
     CASE(FABS): {
-        u16 dst = READ_U16(1);
-        f64 val = BITCAST(f64, stack[READ_U16(3)]);
+        u16 dst = pc[1];
+        f64 val = BITCAST(f64, stack[pc[2]]);
         stack[dst] = BITCAST(u64, __builtin_fabs(val));
-        pc += 5;
+        pc += 3;
         NEXT();
     }
     CASE(F32ABS): {
-        u16 dst = READ_U16(1);
-        f32 val = *(f32*)&stack[READ_U16(3)];
+        u16 dst = pc[1];
+        f32 val = *(f32*)&stack[pc[2]];
         stack[dst] = BITCAST(u32, __builtin_fabsf(val));
-        pc += 5;
+        pc += 3;
         NEXT();
     }
     CASE(FN_VM): {
-        stack[READ_U16(1)] = READ_U48(3);
-        pc += 9;
+        stack[pc[1]] = READ_U48(2);
+        pc += 5;
         NEXT();
     }
     CASE(FN_HOST): {
-        u64 addr = READ_U48(3);
-        stack[READ_U16(1)] = addr | (1<<63);
-        pc += 9;
+        u64 addr = READ_U48(2);
+        stack[pc[1]] = addr | (1<<63);
+        pc += 5;
         NEXT();
     }
     CASE(FN_UNION): {
-        u16 dst = READ_U16(1);
-        Value val = stack[READ_U16(3)];
-        u16 union_t = READ_U16(5);
+        u16 dst = pc[1];
+        Value val = stack[pc[2]];
+        u16 union_t = pc[3];
 
         ValueResult res = zAllocFuncUnion(t, (TypeId)union_t, val);
         if (res.code != RES_SUCCESS) {
             RETURN(res.code);
         }
         stack[dst] = res.val;
-        pc += 7;
+        pc += 4;
         NEXT();
     }
     CASE(ExternFunc): {
-        u16 dst = READ_U16(1);
-        u16 func_id = READ_U16(3);
+        u16 dst = pc[1];
+        u16 func_id = pc[2];
         void* ptr = zGetExternFunc(t->c.vm, func_id);
         stack[dst] = (Value)ptr;
-        pc += 5;
+        pc += 3;
         NEXT();
     }
     CASE(NOP32): {
-        pc += 5;
+        pc += 3;
         NEXT();
     }
     CASE(NOPS): {
 #if TRACE_DUMP_NOP
         DUMP_OP()
 #endif
-        pc += 9;
+        pc += 5;
         NEXT();
     }
     CASE(TRAP): {

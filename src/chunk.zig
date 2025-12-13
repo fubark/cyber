@@ -436,46 +436,37 @@ pub const Chunk = struct {
 
     pub fn pushEmptyJumpNotCond(self: *Chunk, reg: bc.Reg, node: *ast.Node) !u32 {
         const start: u32 = @intCast(self.buf.ops.items.len);
-        try self.pushCode(.jump_f, &.{0, 0, 0, 0}, node);
-        self.buf.setOpArgU16(start + 1, reg);
+        try self.pushCode(.jump_f, &.{reg, 0}, node);
         return start;
     }
 
-    pub fn pushJumpBackTo(self: *Chunk, toPc: usize) !void {
+    pub fn pushJumpBackTo(self: *Chunk, toPc: usize, node: *ast.Node) !void {
         const pc = self.buf.ops.items.len;
-        try self.buf.pushOp2(.jump, 0, 0);
-        self.buf.setOpArgU16(pc + 1, @bitCast(-@as(i16, @intCast(pc - toPc))));
+        try self.pushCode(.jump, &.{@bitCast(-@as(i16, @intCast(pc - toPc)))}, node);
     }
 
-    pub fn pushEmptyJump(self: *Chunk) !u32 {
+    pub fn pushEmptyJump(self: *Chunk, node: *ast.Node) !u32 {
         const start: u32 = @intCast(self.buf.ops.items.len);
-        try self.buf.pushOp2(.jump, 0, 0);
-        return start;
-    }
-
-    pub fn pushEmptyJumpExt(self: *Chunk, desc: ?u32) !u32 {
-        const start: u32 = @intCast(self.buf.ops.items.len);
-        try self.buf.pushOp2Ext(.jump, 0, 0, desc);
+        try self.pushCode(.jump, &.{0}, node);
         return start;
     }
 
     pub fn pushEmptyJumpCond(self: *Chunk, reg: bc.Reg, node: *ast.Node) !u32 {
         const start: u32 = @intCast(self.buf.ops.items.len);
-        try self.buf.pushCode(.jump_t, &.{0, 0, 0, 0}, node);
-        self.buf.setOpArgU16(start + 1, reg);
+        try self.buf.pushCode(.jump_t, &.{reg, 0}, node);
         return start;
     }
 
     pub fn patchJumpToCurPc(self: *Chunk, jumpPc: u32) void {
-        self.buf.setOpArgU16(jumpPc + 1, @intCast(self.buf.ops.items.len - jumpPc));
+        self.buf.ops.items[jumpPc + 1].val = @intCast(self.buf.ops.items.len - jumpPc);
     }
 
     pub fn patchJumpCondToCurPc(self: *Chunk, jumpPc: u32) void {
-        self.buf.setOpArgU16(jumpPc + 3, @intCast(self.buf.ops.items.len - jumpPc));
+        self.buf.ops.items[jumpPc + 2].val = @intCast(self.buf.ops.items.len - jumpPc);
     }
 
     pub fn patchJumpNotCondToCurPc(self: *Chunk, jumpPc: u32) void {
-        self.buf.setOpArgU16(jumpPc + 3, @intCast(self.buf.ops.items.len - jumpPc));
+        self.buf.ops.items[jumpPc + 2].val = @intCast(self.buf.ops.items.len - jumpPc);
     }
 
     /// Patches block breaks. For `if` and `match` blocks.
@@ -501,9 +492,9 @@ pub const Chunk = struct {
                 .brk => {
                     if (jump.block_offset == block_offset) {
                         if (breakPc > jump.pc) {
-                            self.buf.setOpArgU16(jump.pc + 1, @intCast(breakPc - jump.pc));
+                            self.buf.ops.items[jump.pc + 1].val = @intCast(breakPc - jump.pc);
                         } else {
-                            self.buf.setOpArgU16(jump.pc + 1, @bitCast(-@as(i16, @intCast(jump.pc - breakPc))));
+                            self.buf.ops.items[jump.pc + 1].val = @bitCast(-@as(i16, @intCast(jump.pc - breakPc)));
                         }
                     } else {
                         self.blockJumpStack.items[jump_stack_end] = jump;
@@ -526,9 +517,9 @@ pub const Chunk = struct {
                 .brk => {
                     if (jump.block_offset == block_offset) {
                         if (breakPc > jump.pc) {
-                            self.buf.setOpArgU16(jump.pc + 1, @intCast(breakPc - jump.pc));
+                            self.buf.ops.items[jump.pc + 1].val = @intCast(breakPc - jump.pc);
                         } else {
-                            self.buf.setOpArgU16(jump.pc + 1, @bitCast(-@as(i16, @intCast(jump.pc - breakPc))));
+                            self.buf.ops.items[jump.pc + 1].val = @bitCast(-@as(i16, @intCast(jump.pc - breakPc)));
                         }
                     } else {
                         self.blockJumpStack.items[jump_stack_end] = jump;
@@ -538,9 +529,9 @@ pub const Chunk = struct {
                 .cont => {
                     if (jump.block_offset == block_offset) {
                         if (contPc > jump.pc) {
-                            self.buf.setOpArgU16(jump.pc + 1, @intCast(contPc - jump.pc));
+                            self.buf.ops.items[jump.pc + 1].val = @intCast(contPc - jump.pc);
                         } else {
-                            self.buf.setOpArgU16(jump.pc + 1, @bitCast(-@as(i16, @intCast(jump.pc - contPc))));
+                            self.buf.ops.items[jump.pc + 1].val = @bitCast(-@as(i16, @intCast(jump.pc - contPc)));
                         }
                     } else {
                         self.blockJumpStack.items[jump_stack_end] = jump;
@@ -700,22 +691,41 @@ pub const Chunk = struct {
     }
 
     /// An instruction that can fail (can throw or panic).
-    pub fn pushFCode(c: *Chunk, code: cy.OpCode, args: []const u8, node: *ast.Node) !void {
+    pub fn pushFCode(c: *Chunk, code: cy.OpCode, args: []const u16, node: *ast.Node) !void {
         log.tracev("pushFCode: {s} {}", .{@tagName(code), c.buf.ops.items.len});
         try c.pushFailableDebugSym(node);
         try c.buf.pushOpSliceExt(code, args, null);
+        if (cy.Trace) {
+            const exp = cy.bytecode.getInstLenAt(c.buf.ops.items.ptr + c.buf.ops.items.len - 1 - args.len) - 1;
+            if (args.len != exp) {
+                std.debug.panic("Expected {} operands for {}, found {}.", .{exp, code, args.len});
+            }
+        }
     }
 
-    pub fn pushCode(c: *Chunk, code: cy.OpCode, args: []const u8, node: *ast.Node) !void {
+    pub fn pushCode(c: *Chunk, code: cy.OpCode, args: []const u16, node: *ast.Node) !void {
         log.tracev("pushCode: {s} {}", .{@tagName(code), c.buf.ops.items.len});
         try c.pushOptionalDebugSym(node);
         try c.buf.pushOpSliceExt(code, args, null);
+        if (cy.Trace) {
+            const exp = cy.bytecode.getInstLenAt(c.buf.ops.items.ptr + c.buf.ops.items.len - 1 - args.len) - 1;
+            if (args.len != exp) {
+                std.debug.panic("Expected {} operands for {}, found {}.", .{exp, code, args.len});
+            }
+        }
     }
 
-    pub fn pushCodeExt(c: *Chunk, code: cy.OpCode, args: []const u8, node: *ast.Node, desc: ?u32) !void {
+    pub fn pushCodeExt(c: *Chunk, code: cy.OpCode, args: []const u16, operands: usize, node: *ast.Node) !void {
         log.tracev("pushCode: {s} {}", .{@tagName(code), c.buf.ops.items.len});
         try c.pushOptionalDebugSym(node);
-        try c.buf.pushOpSliceExt(code, args, desc);
+        try c.buf.pushOpSliceExt(code, args, null);
+        _ = try c.buf.reserveData(operands);
+        if (cy.Trace) {
+            const exp = cy.bytecode.getInstLenAt(c.buf.ops.items.ptr + c.buf.ops.items.len - 1 - args.len - operands) - 1;
+            if (args.len + operands != exp) {
+                std.debug.panic("Expected {} operands for {}, found {}.", .{exp, code, args.len + operands});
+            }
+        }
     }
 
     pub fn pushCodeBytes(c: *Chunk, bytes: []const u8) !void {

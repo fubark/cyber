@@ -201,78 +201,6 @@ pub const ByteCodeBuffer = struct {
         });
     }
 
-    pub fn pushOp(self: *ByteCodeBuffer, code: OpCode) !void {
-        try self.pushOpExt(code, null);
-    }
-
-    pub fn pushOpExt(self: *ByteCodeBuffer, code: OpCode, desc: ?u32) !void {
-        const start = self.ops.items.len;
-        try self.ops.resize(self.alloc, self.ops.items.len + 1);
-        self.ops.items[start] = Inst.initOpCode(code);
-        if (RecordOpcodes) {
-            try self.opcodes.append(self.alloc, code);
-        }
-        if (cy.Trace) {
-            try self.instDescs.append(self.alloc, desc orelse cy.NullId);
-        }
-    }
-
-    pub fn pushOp1(self: *ByteCodeBuffer, code: OpCode, arg: u8) !void {
-        try self.pushOp1Ext(code, arg, null);
-    }
-
-    pub fn pushOp1Ext(self: *ByteCodeBuffer, code: OpCode, arg: u8, desc: ?u32) !void {
-        const start = self.ops.items.len;
-        try self.ops.resize(self.alloc, self.ops.items.len + 2);
-        self.ops.items[start] = Inst.initOpCode(code);
-        self.ops.items[start+1] = .{ .val = arg };
-        if (RecordOpcodes) {
-            try self.opcodes.append(self.alloc, code);
-        }
-        if (cy.Trace) {
-            try self.instDescs.append(self.alloc, desc orelse cy.NullId);
-        }
-    }
-
-    pub fn pushOp2(self: *ByteCodeBuffer, code: OpCode, arg: u8, arg2: u8) !void {
-        try self.pushOp2Ext(code, arg, arg2, null);
-    }
-
-    pub fn pushOp2Ext(self: *ByteCodeBuffer, code: OpCode, arg: u8, arg2: u8, desc: ?u32) !void {
-        const start = self.ops.items.len;
-        try self.ops.resize(self.alloc, self.ops.items.len + 3);
-        self.ops.items[start] = Inst.initOpCode(code);
-        self.ops.items[start+1] = .{ .val = arg };
-        self.ops.items[start+2] = .{ .val = arg2 };
-
-        if (RecordOpcodes) {
-            try self.opcodes.append(self.alloc, code);
-        }
-        if (cy.Trace) {
-            try self.instDescs.append(self.alloc, desc orelse cy.NullId);
-        }
-    }
-
-    pub fn pushOp3(self: *ByteCodeBuffer, code: OpCode, arg: u8, arg2: u8, arg3: u8) !void {
-        try self.pushOp3Ext(code, arg, arg2, arg3, null);
-    }
-
-    pub fn pushOp3Ext(self: *ByteCodeBuffer, code: OpCode, arg: u8, arg2: u8, arg3: u8, desc: ?u32) !void {
-        const start = self.ops.items.len;
-        try self.ops.resize(self.alloc, self.ops.items.len + 4);
-        self.ops.items[start] = Inst.initOpCode(code);
-        self.ops.items[start+1] = .{ .val = arg };
-        self.ops.items[start+2] = .{ .val = arg2 };
-        self.ops.items[start+3] = .{ .val = arg3 };
-
-        if (RecordOpcodes) {
-            try self.opcodes.append(self.alloc, code);
-        }
-        if (cy.Trace) {
-            try self.instDescs.append(self.alloc, desc orelse cy.NullId);
-        }
-    }
-
     pub fn pushOperand(self: *ByteCodeBuffer, arg: u8) !void {
         const start = self.ops.items.len;
         try self.ops.resize(self.alloc, self.ops.items.len + 1);
@@ -287,11 +215,11 @@ pub const ByteCodeBuffer = struct {
         }
     }
 
-    pub fn pushOpSlice(self: *ByteCodeBuffer, code: OpCode, args: []const u8) !void {
+    pub fn pushOpSlice(self: *ByteCodeBuffer, code: OpCode, args: []const u16) !void {
         try self.pushOpSliceExt(code, args, null);
     }
     
-    pub fn pushOpSliceExt(self: *ByteCodeBuffer, code: OpCode, args: []const u8, desc: ?u32) !void {
+    pub fn pushOpSliceExt(self: *ByteCodeBuffer, code: OpCode, args: []const u16, desc: ?u32) !void {
         const start = self.ops.items.len;
         try self.ops.resize(self.alloc, self.ops.items.len + args.len + 1);
         self.ops.items[start] = Inst.initOpCode(code);
@@ -314,30 +242,23 @@ pub const ByteCodeBuffer = struct {
 
     pub fn setOpArgU64(self: *ByteCodeBuffer, idx: usize, arg: u64) void {
         if (cy.Trace) {
-            if (idx + 8 > self.ops.items.len) @panic("OutOfBounds");
+            if (idx + 4 > self.ops.items.len) @panic("OutOfBounds");
         }
-        @as(*align(1) u64, @ptrCast(&self.ops.items[idx])).* = arg;
+        @as(*align(2) u64, @ptrCast(&self.ops.items[idx])).* = arg;
     }
 
     pub fn setOpArgU48(self: *ByteCodeBuffer, idx: usize, arg: u48) void {
         if (cy.Trace) {
-            if (idx + 6 > self.ops.items.len) @panic("OutOfBounds");
+            if (idx + 3 > self.ops.items.len) @panic("OutOfBounds");
         }
-        @as(*align(1) u48, @ptrCast(&self.ops.items[idx])).* = arg;
+        @as(*align(2) u48, @ptrCast(&self.ops.items[idx])).* = arg;
     }
 
     pub fn setOpArgU32(self: *ByteCodeBuffer, idx: usize, arg: u32) void {
         if (cy.Trace) {
-            if (idx + 4 > self.ops.items.len) @panic("OutOfBounds");
-        }
-        @as(*align(1) u32, @ptrCast(&self.ops.items[idx])).* = arg;
-    }
-
-    pub fn setOpArgU16(self: *ByteCodeBuffer, idx: usize, arg: u16) void {
-        if (cy.Trace) {
             if (idx + 2 > self.ops.items.len) @panic("OutOfBounds");
         }
-        @as(*align(1) u16, @ptrCast(&self.ops.items[idx])).* = arg;
+        @as(*align(2) u32, @ptrCast(&self.ops.items[idx])).* = arg;
     }
 
     pub fn setOpArgs1(self: *ByteCodeBuffer, idx: usize, arg: u8) void {
@@ -381,20 +302,20 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
     }
     switch (code) {
         .captured => {
-            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const closure = pc[3].val;
-            const member_idx = pc[4].val;
+            const dst = pc[1].val;
+            const closure = pc[2].val;
+            const member_idx = pc[3].val;
             try w.print("%{} = [%{} + {}]", .{dst, closure, member_idx});
         },
         .fneg32,
         .fneg,
         .neg => {
-            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const child = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const dst = pc[1].val;
+            const child = pc[2].val;
             try w.print("%{} = -%{}", .{dst, child});
         },
         .ret_n => {
-            const ret_size = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const ret_size = pc[1].val;
             try w.print("ret %0..%{}", .{ret_size});
         },
         .or_,
@@ -427,9 +348,9 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
         .fadd,
         .fadd32,
         .add => {
-            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const lhs = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            const rhs = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
+            const dst = pc[1].val;
+            const lhs = pc[2].val;
+            const rhs = pc[3].val;
             const op: []const u8 = switch (code) {
                 .or_ => "||",
                 .lsl => "<<",
@@ -466,22 +387,22 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
             try w.print("%{} = %{} {s} %{}", .{dst, lhs, op, rhs});
         },
         .call_union => {
-            const base = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const base = pc[1].val;
             try w.print("?..%{} = call_union(%{}..)", .{
                 base, base + 4,
             });
         },
         .chk_stk => {
-            const ret_size = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const frame_size = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const ret_size = pc[1].val;
+            const frame_size = pc[2].val;
             try w.print("ret={}, frame={}", .{
                 ret_size, frame_size,
             });
         },
         .call => {
-            const base = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const func_pc: usize = @intCast(@as(*const align(1) u48, @ptrCast(pc + 3)).*);
-            const func_id: u32 = @as(*const align(1) u32, @ptrFromInt(func_pc - 4)).*;
+            const base = pc[1].val;
+            const func_pc: usize = @intCast(@as(*const align(2) u48, @ptrCast(pc + 2)).*);
+            const func_id: u32 = @as(*const align(2) u32, @ptrFromInt(func_pc - 4)).*;
 
             const name = vm.funcSymDetails.items[func_id].name();
             // if (vm.funcSymDetails.items[func_id].func) |func| {
@@ -519,8 +440,8 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
             }
         },
         .call_host => {
-            const base = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const ptr_int = std.mem.readInt(u48, @ptrCast(pc + 3), .little);
+            const base = pc[1].val;
+            const ptr_int = std.mem.readInt(u48, @ptrCast(pc + 2), .little);
             if (ptr_int == 0) {
                 try w.print("?..%{} = <placeholder>(%{}..?)", .{
                     base, base + 4,
@@ -536,28 +457,29 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
             }
         },
         .call_ptr => {
-            const base = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const base = pc[1].val;
             try w.print("?..%{} = %{}(%{}..)", .{
                 base, base + 3, base + 4,
             });
         },
         .call_trait => {
-            const base = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const base = pc[1].val;
             const vtable_idx = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
             try w.print("?..%{} = %{}.vtable[{}](%{}..)", .{
                 base, base + 3, vtable_idx, base + 4,
             });
         },
         .closure => {
-            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const dst = pc[1].val;
             // const func_id = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
             const func_id: usize = 0;
-            const union_t = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            const numCaptured = pc[11].val;
-            const is_stack_closure = pc[12].val == 1;
+            const union_t = pc[2].val;
+            const captured_info = pc[6].val;
+            const num_captured = captured_info & 0x7fff;
+            const is_stack_closure = (captured_info & 0x8000) != 0;
             try w.print("%{} = closure(id={}, union_t={}, ncap={}, stack={}, vals={any})", .{
-                dst, func_id, union_t, numCaptured, is_stack_closure,
-                std.mem.sliceAsBytes(pc[13..13+numCaptured*2]),
+                dst, func_id, union_t, num_captured, is_stack_closure,
+                std.mem.sliceAsBytes(pc[7..7+num_captured]),
             });
         },
         .true => {
@@ -569,34 +491,34 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
             try w.print("%{} = false", .{dst});
         },
         .nops => {
-            const ptr_len = @as(*const align(1) u64, @ptrCast(pc + 1)).*;
+            const ptr_len = @as(*const align(2) u64, @ptrCast(pc + 1)).*;
             const ptr: [*]u8 = @ptrFromInt(@as(usize, @intCast(ptr_len & 0xffffffffffff)));
             const len_: usize = @intCast(ptr_len >> 48);
             const str = ptr[0..len_];
             try w.print("'{s}'", .{str});
         },
         .const_str => {
-            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const ptr_len = @as(*const align(1) u64, @ptrCast(pc + 3)).*;
+            const dst = pc[1].val;
+            const ptr_len = @as(*const align(2) u64, @ptrCast(pc + 2)).*;
             const ptr: [*]u8 = @ptrFromInt(@as(usize, @intCast(ptr_len & 0xffffffffffff)));
             const len_: usize = @intCast(ptr_len >> 48);
-            const ascii = pc[11].val == 1;
+            const ascii = pc[6].val == 1;
             const str = ptr[0..len_];
             try w.print("%{}..%{} = '{s}' ascii={}", .{dst, dst+3, str, ascii});
         },
-        .const_8 => {
-            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const val = pc[3].val;
+        .const_16 => {
+            const dst = pc[1].val;
+            const val = pc[2].val;
             try w.print("%{} = {}", .{dst, val});
         },
-        .const_8s => {
-            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const val: i8 = @bitCast(pc[3].val);
+        .const_16s => {
+            const dst = pc[1].val;
+            const val: i16 = @bitCast(pc[2].val);
             try w.print("%{} = {}", .{dst, val});
         },
         .const_64 => {
-            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const val = @as(*const align (1) u64, @ptrCast(pc + 3)).*;
+            const dst = pc[1].val;
+            const val = @as(*const align (2) u64, @ptrCast(pc + 2)).*;
             try w.print("%{} = {}", .{dst, val});
         },
         .mov_4,
@@ -719,38 +641,38 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
         .store_32,
         .store_16,
         .store_8 => {
-            const dst_ptr = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const dst_off = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            const src = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
+            const dst_ptr = pc[1].val;
+            const dst_off = pc[2].val;
+            const src = pc[3].val;
             try w.print("[%{} + {}] = %{}", .{dst_ptr, dst_off, src});
         },
         .store_n => {
-            const dst_ptr = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const dst_off = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            const src = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
-            const size = @as(*const align(1) u16, @ptrCast(pc + 7)).*;
+            const dst_ptr = pc[1].val;
+            const dst_off = pc[2].val;
+            const src = pc[3].val;
+            const size = pc[4].val;
             try w.print("[%{} + {}] = %{}.. size={}", .{dst_ptr, dst_off, src, size});
         },
         .await_op => {
-            const local = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const local = pc[1].val;
             try w.print("await(%{})", .{local});
         },
         .addr => {
-            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const reg = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const dst = pc[1].val;
+            const reg = pc[2].val;
             try w.print("%{} = *%{}", .{dst, reg});
         },
         .add_i16 => {
-            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const left = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            const right_amt = @as(*const align(1) i16, @ptrCast(pc + 5)).*;
+            const dst = pc[1].val;
+            const left = pc[2].val;
+            const right_amt: i16 = @bitCast(pc[3].val);
             try w.print("%{} = %{} + {}", .{dst, left, right_amt});
         },
         .load_n => {
-            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const src_ptr = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            const src_off = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
-            const size = @as(*const align(1) u16, @ptrCast(pc + 7)).*;
+            const dst = pc[1].val;
+            const src_ptr = pc[2].val;
+            const src_off = pc[3].val;
+            const size = pc[4].val;
             try w.print("%{} = [%{} + {}] size={}", .{dst, src_ptr, src_off, size});
         },
         .load_2w,
@@ -760,9 +682,9 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
         .load_32,
         .load_16,
         .load_64 => {
-            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const src = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            const src_off = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
+            const dst = pc[1].val;
+            const src = pc[2].val;
+            const src_off = pc[3].val;
             try w.print("%{} = [%{} + {}]", .{dst, src, src_off});
         },
         // .setIndexList => {
@@ -772,10 +694,10 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
         //     _ = try fmt.printCount(w, "list={}, index={}, right={}", &.{v(list), v(index), v(right)});
         // },
         .ret_gen => {
-            const type_id = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const ret_size = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            const reg_end = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
-            const resume_off = pc[7].val;
+            const type_id = pc[1].val;
+            const ret_size = pc[2].val;
+            const reg_end = pc[3].val;
+            const resume_off = pc[4].val;
             try w.print("ret gen(type={}, %{}..%{}, resume_off={}, ret_size={})",
                 .{type_id, ret_size+4, reg_end, resume_off, ret_size});
         },
@@ -786,9 +708,9 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
             try w.print("%{}..%{} = next(%{})", .{ret, base, gen });
         },
         .ret_y => {
-            const ret_size = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const resume_off = pc[3].val;
-            const done = pc[4].val == 1;
+            const ret_size = pc[1].val;
+            const resume_off = pc[2].val;
+            const done = pc[3].val == 1;
             try w.print("yield ret={}, resume_off={}, done={}", .{ret_size, resume_off, done});
         },
         // .sliceList => {
@@ -798,15 +720,15 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
         //     _ = try fmt.printCount(w, "%{} = %{}[Range(%{})]", &.{v(dst), v(recv), v(range)});
         // },
         .castAbstract => {
-            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const child = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            const expTypeId = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
+            const dst = pc[1].val;
+            const child = pc[2].val;
+            const expTypeId = pc[3].val;
             try w.print("%{} = cast(type={}, %{})", .{dst, expTypeId, child});
         },
         .cast => {
-            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const child = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            const expTypeId = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
+            const dst = pc[1].val;
+            const child = pc[2].val;
+            const expTypeId = pc[3].val;
             try w.print("%{} = cast(type={}, %{})", .{dst, expTypeId, child});
         },
         .memsetz => {
@@ -844,10 +766,10 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
             try w.print("%{} = %{}.?", .{dst, src});
         },
         .unwrap_addr => {
-            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const choice_s = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            const tag = pc[5].val;
-            const offset = pc[6].val;
+            const dst = pc[1].val;
+            const choice_s = pc[2].val;
+            const tag = pc[3].val;
+            const offset = pc[4].val;
             try w.print("%{} = %{}.!{} + {}", .{dst, choice_s, tag, offset});
         },
         else => {},
@@ -886,7 +808,7 @@ pub const StringIndexInsertContext = struct {
 };
 
 pub const Inst = packed struct {
-    val: u8,
+    val: u16,
 
     pub inline fn initOpCode(code_: OpCode) Inst {
         return .{
@@ -895,7 +817,8 @@ pub const Inst = packed struct {
     }
 
     pub inline fn opcode(self: *const Inst) OpCode {
-        return @enumFromInt(self.val);
+        const code: u8 = @truncate(self.val);
+        return @enumFromInt(code);
     }
 
     pub fn initArg(arg: u8) Inst {
@@ -959,13 +882,12 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .call_ptr,
         .call_union,
         .jump => {
+            return 2;
+        },
+        .const_16s,
+        .const_16 => {
             return 3;
         },
-        .const_8s,
-        .const_8 => {
-            return 4;
-        },
-        .ret_y,
         .fneg32,
         .fneg,
         .neg,
@@ -993,20 +915,20 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .mov_3,
         .mov_4,
         .addr,
-        .const_16,
         .chk_stk,
         // .setIndexList,
         // .setIndexMap,
         // .indexList,
         // .indexMap,
         .nop32 => {
-            return 5;
+            return 3;
         },
+        .ret_y,
         .captured,
         // .list,
         .zext,
         .sext => {
-            return 6;
+            return 4;
         },
         .gen_next,
         .gen_end,
@@ -1041,7 +963,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .ucmp,
         .castAbstract,
         .memsetz,
-        .unwrap_addr,
         .feq32,
         .feq,
         .flt,
@@ -1074,12 +995,13 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .store_2w,
         .store_3w,
         .store_4w => {
-            return 7;
+            return 4;
         },
         .ret_gen,
         .cast => {
-            return 8;
+            return 5;
         },
+        .unwrap_addr,
         .fn_vm,
         .fn_host,
         .trait,
@@ -1088,17 +1010,17 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .call,
         .call_host,
         .nops => {
-            return 9;
+            return 5;
         },
         .const_64 => {
-            return 11;
+            return 6;
         },
         .const_str => {
-            return 12;
+            return 7;
         },
         .closure => {
-            const numCaptured = pc[11].val;
-            return 13 + numCaptured * 2;
+            const numCaptured = pc[6].val & 0x7fff;
+            return 7 + @as(u8, @intCast(numCaptured));
         },
     }
 }
@@ -1107,8 +1029,7 @@ pub const OpCode = enum(u8) {
     /// Copies a constant value from `consts` to a dst local.
     const_64 = vmc.CodeCONST_64,
     const_str = vmc.CodeCONST_STR,
-    const_8s = vmc.CodeCONST_8S,
-    const_8 = vmc.CodeCONST_8,
+    const_16s = vmc.CodeCONST_16S,
     const_16 = vmc.CodeCONST_16,
     const_32 = vmc.CodeCONST_32,
     true = vmc.CodeTrue,
@@ -1268,8 +1189,8 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(127, std.enums.values(OpCode).len);
-    try t.eq(@sizeOf(Inst), 1);
+    try t.eq(126, std.enums.values(OpCode).len);
+    try t.eq(@sizeOf(Inst), 2);
     try t.eq(@sizeOf(DebugSym), 16);
 }
 

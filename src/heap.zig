@@ -1302,7 +1302,7 @@ pub fn allocMapZero(self: *Heap, type_id: cy.TypeId) !Value {
 
 /// Captured values are retained during alloc.
 pub fn allocClosure(
-    self: *Heap, fp: [*]Value, func_pc: [*]cy.Inst, union_t: cy.TypeId, captured: [*]const cy.Inst, num_captured: u8, pinned_closure: bool,
+    self: *Heap, fp: [*]Value, func_pc: [*]cy.Inst, union_t: cy.TypeId, captured: [*]const cy.Inst, num_captured: u16, pinned_closure: bool,
 ) !Value {
     var obj: *HeapObject = undefined;
     if (num_captured <= 1) {
@@ -1320,11 +1320,11 @@ pub fn allocClosure(
     };
     const dst = obj.func.getCapturedValuesPtr();
     for (0..num_captured) |i| {
-        const reg = @as(*const align(1) u16, @ptrCast(captured + i*2)).*;
+        const reg = captured[i];
         if (!pinned_closure) {
-            self.retain(fp[reg]);
+            self.retain(fp[reg.val]);
         }
-        dst[i] = fp[reg];
+        dst[i] = fp[reg.val];
     }
     return Value.initPtr(obj);
 }

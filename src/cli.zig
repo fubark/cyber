@@ -21,10 +21,11 @@ const funcs = [_]struct { []const u8, C.BindFunc }{
     .{ "replReadLine", zErrFunc(replReadLine) },
 };
 
-pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
+pub fn bind(_: ?*C.VM, mod: ?*C.Sym) callconv(.c) C.Bytes {
     for (funcs) |e| {
-        C.mod_add_func(mod, e.@"0", e.@"1");
+        C.mod_add_func(mod.?, e.@"0", e.@"1");
     }
+    return C.to_bytes("");
 }
 
 const Config = struct {
@@ -90,9 +91,9 @@ pub fn init_cli(vm: *C.VM, alloc: std.mem.Allocator) !void {
         .{ .name = "cy", .uri = "src/builtins/cy.cy", .bind_fn = C.mod_bind_cy },
         .{ .name = "c", .uri = "src/builtins/c.cy", .bind_fn = C.mod_bind_c },
         .{ .name = "libc", .uri = "src/std/libc.cy", .bind_fn = null },
-        .{ .name = "os", .uri = "src/std/os.cy", .bind_fn = @ptrCast(&os_mod.bind) },
+        .{ .name = "os", .uri = "src/std/os.cy", .bind_fn = &os_mod.bind },
         .{ .name = "io", .uri = "src/std/io.cy", .bind_fn = C.mod_bind_io },
-        .{ .name = "cli", .uri = "src/std/cli.cy", .bind_fn = @ptrCast(&bind) },
+        .{ .name = "cli", .uri = "src/std/cli.cy", .bind_fn = &bind },
         .{ .name = "test", .uri = "src/std/test.cy", .bind_fn = C.mod_bind_test },
     };
     for (mods) |mod| {

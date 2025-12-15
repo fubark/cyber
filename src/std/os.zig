@@ -36,16 +36,17 @@ const types = [_]struct{[]const u8, C.BindType}{
     // .{"FFI",          CS.TYPE_HOBJ(null, ffi.FFI_deinit)},
 };
 
-pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
+pub fn bind(_: ?*C.VM, mod: ?*C.Sym) callconv(.c) C.Bytes {
     for (funcs) |e| {
-        C.mod_add_func(mod, e.@"0", e.@"1");
+        C.mod_add_func(mod.?, e.@"0", e.@"1");
     }
 
     for (types) |e| {
-        C.mod_add_type(mod, e.@"0", e.@"1");
+        C.mod_add_type(mod.?, e.@"0", e.@"1");
     }
 
-    C.mod_add_global(mod, "vecBitSize", C.BIND_GLOBAL(&simd_bit_size));
+    C.mod_add_global(mod.?, "vecBitSize", C.BIND_GLOBAL(&simd_bit_size));
+    return C.to_bytes("");
 }
 
 var simd_bit_size: i64 = if (std.simd.suggestVectorLength(u8)) |VecSize|

@@ -996,6 +996,8 @@ fn loadBuiltinChunk(c: *cy.Chunk) !void {
     const void_t = cy.Value.initType(c.sema.void_t);
     c.sema.ptr_void_t = (try c.vm.expandTypeTemplate(c.sema.ptr_tmpl, &.{c.sema.type_t}, &.{ void_t }));
 
+    c.sema.raw_buffer_byte_t = (try c.vm.expandTypeTemplate(c.sema.raw_buffer_tmpl, &.{c.sema.type_t}, &.{r8_t}));
+
     // // Verify all builtin types have loaded.
     for (1..cy.types.BuiltinEnd) |i| {
         if (c.sema.types.items[i].kind() == .null) {

@@ -155,8 +155,17 @@ export fn cl_thread_ptr(t: *cy.Thread) *anyopaque {
     return t.param(*anyopaque);
 }
 
-export fn cl_slice_init(t: *cy.Thread, byte_buffer_t: cy.TypeId, num_elems: usize, elem_size: usize) cy.heap.Slice {
-    return t.heap.init_slice_undef(byte_buffer_t, num_elems, elem_size) catch fatal();
+export fn cl_slice_init(t: *cy.Thread, num_elems: usize, elem_size: usize) cy.heap.Slice {
+    return t.heap.init_slice_undef(t.c.vm.sema.raw_buffer_byte_t.id(), num_elems, elem_size) catch fatal();
+}
+
+export fn cl_vm_alloc(vm: *cy.VM, size: usize) *anyopaque {
+    const slice = vm.alloc.alignedAlloc(u8, .@"8", size) catch fatal();
+    return slice.ptr;
+}
+
+export fn cl_vm_free(vm: *cy.VM, ptr: *anyopaque, size: usize) void {
+    vm.alloc.free(@as([*]align(8) u8, @ptrCast(@alignCast(ptr)))[0..size]);
 }
 
 export fn cl_vm_allocb(vm: *cy.VM, size: usize) C.Bytes {
@@ -674,12 +683,12 @@ test "Constants." {
     try zt.eq(C.TypeCode, bt.Code);
 }
 
-export fn clTypeId(type_: *cy.Type) cy.TypeId {
+export fn cl_type_id(type_: *cy.Type) cy.TypeId {
     return type_.id();
 }
 
-export fn clGetType(vm: *cy.VM, val: Value) *C.Type {
-    return @ptrCast(vm.sema.getType(@intCast(val.asInt())));
+export fn cl_type_from_id(vm: *cy.VM, type_id: cy.TypeId) *C.Type {
+    return @ptrCast(vm.sema.getType(type_id));
 }
 
 // test "clGetTypeId()" {
@@ -775,6 +784,44 @@ test "Return from main." {
         \\  return 123
     , &res);
     try zt.eq(123, @as(*i64, @ptrCast(res.res)).*);
+}
+
+test "cl_slice_init." {
+    const vm = C.vm_init();
+    defer C.vm_deinit(vm);
+
+    const S = struct {
+        fn mod_test(t_: *C.Thread) callconv(.c) C.Ret {
+            const ret: *C.Slice = C.thread_ret(t_, C.Slice);
+            ret.* = C.slice_init(t_, 2, 8);
+            var elems: [*]i64 = @ptrCast(@alignCast(ret.ptr));
+            elems[0] = 123;
+            elems[1] = 234;
+            return C.RetOk;
+        }
+        fn loader(vm_: *C.VM, mod: *C.Sym, uri: C.Bytes, res: [*c]C.LoaderResult) callconv(.c) bool {
+            const name = C.from_bytes(uri);
+            if (std.mem.eql(u8, name, "mod")) {
+                C.mod_add_func(mod, "test", C.BIND_FUNC(&mod_test));
+                res[0].src = C.to_bytes("#[bind] fn test() -> []int");
+                return true;
+            } else {
+                return C.default_loader(vm_, mod, uri, res);
+            }
+        }
+    };
+    C.vm_set_loader(vm, @ptrCast(&S.loader));
+
+    var res: C.EvalResult = undefined;
+    const code = C.vm_eval(vm, 
+        \\use mod
+        \\use test
+        \\slice := mod.test()
+        \\test.eq(2, slice.len())
+        \\test.eq(123, slice[0])
+        \\test.eq(234, slice[1])
+    , &res);
+    try zt.eq(C.Success, code);
 }
 
 test "Bind functions." {

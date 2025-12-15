@@ -9221,6 +9221,7 @@ pub const Sema = struct {
 
     ptr_int_t: *cy.Type = &cy.types.NullType,
     ptr_void_t: *cy.Type = &cy.types.NullType,
+    raw_buffer_byte_t: *cy.Type = &cy.types.NullType,
     generator_tmpl: *cy.sym.Template,
     int_tmpl: *cy.sym.Template,
     float_tmpl: *cy.sym.Template,

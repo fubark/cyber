@@ -577,15 +577,15 @@ CLBytes cl_str_bytes(CLstr str);
 CLBytes cl_object_string(CLThread* t, CLValue val);  // Conversion from value to a basic string description.
 
 // Initializes a new slice with undefined elements.
-CLSlice cl_slice_init(CLThread* t, CLTypeId byte_buffer_t, size_t num_elems, size_t elem_size);
+CLSlice cl_slice_init(CLThread* t, size_t num_elems, size_t elem_size);
 
 // Functions.
 CLFuncSig* cl_vm_ensure_func_sig(CLVM* vm, const CLType* params, size_t nparams, CLType* ret_t);
 CLValue cl_new_func_union(CLThread* t, CLType* union_t, CLHostFn func);
 
 // Types.
-CLType* clGetType(CLValue val);
-CLTypeId clTypeId(CLType* type);
+CLType* cl_type_from_id(CLTypeId id);
+CLTypeId cl_type_id(CLType* type);
 
 // Consumes and lifts a value (given as a pointer to the value) to the heap.
 CLValue cl_lift(CLThread* t, CLType* type, void* value);

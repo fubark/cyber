@@ -7,7 +7,7 @@ const rt = cy.rt;
 const log = cy.log.scoped(.cy);
 const ast = cy.ast;
 
-pub const Src = @embedFile("cy.cy");
+const Src = @embedFile("cy.cy");
 const zErrFunc = cy.core.zErrFunc;
 
 fn create_vm_type(vm: ?*C.VM, c_mod: ?*C.Sym, decl: ?*C.Node) callconv(.c) *C.Type {
@@ -24,7 +24,7 @@ comptime {
     @export(&bind, .{ .name = "cl_mod_bind_cy", .linkage = .strong });
 }
 
-pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
+pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) C.Bytes {
     for (funcs) |e| {
         C.mod_add_func(mod, e.@"0", e.@"1");
     }
@@ -32,6 +32,7 @@ pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
     for (types) |e| {
         C.mod_add_type(mod, e.@"0", e.@"1");
     }
+    return C.to_bytes(Src);
 }
 
 const types = [_]struct{[]const u8, C.BindType}{

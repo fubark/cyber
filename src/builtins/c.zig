@@ -9,7 +9,7 @@ const os = @import("../std/os.zig");
 const bc = @import("../bc_gen.zig");
 const os_mod = @import("../std/os.zig");
 
-pub const Src = @embedFile("c.cy");
+const Src = @embedFile("c.cy");
 
 const types = [_]struct { []const u8, C.BindType }{
     .{ "u32", C.TYPE_CREATE(createU32Type) },
@@ -20,7 +20,7 @@ comptime {
     @export(&bind, .{ .name = "cl_mod_bind_c", .linkage = .strong });
 }
 
-pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
+pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) C.Bytes {
     for (funcs) |e| {
         C.mod_add_func(mod, e.@"0", e.@"1");
     }
@@ -28,6 +28,7 @@ pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
     for (types) |e| {
         C.mod_add_type(mod, e.@"0", e.@"1");
     }
+    return C.to_bytes(Src);
 }
 
 const funcs = [_]struct{[]const u8, C.BindFunc}{

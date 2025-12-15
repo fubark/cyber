@@ -23,7 +23,7 @@ const string = @import("string.zig");
 
 const logger = cy.log.scoped(.core);
 
-pub const Src = @embedFile("core.cy");
+const Src = @embedFile("core.cy");
 
 pub const BuiltinsData = struct {
     OptionString: *cy.types.Option,
@@ -224,7 +224,7 @@ comptime {
     @export(&bind, .{ .name = "cl_mod_bind_core", .linkage = .strong });
 }
 
-pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
+pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) C.Bytes {
     for (funcs) |e| {
         C.mod_add_func(mod, e.@"0", e.@"1");
     }
@@ -234,6 +234,8 @@ pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
     }
 
     C.mod_on_load(mod, onLoad);
+
+    return C.to_bytes(Src);
 }
 
 fn onLoad(vm: ?*C.VM, mod: ?*C.Sym) callconv(.c) void {

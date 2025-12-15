@@ -8,15 +8,16 @@ const fmt = @import("../fmt.zig");
 const bindings = @import("../builtins/bindings.zig");
 const log = cy.log.scoped(.testmod);
 
-pub const Src = @embedFile("test.cy");
+const Src = @embedFile("test.cy");
 
 const funcs = [_]struct{[]const u8, C.BindFunc}{
 };
 
-pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
+pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) C.Bytes {
     for (funcs) |e| {
         C.mod_add_func(mod, e.@"0", e.@"1");
     }
+    return C.to_bytes(Src);
 }
 
 comptime {

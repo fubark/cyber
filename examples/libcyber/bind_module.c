@@ -71,6 +71,7 @@ bool loader(CLVM* vm, CLSym* mod, CLBytes uri, CLLoaderResult* res) {
         cl_mod_add_global(mod, CL_BYTES("my_global"), CL_BIND_GLOBAL(&myglobal));
 
         res->src = CL_BYTES(src);
+        res->manage_src = false;
         return true;
     } else {
         // Fallback to the default module loader to load builtin modules such as `core`.

@@ -5,16 +5,17 @@ const C = @import("../capi.zig");
 const core = @import("../builtins/core.zig");
 const zErrFunc = core.zErrFunc;
 
-pub const Src = @embedFile("io.cy");
+const Src = @embedFile("io.cy");
 
 const funcs = [_]struct{[]const u8, C.BindFunc}{
     .{"indexOfNewLine",    zErrFunc(indexOfNewLine)},
 };
 
-pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
+pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) C.Bytes {
     for (funcs) |e| {
         C.mod_add_func(mod, e.@"0", e.@"1");
     }
+    return C.to_bytes(Src);
 }
 
 fn indexOfNewLine(t: *cy.Thread) !C.Ret {

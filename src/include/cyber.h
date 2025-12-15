@@ -237,8 +237,6 @@ size_t cl_strlen(const char* s);
 #define CL_BIND_FUNC(host_ptr) ((CLBindFunc){.kind = CL_BIND_FUNC_VM, .ptr = host_ptr})
 #define CL_BIND_GLOBAL(val_ptr) ((CLBindGlobal){.ptr = val_ptr})
 
-typedef void (*CLModuleBindFn)(CLVM* vm, CLSym* mod);
-
 typedef struct CLLoaderResult {
     CLBytes src;
 
@@ -530,13 +528,16 @@ void cl_mod_add_global(CLSym* mod, CLBytes name, CLBindGlobal binding);
 void cl_mod_on_destroy(CLSym* mod, CLModuleOnDestroyFn on_destroy);
 void cl_mod_on_load(CLSym* mod, CLModuleOnLoadFn on_load);
 
-void cl_mod_bind_core(CLVM* vm, CLSym* mod);
-void cl_mod_bind_cy(CLVM* vm, CLSym* mod);
-void cl_mod_bind_c(CLVM* vm, CLSym* mod);
-void cl_mod_bind_io(CLVM* vm, CLSym* mod);
-void cl_mod_bind_meta(CLVM* vm, CLSym* mod);
-void cl_mod_bind_math(CLVM* vm, CLSym* mod);
-void cl_mod_bind_test(CLVM* vm, CLSym* mod);
+// Each module binding registers the relevant functions and returns the source that should be returned to the module loader.
+// Source returned is static memory. When returning the source to the module loader either `manage_src` should be false or it should be duplicated with `cl_vm_allocb` .
+typedef CLBytes (*CLModuleBindFn)(CLVM* vm, CLSym* mod);
+CLBytes cl_mod_bind_core(CLVM* vm, CLSym* mod);
+CLBytes cl_mod_bind_cy(CLVM* vm, CLSym* mod);
+CLBytes cl_mod_bind_c(CLVM* vm, CLSym* mod);
+CLBytes cl_mod_bind_io(CLVM* vm, CLSym* mod);
+CLBytes cl_mod_bind_meta(CLVM* vm, CLSym* mod);
+CLBytes cl_mod_bind_math(CLVM* vm, CLSym* mod);
+CLBytes cl_mod_bind_test(CLVM* vm, CLSym* mod);
 
 // -----------------------------------
 // [ Symbols ]

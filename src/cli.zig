@@ -175,7 +175,7 @@ pub fn loader(vm_: ?*C.VM, mod_: ?*C.Sym, spec_: C.Bytes, res: [*c]C.LoaderResul
     const app: *App = @ptrCast(@alignCast(C.vm_user_data(vm)));
     if (app.mod_bindings.get(spec)) |opt_binding| {
         if (opt_binding) |binding| {
-            binding(vm_, mod_);
+            _ = binding(vm_, mod_);
         }
     }
 

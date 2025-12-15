@@ -1430,35 +1430,30 @@ pub fn default_resolver(_: ?*C.VM, params: C.ResolverParams, res_uri_len: ?*usiz
 }
 
 const ModuleEntry = struct {
-    src: []const u8,
-    bind: *const fn(*C.VM, *C.Sym) callconv(.c) void,
+    bind: *const fn(*C.VM, *C.Sym) callconv(.c) C.Bytes,
 };
 
 const mods = std.StaticStringMap(ModuleEntry).initComptime(.{
-    .{"core", ModuleEntry{.src = core_mod.Src, .bind = &core_mod.bind}},
-    .{"meta", ModuleEntry{.src = meta_mod.Src, .bind = &meta_mod.bind}},
-    .{"math", ModuleEntry{.src = math_mod.Src, .bind = &math_mod.bind}},
-    .{"cy",   ModuleEntry{.src = cy_mod.Src, .bind = &cy_mod.bind}},
-    .{"c",    ModuleEntry{.src = c_mod.Src, .bind = &c_mod.bind}},
-    .{"io",   ModuleEntry{.src = io_mod.Src, .bind = &io_mod.bind}},
-    .{"test", ModuleEntry{.src = test_mod.Src, .bind = &test_mod.bind}},
+    .{"core", ModuleEntry{.bind = &core_mod.bind}},
+    .{"meta", ModuleEntry{.bind = &meta_mod.bind}},
+    .{"math", ModuleEntry{.bind = &math_mod.bind}},
+    .{"cy",   ModuleEntry{.bind = &cy_mod.bind}},
+    .{"c",    ModuleEntry{.bind = &c_mod.bind}},
+    .{"io",   ModuleEntry{.bind = &io_mod.bind}},
+    .{"test", ModuleEntry{.bind = &test_mod.bind}},
 });
 
 pub fn default_loader(vm_: ?*C.VM, mod_: ?*C.Sym, spec: C.Bytes, res: [*c]C.LoaderResult) callconv(.c) bool {
-    const vm: *cy.VM = @ptrCast(@alignCast(vm_));
     const name = C.from_bytes(spec);
-    var src: []const u8 = undefined;
     if (mods.get(name)) |entry| {
-        src = vm.alloc.dupe(u8, entry.src) catch @panic("error");
-        entry.bind(vm_.?, mod_.?);
+        res[0] = .{
+            .src = entry.bind(vm_.?, mod_.?),
+            .manage_src = false,
+        };
+        return true;
     } else {
         return false;
     }
-    res[0] = .{
-        .src = C.to_bytes(src),
-        .manage_src = true,
-    };
-    return true;
 }
 
 pub fn resolveModuleUriFrom(self: *cy.Chunk, buf: []u8, uri: []const u8, node: ?*ast.Node) ![]const u8 {

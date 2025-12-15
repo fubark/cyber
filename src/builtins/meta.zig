@@ -19,7 +19,7 @@ const TypeValue = cy.TypeValue;
 const is_wasm = builtin.cpu.arch.isWasm();
 const is_wasm_freestanding = is_wasm and builtin.os.tag == .freestanding;
 
-pub const Src = @embedFile("meta.cy");
+const Src = @embedFile("meta.cy");
 
 const types = [_]struct{[]const u8, C.BindType}{
     .{"type",           C.TYPE_CREATE(createTypeType)},
@@ -104,7 +104,7 @@ comptime {
     @export(&bind, .{ .name = "cl_mod_bind_meta", .linkage = .strong });
 }
 
-pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
+pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) C.Bytes {
     for (funcs) |e| {
         C.mod_add_func(mod, e.@"0", e.@"1");
     }
@@ -112,6 +112,8 @@ pub fn bind(_: *C.VM, mod: *C.Sym) callconv(.c) void {
     for (types) |e| {
         C.mod_add_type(mod, e.@"0", e.@"1");
     }
+
+    return C.to_bytes(Src);
 }
 
 fn resolveCasePayload(c_: ?*C.VM, sym_: ?*C.Sym) callconv(.c) ?*C.Sym {

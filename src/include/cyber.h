@@ -566,6 +566,7 @@ CLBytes cl_value_desc(CLVM* vm, CLTypeId val_t, CLValue* val);
 
 // Symbol value.
 int64_t cl_symbol(CLVM* vm, CLBytes str);
+int64_t cl_error(CLVM* vm, CLBytes str);
 
 // `cl_str` is the recommended way to initialize a new string.
 // `cl_astr` or `cl_ustr` asserts an ASCII or UTF-8 string respectively.

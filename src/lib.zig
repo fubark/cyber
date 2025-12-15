@@ -651,6 +651,10 @@ fn printLogger(str: C.Bytes) callconv(.C) void {
     std.debug.print("{s}\n", .{ C.from_bytes(str) });
 }
 
+export fn cl_error(vm: *cy.VM, name: C.Bytes) u64 {
+    return vm.sema.ensureSymbol(C.from_bytes(name)) catch @panic("error");
+}
+
 export fn cl_symbol(vm: *cy.VM, name: C.Bytes) u64 {
     return vm.sema.ensureSymbol(C.from_bytes(name)) catch @panic("error");
 }

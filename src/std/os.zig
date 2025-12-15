@@ -88,6 +88,7 @@ fn _args(t: *C.Thread) !C.Ret {
 
     const ret = C.thread_ret(t, C.Slice);
     const byte_buffer_t: C.TypeId = @intCast(C.thread_int(t));
+    _ = byte_buffer_t;
 
     const alloc = C.thread_allocator(t);
 
@@ -108,7 +109,7 @@ fn _args(t: *C.Thread) !C.Ret {
 
     const final_args = args.items[argv_start..];
 
-    const slice = C.slice_init(t, byte_buffer_t, final_args.len, @sizeOf(C.str));
+    const slice = C.slice_init(t, final_args.len, @sizeOf(C.str));
     @memcpy(C.slice_items(slice, C.str), final_args);
     try args.resize(alloc, argv_start);
     ret.* = slice;

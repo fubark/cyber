@@ -317,7 +317,7 @@ pub const slice_init = c.cl_slice_init;
 
 pub fn slice_items(slice: Slice, comptime E: type) []E {
     var buf: [*]E = @ptrCast(@alignCast(slice.ptr));
-    return buf[0..slice.len];
+    return buf[0..@intCast(slice.len)];
 }
 
 pub fn thread_param(t: *Thread, comptime P: type) P {

@@ -107,8 +107,8 @@ typedef struct CLstr {
 typedef struct CLSlice {
     void* buf;
     void* ptr;
-    size_t len;
-    size_t header;
+    uint64_t len;
+    uint64_t header;
 } CLSlice;
 
 // A host function is bound to a runtime function symbol declared with `#[bind]`.

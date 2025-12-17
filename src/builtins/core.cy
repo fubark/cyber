@@ -284,10 +284,10 @@ fn (EvalStr) @index(idx int) -> byte
 
 type NumberFormatConfig:
     --| `pad` provides the ASCII rune that is used for padding.
-    pad   ?int
+    pad   ?byte = none
 
     --| `width` maximum width.
-    width ?int
+    width ?int = none
 
 type byte = Raw[8]
 type r8  = Raw[8]
@@ -339,6 +339,23 @@ fn Raw[] :: @init(x %T) -> Self:
             #else:
                 meta.error('Unsupported: ' + type.name(T))
 
+fn Raw[] :: decode(data &[Bits/8]byte) -> Self:
+    return Self.decode(data, .little)
+
+--| Returns the integer value starting from the pointer with the given endian.
+fn Raw[] :: decode(data &[Bits/8]byte, endian Endian) -> Self:
+    switch endian:
+        case .little:
+            res := Self(0)
+            #for 0..Bits/8 |i|:
+                res = res || (@zext(Self, data[i]) << (Self(i) * 8))
+            return res
+        case .big:
+            res := Self(0)
+            #for 0..Bits/8 |i|:
+                res = (res << 8) || @zext(Self, data[i])
+            return res
+
 #[reserve] fn (Raw[]) `~`() -> Self
 #[reserve] fn (Raw[]) `<`(right Self) -> bool
 #[reserve] fn (Raw[]) `<=`(right Self) -> bool
@@ -362,15 +379,18 @@ fn (Raw[]) fmt() -> str:
 fn (Raw[]) fmt(format NumberFormat) -> str:
     switch format:
         case .bin:
-            return '0b' + raw_fmt(self, format)
+            return '0b' + raw_fmt(self, format, {})
         case .oct:
-            return '0o' + raw_fmt(self, format)
+            return '0o' + raw_fmt(self, format, {})
         case .hex:
-            return '0x' + raw_fmt(self, format)
+            return '0x' + raw_fmt(self, format, {})
         else:
-            return raw_fmt(self, format)
+            return raw_fmt(self, format, {})
 
-#[bind] fn raw_fmt(x r64, format NumberFormat) -> str
+fn (Raw[]) fmt(format NumberFormat, config NumberFormatConfig) -> str:
+    return raw_fmt(self, format, config)
+
+#[bind] fn raw_fmt(x r64, format NumberFormat, config NumberFormatConfig) -> str
 
 type i8  = Int[8]
 type i16 = Int[16]
@@ -441,23 +461,6 @@ fn Int[] :: unsigned(x %T) -> Self:
                     return @zext(Self, x)
             #else:
                 meta.error('Unsupported: ' + type.name(T))
-
-fn Int[] :: decode(ptr Ptr[byte]) -> Self:
-    return Self.decode(ptr, .little)
-
---| Returns the integer value starting from the pointer with the given endian.
-fn Int[] :: decode(ptr Ptr[byte], endian Endian) -> Self:
-    switch endian:
-        case .little:
-            res := Self(0)
-            for 0..Bits/8 |i|:
-                res = res || (@zext(Self, ptr[i]) << (Self(i) * 8))
-            return res
-        case .big:
-            res := Self(0)
-            for 0..Bits/8 |i|:
-                res = (res << 8) || @zext(Self, ptr[i])
-            return res
 
 fn Int[] :: parse(s str) -> !Self:
     slen := s.len()
@@ -1085,13 +1088,6 @@ fn (&Slice[]) @deinit():
             for 0..self._len |i|:
                 @destruct(T, self.ptr + i)
 
-#[unsafe]
-fn (&Slice[]) as_ptr_span() -> PtrSpan[byte]:
-    return {
-        ptr = self.ptr,
-        length = self._len,
-    }
-
 fn (scope &Slice[]) @index_addr(idx int) -> scope &T:
     if idx.uge(self._len):
         panic_oob(idx)
@@ -1418,13 +1414,13 @@ fn (&Span[]) @index_addr(idx int) -> Ptr[T]:
         panic_oob(idx)
     return as[Ptr[T]] self.base + idx
 
-fn (scope &Span[]) @slice() -> scope [&]T:
-    return self.*
+fn (scope Span[]) @slice() -> scope [&]T:
+    return self
 
-fn (scope &Span[]) @slice(start int) -> scope [&]T:
+fn (scope Span[]) @slice(start int) -> scope [&]T:
     return self[start..self.length]
 
-fn (scope &Span[]) @slice(start int, end int) -> scope [&]T:
+fn (scope Span[]) @slice(start int, end int) -> scope [&]T:
     if start > self.length:
         panic_oob(start)
     if end > self.length:
@@ -1436,11 +1432,17 @@ fn (scope &Span[]) @slice(start int, end int) -> scope [&]T:
         length = end - start,
     }
 
-fn (scope &Span[]) as_bytes() -> scope [&]byte:
+fn (scope Span[]) as_bytes() -> scope [&]byte:
     return as (as[Ptr[byte]] self.base)[0..self.length * type.size(T)]
 
-fn (scope &Span[]) span() -> scope [&]T:
-    return self.*
+fn (scope Span[]) span() -> scope [&]T:
+    return self
+
+fn (scope Span[]) vec(idx int, %size int) -> scope &[size]T:
+    if idx + size > self.length:
+        panic('OutOfBounds')
+    ptr := (as[Ptr[T]] self.base) + idx
+    return @scope_ptr_to_borrow('self', as[Ptr[[size]T]] ptr)
 
 fn (&Span[]) `==`(o Self) -> bool:
     a_len := a.len()
@@ -2931,7 +2933,7 @@ type MapEntry[K Any, V Any]:
 
 fn AutoHash[K Any](key K) -> int:
     #if K == str:
-        return Wyhash.hash(0, key.as_ptr_span())
+        return Wyhash.hash(0, key.span())
     #else K == int:
         return splitmix64_hash(key)
     #else K == float:
@@ -3002,7 +3004,7 @@ fn Wyhash :: @init(seed int) -> Wyhash:
     return move new
 
 --@inline
-fn Wyhash :: hash(seed int, input AsSpan[byte]) -> int:
+fn Wyhash :: hash(seed int, input Span[byte]) -> int:
     input_span := input.span()
     new := Wyhash(seed)
 
@@ -3127,10 +3129,10 @@ fn Wyhash :: mix(a int, b int) -> int:
     return a ~ b
 
 fn Wyhash :: readInt(ptr Ptr[byte]) -> int:
-    return int.decode(ptr, .little)
+    return r64.decode(as ptr, .little)
 
 fn Wyhash :: readI32(ptr Ptr[byte]) -> i32:
-    return i32.decode(ptr, .little)
+    return r32.decode(as ptr, .little)
 
 --@inline
 fn (&Wyhash) final0():
@@ -3186,7 +3188,7 @@ type str:
     header int
 
 fn str :: @init(slice []byte) -> str:
-    return str(slice.as_ptr_span())
+    return str(slice.span())
 
 fn str :: @init(span [&]byte) -> str:
     return str(as[PtrSpan[byte]] span)
@@ -3330,10 +3332,12 @@ fn (&str) to_bytes() -> []byte:
     @memcpy(new.ptr, self.ptr, len)
     return new
 
+--| Unsafe. `str` is an immutable type which is incompatible with `Span[byte]`. 
+--| TODO: This should return a readonly Span instead.
 #[unsafe]
-fn (&str) as_ptr_span() -> PtrSpan[byte]:
+fn (scope &str) span() -> scope Span[byte]:
     return {
-        ptr = self.ptr,
+        base   = @scope_ptr_to_borrow('self', self.ptr),
         length = self.len(),
     }
 
@@ -3614,7 +3618,7 @@ fn (&str) fmt(placeholder str, args %T) -> str:
 --| Formats each byte in the string using a NumberFormat.
 --| Each byte is zero padded.
 #[bind]
-fn (&str) fmtBytes(format NumberFormat) -> str:
+fn (&str) fmt_bytes(format NumberFormat) -> str:
     res := ''
     for 0..self.len() |i|:
         res += self[i].fmt(format)
@@ -3622,18 +3626,6 @@ fn (&str) fmtBytes(format NumberFormat) -> str:
 
 fn (&str) hasAsciiFlag() -> bool:
     return (self.header && (1 << 63)) != 0
-
-fn (&str) intAt(idx int) -> int:
-    return int.decode(self.ptr + idx, .little)
-
-fn (&str) intAt(idx int, endian Endian) -> int:
-    return int.decode(self.ptr + idx, endian)
-
-fn (&str) i32At(idx int) -> i32:
-    return i32.decode(self.ptr + idx, .little)
-
-fn (&str) i32At(idx int, endian Endian) -> i32:
-    return i32.decode(self.ptr + idx, endian)
 
 --| Returns a new string with `str` inserted at byte index `idx`.
 #[bind]

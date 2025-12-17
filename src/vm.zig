@@ -393,34 +393,16 @@ pub const VM = struct {
         tt.endPrintVerbose("compile");
 
         if (config.backend == C.BackendJIT) {
-            if (cy.isFreestanding or cy.isWasm) {
-                return error.Unsupported;
-            }
-
             const jitRes = res.jit.buf;
             try self.main_thread.stackEnsureTotalCapacity(res.jit.mainStackSize);
             self.main_thread.c.fp = @ptrCast(self.main_thread.c.stack_ptr);
 
-            // Mark code executable.
-            const PROT_READ = 1;
-            const PROT_WRITE = 2;
-            const PROT_EXEC = 4;
-            try std.posix.mprotect(jitRes.buf.items.ptr[0..jitRes.buf.capacity], PROT_READ | PROT_EXEC);
-
-            // Memory must be reset to original setting in order to be freed.
-            defer std.posix.mprotect(jitRes.buf.items.ptr[0..jitRes.buf.capacity], PROT_WRITE) catch cy.fatal();
-
-            // if (jitRes.buf.items.len > 500*4) {
-            //     logger.tracev("jit code (size: {}) {}...", .{jitRes.buf.items.len, std.fmt.fmtSliceHexLower(jitRes.buf.items[0..100*4])});
-            // } else {
-            //     logger.tracev("jit code (size: {}) {}", .{jitRes.buf.items.len, std.fmt.fmtSliceHexLower(jitRes.buf.items)});
-            // }
+            const main: *const fn(*VM, [*]Value) callconv(.c) void = @ptrCast(@alignCast(jitRes.buf.items.ptr + jitRes.mainPc));
+            // @breakpoint();
 
             // const bytes = jitRes.buf.items[jitRes.mainPc..jitRes.mainPc+12*4];
             // logger.tracev("main start {}: {}", .{jitRes.mainPc, std.fmt.fmtSliceHexLower(bytes)});
 
-            const main: *const fn(*VM, [*]Value) callconv(.c) void = @ptrCast(@alignCast(jitRes.buf.items.ptr + jitRes.mainPc));
-            // @breakpoint();
             main(self, @ptrCast(self.main_thread.c.fp));
             return .{
                 .res = null,
@@ -1119,7 +1101,7 @@ fn zAlloc(vm: *VM, n: usize) callconv(.c) vmc.BufferResult {
     };
 }
 
-fn z_log(t: *cy.Thread, msg: [*]const u8, len: usize) callconv(.c) void {
+pub fn z_log(t: *cy.Thread, msg: [*]const u8, len: usize) callconv(.c) void {
     t.c.vm.log(msg[0..len]);
 }
 

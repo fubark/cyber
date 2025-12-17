@@ -9,7 +9,7 @@ const LRegister = assm.LRegister;
 const Register = A64.Register;
 const gen = @import("gen.zig");
 
-pub const FpReg: A64.Register = .x1;
+pub const FpReg: A64.Register = .x22;
 
 pub fn genLoadSlot(c: *cy.Chunk, dst: LRegister, src: Slot) !void {
     try c.jitPushU32(A64.LoadStore.ldrImmOff(FpReg, src, toReg(dst)).bitCast());
@@ -24,16 +24,32 @@ pub fn genAddImm(c: *cy.Chunk, dst: LRegister, src: LRegister, imm: u64) !void {
 }
 
 pub fn genMovImm(c: *cy.Chunk, dst: LRegister, imm: u64) !void {
-    try copyImm64(c, toReg(dst), imm);
+    try copyImm64(c.jit, toReg(dst), imm);
 }
 
 pub fn genPatchableJumpRel(c: *cy.Chunk) !void {
     try c.jitPushU32(A64.BrImm.bl(0).bitCast());
 }
 
-pub fn patchJumpRel(c: *cy.Chunk, pc: usize, to: usize) void {
-    var inst: *A64.BrImm = @ptrCast(@alignCast(&c.jitBuf.buf.items[pc]));
+pub fn patch_jump_rel(buf: *gen.CodeBuffer, pc: usize, to: usize) void {
+    var inst: *A64.BrImm = @ptrCast(@alignCast(&buf.buf.items[pc]));
     inst.setOffsetFrom(pc, to);
+}
+
+pub fn patch_imm64(buf: *gen.CodeBuffer, pc: usize, reg: LRegister, imm: u64) void {
+    const start = buf.pos();
+    copyImm64(buf, toReg(reg), imm) catch @panic("error");
+    const src = buf.buf.items[start..];
+    @memcpy(buf.buf.items[pc..pc+src.len], src);
+
+    if (src.len < 4 * 4) {
+        // Fill rest with nops.
+        for (src.len/4..4) |offset| {
+            buf.set_u32(pc + offset*4, A64.NoOp.init().bitCast());
+        }
+    }
+
+    buf.buf.items.len = start;
 }
 
 pub fn genCmp(c: *cy.Chunk, left: LRegister, right: LRegister) !void {
@@ -75,27 +91,22 @@ pub fn genMainReturn(c: *cy.Chunk) !void {
     try c.jitPushU32(A64.Br.ret().bitCast());
 }
 
-pub fn genCallFunc(c: *cy.Chunk, ret: Slot, func: *cy.Func) !void {
-    // Skip ret info.
-    // Skip bc pc slot.
-    try genStoreSlot(c, ret + 3, .fp);
-
-    // Advance fp.
-    try genAddImm(c, .fp, .fp, 8 * ret);
+pub fn genCallFunc(c: *cy.Chunk, func: *cy.Func) !void {
+    // Reserve immediate for jump address.
+    const pc = try c.jit.reserve(4 * 4); 
 
     // Push empty branch.
-    const jumpPc = c.jitGetPos();
-    try c.jitBuf.relocs.append(c.alloc, .{ .type = .jumpToFunc, .data = .{ .jumpToFunc = .{
+    try c.jit.relocs.append(c.alloc, .{ .type = .jumpToFunc, .data = .{ .jumpToFunc = .{
         .func = func,
-        .pc = @intCast(jumpPc),
+        .temp_pc = @intCast(pc),
     }}});
-    try assm.genPatchableJumpRel(c);
+    try c.jit.push_u32(A64.Br.blr(toReg(.temp)).bitCast());
 }
 
-pub fn genCallFuncPtr(c: *cy.Chunk, ptr: *const anyopaque) !void {
+pub fn genCallFuncPtr(buf: *gen.CodeBuffer, ptr: *const anyopaque) !void {
     // No reloc needed, copy address to x30 (since it's already spilled) and invoke with blr.
-    try copyImm64(c, .x30, @intFromPtr(ptr));
-    try c.jitPushU32(A64.Br.blr(.x30).bitCast());
+    try copyImm64(buf, .x30, @intFromPtr(ptr));
+    try buf.push_u32(A64.Br.blr(.x30).bitCast());
 }
 
 pub fn genFuncReturn(c: *cy.Chunk) !void {
@@ -110,7 +121,15 @@ pub fn genFuncReturn(c: *cy.Chunk) !void {
 }
 
 pub fn genBreakpoint(c: *cy.Chunk) !void {
-    try c.jitPushU32(A64.Exception.brk(0xf000).bitCast());
+    try c.jit.push_u32(A64.Exception.brk(0xf000).bitCast());
+}
+
+pub fn gen_log(buf: *gen.CodeBuffer, msg: []const u8) !void {
+    try copyImm64(buf, toReg(.arg0), @intFromPtr(msg.ptr));
+    try copyImm64(buf, toReg(.arg1), @intCast(msg.len));
+    try buf.push(gen.stencils.jit_log[0..gen.stencils.jit_log_z_log]);
+    try genCallFuncPtr(buf, cy.vm.z_log);
+    try buf.push(gen.stencils.jit_log[gen.stencils.jit_log_z_log+4..]);
 }
 
 fn toCond(cond: assm.LCond) A64.Cond {
@@ -121,18 +140,19 @@ fn toCond(cond: assm.LCond) A64.Cond {
 }
 
 fn toReg(reg: LRegister) Register {
+    // clang must_tail preserve_none 
     return switch (reg) {
-        .arg0 => .x2,
-        .arg1 => .x3,
-        .arg2 => .x4,
-        .arg3 => .x5,
+        .arg0 => .x23,
+        .arg1 => .x24,
+        .arg2 => .x25,
+        .arg3 => .x26,
         .fp => FpReg,
         .temp => .x8,
     };
 }
 
 /// Ported from https://github.com/llvm-mirror/llvm/blob/master/lib/Target/AArch64/AArch64ExpandImm.cpp
-pub fn copyImm64(c: *cy.Chunk, reg: Register, imm: u64) !void {
+pub fn copyImm64(buf: *gen.CodeBuffer, reg: Register, imm: u64) !void {
     const BitSize: u32 = 64;
     const Mask: u32 = 0xFFFF;
 
@@ -152,7 +172,7 @@ pub fn copyImm64(c: *cy.Chunk, reg: Register, imm: u64) !void {
 
     // Prefer MOVZ/MOVN over ORR because of the rules for the "mov" alias.
     if (((BitSize / 16) - oneChunks <= 1) or ((BitSize / 16) - zeroChunks <= 1)) {
-        try copyImm64Simple(c, reg, imm, oneChunks, zeroChunks);
+        try copyImm64Simple(buf, reg, imm, oneChunks, zeroChunks);
         return;
     }
 
@@ -171,7 +191,7 @@ pub fn copyImm64(c: *cy.Chunk, reg: Register, imm: u64) !void {
     // Prefer MOVZ/MOVN followed by MOVK; it's more readable, and possibly the
     // fastest sequence with fast literal generation.
     if ((oneChunks >= (BitSize / 16) - 2) or (zeroChunks >= (BitSize / 16) - 2)) {
-        try copyImm64Simple(c, reg, imm, oneChunks, zeroChunks);
+        try copyImm64Simple(buf, reg, imm, oneChunks, zeroChunks);
         return;
     }
 
@@ -245,11 +265,11 @@ pub fn copyImm64(c: *cy.Chunk, reg: Register, imm: u64) !void {
 
     // We found no possible two or three instruction sequence; use the general
     // four-instruction sequence.
-    try copyImm64Simple(c, reg, imm, oneChunks, zeroChunks);
+    try copyImm64Simple(buf, reg, imm, oneChunks, zeroChunks);
 }
 
 /// Expand to MOVZ or MOVN of width 64 followed by up to 3 MOVK instructions.
-fn copyImm64Simple(c: *cy.Chunk, dst: Register, imm_: u64, oneChunks: u32, zeroChunks: u32) !void {
+fn copyImm64Simple(buf: *gen.CodeBuffer, dst: Register, imm_: u64, oneChunks: u32, zeroChunks: u32) !void {
     const Mask: u32 = 0xFFFF;
 
     var imm = imm_;
@@ -284,7 +304,7 @@ fn copyImm64Simple(c: *cy.Chunk, dst: Register, imm_: u64, oneChunks: u32, zeroC
 
     firstInst.imm16 = imm16;
     firstInst.setShift(@intCast(shift));
-    try c.jitPush(std.mem.asBytes(&firstInst));
+    try buf.push(std.mem.asBytes(&firstInst));
 
     if (shift == lastShift) {
         return;
@@ -306,7 +326,7 @@ fn copyImm64Simple(c: *cy.Chunk, dst: Register, imm_: u64, oneChunks: u32, zeroC
 
         inst.imm16 = imm16;
         inst.setShift(@intCast(shift));
-        try c.jitPush(std.mem.asBytes(&inst));
+        try buf.push(std.mem.asBytes(&inst));
     }
 }
 

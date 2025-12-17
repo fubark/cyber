@@ -29,6 +29,7 @@ pub const ir = @import("ir.zig");
 pub const dce = @import("dce.zig");
 
 pub const cgen = @import("cgen.zig");
+pub const jitgen = @import("jit/gen.zig");
 
 pub const types = @import("types.zig");
 pub const TypeId = types.TypeId;

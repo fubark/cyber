@@ -524,7 +524,7 @@ pub fn compactToStackFrame(vm: *cy.VM, stack: []const cy.Value, frame: vmc.Compa
         var name: []const u8 = "host function";
         switch (ops[sym.pc].opcode()) {
             .call_host => {
-                const addr: usize = @intCast(@as(*const align(1) u48, @ptrCast(ops.ptr + sym.pc + 3)).*);
+                const addr: usize = @intCast(@as(*const align(1) u48, @ptrCast(ops.ptr + sym.pc + 2)).*);
                 const func_ptr: *anyopaque = @ptrFromInt(addr);
                 const func_id = vm.host_funcs.get(func_ptr).?;
                 name = vm.funcSymDetails.items[func_id].name();

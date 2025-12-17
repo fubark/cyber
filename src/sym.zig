@@ -916,7 +916,9 @@ const FuncInfo = packed struct {
     /// When > 0, indicates to the applicable backend that calls to this function can be replaced with an intrinsic.
     gen_intrinsic: u2 = 0,
 
-    padding: u6 = undefined,
+    jit: bool = false,
+
+    padding: u5 = undefined,
 };
 
 pub const FuncConfig = struct {

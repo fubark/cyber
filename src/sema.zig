@@ -2762,19 +2762,29 @@ pub fn ensure_resolved_func(c: *cy.Chunk, func: *cy.Func, resolve_new_types: boo
     var extern_attr: ?*ast.Attribute = null;
     var has_generator: bool = false;
     for (decl.attrs.slice()) |attr| {
-        if (attr.type == .bind) {
-            bind_attr = attr;
-        } else if (attr.type == .extern_) {
-            extern_attr = attr;
-        } else if (attr.type == .generator) {
-            has_generator = true;
-        } else if (attr.type == .consteval) {
-            func.info.const_eval_only = true;
-        } else if (attr.type == .reserve) {
-            func.type = .reserved;
-            const sig = try ensure_opaque_func_sig(c, decl.params.len);
-            try c.resolveFunc(func, sig);
-            return;
+        switch (attr.type) {
+            .bind => {
+                bind_attr = attr;
+            },
+            .extern_ => {
+                extern_attr = attr;
+            },
+            .generator => {
+                has_generator = true;
+            },
+            .consteval => {
+                func.info.const_eval_only = true;
+            },
+            .reserve => {
+                func.type = .reserved;
+                const sig = try ensure_opaque_func_sig(c, decl.params.len);
+                try c.resolveFunc(func, sig);
+                return;
+            },
+            .jit => {
+                func.info.jit = true;
+            },
+            else => {},
         }
     }
 
@@ -6859,6 +6869,7 @@ pub fn semaExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: Cstr) anyerror!ExprR
                     .tag = 1,
                 });
                 var ptr = ExprResult.init2(loc);
+                ptr.addressable = opt.addressable;
                 ptr.data.value.parent_local = opt.recParentLocal();
 
                 var res = try semaDeref(c, ptr, node);
@@ -7550,19 +7561,25 @@ pub fn semaStringTarget(c: *cy.Chunk, lit: []const u8, opt_target: ?*cy.Type, no
                 return c.semaStringAs(lit, target_t, node);
             }
         }
+
+        var base_t = target_t;
+        if (target_t.kind() == .option) {
+            base_t = target_t.cast(.option).child_t;
+        }
+
         var target_bits: ?u32 = null;
-        if (target_t.kind() == .int) {
-            target_bits = target_t.cast(.int).bits;
-        } else if (target_t.kind() == .raw) {
-            target_bits = target_t.cast(.raw).bits;
+        if (base_t.kind() == .int) {
+            target_bits = base_t.cast(.int).bits;
+        } else if (base_t.kind() == .raw) {
+            target_bits = base_t.cast(.raw).bits;
         }
         if (target_bits) |bits| {
             if (try semaTryStringLitCodepoint(c, lit, bits)) |val| {
                 switch (bits) {
-                    8 => return semaConst8(c, val.byte, target_t, node),
-                    16 => return semaConst16(c, val.u16, target_t, node),
-                    32 => return semaConst32(c, val.u32, target_t, node),
-                    64 => return semaConst(c, val.val, target_t, node),
+                    8 => return semaConst8(c, val.byte, base_t, node),
+                    16 => return semaConst16(c, val.u16, base_t, node),
+                    32 => return semaConst32(c, val.u32, base_t, node),
+                    64 => return semaConst(c, val.val, base_t, node),
                     else => @panic("unexpected"),
                 }
             }

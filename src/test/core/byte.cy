@@ -71,4 +71,12 @@ if meta.is_vm_target():
     -- test.eq('0010', byte(10).fmt(.dec, {pad=`0`, width=4}))
     -- test.eq('0010', byte(16).fmt(.hex, {pad=`0`, width=4}))
 
+-- Infer from string literal.
+var aa byte = 'a'
+test.eq(97, aa)
+
+-- Infer optional from string literal.
+var opt_aa ?byte = 'a'
+test.eq(97, opt_aa.?)
+
 --cytest: pass

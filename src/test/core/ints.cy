@@ -103,4 +103,14 @@ if meta.is_vm_target():
 a = 123
 t.eq(byte(123), byte(a))
 
+-- r64.decode()
+vec := [8]byte{0x5a, 0xf1, 0x06, 0x04, 0x5e, 0x23, 0x8d, 0xd2}
+t.eq(0x5AF106045E238DD2, r64.decode(&vec, .big))
+t.eq(0xD28D235E0406F15A, r64.decode(&vec, .little))
+
+-- r32.decode()
+vec2 := [4]byte{0x49, 0x96, 0x02, 0xD2}
+t.eq(r32(0x499602D2), r32.decode(&vec2, .big))
+t.eq(r32(0xD2029649), r32.decode(&vec2, .little))
+
 --cytest: pass

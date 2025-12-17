@@ -144,6 +144,8 @@ pub const Chunk = struct {
     relocations: std.ArrayList(bc.Relocation),
     rt_relocations: std.ArrayList(bc.Relocation),
 
+    jit_funcs: std.ArrayList(*cy.Func),
+
     cur_proc: *bc.Proc,
 
     // TODO: inline the active `Proc`.
@@ -152,7 +154,7 @@ pub const Chunk = struct {
     temp_access_path: VarAccessPath,
 
     buf: cy.ByteCodeBuffer,
-    jitBuf: *jitgen.CodeBuffer,
+    jit: *jitgen.CodeBuffer,
     x64Enc: X64.Encoder,
 
     /// This chunk's sym.
@@ -219,7 +221,7 @@ pub const Chunk = struct {
             .listDataStack = .{},
             .cur_proc = undefined,
             .buf = cy.ByteCodeBuffer.init(c.alloc, c.vm),
-            .jitBuf = undefined,
+            .jit = undefined,
             .x64Enc = undefined,
             .curNode = null,
             .cur_cont_expr = null,
@@ -253,6 +255,7 @@ pub const Chunk = struct {
             .bc_local_map = .{},
             .relocations = .{},
             .rt_relocations = .{},
+            .jit_funcs = .{},
         };
         self.encoder.c = c;
         self.ir.init(c.alloc);
@@ -341,6 +344,7 @@ pub const Chunk = struct {
         self.bc_local_map.deinit(self.alloc);
         self.relocations.deinit(self.alloc);
         self.rt_relocations.deinit(self.alloc);
+        self.jit_funcs.deinit(self.alloc);
 
         self.alloc.free(self.srcUri);
         self.parser.deinit();
@@ -694,7 +698,7 @@ pub const Chunk = struct {
     pub fn pushFCode(c: *Chunk, code: cy.OpCode, args: []const u16, node: *ast.Node) !void {
         log.tracev("pushFCode: {s} {}", .{@tagName(code), c.buf.ops.items.len});
         try c.pushFailableDebugSym(node);
-        try c.buf.pushOpSliceExt(code, args, null);
+        try c.buf.pushOpSlice(code, args);
         if (cy.Trace) {
             const exp = cy.bytecode.getInstLenAt(c.buf.ops.items.ptr + c.buf.ops.items.len - 1 - args.len) - 1;
             if (args.len != exp) {
@@ -706,7 +710,7 @@ pub const Chunk = struct {
     pub fn pushCode(c: *Chunk, code: cy.OpCode, args: []const u16, node: *ast.Node) !void {
         log.tracev("pushCode: {s} {}", .{@tagName(code), c.buf.ops.items.len});
         try c.pushOptionalDebugSym(node);
-        try c.buf.pushOpSliceExt(code, args, null);
+        try c.buf.pushOpSlice(code, args);
         if (cy.Trace) {
             const exp = cy.bytecode.getInstLenAt(c.buf.ops.items.ptr + c.buf.ops.items.len - 1 - args.len) - 1;
             if (args.len != exp) {
@@ -718,7 +722,7 @@ pub const Chunk = struct {
     pub fn pushCodeExt(c: *Chunk, code: cy.OpCode, args: []const u16, operands: usize, node: *ast.Node) !void {
         log.tracev("pushCode: {s} {}", .{@tagName(code), c.buf.ops.items.len});
         try c.pushOptionalDebugSym(node);
-        try c.buf.pushOpSliceExt(code, args, null);
+        try c.buf.pushOpSlice(code, args);
         _ = try c.buf.reserveData(operands);
         if (cy.Trace) {
             const exp = cy.bytecode.getInstLenAt(c.buf.ops.items.ptr + c.buf.ops.items.len - 1 - args.len - operands) - 1;

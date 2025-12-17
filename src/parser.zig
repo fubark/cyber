@@ -25,6 +25,7 @@ const attributes = std.StaticStringMap(cy.ast.AttributeType).initComptime(.{
     .{ "cond", .cond },
     .{ "unsafe", .unsafe },
     .{ "consteval", .consteval },
+    .{ "jit", .jit },
 });
 
 const special_strings = std.StaticStringMap(cy.ast.SpecialStringKind).initComptime(.{

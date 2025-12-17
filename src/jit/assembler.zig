@@ -79,10 +79,18 @@ pub fn genPatchableJumpRel(c: *cy.Chunk) !void {
     }
 }
 
-pub fn patchJumpRel(c: *cy.Chunk, pc: usize, to: usize) void {
+pub fn patch_imm64(buf: *cy.jitgen.CodeBuffer, pc: usize, reg: LRegister, value: u64) void {
     switch (builtin.cpu.arch) {
-        .aarch64 => a64.patchJumpRel(c, pc, to),
-        .x86_64 => x64.patchJumpRel(c, pc, to),
+        .aarch64 => a64.patch_imm64(buf, pc, reg, value),
+        // .x86_64 => x64.patchJumpRel(c, pc, to),
+        else => unreachable,
+    }
+}
+
+pub fn patch_jump_rel(buf: *cy.jitgen.CodeBuffer, pc: usize, to: usize) void {
+    switch (builtin.cpu.arch) {
+        .aarch64 => a64.patch_jump_rel(buf, pc, to),
+        .x86_64 => x64.patchJumpRel(buf, pc, to),
         else => unreachable,
     }
 }
@@ -139,10 +147,17 @@ pub fn genBreakpoint(c: *cy.Chunk) !void {
     }
 }
 
-pub fn genCallFunc(c: *cy.Chunk, ret: Slot, func: *cy.Func) !void {
+pub fn gen_log(buf: *cy.jitgen.CodeBuffer, msg: []const u8) !void {
     switch (builtin.cpu.arch) {
-        .aarch64 => try a64.genCallFunc(c, ret, func),
-        .x86_64 => try x64.genCallFunc(c, ret, func),
+        .aarch64 => try a64.gen_log(buf, msg),
+        else => return error.Unsupported,
+    }
+}
+
+pub fn genCallFunc(c: *cy.Chunk, func: *cy.Func) !void {
+    switch (builtin.cpu.arch) {
+        .aarch64 => try a64.genCallFunc(c, func),
+        .x86_64 => try x64.genCallFunc(c, func),
         else => return error.Unsupported,
     }
 }

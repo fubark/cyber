@@ -1,6 +1,16 @@
 #include <stdint.h>
 #include "vm.h"
 
+// Avoiding compound literal to suggest compiler not to use constant pool.
+#define RETURN(pc_, code_) \
+    do { \
+        PcFpResult res; \
+        res.pc = pc_; \
+        res.fp = fp; \
+        res.code = code_; \
+        return res; \
+    } while (false)
+
 // clang: clang -c stencils.c -o stencils.o -I../ -O2
 // clang-wasm: clang -c stencil.c -I../ -O2 --target=wasm32 -mtail-call -o stencils.o
 // zig: zig cc -c stencils.c -fdouble-square-bracket-attributes -O2 -I../ -o stencils.o
@@ -11,118 +21,190 @@
 Value hostFunc(VM* vm, const Value* args, u8 nargs);
 void zDumpJitSection(VM* vm, Value* fp, u64 chunkId, u64 irIdx, u8* startPc, u8* endPc);
 void cont(Value* fp);
-void cont2(VM* vm, Value* fp);
-void cont3(VM* vm, Value* fp, u64 a);
-void cont4(VM* vm, Value* fp, u64 a, u64 b);
-void cont5(VM* vm, Value* fp, u64 a, u64 b, u64 c);
+PcFpResult cont2(ZThread* t, Value* fp) __attribute__((preserve_none));
+PcFpResult cont3(ZThread* t, Value* fp, u64 a) __attribute__((preserve_none));
+PcFpResult cont4(ZThread* t, Value* fp, u64 a, u64 b) __attribute__((preserve_none));
+PcFpResult cont5(ZThread* t, Value* fp, u64 a, u64 b, u64 c) __attribute__((preserve_none));
 void cont6(VM* vm, Value* fp, u64 a, u64 b, u64 c, u64 d);
+PcFpResult br3(ZThread* t, Value* fp, u64 a) __attribute__((preserve_none));
 void interrupt(VM* vm, Value* fp);
 void interrupt4(VM* vm, Value* fp, u64 a, u64 b);
 void interrupt5(VM* vm, Value* fp, u64 a, u64 b, u64 c);
-void divByZero(VM* vm, Value* fp, u64 a, u64 b);
+PcFpResult div_by_zero(ZThread* t, Value* fp, u64 a, u64 b, u64 c) __attribute__((preserve_none));
 void branchTrue(Value* fp);
 void branchFalse(Value* fp);
 
-void addFloat(VM* vm, Value* fp, Value left, Value right) {
-    [[clang::musttail]] return cont4(vm, fp, VALUE_FLOAT(VALUE_AS_FLOAT(left) + VALUE_AS_FLOAT(right)), right);
-}
+// Suggest `cond` is expected to be true to generate continuation branch last.
+#define GUARD_COND(cond) __builtin_expect(cond, true)
 
-void subFloat(VM* vm, Value* fp, Value left, Value right) {
-    [[clang::musttail]] return cont4(vm, fp, VALUE_FLOAT(VALUE_AS_FLOAT(left) - VALUE_AS_FLOAT(right)), right);
-}
+PcFpResult pre_ret(ZThread* t, Value* fp) __attribute__((preserve_none)) {
+    u8 frame_t = (fp[1] >> 16) & 0xff;
 
-void mulFloat(VM* vm, Value* fp, Value left, Value right) {
-    [[clang::musttail]] return cont4(vm, fp, VALUE_FLOAT(VALUE_AS_FLOAT(left) * VALUE_AS_FLOAT(right)), right);
-}
-
-void divFloat(VM* vm, Value* fp, Value left, Value right) {
-    [[clang::musttail]] return cont4(vm, fp, VALUE_FLOAT(VALUE_AS_FLOAT(left) / VALUE_AS_FLOAT(right)), right);
-}
-
-void addInt(VM* vm, Value* fp, Value left, Value right) {
-    [[clang::musttail]] return cont4(vm, fp, VALUE_INTEGER(VALUE_AS_INTEGER(left) + VALUE_AS_INTEGER(right)), right);
-}
-
-void subInt(VM* vm, Value* fp, Value left, Value right) {
-    [[clang::musttail]] return cont4(vm, fp, VALUE_INTEGER(VALUE_AS_INTEGER(left) - VALUE_AS_INTEGER(right)), right);
-}
-
-void mulInt(VM* vm, Value* fp, Value left, Value right) {
-    [[clang::musttail]] return cont4(vm, fp, VALUE_INTEGER(VALUE_AS_INTEGER(left) * VALUE_AS_INTEGER(right)), right);
-}
-
-void divInt(VM* vm, Value* fp, Value left, Value right) {
-    _BitInt(48) rightInt = VALUE_AS_INTEGER(right);
-    if (rightInt == 0) {
-        [[clang::musttail]] return divByZero(vm, fp, left, right);
+    // Restore x30 when returning to VM or JIT caller. 
+    __asm__ volatile (
+        "mov x30, %0"
+        :                 
+        : "r" (fp[2])
+        : 
+    );
+    fp = (Value*)fp[3];
+    if (GUARD_COND(frame_t != FRAME_JIT)) {
+        RETURN(NULL, RES_SUCCESS);
     }
-    [[clang::musttail]] return cont4(vm, fp, VALUE_INTEGER(VALUE_AS_INTEGER(left) / VALUE_AS_INTEGER(right)), right);
+    [[clang::musttail]] return cont2(t, fp);
 }
 
-void lessInt(VM* vm, Value* fp, Value left, Value right) {
-    // Result saved in `left` register.
-    [[clang::musttail]] return cont4(vm, fp, VALUE_BOOLEAN(VALUE_AS_INTEGER(left) < VALUE_AS_INTEGER(right)), right);
+PcFpResult mov(ZThread* t, Value* fp, u64 dst, u64 src) __attribute__((preserve_none)) {
+    fp[dst] = fp[src];
+    [[clang::musttail]] return cont4(t, fp, dst, src);
 }
 
-void intPair(VM* vm, Value* fp, Value left, Value right) {
-    [[clang::musttail]] return cont4(vm, fp, VALUE_AS_INTEGER(left), VALUE_AS_INTEGER(right));
+PcFpResult lt(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
+    i64 left_i = BITCAST(i64, fp[left]);
+    i64 right_i = BITCAST(i64, fp[right]);
+    fp[dst] = left_i < right_i;
+    [[clang::musttail]] return cont5(t, fp, dst, left, right);
 }
 
-void isTrue(VM* vm, Value* fp, Value cond) {
-    [[clang::musttail]] return cont3(vm, fp, VALUE_IS_BOOLEAN(cond) ? VALUE_AS_BOOLEAN(cond) : VALUE_ASSUME_NOT_BOOL_TO_BOOL(cond));
-}
-
-void lessIntCFlag(VM* vm, Value* fp, Value left, Value right) {
-    if ((int64_t)left < (int64_t)right) {
-        [[clang::musttail]] return cont4(vm, fp, left, right);
+PcFpResult jump_f(ZThread* t, Value* fp, u64 cond) __attribute__((preserve_none)) {
+    if (GUARD_COND(!*(bool*)&fp[cond])) {
+        [[clang::musttail]] return br3(t, fp, cond);
     }
+    [[clang::musttail]] return cont3(t, fp, cond);
 }
 
-void call(VM* vm, Value* fp) {
-    [[clang::musttail]] return cont2(vm, fp + CALL_ARG_START);
+PcFpResult store_const(ZThread* t, Value* fp, u64 dst, u64 value) __attribute__((preserve_none)) {
+    fp[dst] = value;
+    [[clang::musttail]] return cont4(t, fp, dst, value);
 }
 
-// TODO: Mark with GHC calling convention in LLVM so callee save registers aren't spilled.
-void callHost(VM* vm, Value* fp, u64 args, u64 numArgs, Value res) {
-    vm->stackPtr = fp;
-    res = hostFunc(vm, BITCAST(Value*, args), (u8)numArgs);
-    if (res == VALUE_INTERRUPT) {
-        // return error.Panic;
-        [[clang::musttail]] return interrupt5(vm, fp, args, numArgs, res);
+PcFpResult chk_stk(ZThread* t, Value* fp, u64 ret_size, u64 frame_size) __attribute__((preserve_none)) {
+    fp -= ret_size;
+    if (GUARD_COND(fp + frame_size >= t->c.stack_end)) {
+        RETURN(NULL, RES_STACK_OVERFLOW);
     }
-    [[clang::musttail]] return cont5(vm, fp, args, numArgs, res);
+    [[clang::musttail]] return cont4(t, fp, ret_size, frame_size);
 }
 
-void end(VM* vm, Value* fp, u64 retSlot) {
-    vm->endLocal = (u8)retSlot;
-    // vm.curFiber.pcOffset = @intCast(getInstOffset(vm, pc + 2));
-    [[clang::musttail]] return cont3(vm, fp, retSlot);
+PcFpResult fadd(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
+    fp[dst] = VALUE_FLOAT(VALUE_AS_FLOAT(fp[left]) + VALUE_AS_FLOAT(fp[right]));
+    [[clang::musttail]] return cont5(t, fp, dst, left, right);
 }
 
-void stringTemplate(VM* vm, Value* fp, u64 strs, u64 exprs, u64 exprCount) {
-    ValueResult res = zAllocStringTemplate2(vm, BITCAST(Value*, strs), exprCount+1, BITCAST(Value*, exprs), exprCount);
-    if (res.code != RES_CODE_SUCCESS) {
-        [[clang::musttail]] return interrupt5(vm, fp, strs, exprs, res.code);
+PcFpResult fsub(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
+    fp[dst] = VALUE_FLOAT(VALUE_AS_FLOAT(fp[left]) - VALUE_AS_FLOAT(fp[right]));
+    [[clang::musttail]] return cont5(t, fp, dst, left, right);
+}
+
+PcFpResult fmul(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
+    fp[dst] = VALUE_FLOAT(VALUE_AS_FLOAT(fp[left]) * VALUE_AS_FLOAT(fp[right]));
+    [[clang::musttail]] return cont5(t, fp, dst, left, right);
+}
+
+PcFpResult fdiv(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
+    fp[dst] = VALUE_FLOAT(VALUE_AS_FLOAT(fp[left]) / VALUE_AS_FLOAT(fp[right]));
+    [[clang::musttail]] return cont5(t, fp, dst, left, right);
+}
+
+PcFpResult add(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
+    fp[dst] = fp[left] + fp[right];
+    [[clang::musttail]] return cont5(t, fp, dst, left, right);
+}
+
+PcFpResult sub(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
+    fp[dst] = fp[left] - fp[right];
+    [[clang::musttail]] return cont5(t, fp, dst, left, right);
+}
+
+PcFpResult mul(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
+    fp[dst] = fp[left] * fp[right];
+    [[clang::musttail]] return cont5(t, fp, dst, left, right);
+}
+
+PcFpResult div(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
+    u64 rightv = fp[right];
+    if (GUARD_COND(rightv == 0)) {
+        [[clang::musttail]] return div_by_zero(t, fp, dst, left, right);
     }
-    [[clang::musttail]] return cont5(vm, fp, res.val, exprs, exprCount);
+    fp[dst] = fp[left] / fp[right];
+    [[clang::musttail]] return cont5(t, fp, dst, left, right);
 }
 
-void dumpJitSection(VM* vm, Value* fp, u64 chunkId, u64 irIdx, u64 startPc, u64 endPc) {
-    zDumpJitSection(vm, fp, chunkId, irIdx, BITCAST(u8*, startPc), BITCAST(u8*, endPc));
-    [[clang::musttail]] return cont6(vm, fp, chunkId, irIdx, startPc, endPc);
+#define JIT_CALLINFO(callInstOff, stack_size) ((Value)(((u32)callInstOff << 1) | ((u32)stack_size << 8)) | ((u32)FRAME_JIT << 16))
+
+// Prologue for VM/JIT -> JIT.
+PcFpResult func_prologue(ZThread* t, Value* fp) __attribute__((preserve_none)) {
+    // Persist return addr reg into stack.
+#if defined(__aarch64__)
+    __asm__ volatile (
+        "str x30, [%0]"
+        :
+        : "r" (fp + 1)
+        : "memory"
+    );
+#elif
+#endif
+    [[clang::musttail]] return cont2(t, fp);
 }
 
-void release(VM* vm, Value* fp, Value val) {
-    if (VALUE_IS_POINTER(val)) {
-        HeapObject* obj = VALUE_AS_HEAPOBJECT(val);
-        obj->head.rc -= 1;
-        if (obj->head.rc == 0) {
-            zFreeObject(vm, obj);
-        }
-    }
-    [[clang::musttail]] return cont3(vm, fp, val);
+// Omits the actual branch call inst.
+PcFpResult pre_call(ZThread* t, Value* fp, u64 base) __attribute__((preserve_none)) {
+    uintptr_t ret_fp = (uintptr_t)fp;
+    fp += base;
+    fp[0] = JIT_CALLINFO(0, 0);
+    // return addr saved in callee jit_prologue.
+    fp[2] = ret_fp;
+    [[clang::musttail]] return cont3(t, fp, base);
 }
 
-// void test(VM* vm, Value* fp, Value a, Value b) {
-//     // [[clang::musttail]] return cont4(vm+1, fp, a, b);
+PcFpResult jit_log(ZThread* t, Value* fp, u64 msg, u64 msg_len) __attribute__((preserve_none)) {
+    z_log(t, (const char*)msg, msg_len);
+    [[clang::musttail]] return cont4(t, fp, msg, msg_len);
+}
+
+// void intPair(VM* vm, Value* fp, Value left, Value right) {
+//     [[clang::musttail]] return cont4(vm, fp, VALUE_AS_INTEGER(left), VALUE_AS_INTEGER(right));
+// }
+
+// void isTrue(VM* vm, Value* fp, Value cond) {
+//     [[clang::musttail]] return cont3(vm, fp, VALUE_IS_BOOLEAN(cond) ? VALUE_AS_BOOLEAN(cond) : VALUE_ASSUME_NOT_BOOL_TO_BOOL(cond));
+// }
+
+// void lessIntCFlag(VM* vm, Value* fp, Value left, Value right) {
+//     if ((int64_t)left < (int64_t)right) {
+//         [[clang::musttail]] return cont4(vm, fp, left, right);
+//     }
+// }
+
+// // TODO: Mark with GHC calling convention in LLVM so callee save registers aren't spilled.
+// void callHost(VM* vm, Value* fp, u64 args, u64 numArgs, Value res) {
+//     vm->stackPtr = fp;
+//     res = hostFunc(vm, BITCAST(Value*, args), (u8)numArgs);
+//     if (res == VALUE_INTERRUPT) {
+//         // return error.Panic;
+//         [[clang::musttail]] return interrupt5(vm, fp, args, numArgs, res);
+//     }
+//     [[clang::musttail]] return cont5(vm, fp, args, numArgs, res);
+// }
+
+// void end(VM* vm, Value* fp, u64 retSlot) {
+//     vm->endLocal = (u8)retSlot;
+//     // vm.curFiber.pcOffset = @intCast(getInstOffset(vm, pc + 2));
+//     [[clang::musttail]] return cont3(vm, fp, retSlot);
+// }
+
+// void dumpJitSection(VM* vm, Value* fp, u64 chunkId, u64 irIdx, u64 startPc, u64 endPc) {
+//     zDumpJitSection(vm, fp, chunkId, irIdx, BITCAST(u8*, startPc), BITCAST(u8*, endPc));
+//     [[clang::musttail]] return cont6(vm, fp, chunkId, irIdx, startPc, endPc);
+// }
+
+// void release(VM* vm, Value* fp, Value val) {
+//     if (VALUE_IS_POINTER(val)) {
+//         HeapObject* obj = VALUE_AS_HEAPOBJECT(val);
+//         obj->head.rc -= 1;
+//         if (obj->head.rc == 0) {
+//             zFreeObject(vm, obj);
+//         }
+//     }
+//     [[clang::musttail]] return cont3(vm, fp, val);
 // }

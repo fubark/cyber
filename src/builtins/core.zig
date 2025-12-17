@@ -173,7 +173,7 @@ const funcs = [_]struct{[]const u8, C.BindFunc}{
     .{"str.index_newline", zErrFunc(string.index_newline)},
     .{"str.index_any_byte", zErrFunc(str_index_any_byte)},
     .{"str.index_any_rune", zErrFunc(string.index_any_rune)},
-    .{"str.fmtBytes",    zErrFunc(stringFmtBytes)},
+    .{"str.fmt_bytes",    zErrFunc(str_fmt_bytes)},
     .{"str.rune_at",     zErrFunc(string.rune_at)},
     .{"str.@index",      zErrFunc(str_byteAt)},
     .{"str.insert",      zErrFunc(string.insertFn)},
@@ -1831,7 +1831,7 @@ fn str_index_byte(t: *cy.Thread) !C.Ret {
     return C.RetOk;
 }
 
-fn stringFmtBytes(t: *cy.Thread) anyerror!C.Ret {
+fn str_fmt_bytes(t: *cy.Thread) anyerror!C.Ret {
     const ret = t.ret(cy.heap.Str);
     const obj = t.param(*cy.HeapObject);
     const str = obj.string.slice();
@@ -2074,7 +2074,8 @@ fn raw_fmt(t: *cy.Thread) anyerror!C.Ret {
     const ret = t.ret(cy.heap.Str);
     const val = t.param(u64);
     const format = try std.meta.intToEnum(NumberFormat, t.param(i64));
-    ret.* = try rawFmtExt(t, val, format, .{});
+    const config = t.param(cy.heap.NumberFormatConfig);
+    ret.* = try rawFmtExt(t, val, format, config);
     return C.RetOk;
 }
 
@@ -2099,28 +2100,10 @@ fn int_fmt2(t: *cy.Thread) anyerror!Value {
     const format = try std.meta.intToEnum(NumberFormat, t.getInt(1));
 
     const config = t.getPtr(*cy.heap.NumberFormatConfig, 2);
-    const opts = try getIntFmtOptions(config);
-    return intFmtExt(t, val, format, opts);
+    return intFmtExt(t, val, format, config);
 }
 
-pub fn getIntFmtOptions(config: *cy.heap.NumberFormatConfig) !IntFmtOptions {
-    var opts: IntFmtOptions = .{};
-    if (config.has_pad == 1) {
-        if (config.pad > 127) return error.InvalidArgument;
-        opts.pad = @intCast(config.pad);
-    }
-    if (config.has_width == 1) {
-        opts.width = @intCast(config.width);
-    }
-    return opts;
-}
-
-const IntFmtOptions = struct {
-    pad: ?u8 = null,
-    width: ?usize = null,
-};
-
-pub fn intFmtExt(heap: *cy.Heap, val: i64, format: NumberFormat, opts: IntFmtOptions) !cy.heap.Str {
+pub fn intFmtExt(heap: *cy.Heap, val: i64, format: NumberFormat, opts: cy.heap.NumberFormatConfig) !cy.heap.Str {
     if (format == .asc) {
         if (val < 0 or val > 127) {
             return error.InvalidArgument;
@@ -2137,17 +2120,19 @@ pub fn intFmtExt(heap: *cy.Heap, val: i64, format: NumberFormat, opts: IntFmtOpt
         };
         var buf: [64]u8 = undefined;
         var end: usize = undefined;
+        const fill: u8 = opts.pad.from() orelse ' ';
+        const width: ?usize = if (opts.width.from()) |width| @intCast(width) else null;
         if (format == .dec and val < 0) {
-            end = std.fmt.printInt(&buf, val, base, .lower, .{ .fill = opts.pad orelse ' ', .width = opts.width });
+            end = std.fmt.printInt(&buf, val, base, .lower, .{ .fill = fill, .width = width });
         } else {
             // Format as u64 to prevent emitting the `+` character.
-            end = std.fmt.printInt(&buf, @as(u64, @bitCast(val)), base, .lower, .{ .fill = opts.pad orelse ' ', .width = opts.width });
+            end = std.fmt.printInt(&buf, @as(u64, @bitCast(val)), base, .lower, .{ .fill = fill, .width = width });
         }
         return heap.init_astr(buf[0..end]);
     }
 }
 
-pub fn rawFmtExt(t: *cy.Thread, val: u64, format: NumberFormat, opts: IntFmtOptions) !cy.heap.Str {
+pub fn rawFmtExt(t: *cy.Thread, val: u64, format: NumberFormat, opts: cy.heap.NumberFormatConfig) !cy.heap.Str {
     if (format == .asc) {
         if (val < 0 or val > 127) {
             return error.InvalidArgument;
@@ -2163,7 +2148,9 @@ pub fn rawFmtExt(t: *cy.Thread, val: u64, format: NumberFormat, opts: IntFmtOpti
             else => return error.InvalidArgument,
         };
         var buf: [64]u8 = undefined;
-        const end = std.fmt.printInt(&buf, val, base, .lower, .{ .fill = opts.pad orelse ' ', .width = opts.width });
+        const fill: u8 = opts.pad.from() orelse ' ';
+        const width: ?usize = if (opts.width.from()) |width| @intCast(width) else null;
+        const end = std.fmt.printInt(&buf, val, base, .lower, .{ .fill = fill, .width = width });
         return t.heap.init_astr(buf[0..end]);
     }
 }

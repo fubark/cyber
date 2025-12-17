@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const cy = @import("cyber.zig");
 const jitgen = @import("jit/gen.zig");
 const log = cy.log.scoped(.bc_gen);
@@ -171,6 +172,25 @@ pub fn genAll(c: *cy.Compiler) !void {
         }
     }
 
+    // Perform JIT gen after BC gen.
+    var jit_gen = false;
+    for (c.newChunks()) |chunk| {
+        if (chunk.jit_funcs.items.len > 0) {
+            for (chunk.buf.labels.items) |bc_pc| {
+                // Updated with jit buffer pos during `gen_funcs`.
+                try c.jitBuf.labels.putNoClobber(c.alloc, .{.chunk = chunk, .bc_pc=bc_pc}, 0);
+            }
+
+            jit_gen = true;
+            try jitgen.gen_funcs(chunk, chunk.jit_funcs.items);
+        }
+    }
+
+    if (jit_gen) {
+        try jitgen.relocate(&c.jitBuf);
+        try c.jitBuf.set_executable();
+    }
+
     // Update runtime type info.
     if (cy.Trace) {
         c.vm.c.rw_lock.write_lock();
@@ -311,7 +331,7 @@ pub fn ensureFunc(c: *cy.Compiler, func: *cy.Func) !u32 {
     const res = try c.genSymMap.getOrPut(c.alloc, func);
     if (!res.found_existing) {
         const id = try c.vm.addFunc(func, func.name(), func.sig.id, cy.vm.FuncSymbol.initNull());
-        res.value_ptr.* = .{ .func = .{ .static_pc = undefined, .id = id, .pc = 0 }};
+        res.value_ptr.* = .{ .func = .{ .static_pc = undefined, .id = id, .pc = 0, .end_pc = 0 }};
     }
     return res.value_ptr.func.id;
 }
@@ -320,7 +340,7 @@ pub fn ensureExternFuncPtrDispatch(c: *cy.Compiler, func_ptr: *cy.types.FuncPtr)
     const res = try c.genSymMap.getOrPut(c.alloc, func_ptr);
     if (!res.found_existing) {
         const id = try c.vm.addFunc(null, "extern_func_ptr", func_ptr.sig.id, cy.vm.FuncSymbol.initNull());
-        res.value_ptr.* = .{ .func = .{ .static_pc = undefined, .id = id, .pc = 0 }};
+        res.value_ptr.* = .{ .func = .{ .static_pc = undefined, .id = id, .pc = 0, .end_pc = 0 }};
     }
     return res.value_ptr.func.id;
 }
@@ -613,6 +633,16 @@ pub fn genFuncBlock(c: *Chunk, stmt: *ir.FuncBlock, node: *ast.Node) !void {
     const pc = c.buf.ops.items.len;
     try c.buf.markers.put(c.alloc, @intCast(pc), func);
 
+    if (func.info.jit) {
+        try c.pushCode(.enter_jit, &.{0, 0, 0}, node);
+        try c.compiler.jitBuf.relocs.append(c.alloc, .{ .type = .jit_entry, .data = .{ .jit_entry = .{
+            .chunk = c,
+            .bc_pc = @intCast(pc + 1),
+            .func = func,
+        }}});
+        try c.jit_funcs.append(c.alloc, func);
+    }
+
     var id: u32 = undefined;
     if (func.type == .extern_) {
         std.debug.assert(func.data.extern_.has_impl);
@@ -642,6 +672,10 @@ pub fn genFuncBlock(c: *Chunk, stmt: *ir.FuncBlock, node: *ast.Node) !void {
 
     const stack_size = c.getMaxUsedRegisters();
     c.buf.ops.items[chk_stk_pc + 2].val = stack_size;
+
+    if (func.type != .extern_) {
+        c.compiler.genSymMap.getPtr(func).?.func.end_pc = @intCast(c.buf.ops.items.len);
+    }
 
     const rt_func = cy.vm.FuncSymbol.initFunc(undefined);
     completeFunc(c.compiler, id, func, rt_func);
@@ -2229,6 +2263,7 @@ fn gen_if_block(c: *cy.Chunk, stmt: *ir.IfBlock, node: *ast.Node) !void {
     try genStmts(c, stmt.body_head);
     try popBlock(c);
 
+    try c.buf.push_label();
     c.patchJumpNotCondToCurPc(jump_miss);
 
     try pop_temp_value(c, condv, cond_n);
@@ -2375,6 +2410,7 @@ pub const Sym = union {
         id: u32,
         // Offset from chunk's buffer to be used afterwards for relocation.
         pc: u32,
+        end_pc: u32,
     },
     hostFunc: struct {
         id: u32,

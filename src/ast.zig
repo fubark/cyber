@@ -163,6 +163,7 @@ pub const AttributeType = enum(u8) {
     unsafe,
     consteval,
     reserve,
+    jit,
 };
 
 const OptionType = extern struct {

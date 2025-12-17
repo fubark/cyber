@@ -57,10 +57,6 @@ pub const ByteCodeBuffer = struct {
     /// Ordered pc to each func's `CHK_STK` inst. Used to recover return reg size during unwind.
     func_table: std.ArrayListUnmanaged(usize),
 
-    /// Currently each inst maps to a nullable desc idx, but ideally it should be sparser like the debug table.
-    instDescs: if (cy.Trace) std.ArrayListUnmanaged(cy.Nullable(u32)) else void,
-    instDescExtras: if (cy.Trace) std.ArrayListUnmanaged(InstDescExtra) else void,
-
     /// Maps pc to a bitset with active pointer locals.
     ptr_table: std.ArrayListUnmanaged(PcPtrLayout),
 
@@ -70,6 +66,9 @@ pub const ByteCodeBuffer = struct {
     ptr_layout_builder: std.ArrayListUnmanaged(bool),
 
     markers: std.AutoHashMapUnmanaged(u32, *cy.Func),
+
+    /// JIT requires BC label locations to know how to map jumps.
+    labels: std.ArrayList(u32),
 
     /// The required stack size for the main frame.
     mainStackSize: u32,
@@ -89,14 +88,13 @@ pub const ByteCodeBuffer = struct {
             .constMap = .{},
             .debugTable = .{},
             .func_table = .{},
-            .instDescs = if (cy.Trace) .{} else {},
-            .instDescExtras = if (cy.Trace) .{} else {},
             .const_string_map = .{},
             .ptr_table = .{},
             .ptr_layouts = .{},
             .ptr_layout_map = .{},
             .ptr_layout_builder = .{},
             .markers = .{},
+            .labels = .{},
         };
         return new;
     }
@@ -125,13 +123,7 @@ pub const ByteCodeBuffer = struct {
         self.ptr_layout_map.deinit(self.alloc);
         self.ptr_layout_builder.deinit(self.alloc);
         self.markers.deinit(self.alloc);
-        if (cy.Trace) {
-            self.instDescs.deinit(self.alloc);
-            for (self.instDescExtras.items) |extra| {
-                self.alloc.free(extra.text);
-            }
-            self.instDescExtras.deinit(self.alloc);
-        }
+        self.labels.deinit(self.alloc);
     }
 
     pub fn clear(self: *ByteCodeBuffer) void {
@@ -157,6 +149,10 @@ pub const ByteCodeBuffer = struct {
 
     pub inline fn len(self: *ByteCodeBuffer) usize {
         return self.ops.items.len;
+    }
+
+    pub fn push_label(self: *ByteCodeBuffer) !void {
+        try self.labels.append(self.alloc, @intCast(self.len()));
     }
 
     const ConstString = struct {
@@ -216,10 +212,6 @@ pub const ByteCodeBuffer = struct {
     }
 
     pub fn pushOpSlice(self: *ByteCodeBuffer, code: OpCode, args: []const u16) !void {
-        try self.pushOpSliceExt(code, args, null);
-    }
-    
-    pub fn pushOpSliceExt(self: *ByteCodeBuffer, code: OpCode, args: []const u16, desc: ?u32) !void {
         const start = self.ops.items.len;
         try self.ops.resize(self.alloc, self.ops.items.len + args.len + 1);
         self.ops.items[start] = Inst.initOpCode(code);
@@ -229,11 +221,8 @@ pub const ByteCodeBuffer = struct {
         for (args, 0..) |arg, i| {
             self.ops.items[start+i+1] = .{ .val = arg };
         }
-        if (cy.Trace) {
-            try self.instDescs.append(self.alloc, desc orelse cy.NullId);
-        }
     }
-
+    
     pub fn reserveData(self: *ByteCodeBuffer, size: usize) !usize {
         const start = self.ops.items.len;
         try self.ops.resize(self.alloc, self.ops.items.len + size);
@@ -264,15 +253,6 @@ pub const ByteCodeBuffer = struct {
     pub fn setOpArgs1(self: *ByteCodeBuffer, idx: usize, arg: u8) void {
         self.ops.items[idx].val = arg;
     }
-};
-
-pub const InstDescExtra = struct {
-    text: []const u8,
-};
-
-pub const InstDesc = struct {
-    debug_idx: u32 = cy.NullId,
-    extraIdx: u32 = cy.NullId,
 };
 
 fn printStderr(comptime format: []const u8, args: anytype) void {
@@ -923,6 +903,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .nop32 => {
             return 3;
         },
+        .enter_jit,
         .ret_y,
         .captured,
         // .list,
@@ -1069,6 +1050,7 @@ pub const OpCode = enum(u8) {
     call = vmc.CodeCALL,
     call_host = vmc.CodeCALL_HOST,
     call_trait = vmc.CodeCALL_TRAIT,
+    enter_jit = vmc.CodeENTER_JIT,
     ret_0 = vmc.CodeRET_0,
     ret = vmc.CodeRET,
     ret_n = vmc.CodeRET_N,

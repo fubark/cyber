@@ -86,7 +86,11 @@ fn (&Scanner[]) next(next_fn ScannerNextFn) -> !?[]byte:
 --| The line returned does not include the new line character(s).
 fn (&Scanner[]) next_line() -> !?[]byte:
     next := fn(span [&]byte) -> !?NextRange:
-        idx := indexOfNewLine(span) ?else: return none
+        idx := indexOfNewLine(span) ?else:
+            if span.length == 0:
+                return none
+            else:
+                return NextRange{start=0, end=span.length, advance_end=span.length}
         advance_end := idx
         if span[advance_end] == '\r':
             advance_end += 1
@@ -111,7 +115,8 @@ fn (&StrReader) read(buf [&]byte) -> !int:
     if self.idx == vlen:
         return error.EndOfFile
 
-    rest := as[[&]byte] self.val.as_ptr_span()[self.idx..]
+    local := self.val
+    rest := local.span()[self.idx..]
     if rest.length < buf.length:
         buf[0..rest.length].set(rest)
         self.idx = vlen

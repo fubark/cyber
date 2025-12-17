@@ -120,7 +120,7 @@ pub const Compiler = struct {
             .alloc = vm.alloc,
             .vm = vm,
             .heap = try cy.Heap.init(vm, null, vm.alloc, undefined),
-            .jitBuf = jitgen.CodeBuffer.init(),
+            .jitBuf = jitgen.CodeBuffer.init(vm.alloc),
             .reports = .{},
             .sema = try sema.Sema.init(vm.alloc, self),
             .loader = default_loader,
@@ -167,7 +167,7 @@ pub const Compiler = struct {
         if (reset) {
             self.jitBuf.clear();
         } else {
-            self.jitBuf.deinit(self.alloc);
+            self.jitBuf.deinit();
         }
 
         if (reset) {
@@ -957,33 +957,33 @@ fn loadBuiltinChunk(c: *cy.Chunk) !void {
     c.sema.access_fn = try resolveFirstFunc(c, meta_mod2, "access");
 
     // int, i32, i16, i8
-    var bits = cy.Value.initGenericInt(64);
+    var bits = cy.Value.init_eval_int(64);
     const int_tmpl = c.sema.int_tmpl;
     c.sema.i64_t = try c.vm.expandTypeTemplate(int_tmpl, &.{c.sema.eval_int_t}, &.{ bits });
-    bits = cy.Value.initGenericInt(32);
+    bits = cy.Value.init_eval_int(32);
     c.sema.i32_t = try c.vm.expandTypeTemplate(int_tmpl, &.{c.sema.eval_int_t}, &.{ bits });
-    bits = cy.Value.initGenericInt(16);
+    bits = cy.Value.init_eval_int(16);
     c.sema.i16_t = try c.vm.expandTypeTemplate(int_tmpl, &.{c.sema.eval_int_t}, &.{ bits });
-    bits = cy.Value.initGenericInt(8);
+    bits = cy.Value.init_eval_int(8);
     c.sema.i8_t = try c.vm.expandTypeTemplate(int_tmpl, &.{c.sema.eval_int_t}, &.{ bits });
 
     // r8, r16, r32, r64, rsize
-    bits = cy.Value.initGenericInt(8);
+    bits = cy.Value.init_eval_int(8);
     c.sema.r8_t = try c.vm.expandTypeTemplate(raw_tmpl, &.{c.sema.eval_int_t}, &.{ bits });
-    bits = cy.Value.initGenericInt(16);
+    bits = cy.Value.init_eval_int(16);
     c.sema.r16_t = try c.vm.expandTypeTemplate(raw_tmpl, &.{c.sema.eval_int_t}, &.{ bits });
-    bits = cy.Value.initGenericInt(32);
+    bits = cy.Value.init_eval_int(32);
     c.sema.r32_t = try c.vm.expandTypeTemplate(raw_tmpl, &.{c.sema.eval_int_t}, &.{ bits });
-    bits = cy.Value.initGenericInt(64);
+    bits = cy.Value.init_eval_int(64);
     c.sema.r64_t = try c.vm.expandTypeTemplate(raw_tmpl, &.{c.sema.eval_int_t}, &.{ bits });
     sym = core.getSym("rsize").?;
     try resolveSym(c, sym);
     c.sema.rsize_t = sym.cast(.type_alias).sym.type;
 
     // float, f32
-    bits = cy.Value.initGenericInt(64);
+    bits = cy.Value.init_eval_int(64);
     c.sema.f64_t = try c.vm.expandTypeTemplate(float_tmpl, &.{c.sema.eval_int_t}, &.{ bits });
-    bits = cy.Value.initGenericInt(32);
+    bits = cy.Value.init_eval_int(32);
     c.sema.f32_t = try c.vm.expandTypeTemplate(float_tmpl, &.{c.sema.eval_int_t}, &.{ bits });
 
     const int_t = cy.Value.initType(c.sema.i64_t);

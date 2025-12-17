@@ -1,80 +1,81 @@
 use llvm '../tools/llvm.cy'
 use os
+use meta
+use c
 
 --|
 --| Takes stencils.o and generates a64_stencils.zig
 --|
 
-var out = ''
-var curDir = os.dirName(#modUri)
+out := ''
+curDir := os.dirname(meta.mod_uri())
 
-var outLLBuf = llvm.ffi.new(symbol.voidPtr)
-var outMsg = llvm.ffi.new(symbol.charPtr)
-if llvm.CreateMemoryBufferWithContentsOfFile(os.cstr("${curDir}/stencils.o"), outLLBuf, outMsg) != 0:
-    throw error.Unexpected
+var llBuf Ptr[llvm.OpaqueMemoryBuffer_S] = none
+var outMsg Ptr[byte] = none
+if llvm.CreateMemoryBufferWithContentsOfFile(str.initz('%{curDir}/stencils.o').ptr, &llBuf, &outMsg) != 0:
+    panic('unexpected')
 
-var llBuf = outLLBuf.get(0, symbol.voidPtr)
-var cbuf = llvm.GetBufferStart(llBuf)
-var size = llvm.GetBufferSize(llBuf)
-var buf = cbuf.getString(0, size)
+cbuf := llvm.GetBufferStart(llBuf)
+size := llvm.GetBufferSize(llBuf)
+buf := str(cbuf[0..size])
 
-var llBin = llvm.CreateBinary(llBuf, pointer.fromAddr(void, 0), outMsg)
+llBin := llvm.CreateBinary(llBuf, none, &outMsg)
 
-var binType = llvm.BinaryGetType(llBin)
+binType := llvm.BinaryGetType(llBin)
 if binType != llvm.BinaryTypeMachO64L:
-    throw error.UnexpectedObjectFormat
+    panic('Unexpected object format')
 
 -- Find text section.
-var codeBuf = ''
-var llSectIter = llvm.ObjectFileCopySectionIterator(llBin)
+codeBuf := ''
+llSectIter := llvm.ObjectFileCopySectionIterator(llBin)
 while llvm.ObjectFileIsSectionIteratorAtEnd(llBin, llSectIter) == 0:
-    var cname = llvm.GetSectionName(llSectIter)
-    if cname.addr() == 0:
+    cname := llvm.GetSectionName(llSectIter)
+    if cname == none:
         llvm.MoveToNextSection(llSectIter)
         continue
 
-    var name = cname.fromCstr(0)
+    name := c.from_strz(cname)
 
     if name == '__text':
-        var ccodeBuf = llvm.GetSectionContents(llSectIter)
-        var size = llvm.GetSectionSize(llSectIter)
-        codeBuf = ccodeBuf.getString(0, size)
+        ccodeBuf := llvm.GetSectionContents(llSectIter)
+        size := llvm.GetSectionSize(llSectIter)
+        codeBuf = str(ccodeBuf[0..size])
         break
     llvm.MoveToNextSection(llSectIter)
 
 if codeBuf.len() == 0:
-    throw error.MissingTextSection
+    panic('MissingTextSection')
 
-var llSymIter = llvm.ObjectFileCopySymbolIterator(llBin)
+llSymIter := llvm.ObjectFileCopySymbolIterator(llBin)
 
 type Sym:
-    name string
+    name str
     addr int
 
 -- First pass accumulates the unordered symbols.
-var syms = List[Sym]{}
-var symMap = {}
+syms := []Sym{}
+symMap := Map[str, Sym]{}
 while llvm.ObjectFileIsSymbolIteratorAtEnd(llBin, llSymIter) == 0:
     if llvm.GetSectionContainsSymbol(llSectIter, llSymIter) == 0:
         -- Not in text section, skip.
         llvm.MoveToNextSymbol(llSymIter)
         continue
 
-    var cname = llvm.GetSymbolName(llSymIter)
-    var name = cname.fromCstr(0)
-    var addr = llvm.GetSymbolAddress(llSymIter)
+    cname := llvm.GetSymbolName(llSymIter)
+    name := c.from_strz(cname)
+    addr := llvm.GetSymbolAddress(llSymIter)
     -- Size is missing, calculate by sorting symbols and using their address.
-    var sym = Sym{name=name, addr=addr}
-    syms.append(sym)
+    sym := Sym{name=name, addr=addr}
+    syms += sym
     symMap[name] = sym
 
     llvm.MoveToNextSymbol(llSymIter)
 
 -- Sort syms by addr so len can be computed.
-syms.sort((a, b) => a.addr < b.addr)
+syms.sort(|a, b| a.addr < b.addr)
 
-for syms -> sym, i:
-    var len = 0
+for syms |i, sym|:
+    len := 0
     if i == syms.len()-1:
         -- Last sym len needs text sect's len.
         len = codeBuf.len() - sym.addr
@@ -84,53 +85,54 @@ for syms -> sym, i:
     -- Skip ltmp0.
     if len == 0: continue 
 
-    var bin = (codeBuf as string)[sym.addr..sym.addr+len] 
+    bin := codeBuf[sym.addr..sym.addr+len] 
 
     -- Remove ending continuation branch.
-    if bin[bin.len()-4..].getInt32(0, .little) == 0x14000000:
+
+    if r32.decode(bin.span().vec(bin.len()-4, 4), .little) == 0x14000000:
         bin = bin[0..bin.len()-4]
 
-    print "${sym.name} ${sym.addr} ${bin.fmtBytes(.hex)}"
+    print('%{sym.name} %{sym.addr} %{bin.fmt_bytes(.hex)}')
 
-    var bytes = List[dyn]{}
-    for bin -> byte:
-        bytes.append("0x${byte.fmt(.hex, {pad=`0`, width=2})}")
+    bytes := []str{}
+    for bin |b|:
+        bytes += '0x%{b.fmt(.hex, {pad='0', width=2})}'
 
-    out += "pub const ${sym.name[1..]} = [_]u8{ ${bytes.join(', ')} };\n"
+    out += 'pub const %{sym.name[1..]} = [_]u8{ %{bytes.join(', ')} };\n'
 
 -- llSectIter is already at text section.
 -- Visit relocation entries and record them as Zig constants.
-var llRelocIter = llvm.GetRelocations(llSectIter)
+llRelocIter := llvm.GetRelocations(llSectIter)
 while llvm.IsRelocationIteratorAtEnd(llSectIter, llRelocIter) == 0:
-    var symRef = llvm.GetRelocationSymbol(llRelocIter)
-    var csymName = llvm.GetSymbolName(symRef)
-    var symName = csymName.fromCstr(0)
-    if symName.startsWith('_cont'):
+    symRef := llvm.GetRelocationSymbol(llRelocIter)
+    csymName := llvm.GetSymbolName(symRef)
+    symName := c.from_strz(csymName)
+    if symName.starts_with('_cont'):
         -- Skip continuations.
         llvm.MoveToNextRelocation(llRelocIter)
         continue
 
-    var offset = llvm.GetRelocationOffset(llRelocIter)
-    -- var relocType = llvm.GetRelocationType(llRelocIter)
-    var cname = llvm.GetRelocationTypeName(llRelocIter)
-    var name = cname.fromCstr(0)
-    var cvalue = llvm.GetRelocationValueString(llRelocIter)
-    var value = cname.fromCstr(0)
+    offset := llvm.GetRelocationOffset(llRelocIter)
+    -- relocType := llvm.GetRelocationType(llRelocIter)
+    cname := llvm.GetRelocationTypeName(llRelocIter)
+    name := c.from_strz(cname)
+    cvalue := llvm.GetRelocationValueString(llRelocIter)
+    value := c.from_strz(cname)
 
     -- Find relevant func sym.
     var found ?Sym = none
-    for syms -> sym, i:
+    for syms |i, sym|:
         if offset >= sym.addr:
             if i < syms.len()-1 and offset >= syms[i+1].addr:
                 continue
             found = sym
             break
 
-    if isNone(found):
-        throw error.MissingSym
+    if found == none:
+        panic('MissingSym')
 
-    out += "pub const ${found.?.name[1..]}_${symName[1..]} = ${offset-found.?.addr};\n"
+    out += 'pub const %{found.?.name[1..]}_%{symName[1..]} = %{offset-found.?.addr};\n'
 
     llvm.MoveToNextRelocation(llRelocIter)
 
-os.writeFile("${curDir}/a64_stencils.zig", out)
+os.write_file('%{curDir}/a64_stencils.zig', out)!

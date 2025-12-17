@@ -52,16 +52,7 @@ pub fn isAot(backend: c.Backend) bool {
     return backend == c.BackendTCC or backend == c.BackendCC;
 }
 
-// TODO: This could be split into compiler only tests and backend tests.
-//       Compiler tests would only need to be run once.
-//       Right now we just run everything again since it's not that much.
-test "Tests." {
-    var run = Runner{ .cases = .{} };
-    defer run.cases.deinit(t.alloc);
-
-    const backend = setup.fromTestBackend(test_config.test_backend);
-    const aot = isAot(backend);
-
+fn test_syntax(run: *Runner) void {
     run.case("syntax/block_no_child_error.cy");
     run.case("syntax/change_to_spaces_error.cy");
     run.case("syntax/change_to_tabs_error.cy");
@@ -87,6 +78,9 @@ test "Tests." {
     run.case("syntax/type_missing_colon_error.cy");
     run.case("syntax/visibility.cy");
     run.case("syntax/wrap_stmts.cy");
+}
+
+fn test_functions(run: *Runner) void {
     run.case("functions/assign_capture_local_error.cy");
     run.case("functions/assign_error.cy");
     run.case("functions/call_at_ct.cy");
@@ -119,6 +113,9 @@ test "Tests." {
     run.case("functions/func_type_error.cy");
     run.case("functions/func_union_type.cy");
     run.case("functions/func_union_type_error.cy");
+    if (test_config.test_backend == .vm) {
+        run.case("functions/jit_func.cy");
+    }
     run.case("functions/lambda.cy");
     run.case("functions/lambda_incompat_arg_error.cy");
     run.case("functions/main_func_overload_error.cy");
@@ -134,6 +131,9 @@ test "Tests." {
     run.case("functions/template_functions.cy");
     run.case("functions/template_method_error.cy");
     // run.case("functions/void_param_error.cy");
+}
+
+fn test_memory(run: *Runner) void {
     run.case("memory/arc_cases.cy");
     run.case("memory/borrow.cy");
     run.case("memory/borrow_index_addr_error.cy");
@@ -167,6 +167,9 @@ if (!is_wasm) {
     run.case("memory/scope_assign_shorter_borrow_lifetime_error.cy");
     run.case("memory/sink_use_rec_after_error.cy");
     run.case("memory/sink_use_arg_after_error.cy");
+}
+
+fn test_types(run: *Runner) void {
     run.case("types/bitcast.cy");
     run.case("types/cast.cy");
     run.case("types/cast_error.cy");
@@ -225,7 +228,11 @@ if (!is_wasm) {
     run.case("types/type_embedding.cy");
     run.case("types/type_spec.cy");
     run.case("types/void.cy");
+}
 
+fn test_modules(run: *Runner) void {
+    const backend = setup.fromTestBackend(test_config.test_backend);
+    const aot = isAot(backend);
     if (!is_wasm) {
         run.case("modules/type_spec.cy");
         run.case("modules/type_alias.cy");
@@ -261,7 +268,9 @@ if (!aot) {
         run.case("modules/os.cy");
         // run.case("modules/io.cy");
     }
+}
 
+fn test_meta(run: *Runner) void {
     // Disabled test: printing to stdout hangs test runner.
     // run.case2(.{ .silent = true }, "meta/dump_locals.cy");
     run.case("meta/ct_if.cy");
@@ -271,7 +280,11 @@ if (!aot) {
     run.case("meta/init_record_error.cy"); 
     run.case("meta/set_panic.cy"); 
     run.case("meta/type.cy");
+}
 
+fn test_concurrency(run: *Runner) void {
+    const backend = setup.fromTestBackend(test_config.test_backend);
+    const aot = isAot(backend);
 if (!aot) {
     run.case("concurrency/await.cy");
     run.case("concurrency/generator.cy");
@@ -279,7 +292,9 @@ if (!aot) {
         run.case("concurrency/spawn.cy");
     }
 }
+}
 
+fn test_core(run: *Runner) void {
     run.case("core/Array.cy");
     run.case("core/Array_oob_panic.cy");
     run.case("core/Array_neg_oob_panic.cy");
@@ -332,7 +347,9 @@ if (!aot) {
     run.case("core/Vector_neg_oob_panic.cy");
     run.case("core/Vector_oob_panic.cy");
     run.case("core/wyhash.cy");
+}
 
+fn test_vars(run: *Runner) void {
     run.case("vars/const.cy");
     run.case("vars/const_init_rtval_error.cy");
     run.case("vars/const_init_ctval_error.cy");
@@ -357,7 +374,9 @@ if (!aot) {
     run.case("vars/global_init_capture_error.cy");
     run.case("vars/global_init_ref_error.cy");
     run.case("vars/global_init_type_error.cy");
+}
 
+fn test_control_flow(run: *Runner) void {
     run.case("control_flow/for_iter.cy");
     run.case("control_flow/for_iter_unsupported_error.cy");
     run.case("control_flow/for_range.cy");
@@ -379,6 +398,25 @@ if (!aot) {
     run.case("control_flow/while_cond.cy");
     run.case("control_flow/while_inf.cy");
     run.case("control_flow/while_unwrap.cy");
+}
+
+// TODO: This could be split into compiler only tests and backend tests.
+//       Compiler tests would only need to be run once.
+//       Right now we just run everything again since it's not that much.
+test "Tests." {
+    var run = Runner{ .cases = .{} };
+    defer run.cases.deinit(t.alloc);
+
+    test_syntax(&run);
+    test_functions(&run);
+    test_memory(&run);
+    test_types(&run);
+    test_modules(&run);
+    test_meta(&run);
+    test_concurrency(&run);
+    test_core(&run);
+    test_vars(&run);
+    test_control_flow(&run);
 
     run.case("../tokenizer.cy");
 

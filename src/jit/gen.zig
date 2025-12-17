@@ -2,7 +2,7 @@ const builtin = @import("builtin");
 const std = @import("std");
 const cy = @import("../cyber.zig");
 const bc = @import("../bc_gen.zig");
-const stencils = switch (builtin.cpu.arch) {
+pub const stencils = switch (builtin.cpu.arch) {
     .aarch64 => @import("a64_stencils.zig"),
     .x86_64 => @import("x64_stencils.zig"),
     else => void,
@@ -14,7 +14,7 @@ const v = cy.fmt.v;
 const rt = cy.rt;
 const ir = cy.ir;
 const ast = cy.ast;
-const assm = @import("assembler.zig");
+pub const as = @import("assembler.zig");
 const a64 = @import("a64_assembler.zig");
 const A64 = @import("a64.zig");
 const x64 = @import("x64_assembler.zig");
@@ -45,6 +45,10 @@ const ChunkIr = struct {
 
 pub const RelocType = enum {
     jumpToFunc,
+    jump_f,
+
+    // BC entering JIT.
+    jit_entry,
 };
 
 pub const Reloc = struct {
@@ -52,12 +56,34 @@ pub const Reloc = struct {
     data: union {
         jumpToFunc: struct {
             func: *cy.Func,
+            temp_pc: u32,
+        },
+        jump_f: struct {
             pc: u32,
+            chunk: *cy.Chunk,
+            bc_target_pc: u32,
+        },
+        jit_entry: struct {
+            chunk: *cy.Chunk,
+            bc_pc: u32,
+            func: *cy.Func
         },
     },
 };
 
+const JitFunc = struct {
+    pc: usize,
+};
+
+const LabelKey = struct {
+    chunk: *cy.Chunk,
+    bc_pc: usize,
+};
+
 pub const CodeBuffer = struct {
+    gpa: std.mem.Allocator,
+
+    executable: bool,
     buf: std.ArrayListAligned(u8, std.mem.Alignment.fromByteUnits(std.heap.page_size_min)),
 
     /// Where main begins. Currently only jit code uses this.
@@ -66,35 +92,115 @@ pub const CodeBuffer = struct {
     /// Relocation entries.
     relocs: std.ArrayListUnmanaged(Reloc),
 
-    pub fn init() CodeBuffer {
+    funcs: std.AutoHashMapUnmanaged(*cy.Func, JitFunc),
+    labels: std.AutoHashMapUnmanaged(LabelKey, usize),
+
+    pub fn init(gpa: std.mem.Allocator) CodeBuffer {
         return .{
+            .gpa = gpa,
             .buf = .{},
             .mainPc = 0,
             .relocs = .{},
+            .funcs = .{},
+            .labels = .{},
+            .executable = false,
         };
     }
 
     pub fn clear(self: *CodeBuffer) void {
         self.buf.clearRetainingCapacity();
         self.relocs.clearRetainingCapacity();
+        self.funcs.clearRetainingCapacity();
+        self.labels.clearRetainingCapacity();
     }
 
-    pub fn deinit(self: *CodeBuffer, alloc: std.mem.Allocator) void {
-        self.buf.deinit(alloc);
-        self.relocs.deinit(alloc);
+    pub fn deinit(self: *CodeBuffer) void {
+        {
+            // Memory must be writable to be freed.
+            if (self.executable) {
+                self.unset_executable() catch @panic("error");
+            }
+            self.buf.deinit(self.gpa);
+        }
+
+        self.relocs.deinit(self.gpa);
+        self.funcs.deinit(self.gpa);
+        self.labels.deinit(self.gpa);
+    }
+
+    pub fn unset_executable(self: *CodeBuffer) !void {
+        if (cy.isWasm) {
+            return error.Unsupported;
+        }
+        if (!self.executable) {
+            return;
+        }
+        const PROT_WRITE = 2;
+        try std.posix.mprotect(self.buf.items.ptr[0..self.buf.capacity], PROT_WRITE);
+        self.executable = false;
+    }
+
+    pub fn set_executable(self: *CodeBuffer) !void {
+        if (cy.isWasm) {
+            return error.Unsupported;
+        }
+
+        // Mark code executable.
+        const PROT_READ = 1;
+        const PROT_EXEC = 4;
+        try std.posix.mprotect(self.buf.items.ptr[0..self.buf.capacity], PROT_READ | PROT_EXEC);
+        self.executable = true;
+
+        // if (jitRes.buf.items.len > 500*4) {
+        //     logger.tracev("jit code (size: {}) {}...", .{jitRes.buf.items.len, std.fmt.fmtSliceHexLower(jitRes.buf.items[0..100*4])});
+        // } else {
+        //     logger.tracev("jit code (size: {}) {}", .{jitRes.buf.items.len, std.fmt.fmtSliceHexLower(jitRes.buf.items)});
+        // }
+    }
+
+    pub fn push(self: *CodeBuffer, code: []const u8) !void {
+        const start = try self.reserve(code.len);
+        const dst: []u8 = @ptrCast(self.buf.items.ptr[start..start+code.len]);
+        @memcpy(dst, code);
+    }
+
+    pub fn set_u32(self: *CodeBuffer, pc: usize, code: u32) void {
+        const dst: []u8 = @ptrCast(self.buf.items.ptr[pc..pc+@sizeOf(u32)]);
+        @memcpy(dst, std.mem.asBytes(&code));
+    }
+
+    pub fn push_u32(self: *CodeBuffer, code: u32) !void {
+        const start = try self.ensureUnusedCap(@sizeOf(u32));
+        self.buf.items.len += @sizeOf(u32);
+        self.set_u32(start, code);
+    }
+
+    pub fn reserve(self: *CodeBuffer, size: usize) !usize {
+        const start = try self.ensureUnusedCap(size);
+        self.buf.items.len += size;
+        return start;
+    }
+
+    pub fn ensureUnusedCap(self: *CodeBuffer, size: usize) !usize {
+        if (self.buf.items.len + size > self.buf.capacity) {
+            var inc = self.buf.capacity / 2;
+            if (inc <= std.heap.page_size_min) {
+                inc = std.heap.page_size_min;
+            }
+            try self.buf.ensureTotalCapacityPrecise(self.gpa, self.buf.capacity + inc);
+        }
+        return self.buf.items.len;
+    }
+
+    pub fn pos(self: *CodeBuffer) usize {
+        return self.buf.items.len;
     }
 };
 
 pub const ChunkExt = struct {
-    pub fn jitEnsureUnusedCap(c: *cy.Chunk, size: usize) !usize {
-        return ensureUnusedCap(&c.jitBuf.buf, c.alloc, size);
-    }
     pub const jitCopyAdvance = copyAdvance;
-    pub const jitPush = push;
-    pub const jitPushU32 = pushU32;
     pub const jitPushU64 = pushU64;
     pub const jitPushStencil = pushStencil;
-    pub const jitGetPos = getPos;
     pub const jitGetA64Inst = getA64Inst;
 };
 
@@ -104,55 +210,27 @@ pub fn getA64Inst(c: *cy.Chunk, pos: usize, comptime T: type) *align(4)T {
             cy.panic("Unaligned inst access.");
         }
     }
-    return @ptrCast(@alignCast(&c.jitBuf.buf.items[pos]));
-}
-
-pub fn getPos(c: *cy.Chunk) usize {
-    return c.jitBuf.buf.items.len;
-}
-
-pub fn ensureUnusedCap(buf: *std.ArrayListAlignedUnmanaged(u8, .fromByteUnits(std.heap.page_size_min)), alloc: std.mem.Allocator, size: usize) !usize {
-    if (buf.items.len + size > buf.capacity) {
-        var inc = buf.capacity / 2;
-        if (inc <= std.heap.page_size_min) {
-            inc = std.heap.page_size_min;
-        }
-        try buf.ensureTotalCapacityPrecise(alloc, buf.capacity + inc);
-    }
-    return buf.items.len;
+    return @ptrCast(@alignCast(&c.jit.buf.items[pos]));
 }
 
 pub fn copyAdvance(c: *cy.Chunk, dst: usize, src: []const u8) void {
-    const to: []u8 = @ptrCast(c.jitBuf.buf.items.ptr[dst..dst+src.len]);
+    const to: []u8 = @ptrCast(c.jit.buf.items.ptr[dst..dst+src.len]);
     @memcpy(to, src);
-    c.jitBuf.buf.items.len = dst+src.len;
+    c.jit.buf.items.len = dst+src.len;
 }
 
-pub fn pushU32(c: *cy.Chunk, code: u32) !void {
-    const start = try c.jitEnsureUnusedCap(@sizeOf(u32));
-    c.jitBuf.buf.items.len += @sizeOf(u32);
-    const dst: []u8 = @ptrCast(c.jitBuf.buf.items.ptr[start..start+@sizeOf(u32)]);
-    @memcpy(dst, std.mem.asBytes(&code));
-}
 
 pub fn pushU64(c: *cy.Chunk, code: u64) !void {
     const start = try c.jitEnsureUnusedCap(@sizeOf(u64));
-    c.jitBuf.buf.items.len += @sizeOf(u64);
-    const dst: []u8 = @ptrCast(c.jitBuf.buf.items.ptr[start..start+@sizeOf(u64)]);
+    c.jit.buf.items.len += @sizeOf(u64);
+    const dst: []u8 = @ptrCast(c.jit.buf.items.ptr[start..start+@sizeOf(u64)]);
     @memcpy(dst, std.mem.asBytes(&code));
-}
-
-pub fn push(c: *cy.Chunk, code: []const u8) !void {
-    const start = try c.jitEnsureUnusedCap(code.len);
-    c.jitBuf.buf.items.len += code.len;
-    const dst: []u8 = @ptrCast(c.jitBuf.buf.items.ptr[start..start+code.len]);
-    @memcpy(dst, code);
 }
 
 pub fn pushStencil(c: *cy.Chunk, code: []const u8) !usize {
     const start = try c.jitEnsureUnusedCap(code.len);
-    c.jitBuf.buf.items.len += code.len;
-    const dst: []u8 = @ptrCast(c.jitBuf.buf.items.ptr[start..start+code.len]);
+    c.jit.buf.items.len += code.len;
+    const dst: []u8 = @ptrCast(c.jit.buf.items.ptr[start..start+code.len]);
     @memcpy(dst, code);
     return start;
 }
@@ -173,7 +251,7 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
 
         if (GenBreakpointAtIr) |chunkIr| {
             if (c.id == chunkIr.chunkId and idx == chunkIr.irIdx) {
-                try assm.genBreakpoint(c);
+                try as.genBreakpoint(c);
             }
         }
     }
@@ -235,7 +313,7 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
 
     if (cy.Trace) {
         if (cc.verbose()) {
-            assm.patchMovPcRelTo(c, dumpEndPc, c.jitGetPos());
+            as.patchMovPcRelTo(c, dumpEndPc, c.jitGetPos());
         }
     }
 }
@@ -382,19 +460,19 @@ fn genBinOp(c: *cy.Chunk, idx: usize, cstr: Cstr, opts: BinOpOptions, nodeId: *a
                 if (cstr.type == .simple and cstr.jitPreferCondFlag)  {
                     // Load operands.
                     if (leftv.type == .constant) {
-                        try assm.genMovImm(c, .arg0, leftv.data.constant.val.val);
+                        try as.genMovImm(c, .arg0, leftv.data.constant.val.val);
                     } else {
-                        try assm.genLoadSlot(c, .arg0, leftv.reg);
+                        try as.genLoadSlot(c, .arg0, leftv.reg);
                     }
                     if (rightv.type == .constant) {
-                        try assm.genMovImm(c, .arg1, rightv.data.constant.val.val);
+                        try as.genMovImm(c, .arg1, rightv.data.constant.val.val);
                     } else {
-                        try assm.genLoadSlot(c, .arg1, rightv.reg);
+                        try as.genLoadSlot(c, .arg1, rightv.reg);
                     }
                     try c.jitPush(&stencils.intPair);
 
                     // Compare.
-                    try assm.genCmp(c, .arg0, .arg1);
+                    try as.genCmp(c, .arg0, .arg1);
                     optCondFlag = .lt;
                 } else {
                     return error.TODO;
@@ -412,15 +490,15 @@ fn genBinOp(c: *cy.Chunk, idx: usize, cstr: Cstr, opts: BinOpOptions, nodeId: *a
 
                 // Load operands.
                 if (leftv.type == .constant) {
-                    try assm.genMovImm(c, .arg0, leftv.data.constant.val.val);
+                    try as.genMovImm(c, .arg0, leftv.data.constant.val.val);
                 } else {
-                    try assm.genLoadSlot(c, .arg0, leftv.reg);
+                    try as.genLoadSlot(c, .arg0, leftv.reg);
                 }
 
                 if (rightv.type == .constant) {
-                    try assm.genMovImm(c, .arg1, rightv.data.constant.val.val);
+                    try as.genMovImm(c, .arg1, rightv.data.constant.val.val);
                 } else {
-                    try assm.genLoadSlot(c, .arg1, rightv.reg);
+                    try as.genLoadSlot(c, .arg1, rightv.reg);
                 }
 
                 if (data.op == .minus) {
@@ -436,21 +514,21 @@ fn genBinOp(c: *cy.Chunk, idx: usize, cstr: Cstr, opts: BinOpOptions, nodeId: *a
                 }
 
                 // Save result.
-                try assm.genStoreSlot(c, inst.dst, .arg0);
+                try as.genStoreSlot(c, inst.dst, .arg0);
             } else if (data.leftT == bt.Integer) {
                 // try pushInlineBinExpr(c, getIntOpCode(data.op), leftv.reg, rightv.reg, inst.dst, nodeId);
 
                 // Load operands.
                 if (leftv.type == .constant) {
-                    try assm.genMovImm(c, .arg0, leftv.data.constant.val.val);
+                    try as.genMovImm(c, .arg0, leftv.data.constant.val.val);
                 } else {
-                    try assm.genLoadSlot(c, .arg0, leftv.reg);
+                    try as.genLoadSlot(c, .arg0, leftv.reg);
                 }
 
                 if (rightv.type == .constant) {
-                    try assm.genMovImm(c, .arg1, rightv.data.constant.val.val);
+                    try as.genMovImm(c, .arg1, rightv.data.constant.val.val);
                 } else {
-                    try assm.genLoadSlot(c, .arg1, rightv.reg);
+                    try as.genLoadSlot(c, .arg1, rightv.reg);
                 }
 
                 if (data.op == .minus) {
@@ -466,7 +544,7 @@ fn genBinOp(c: *cy.Chunk, idx: usize, cstr: Cstr, opts: BinOpOptions, nodeId: *a
                 }
 
                 // Save result.
-                try assm.genStoreSlot(c, inst.dst, .arg0);
+                try as.genStoreSlot(c, inst.dst, .arg0);
             } else return error.Unexpected;
         },
         // .equal_equal => {
@@ -503,7 +581,7 @@ pub const JitCondFlagType = enum {
 };
 
 fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
-    const data = c.ir.getStmtData(idx, .ifStmt);
+    // const data = c.ir.getStmtData(idx, .ifStmt);
     const bodyEndJumpsStart = c.listDataStack.items.len;
 
     const condIdx = c.ir.advanceStmt(idx, .ifStmt);
@@ -519,7 +597,7 @@ fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
         prevCaseMissJump = c.jitGetPos();
         prevCaseMissJumpFromCondFlag = true;
         if (condv.data.jitCondFlag.type == .lt) {
-            try assm.genJumpCond(c, .ge, 0);
+            try as.genJumpCond(c, .ge, 0);
         } else {
             return error.TODO;
         }
@@ -532,7 +610,7 @@ fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
     // try bc.releaseTempValue(c, condv, condNodeId);
 
     try bc.pushBlock(c, false, nodeId);
-    try genStmts(c, data.body_head);
+    // try genStmts(c, data.body_head);
     try bc.popBlock(c);
 
     const hasElse = false;
@@ -582,7 +660,7 @@ fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
         // c.patchJumpNotCondToCurPc(prevCaseMissJump);
 
         if (prevCaseMissJumpFromCondFlag) {
-            assm.patchJumpCond(c, prevCaseMissJump, c.jitGetPos());
+            as.patchJumpCond(c, prevCaseMissJump, c.jitGetPos());
         } else {
             return error.TODO;
         }
@@ -597,7 +675,7 @@ fn genFloat(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: *ast.Node) !GenValue {
     }
 
     const val = cy.Value.initFloat64(data.val);
-    try assm.genStoreSlotValue(c, inst.dst, val);
+    try as.genStoreSlotValue(c, inst.dst, val);
 
     const value = regValue(c, inst.dst, false);
     return finishInst(c, value, inst.finalDst);
@@ -616,7 +694,7 @@ fn genInt(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: *ast.Node) !GenValue {
         // try pushRelease(c, inst.dst, nodeId);
     }
 
-    try assm.genStoreSlotValue(c, inst.dst, val);
+    try as.genStoreSlotValue(c, inst.dst, val);
 
     const value = regValue(c, inst.dst, false);
     return finishInst(c, value, inst.finalDst);
@@ -654,8 +732,8 @@ fn genToExact(c: *cy.Chunk, val: GenValue, dst: Cstr, desc: ?u32) !GenValue {
                 return error.TODO;
             } else {
                 // try c.buf.pushOp2Ext(.copy, val.reg, local.reg, desc);
-                try assm.genLoadSlot(c, .temp, val.reg);
-                try assm.genStoreSlot(c, reg.dst, .temp);
+                try as.genLoadSlot(c, .temp, val.reg);
+                try as.genStoreSlot(c, reg.dst, .temp);
             }
             // Parent only cares about the retained property.
             return GenValue.initOwned(val.tracked);
@@ -711,18 +789,18 @@ fn genCallFuncSym(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: *ast.Node) !GenV
 
     if (data.func.type == .hostFunc) {
         // Populate callHost stencil args.
-        try assm.genAddImm(c, .arg0, .fp, 8 * (inst.ret + cy.vm.CallArgStart));
-        try assm.genMovImm(c, .arg1, data.numArgs);
+        try as.genAddImm(c, .arg0, .fp, 8 * (inst.ret + cy.vm.CallArgStart));
+        try as.genMovImm(c, .arg1, data.numArgs);
 
         try c.jitPush(stencils.callHost[0..stencils.callHost_hostFunc]);
-        try assm.genCallFuncPtr(c, data.func.data.hostFunc.ptr);
+        try as.genCallFuncPtr(c, data.func.data.hostFunc.ptr);
         try c.jitPush(stencils.callHost[stencils.callHost_hostFunc+CallHoleLen..]);
 
         // Copy result to ret.
         // TODO: Copy directly to final dst.
-        try assm.genStoreSlot(c, inst.ret, .arg2);
+        try as.genStoreSlot(c, inst.ret, .arg2);
     } else if (data.func.type == .userFunc) {
-        try assm.genCallFunc(c, inst.ret, data.func);
+        try as.genCallFunc(c, inst.ret, data.func);
     } else return error.TODO;
 
     try bc.popTemps(c, data.numArgs, nodeId);
@@ -758,21 +836,21 @@ fn zDumpJitExprSection(vm: *cy.VM, fp: [*]const cy.Value, chunkId: u64, irIdx: u
 }
 
 fn genCallDumpJitSection(c: *cy.Chunk, idx: usize, isStmt: bool) !usize {
-    try assm.genMovImm(c, .arg0, c.id);
-    try assm.genMovImm(c, .arg1, idx);
+    try as.genMovImm(c, .arg0, c.id);
+    try as.genMovImm(c, .arg1, idx);
     const dumpStartPc = c.jitGetPos();
-    try assm.genPatchableMovPcRel(c, .arg2);
+    try as.genPatchableMovPcRel(c, .arg2);
 
     const dumpEndPc = c.jitGetPos();
-    try assm.genPatchableMovPcRel(c, .arg3);
+    try as.genPatchableMovPcRel(c, .arg3);
     try c.jitPush(stencils.dumpJitSection[0..stencils.dumpJitSection_zDumpJitSection]);
     if (isStmt) {
-        try assm.genCallFuncPtr(c, &zDumpJitStmtSection);
+        try as.genCallFuncPtr(c, &zDumpJitStmtSection);
     } else {
-        try assm.genCallFuncPtr(c, &zDumpJitExprSection);
+        try as.genCallFuncPtr(c, &zDumpJitExprSection);
     }
     try c.jitPush(stencils.dumpJitSection[stencils.dumpJitSection_zDumpJitSection+CallHoleLen..]);
-    assm.patchMovPcRelTo(c, dumpStartPc, c.jitGetPos());
+    as.patchMovPcRelTo(c, dumpStartPc, c.jitGetPos());
     return dumpEndPc;
 }
 
@@ -791,7 +869,7 @@ fn genExpr(c: *cy.Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
 
         if (GenBreakpointAtIr) |chunkIr| {
             if (c.id == chunkIr.chunkId and idx == chunkIr.irIdx) {
-                try assm.genBreakpoint(c);
+                try as.genBreakpoint(c);
             }
         }
     }
@@ -838,18 +916,113 @@ fn genExpr(c: *cy.Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
 
     if (cy.Trace) {
         if (cc.verbose()) {
-            assm.patchMovPcRelTo(c, dumpEndPc, c.jitGetPos());
+            as.patchMovPcRelTo(c, dumpEndPc, c.jitGetPos());
         }
     }
 
     return res;
 }
 
-fn genStmts(c: *cy.Chunk, idx: u32) !void {
-    var stmt = idx;
-    while (stmt != cy.NullId) {
-        try genStmt(c, stmt);
-        stmt = c.ir.getStmtNext(stmt);
+fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
+    const sym = c.compiler.genSymMap.get(func).?;
+    const pc_len = sym.func.end_pc - sym.func.pc;
+
+    var pc = sym.func.static_pc;
+    const end = sym.func.static_pc + pc_len;
+
+    // Record pc.
+    try c.jit.funcs.put(c.alloc, func, .{ .pc = c.jit.pos() });
+
+    // Emit VM/JIT -> JIT prologue.     
+    try c.jit.push(&stencils.func_prologue);
+
+    // Skip `enter_jit` inst.
+    std.debug.assert(pc[0].opcode() == .enter_jit);
+    pc += cy.bytecode.getInstLenAt(pc);
+
+    while (@intFromPtr(pc) < @intFromPtr(end)) {
+        // TODO: A better way to map jump labels is for each function to hold the start idx to `Chunk.buf.labels`.
+        //       As JIT iterates the BC, keep a rolling next label to match with. This would avoid a hashtable lookup for every inst.
+        const pc_off = pc - c.buf.ops.items.ptr;
+        if (c.jit.labels.contains(.{.chunk=c, .bc_pc=pc_off})) {
+            try c.jit.labels.put(c.alloc, .{.chunk=c, .bc_pc=pc_off}, c.jit.pos());
+        }
+
+        // var buf: [1024]u8 = undefined;
+        // const msg = try std.fmt.bufPrint(&buf, "{}", .{pc[0].opcode()});
+        // const heap_msg = try c.buf.getOrPushConstString(msg);
+        // try as.gen_log(c.jit, heap_msg.slice);
+        // try as.genBreakpoint(c);
+
+        switch (pc[0].opcode()) {
+            .ret => {
+                try c.jit.push(&stencils.pre_ret);
+                try c.jit.push_u32(A64.Br.ret().bitCast());
+            },
+            .mov => {
+                try as.genMovImm(c, .arg0, pc[1].val);
+                try as.genMovImm(c, .arg1, pc[2].val);
+                try c.jit.push(&stencils.mov);
+            },
+            .jump_f => {
+                try as.genMovImm(c, .arg0, pc[1].val);
+                const pos = c.jit.pos();
+                try c.jit.push(&stencils.jump_f);
+                try c.jit.relocs.append(c.alloc, .{ .type = .jump_f, .data = .{ .jump_f = .{
+                    .chunk = c,
+                    .pc = @intCast(pos + stencils.jump_f_br3),
+                    .bc_target_pc = @intCast(pc_off + pc[2].val),
+                }}});
+            },
+            .call => {
+                try as.genMovImm(c, .arg0, pc[1].val);
+                try c.jit.push(&stencils.pre_call);
+                const func_vm_pc: usize = @intCast(@as(*const align(2) u48, @ptrCast(pc + 2)).*);
+                const func_id: u32 = @as(*const align(2) u32, @ptrFromInt(func_vm_pc - 4)).*;
+                const callee = c.vm.funcSymDetails.items[func_id].func.?;
+                if (!callee.info.jit) {
+                    return c.reportError("Unsupported JIT -> VM call.", func.decl);
+                }
+                try as.genCallFunc(c, callee);
+            },
+            .trap => {
+                try as.genBreakpoint(c);
+            },
+            .add => {
+                try as.genMovImm(c, .arg0, pc[1].val);
+                try as.genMovImm(c, .arg1, pc[2].val);
+                try as.genMovImm(c, .arg2, pc[3].val);
+                try c.jit.push(&stencils.add);
+            },
+            .sub => {
+                try as.genMovImm(c, .arg0, pc[1].val);
+                try as.genMovImm(c, .arg1, pc[2].val);
+                try as.genMovImm(c, .arg2, pc[3].val);
+                try c.jit.push(&stencils.sub);
+            },
+            .lt => {
+                try as.genMovImm(c, .arg0, pc[1].val);
+                try as.genMovImm(c, .arg1, pc[2].val);
+                try as.genMovImm(c, .arg2, pc[3].val);
+                try c.jit.push(&stencils.lt);
+            },
+            .const_16s => {
+                const dst = pc[1].val;
+                try as.genMovImm(c, .arg0, dst);
+                const val: i64 = @as(i16, @bitCast(pc[2]));
+                try as.genMovImm(c, .arg1, @bitCast(val));
+                try c.jit.push(&stencils.store_const);
+            },
+            .chk_stk => {
+                try as.genMovImm(c, .arg0, pc[1].val);
+                try as.genMovImm(c, .arg1, pc[2].val);
+                try c.jit.push(&stencils.chk_stk);
+            },
+            else => {
+                return c.reportErrorFmt("jit: Unsupported bytecode instruction: {}", &.{v(pc[0].opcode())}, func.decl);
+            },
+        }
+        pc += cy.bytecode.getInstLenAt(pc);
     }
 }
 
@@ -861,7 +1034,7 @@ fn mainBlock(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
 
     try bc.reserveMainRegs(c, data.maxLocals);
 
-    c.jitBuf.mainPc = @intCast(c.jitGetPos());
+    c.jit.mainPc = @intCast(c.jitGetPos());
 
     // Spill return addr to slot 0.
     if (builtin.cpu.arch == .aarch64) {
@@ -897,9 +1070,9 @@ fn mainBlock(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
 fn mainEnd(c: *cy.Chunk, optReg: ?u8) !void {
     const retSlot = optReg orelse cy.NullU8;
 
-    try assm.genMovImm(c, .arg0, retSlot);
+    try as.genMovImm(c, .arg0, retSlot);
     try c.jitPush(&stencils.end);
-    try assm.genMainReturn(c);
+    try as.genMainReturn(c);
 }
 
 fn pushReleaseVals(c: *cy.Chunk, vals: []const GenValue, debugNodeId: *ast.Node) !void {
@@ -917,7 +1090,7 @@ fn pushReleaseVals(c: *cy.Chunk, vals: []const GenValue, debugNodeId: *ast.Node)
     } else if (vals.len == 1) {
         // try pushRelease(self, vals[0].local, debugNodeId);
         try c.jitPush(stencils.release[0..stencils.release_zFreeObject]);
-        try assm.genCallFuncPtr(c, &cy.vm.zFreeObject);
+        try as.genCallFuncPtr(c, &cy.vm.zFreeObject);
         try c.jitPush(stencils.release[stencils.release_zFreeObject+CallHoleLen..]);
     }
 }
@@ -964,14 +1137,14 @@ fn funcBlock(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
         try c.jitPushU32(A64.LoadStore.strImmOff(a64.FpReg, 2, .x30).bitCast());
     } else if (builtin.cpu.arch == .x86_64) {
         // Save rax to ret addr slot.
-        try assm.genStoreSlot(c, 2, .temp);
+        try as.genStoreSlot(c, 2, .temp);
     }
 
     try c.compiler.genSymMap.putNoClobber(c.alloc, func, .{ .func = .{ .id = 0, .pc = @intCast(funcPc) }});
 
     try bc.pushFuncBlock(c, data, params, nodeId);
 
-    try genStmts(c, data.bodyHead);
+    // try genStmts(c, data.bodyHead);
 
     // Get stack size.
     const stackSize = c.getMaxUsedRegisters();
@@ -993,86 +1166,65 @@ fn funcBlock(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
     try bc.popFuncBlockCommon(c, func);
 }
 
-pub fn gen(self: *cy.Compiler) !void {
-    // Prepare host funcs.
-    for (self.chunks.items) |chunk| {
-        for (chunk.funcs.items) |func| {
-            try prepareFunc(self, func);
-        }
-    }
-
-    for (self.chunks.items) |chunk| {
-        if (chunk.id != 0) {
-            // Skip other chunks for now.
-            continue;
-        }
-
-        log.tracev("Perform codegen for chunk{}: {s}", .{chunk.id, chunk.srcUri});
-        chunk.buf = &self.buf;
-        chunk.jitBuf = &self.jitBuf;
-        try genChunk(chunk);
-        log.tracev("Done. performChunkCodegen {s}", .{chunk.srcUri});
+pub fn relocate(buf: *CodeBuffer) !void {
+    // Ensure enough scratch capacity for patching imm64.
+    if (builtin.cpu.arch == .aarch64) {
+        _ = try buf.ensureUnusedCap(4 * 4);
     }
 
     // Perform relocation.
-    const mainChunk = self.chunks.items[0];
-    for (self.jitBuf.relocs.items) |reloc| {
+    for (buf.relocs.items) |reloc| {
         switch (reloc.type) {
             .jumpToFunc => {
-                const jumpPc = reloc.data.jumpToFunc.pc;
-                const func = reloc.data.jumpToFunc.func;
-                if (func.type == .hostFunc) {
+                const data = reloc.data.jumpToFunc;
+                if (data.func.type == .hostFunc) {
                     return error.Unexpected;
-                } else {
-                    const targetPc = self.genSymMap.get(func).?.func.pc;
-                    assm.patchJumpRel(mainChunk, jumpPc, targetPc);
                 }
-            }
+                const func_pc = buf.buf.items.ptr + buf.funcs.get(data.func).?.pc;
+                as.patch_imm64(buf, data.temp_pc, .temp, @intFromPtr(func_pc));
+            },
+            .jump_f => {
+                const data = reloc.data.jump_f;
+                const target_pc = buf.labels.get(.{.chunk=data.chunk, .bc_pc=data.bc_target_pc}).?;
+                as.patch_jump_rel(buf, data.pc, target_pc);
+            },
+            .jit_entry => {
+                const data = reloc.data.jit_entry;
+                const func_pc = buf.buf.items.ptr + buf.funcs.get(data.func).?.pc;
+                const addr: usize = @intFromPtr(func_pc);
+                data.chunk.buf.setOpArgU48(data.bc_pc, @intCast(addr));
+            },
         }
     }
 }
 
-fn genChunk(c: *cy.Chunk) !void {
+pub fn gen_funcs(c: *cy.Chunk, funcs: []const *cy.Func) !void {
+    // // Prepare host funcs.
+    // for (chunk.funcs.items) |func| {
+    //     try prepareFunc(self, func);
+    // }
+
+    // c.buf = &c.compiler.buf;
+    c.jit = &c.compiler.jitBuf;
+
     if (builtin.cpu.arch == .x86_64) {
-        c.x64Enc = X64.Encoder{ .buf = &c.jitBuf.buf, .alloc = c.alloc };
+        c.x64Enc = X64.Encoder{ .buf = &c.jit.buf, .alloc = c.alloc };
     }
 
-    genChunkInner(c) catch |err| {
-        if (err != error.CompileError) {
-            // Wrap all other errors as a CompileError.
-            return c.reportErrorFmt("error.{}", &.{v(err)}, c.curNode);
-        } else return err;
-    };
-}
-
-fn genChunkInner(c: *cy.Chunk) !void {
     c.listDataStack.clearRetainingCapacity();
 
-    const code = c.ir.getStmtCode(0);
-    if (code != .root) return error.Unexpected;
-
-    const data = c.ir.getStmtData(0, .root);
-    try genStmts(c, data.bodyHead);
-
-    // Ensure that all cstr and values were accounted for.
-    if (c.genValueStack.items.len > 0) {
-        return c.reportErrorFmt("Remaining gen values: {}", &.{v(c.genValueStack.items.len)}, null);
-    }
-    if (c.unwind_entry_stack.items.len > 0) {
-        return c.reportErrorFmt("Remaining unwind temp index: {}", &.{v(c.unwind_entry_stack.items.len)}, null);
-    }
-    if (c.unwind_slot_stack.items.len > 0) {
-        return c.reportErrorFmt("Remaining unwind temp reg: {}", &.{v(c.unwind_slot_stack.items.len)}, null);
+    for (funcs) |func| {
+        try gen_func(c, func);
     }
 
     if (cy.Trace and !cy.isWasm) {
         if (DumpCodeFrom) |start| {
-            var codeBuf = c.jitBuf.buf.items[start..];
+            var codeBuf = c.jit.buf.items[start..];
             if (codeBuf.len > 4 * 20) {
                 codeBuf = codeBuf[0..4*20];
             }
-            log.trace("Dump at marker: {}\n", .{std.fmt.fmtSliceHexLower(codeBuf)});
-            log.trace("Dump all: {}\n", .{std.fmt.fmtSliceHexLower(c.jitBuf.buf.items)});
+            log.trace("Dump at marker: {x}\n", .{codeBuf});
+            log.trace("Dump all: {x}\n", .{c.jit.buf.items});
             DumpCodeFrom = null;
         }
     }
@@ -1141,7 +1293,7 @@ fn retExprStmt(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
         // try c.buf.pushOp1(.end, @intCast(childv.local));
         return error.TODO;
     } else {
-        try assm.genFuncReturn(c);
+        try as.genFuncReturn(c);
     }
 }
 

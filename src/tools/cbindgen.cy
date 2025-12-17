@@ -4,7 +4,7 @@ use io
 use cy
 use c
 
--- usage: ./cbindgen.cy -o llvm.cy /path/to/LLVM.h -lib-path 'libLLVM.dylib' -strip-prefix LLVM
+-- usage: ./cbindgen.cy -o=llvm.cy /path/to/LLVM.h -lib-path='libLLVM.dylib' -strip-prefix=LLVM
 -- `-clang -I/opt/homebrew/Cellar/llvm/20.1.7/lib/clang/20/include` if missing libc headers.
 
 use clang 'clang_bs.cy'

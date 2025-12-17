@@ -310,7 +310,7 @@ pub const Value = packed union {
         return .{ .val = @bitCast(val) };
     }
 
-    pub inline fn initGenericInt(val: i64) Value {
+    pub inline fn init_eval_int(val: i64) Value {
         return .{ .val = @bitCast(val) };
     }
 
@@ -453,8 +453,20 @@ pub fn PtrSpan(T: type) type {
 
 pub fn Option(T: type) type {
     return extern struct {
-        tag: u64,
-        inner: T,
+        tag: u64 = 0,
+        inner: T = undefined,
+
+        pub fn is_none(self: *@This()) bool {
+            return self.tag == 0;
+        }
+
+        pub fn from(self: *const @This()) ?T {
+            if (self.tag == 0) {
+                return null;
+            } else {
+                return self.inner;
+            }
+        }
 
         pub fn some(value: T) @This() {
             return .{

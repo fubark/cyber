@@ -18,6 +18,6 @@ vectors := [_]TestVector{
 }
 
 for vectors |i, t|:
-    test.eq(t.exp, Wyhash.hash(t.seed, t.input.as_ptr_span()))
+    test.eq(t.exp, Wyhash.hash(t.seed, t.input.span()))
 
 --cytest: pass

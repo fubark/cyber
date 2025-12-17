@@ -98,6 +98,7 @@ static inline bool releaseOnly(ZThread* t, HeapObject* obj) {
 
     if (zCheckDoubleFree(t, obj)) {
         size_t len = 0;
+        len += write_str(buf_rem(buf, len), "double free: ");
         len += z_write_ptr(buf_rem(buf, len), obj);
         len += write_str(buf_rem(buf, len), " at t");
         len += z_write_u64(buf_rem(buf, len), t->c.id);
@@ -106,9 +107,8 @@ static inline bool releaseOnly(ZThread* t, HeapObject* obj) {
         len += write_str(buf_rem(buf, len), "(code=");
         len += z_write_u64(buf_rem(buf, len), *(Inst*)t->heap.c.ctx);
         len += write_str(buf_rem(buf, len), ")");
-        Bytes title = BYTES("double free");       
-        Bytes msg = (Bytes){buf_arr, len};
-        zPrintTraceAtPc(t, t->heap.c.ctx, title, msg);
+        z_log(t, buf_arr, len);
+        z_dump_stack_trace(t);
         zDumpObjectTrace(t, obj);
         zFatal();
     }
@@ -462,6 +462,7 @@ ResultCode execBytecode(ZThread* t) {
         JENTRY(CALL),
         JENTRY(CALL_HOST),
         JENTRY(CALL_TRAIT),
+        JENTRY(ENTER_JIT),
         JENTRY(RET_0),
         JENTRY(RET),
         JENTRY(RET_N),
@@ -936,6 +937,18 @@ beginSwitch:
         }
         pc = res.pc;
         stack = res.fp;
+        NEXT();
+    }
+    CASE(ENTER_JIT): {
+        JitEntry entry = (JitEntry)READ_U48(1);
+        // Save the BC caller return pc so that the jit entry can save the VM return address.
+        Inst* return_pc = (Inst*)stack[1];
+        PcFpResult res = entry(t, stack);
+        stack = res.fp;
+        if (res.code != RES_SUCCESS) {
+            RETURN(res.code);
+        }
+        pc = return_pc;
         NEXT();
     }
     CASE(RET_0): {

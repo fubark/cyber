@@ -114,7 +114,7 @@ pub fn genCallFunc(c: *cy.Chunk, ret: Slot, func: *cy.Func) !void {
 
     // Push empty call.
     const jumpPc = c.jitGetPos();
-    try c.jitBuf.relocs.append(c.alloc, .{ .type = .jumpToFunc, .data = .{ .jumpToFunc = .{
+    try c.jit.relocs.append(c.alloc, .{ .type = .jumpToFunc, .data = .{ .jumpToFunc = .{
         .func = func,
         .pc = @intCast(jumpPc),
     }}});

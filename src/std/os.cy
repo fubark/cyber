@@ -776,7 +776,7 @@ fn (&File) write(buf []byte) -> !int:
 
 fn (&File) write_all(val str) -> !void:
     slice := val.ptr[0..val.len()]
-    self.write_all(val.as_ptr_span())!
+    self.write_all(val.span())!
 
 fn (&File) write_all(as_val AsSpan[byte]) -> !void:
     val := as_val.span()

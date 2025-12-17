@@ -142,7 +142,7 @@ PcFpResult func_prologue(ZThread* t, Value* fp) __attribute__((preserve_none)) {
         : "r" (fp + 1)
         : "memory"
     );
-#elif
+#else
 #endif
     [[clang::musttail]] return cont2(t, fp);
 }

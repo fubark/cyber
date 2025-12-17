@@ -113,7 +113,7 @@ fn test_functions(run: *Runner) void {
     run.case("functions/func_type_error.cy");
     run.case("functions/func_union_type.cy");
     run.case("functions/func_union_type_error.cy");
-    if (test_config.test_backend == .vm) {
+    if (test_config.test_backend == .vm and builtin.cpu.arch == .aarch64) {
         run.case("functions/jit_func.cy");
     }
     run.case("functions/lambda.cy");

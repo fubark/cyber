@@ -1054,7 +1054,7 @@ strong {
 <body id="table-of-contents">
 <header>
     <h1 class="title">Cyber Docs</h1>
-    <div class="sub-title">v0.4-dev 497-043ea72</div>
+    <div class="sub-title">v0.4-dev 499-22dfe35</div>
     <ul>
         <li><a href="https://cyberscript.dev" target="_blank" rel="noopener">Homepage</a></li>
         <li><a href="api.html">API Docs</a></li>
@@ -2155,7 +2155,7 @@ print(a[1])
 <p>The <code>@get</code> method allows overriding field accesses for undeclared fields:</p>
 <pre><code class="language-cy">type Foo
 
-fn (&Foo) @get(name str):
+fn (&Foo) @get(%name EvalStr):
     return name.len()
 
 f := Foo{}
@@ -2168,7 +2168,7 @@ print(f.hello)
 <p>The <code>@set</code> method allows overriding field assignments for undeclared fields:</p>
 <pre><code class="language-cy">type Foo
 
-fn (&Foo) @set(name str, value int):
+fn (&Foo) @set(%name EvalStr, value int):
     print('setting %{name} %{value}')
 
 f := Foo{}

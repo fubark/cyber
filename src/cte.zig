@@ -83,11 +83,14 @@ const EvalContext = struct {
 pub fn localDecl(c: *cy.Chunk, node: *ast.VarDecl) !void {
     const name = node.name.cast(.ident).name.slice();
     const init = try cte.eval(c, node.right);
-    try localDecl2(c, name, init.type, init.value);
+    try localDecl2(c, name, init.type, init.value, @ptrCast(node));
 }
 
-pub fn localDecl2(c: *cy.Chunk, name: []const u8, val_t: *cy.Type, val: Value) !void {
+pub fn localDecl2(c: *cy.Chunk, name: []const u8, val_t: *cy.Type, val: Value, node: *ast.Node) !void {
     const ctx = sema.getResolveContext(c);
+    if (ctx.hasCtParam(name)) {
+        return c.reportErrorFmt("Redeclaration of compile-time variable `{}`.", &.{v(name)}, node);
+    }    
     try ctx.initCtVar2(c.alloc, name, val_t, val);
     try ctx.ct_locals.append(c.alloc, name);
 }
@@ -146,7 +149,7 @@ pub fn switchStmt(c: *cy.Chunk, switch_stmt: *ast.SwitchBlock, req_ct_case: bool
                                     return c.reportErrorFmt("Expected variable identifier.", &.{}, @ptrCast(capture));
                                 }
                                 const capturev = try c.heap.unwrapChoice(control.type, control.value, case_name);
-                                try localDecl2(c, capture.name(), choice_case.payload_t, capturev);
+                                try localDecl2(c, capture.name(), choice_case.payload_t, capturev, capture);
                             }
 
                             try cb(c, case, data, opt_target);
@@ -292,7 +295,7 @@ fn evalCase(c: *cy.Chunk, case: *ast.CaseStmt, captured_opt: ?cy.TypeValue, cb: 
 
     if (captured_opt) |captured| {
         const capture_n = case.data.case.capture.?;
-        try localDecl2(c, capture_n.name(), captured.type, captured.value);
+        try localDecl2(c, capture_n.name(), captured.type, captured.value, capture_n);
     }
 
     try cb(c, case, data, opt_target);
@@ -322,22 +325,14 @@ pub fn forRangeStmt(c: *cy.Chunk, node: *ast.ForRangeStmt, cb: *const fn(*cy.Chu
     }
     const end = try cte.evalCheck(c, node.end, start.type);
     var i = start.value.asInt();
-    var ctx = sema.getResolveContext(c);
-    var each_name: ?[]const u8 = null;
-    if (node.each) |each| {
-        each_name = each.name();
-        if (ctx.hasCtParam(each_name.?)) {
-            return c.reportErrorFmt("Redeclaration of compile-time variable `{}`.", &.{v(each_name.?)}, each);
-        }
-    }
 
     while (i < end.value.asInt()) {
-        if (each_name) |name| {
-            ctx = sema.getResolveContext(c);
-            try ctx.setCtParam(c.heap, name, start.type, Value.initInt(i));
-        }
-
         const local_start = push_ct_block(c);
+
+        if (node.each) |each| {
+            const each_name = each.name();
+            try localDecl2(c, each_name, start.type, Value.initInt(i), each);
+        }
 
         try cb(c, node, data);
 

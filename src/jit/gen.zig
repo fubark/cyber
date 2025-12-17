@@ -158,6 +158,10 @@ pub const CodeBuffer = struct {
         // }
     }
 
+    pub fn raw(self: *CodeBuffer) []const u8 {
+        return self.buf.items;
+    }
+
     pub fn push(self: *CodeBuffer, code: []const u8) !void {
         const start = try self.reserve(code.len);
         const dst: []u8 = @ptrCast(self.buf.items.ptr[start..start+code.len]);
@@ -179,6 +183,12 @@ pub const CodeBuffer = struct {
         const start = try self.ensureUnusedCap(size);
         self.buf.items.len += size;
         return start;
+    }
+
+    pub fn reserve_slice(self: *CodeBuffer, size: usize) ![]u8 {
+        const start = try self.ensureUnusedCap(size);
+        self.buf.items.len += size;
+        return self.buf.items[start..];
     }
 
     pub fn ensureUnusedCap(self: *CodeBuffer, size: usize) !usize {

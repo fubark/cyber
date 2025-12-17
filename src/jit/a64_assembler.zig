@@ -332,11 +332,11 @@ fn copyImm64Simple(buf: *gen.CodeBuffer, dst: Register, imm_: u64, oneChunks: u3
 
 // Tests extracted from: llvm-project/llvm/test/CodeGen/AArch64/arm64-movi.ll
 test "copyImm64" {
-    var buf = gen.CodeBuffer.init();
+    var buf = gen.CodeBuffer.init(t.alloc);
     defer buf.buf.deinit(t.alloc);
 
     var c: cy.Chunk = undefined;
-    c.jitBuf = &buf;
+    c.jit = &buf;
     c.alloc = t.alloc;
 
     // 64-bit immed with 32-bit pattern size, rotated by 0.
@@ -350,7 +350,7 @@ test "copyImm64" {
 
     // 3 movk
     buf.buf.clearRetainingCapacity();
-    try copyImm64(&c, .x0, 1427392313513592);
+    try copyImm64(&buf, .x0, 1427392313513592);
     var insts = std.mem.bytesAsSlice(u32, buf.buf.items);
     try t.eqSlice(u32, insts, &[_]u32{
         @bitCast(A64.MovWideImm.movz(.x0, 22136, 0)),
@@ -361,7 +361,7 @@ test "copyImm64" {
 
     // movz movk skip1
     buf.buf.clearRetainingCapacity();
-    try copyImm64(&c, .x0, 22601072640);
+    try copyImm64(&buf, .x0, 22601072640);
     insts = std.mem.bytesAsSlice(u32, buf.buf.items);
     try t.eqSlice(u32, insts, &[_]u32{
         @bitCast(A64.MovWideImm.movz(.x0, 0x4321, 16)),
@@ -370,7 +370,7 @@ test "copyImm64" {
 
     // movz skip1 movk
     buf.buf.clearRetainingCapacity();
-    try copyImm64(&c, .x0, 147695335379508);
+    try copyImm64(&buf, .x0, 147695335379508);
     insts = std.mem.bytesAsSlice(u32, buf.buf.items);
     try t.eqSlice(u32, insts, &[_]u32{
         @bitCast(A64.MovWideImm.movz(.x0, 4660, 0)),
@@ -379,7 +379,7 @@ test "copyImm64" {
 
     // movn 
     buf.buf.clearRetainingCapacity();
-    try copyImm64(&c, .x0, @bitCast(@as(i64, -42)));
+    try copyImm64(&buf, .x0, @bitCast(@as(i64, -42)));
     insts = std.mem.bytesAsSlice(u32, buf.buf.items);
     try t.eqSlice(u32, insts, &[_]u32{
         @bitCast(A64.MovWideImm.movn(.x0, 0x29, 0)),
@@ -387,7 +387,7 @@ test "copyImm64" {
 
     // movn skip1 movk
     buf.buf.clearRetainingCapacity();
-    try copyImm64(&c, .x0, @bitCast(@as(i64, -176093720012)));
+    try copyImm64(&buf, .x0, @bitCast(@as(i64, -176093720012)));
     insts = std.mem.bytesAsSlice(u32, buf.buf.items);
     try t.eqSlice(u32, insts, &[_]u32{
         @bitCast(A64.MovWideImm.movn(.x0, 0xedcb, 0)),

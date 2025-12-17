@@ -599,11 +599,21 @@ pub fn evalCompare(c: *cy.Chunk, type_: *cy.Type, a: Value, b: Value, node: *ast
             return a_t == b_t;
         },
         bt.EvalInt,
+        bt.R64,
         bt.I64 => {
             return a.val == b.val;
         },
+        bt.R32,
         bt.I32 => {
             return a.u32 == b.u32;
+        },
+        bt.R16,
+        bt.I16 => {
+            return a.u16 == b.u16;
+        },
+        bt.R8,
+        bt.I8 => {
+            return a.byte == b.byte;
         },
         else => {
             switch (type_.kind()) {
@@ -1770,6 +1780,12 @@ pub fn evalExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: ExprCstr) anyerror!E
                                 }
                             }
                         }
+                    }
+
+                    if (try c.accessResolvedSym(rec.type, "@index", node)) |sym| {
+                        const func_sym = try sema.requireFuncSym(c, sym, node);
+                        const res = try callFuncSymRec(c, func_sym, index_expr.left, sema.ExprResult.initCtValue(rec), &.{ index_expr.args.ptr[0] }, node);
+                        return Expr.initValue(res);
                     }
 
                     if (try c.accessResolvedSym(rec.type, "@index_addr", node)) |sym| {

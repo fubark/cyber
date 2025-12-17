@@ -1,7 +1,7 @@
 type Foo:
     a    int
 
-fn (&Foo) @get(name str):
+fn (&Foo) @get(%name EvalStr):
     panic('error')
 
 f := Foo{a=123}

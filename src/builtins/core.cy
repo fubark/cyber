@@ -276,6 +276,12 @@ fn EvalStr :: @init(x %T) -> Self
 #[bind]
 fn (EvalStr) `+`(o Self) -> Self
 
+#[bind]
+fn (EvalStr) len() -> int
+
+#[bind]
+fn (EvalStr) @index(idx int) -> byte
+
 type NumberFormatConfig:
     --| `pad` provides the ASCII rune that is used for padding.
     pad   ?int

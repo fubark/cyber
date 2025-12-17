@@ -1,7 +1,7 @@
 type Foo:
     a    int
 
-fn (&Foo) @set(name str, val int):
+fn (&Foo) @set(%name EvalStr, val int):
     panic('error')
 
 f := Foo{a=123}

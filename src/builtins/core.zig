@@ -127,6 +127,8 @@ const funcs = [_]struct{[]const u8, C.BindFunc}{
 
     .{"EvalStr.@init", zErrConstEvalFunc(EvalStr_init)},
     .{"EvalStr.+", zErrConstEvalFunc(EvalStr_concat)},
+    .{"EvalStr.len", zErrConstEvalFunc(EvalStr_len)},
+    .{"EvalStr.@index", zErrConstEvalFunc(EvalStr_index)},
 
     // symbol
     .{"symbol.name",    zErrFunc(symbol_name)},
@@ -675,6 +677,7 @@ fn create_eval_str_type(vm: ?*C.VM, c_mod: ?*C.Sym, decl: ?*C.Node) callconv(.c)
     const c = chunk_sym.chunk;
 
     const new_t = c.sema.createTypeWithId(.eval_ref, bt.EvalStr, .{}) catch @panic("error");
+    new_t.info.ct = true;
     return @ptrCast(new_t);
 }
 
@@ -685,6 +688,7 @@ fn create_eval_buffer_type(vm: ?*C.VM, c_mod: ?*C.Sym, decl: ?*C.Node) callconv(
     const c = chunk_sym.chunk;
 
     const new_t = c.sema.createType(.eval_ref, .{}) catch @panic("error");
+    new_t.info.ct = true;
     return @ptrCast(new_t);
 }
 
@@ -695,6 +699,7 @@ fn create_eval_int_type(vm: ?*C.VM, c_mod: ?*C.Sym, decl: ?*C.Node) callconv(.c)
     const c = chunk_sym.chunk;
 
     const new_t = c.sema.createTypeWithId(.eval_int, bt.EvalInt, .{}) catch @panic("error");
+    new_t.info.ct = true;
     return @ptrCast(new_t);
 }
 
@@ -1334,6 +1339,23 @@ fn EvalStr_concat(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
     const ascii = left.ascii() and right.ascii();
     const res = try c.heap.init_eval_str_concat(left.slice(), right.slice(), ascii);
     return cy.TypeValue.init(ctx.func.sig.ret, res);
+}
+
+fn EvalStr_len(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
+    const rec = ctx.args[0].asPtr(*cy.heap.EvalStr);
+    defer c.heap.release(ctx.args[0]);
+    return cy.TypeValue.init(ctx.func.sig.ret, Value.initInt(@intCast(rec.len())));
+}
+
+fn EvalStr_index(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {
+    const rec = ctx.args[0].asPtr(*cy.heap.EvalStr);
+    defer c.heap.release(ctx.args[0]);
+
+    const idx = ctx.args[1].asUint();
+    if (idx >= rec.len()) {
+        return c.reportError("Out of bounds.", ctx.node);
+    }
+    return TypeValue.init(ctx.func.sig.ret, Value.initR8(rec.slice()[@intCast(idx)]));
 }
 
 fn EvalBuffer_len(c: *cy.Chunk, ctx: *cy.ConstEvalContext) !cy.TypeValue {

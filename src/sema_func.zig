@@ -189,10 +189,12 @@ const MatchGenericFuncRt = struct {
     ret_parent_scope_local: ?u32,
 };
 
-pub fn matchGenericFuncRt(c: *cy.Chunk, template: *cy.sym.FuncTemplate,
+pub fn matchGenericFuncRt(c: *cy.Chunk, func: *cy.Func,
     pre_args: []const Argument, end_args: []const *ast.Node, args: []*ir.Expr,
     overloaded: bool, match_err: *FuncMatchError, node: *ast.Node) !?MatchGenericFuncRt {
     _ = overloaded;
+
+    const template = func.data.generic;
 
     try sema.ensureResolvedFuncTemplate(c, template);
 
@@ -204,7 +206,7 @@ pub fn matchGenericFuncRt(c: *cy.Chunk, template: *cy.sym.FuncTemplate,
     }
 
     // Prepare template context.
-    try sema.pushSymResolveContext(c, @ptrCast(template), node);
+    try sema.pushFuncResolveContext(c, func, node);
     var template_ctx = sema.saveResolveContext(c);
     template_ctx.has_ct_params = true;
     defer template_ctx.deinit(c);
@@ -231,10 +233,10 @@ pub fn matchGenericFuncRt(c: *cy.Chunk, template: *cy.sym.FuncTemplate,
         }
     }
 
-    const func = try genFunc(c, template, &template_ctx, node);
+    const func_instance = try genFunc(c, template, &template_ctx, node);
 
     return .{
-        .func = func,
+        .func = func_instance,
         .nargs = arg_idx,
         .ret_parent_scope_local = null,
     };
@@ -343,7 +345,7 @@ pub fn matchFuncRt(c: *cy.Chunk, func: *cy.Func, pre_args: []const Argument,
         },
         .generic => {
             const args = try c.ir.allocArray(*ir.Expr, pre_args.len + end_args.len);
-            const res = (try matchGenericFuncRt(c, func.data.generic, pre_args, end_args, args, false, &match_err, node)) orelse {
+            const res = (try matchGenericFuncRt(c, func, pre_args, end_args, args, false, &match_err, node)) orelse {
                 return reportCallFuncMismatch2(c, pre_args, end_args, func, match_err, node);
             };
             const nargs = res.nargs;
@@ -792,7 +794,7 @@ fn matchOverloadedFunc(c: *cy.Chunk, func: *cy.Func, pre_args: []const Argument,
     end_args: []const *ast.Node, args: []*ir.Expr, match_err: *FuncMatchError, node: *ast.Node) !?MatchOverloadedFuncResult {
 
     if (func.type == .generic) {
-        const res = (try matchGenericFuncRt(c, func.data.generic, pre_args, end_args, args, true, match_err, node)) orelse {
+        const res = (try matchGenericFuncRt(c, func, pre_args, end_args, args, true, match_err, node)) orelse {
             return null;
         };
         return .{
@@ -1096,7 +1098,16 @@ fn matchTemplateArg(c: *cy.Chunk, param: sema.FuncParam, arg: Argument, template
             tparam_t = try cte.eval_type2(c, false, template.func_params[type_idx].type.?);
         }
 
-        const ct_value = try cte.evalCheck(c, arg.node, tparam_t);
+        var ct_value: cy.TypeValue = undefined;
+        if (arg.type == .pre_resolved and arg.data.pre_resolved.resType == .ct_value) {
+            ct_value = arg.data.pre_resolved.data.ct_value;
+            if (ct_value.type.id() != tparam_t.id()) {
+                return sema.reportIncompatType(c, tparam_t, ct_value.type, arg.node);
+            }
+            ct_value = try c.heap.copy_value(ct_value);
+        } else {
+            ct_value = try cte.evalCheck(c, arg.node, tparam_t);
+        }
         var new_arg = arg;
         new_arg.resolve_t = .template;
         new_arg.res = .{ .template = ct_value };
@@ -1155,95 +1166,51 @@ fn matchPreArgCt(c: *cy.Chunk, arg: Argument, param: sema.FuncParam, req_value: 
     const param_t = param.get_type();
     var ct_value: cy.TypeValue = undefined;
     if (arg.type == .receiver) {
-        if (arg.data.receiver.resType == .value) {
-            if (req_value) {
-                return error.TODO;
-            }
-            if (arg.data.receiver.type.id() == param_t.id()) {
-                out_match.* = true;
-                const val = cy.Value.initPtr(arg.data.receiver.ir);
-                return cy.TypeValue.init(param_t, val);
-            }
+        if (arg.data.receiver.resType != .ct_value) {
+            return c.reportErrorFmt("Expected eval value.", &.{}, arg.node);
+        }
+        const rec = arg.data.receiver.data.ct_value;
 
-            if (param_t.kind() == .borrow) {
-                const param_borrow_t = param_t.cast(.borrow);
+        // T -> T
+        if (rec.type.id() == param_t.id()) {
+            out_match.* = true;
+            return c.heap.copy_value(rec);
+        }
+
+        if (param_t.kind() == .borrow) {
+            const param_borrow_t = param_t.cast(.borrow);
+
+            if (param_borrow_t.child_t.id() == rec.type.id()) {
                 // T -> &T
-                if (param_borrow_t.child_t.id() == arg.data.receiver.type.id()) {
-                    const new = try sema.semaEnsureAddressable(c, arg.data.receiver, arg.node);
-                    out_match.* = true;
-                    const val = cy.Value.initPtr(new.ir);
-                    return cy.TypeValue.init(param_t, val);
-                }
-            }
-            out_match.* = false;
-            return cy.TypeValue.init(arg.data.receiver.type, undefined);
-        } else if (arg.data.receiver.resType == .ct_value) {
-            const rec = arg.data.receiver.data.ct_value;
-
-            // T -> T
-            if (rec.type.id() == param_t.id()) {
                 out_match.* = true;
-                return c.heap.copy_value(rec);
+                if (param_borrow_t.child_t.is_cte_boxed()) {
+                    return cy.TypeValue.init(param_t, rec.value);
+                } else {
+                    // Find some way to have a stable primitive argument.
+                    return c.reportError("TODO", arg.node);
+                }
             }
 
-            if (param_t.kind() == .borrow) {
-                const param_borrow_t = param_t.cast(.borrow);
-
-                if (param_borrow_t.child_t.id() == rec.type.id()) {
-                    // T -> &T
+            // ^T -> &T
+            // *T -> &T
+            if (rec.type.kind() == .pointer) {
+                const ptr_t = rec.type.cast(.pointer);
+                if (param_borrow_t.child_t.id() == ptr_t.child_t.id()) {
                     out_match.* = true;
-                    if (param_borrow_t.child_t.is_cte_boxed()) {
-                        return cy.TypeValue.init(param_t, rec.value);
-                    } else {
-                        // Find some way to have a stable primitive argument.
-                        return c.reportError("TODO", arg.node);
-                    }
-                }
-
-                // ^T -> &T
-                // *T -> &T
-                if (rec.type.kind() == .pointer) {
-                    const ptr_t = rec.type.cast(.pointer);
-                    if (param_borrow_t.child_t.id() == ptr_t.child_t.id()) {
-                        out_match.* = true;
-                        return cy.TypeValue.init(param_t, rec.value);
-                    }
+                    return cy.TypeValue.init(param_t, rec.value);
                 }
             }
-
-            out_match.* = false;
-            // On mismatch, only the type is needed.
-            return cy.TypeValue.init(arg.data.receiver.data.ct_value.type, undefined);
-        } else {
-            const val = cy.Value.initPtr(arg.data.receiver.ir);
-            ct_value = cy.TypeValue.init(param_t, val);
         }
+        out_match.* = false;
     } else if (arg.type == .pre_resolved) {
-        switch (arg.data.pre_resolved.resType) {
-            .value_field,
-            .varSym,
-            .value,
-            .value_local => {
-                if (req_value) {
-                    return error.TODO;
-                }
-                const val = cy.Value.initPtr(arg.data.pre_resolved.ir);
-                ct_value = cy.TypeValue.init(param_t, val);
-            },
-            .ct_value => {
-                if (!req_value) {
-                    return error.TODO;
-                }
-                if (arg.data.pre_resolved.type.id() != param_t.id()) {
-                    out_match.* = false;
-                    return arg.data.pre_resolved.data.ct_value;
-                }
-                ct_value = try c.heap.copy_value(arg.data.pre_resolved.data.ct_value);
-            },
-            else => {
-                std.debug.panic("TODO: {}", .{arg.data.pre_resolved.resType});
-            },
+        if (arg.data.pre_resolved.resType != .ct_value) {
+            return c.reportErrorFmt("Expected eval value.", &.{}, arg.node);
         }
+        if (arg.data.pre_resolved.type.id() != param_t.id()) {
+            out_match.* = false;
+            return arg.data.pre_resolved.data.ct_value;
+        }
+        ct_value = try c.heap.copy_value(arg.data.pre_resolved.data.ct_value);
     } else if (arg.type == .standard) {
         if (req_value) {
             const res = try cte.evalTarget(c, arg.node, param_t);
@@ -1262,7 +1229,7 @@ fn matchPreArgCt(c: *cy.Chunk, arg: Argument, param: sema.FuncParam, req_value: 
             ct_value = cy.TypeValue.init(param_t, val);
         }
     } else {
-        return error.TODO;
+        return c.reportErrorFmt("TODO: {}", &.{v(arg.type)}, arg.node);
         // ct_value = cy.TypeValue.init(c.sema.void_t, cy.Value.Void);
         // out_match.* = false;
         // return ct_value;

@@ -1372,7 +1372,7 @@ The `@get` method allows overriding field accesses for undeclared fields:
 ```cy
 type Foo
 
-fn (&Foo) @get(name str):
+fn (&Foo) @get(%name EvalStr):
     return name.len()
 
 f := Foo{}
@@ -1387,7 +1387,7 @@ The `@set` method allows overriding field assignments for undeclared fields:
 ```cy
 type Foo
 
-fn (&Foo) @set(name str, value int):
+fn (&Foo) @set(%name EvalStr, value int):
     print('setting %{name} %{value}')
 
 f := Foo{}

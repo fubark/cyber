@@ -156,8 +156,8 @@ pub const VariantKeyContext = struct {
                 bt.EvalInt => {
                     c.update(std.mem.asBytes(&val.as_eval_int()));
                 },
-                bt.Str => {
-                    c.update(val.asString());
+                bt.EvalStr => {
+                    c.update(val.as_eval_str());
                 },
                 else => {
                     switch (param_t.kind()) {
@@ -206,8 +206,8 @@ pub const VariantKeyContext = struct {
                 bt.EvalInt => {
                     return av.as_eval_int() == b.params[i].as_eval_int();
                 },
-                bt.Str => {
-                    return std.mem.eql(u8, av.asString(), b.params[i].asString());
+                bt.EvalStr => {
+                    return std.mem.eql(u8, av.as_eval_str(), b.params[i].as_eval_str());
                 },
                 else => {
                     switch (param_t.kind()) {

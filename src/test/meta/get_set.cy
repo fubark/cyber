@@ -4,10 +4,10 @@ type Foo:
     a    int
     data Map[str, int]
 
-fn (&Foo) @get(name str) -> int:
+fn (&Foo) @get(%name EvalStr) -> int:
     return self.data[name]
 
-fn (&Foo) @set(name str, value int):
+fn (&Foo) @set(%name EvalStr, value int):
     self.data[name] = value
 
 f := Foo{a=123, data={}}

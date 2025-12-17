@@ -1681,8 +1681,8 @@ fn writeTemplateParam(s: *cy.Sema, w: *std.Io.Writer, param_t: *cy.Type, param: 
         bt.I64 => {
             try w.print("{}", .{param.asInt()});
         },
-        bt.Str => {
-            try w.print("'{s}'", .{param.asString()});
+        bt.EvalStr => {
+            try w.print("'{s}'", .{param.as_eval_str()});
         },
         bt.FuncSig => {
             try w.print("<FuncSig>", .{});

@@ -1340,11 +1340,11 @@ fn semaAssignToIndexStmt(c: *cy.Chunk, left: *ast.IndexExpr, right: *ast.Node, n
         }
     }
 
-    var ptr: ExprResult = undefined;   
+    var ptr: ExprResult = undefined;
     if (rec.type.isPointer()) {
         const idx = try c.semaExprCstr(left.args.ptr[0], c.sema.i64_t);
         ptr = try sema_ptr_index(c, rec, idx, node);
-    } else if (try c.getResolvedSym(@ptrCast(rec.type.sym()), "@index_addr", node)) |index_addr_sym| {
+    } else if (try c.accessResolvedSym(rec.type, "@index_addr", node)) |index_addr_sym| {
         // Default to `@index_addr` and `set_deref`.
         const index_addr_fsym = try requireFuncSym(c, index_addr_sym, @ptrCast(left));
         const args = [_]sema_func.Argument{
@@ -1408,28 +1408,22 @@ fn semaAssignToAccessStmt(c: *cy.Chunk, var_start: usize, rec_n: *ast.Node, rec:
     }
 
     const type_sym = rec.type.sym();
-    var type_ = rec.type;
-    if (type_.kind() == .pointer) {
-        type_ = type_.cast(.pointer).child_t;
-    } else if (type_.kind() == .borrow) {
-        type_ = type_.cast(.borrow).child_t;
-    } else if (type_.kind() == .ex_borrow) {
-        type_ = type_.cast(.ex_borrow).child_t;
-    }
+    var type_ = rec.type.getBaseType();
     const mod = type_.sym().getMod();
 
     const sym = mod.getSym(access_right_name) orelse {
-        // TODO: This depends on @get being known, make sure @get is a nested declaration.
-        if (mod.getSym("@set")) |sym| {
+        if (try c.getResolvedSym(&type_.sym().head, "@set", access_right_n)) |sym| {
             const func_sym = try requireFuncSym(c, sym, node);
 
-            const field_name = try c.semaString(access_right_name, access_right_n);
-            const child_cstr = Cstr.initRequire(func_sym.first.sig.params_ptr[2].get_type());
-            const right_res = try c.semaExprOrOpAssignBinExpr(right, child_cstr, opts.rhsOpAssignBinExpr);
+            // const child_cstr = Cstr.init(func_sym.first.sig.params_ptr[2].get_type());
+            const right_res = try c.semaExprOrOpAssignBinExpr(right, .{}, opts.rhsOpAssignBinExpr);
+
+            const field_name = try c.heap.init_eval_str(access_right_name);
+            defer c.heap.release(field_name);
 
             const args = [3]sema_func.Argument{
                 sema_func.Argument.initReceiver(rec_n, rec),
-                sema_func.Argument.initPreResolved(access_right_n, field_name),
+                sema_func.Argument.initPreResolved(access_right_n, ExprResult.initCtValue2(c.sema.eval_str_t, field_name)),
                 sema_func.Argument.initPreResolved(right, right_res),
             };
             const call = try c.semaCallFuncSymRec2(func_sym, &args, node);
@@ -1948,13 +1942,6 @@ fn semaAccessChoicePayload(c: *cy.Chunk, rec: ExprResult, name: []const u8, node
     return res;
 }
 
-fn semaAccessField(c: *cy.Chunk, rec_n: *ast.Node, rec: ExprResult, field: *ast.Node) !ExprResult {
-    if (field.type() != .ident) {
-        return error.Unexpected;
-    }
-    return semaAccessFieldName(c, rec_n, rec, field.name(), field);
-}
-
 fn semaAccessFieldName(c: *cy.Chunk, rec_n: *ast.Node, rec: ExprResult, name: []const u8, field: *ast.Node) !ExprResult {
     var type_ = rec.type;
 
@@ -1991,24 +1978,7 @@ fn semaAccessFieldName(c: *cy.Chunk, rec_n: *ast.Node, rec: ExprResult, name: []
         return res;
     }
 
-    if (type_.kind() == .pointer) {
-        const mod = type_.sym().getMod();
-        if (mod.getSym("@get")) |get_sym| {
-            const func_sym = try requireFuncSym(c, get_sym, field);
-            const field_name = try c.semaString(name, field);
-
-            const args = [2]sema_func.Argument{
-                sema_func.Argument.initReceiver(rec_n, rec),
-                sema_func.Argument.initPreResolved(field, field_name),
-            };
-            var call = try c.semaCallFuncSymRec2(func_sym, &args, field);
-            const parent_local = rec.recParentLocal();
-            call = ExprResult.initField(call.ir, parent_local);
-            call.owned = true;
-            return call;
-        }
-        type_ = type_.cast(.pointer).child_t;
-    }
+    type_ = type_.getBaseType();
     const mod = type_.sym().getMod();
 
     const sym = mod.getSym(name) orelse {
@@ -2022,14 +1992,15 @@ fn semaAccessFieldName(c: *cy.Chunk, rec_n: *ast.Node, rec: ExprResult, name: []
             }
         }
 
-        // TODO: This depends on @get being known, make sure @get is a nested declaration.
-
-        if (mod.getSym("@get")) |get_sym| {
+        if (try c.getResolvedSym(&type_.sym().head, "@get", field)) |get_sym| {
             const func_sym = try requireFuncSym(c, get_sym, field);
-            const field_name = try c.semaString(name, field);
-            const args = [2]sema_func.Argument{
+
+            const field_name = try c.heap.init_eval_str(name);
+            defer c.heap.release(field_name);
+
+            const args = [_]sema_func.Argument{
                 sema_func.Argument.initReceiver(rec_n, rec),
-                sema_func.Argument.initPreResolved(field, field_name),
+                sema_func.Argument.initPreResolved(field, ExprResult.initCtValue2(c.sema.eval_str_t, field_name)),
             };
             var call = try c.semaCallFuncSymRec2(func_sym, &args, field);
             const parent_local = rec.recParentLocal();
@@ -4825,11 +4796,14 @@ fn pushMethodParamVars(c: *cy.Chunk, self_t: *cy.Type, func: *const cy.Func) !vo
 
     const param_decls = func.decl.?.cast(.funcDecl).params.slice();
     try declareParam(c, param_decls[0], true, 0, self_t);
-    for (param_decls[1..], 1..) |param_decl, rt_param_idx| {
+
+    var rt_param_idx: usize = 1;
+    for (param_decls[1..]) |param_decl| {
         if (param_decl.template_param) {
             continue;
         }
         try declareParam(c, param_decl, false, rt_param_idx, params[rt_param_idx].get_type());
+        rt_param_idx += 1;
     }
 }
 

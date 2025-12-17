@@ -1056,7 +1056,7 @@ pub fn evalFitTarget(c: *cy.Chunk, tval: TypeValue, target_t: *cy.Type, node: *a
 
     if (target_t.id() == bt.EvalInt) {
         if (tval.type.id() == bt.I64) {
-            return Value.initGenericInt(tval.value.asInt());
+            return Value.init_eval_int(tval.value.asInt());
         }
     }
 
@@ -2111,6 +2111,33 @@ fn eval_bin_expr2(c: *cy.Chunk, left: cy.TypeValue, left_n: *ast.Node, right: cy
                 },
             }
         },
+        bt.EvalInt => {
+            switch (op) {
+                .plus => {
+                    const left_v = left.value.as_eval_int();
+                    const right_v = right.value.as_eval_int();
+                    return cy.TypeValue.init(left.type, Value.init_eval_int(left_v + right_v));
+                },
+                .minus => {
+                    const left_v = left.value.as_eval_int();
+                    const right_v = right.value.as_eval_int();
+                    return cy.TypeValue.init(left.type, Value.init_eval_int(left_v - right_v));
+                },
+                .star => {
+                    const left_v = left.value.as_eval_int();
+                    const right_v = right.value.as_eval_int();
+                    return cy.TypeValue.init(left.type, Value.init_eval_int(left_v * right_v));
+                },
+                .slash => {
+                    const left_v = left.value.as_eval_int();
+                    const right_v = right.value.as_eval_int();
+                    return cy.TypeValue.init(left.type, Value.init_eval_int(@divTrunc(left_v, right_v)));
+                },
+                else => {
+                    return c.reportErrorFmt("Unsupported inline eval: {}", &.{v(op)}, node);
+                },
+            }
+        },
         bt.R64 => {
             switch (op) {
                 .plus => {
@@ -2396,7 +2423,7 @@ fn eval_bin_expr(c: *cy.Chunk, left_n: *ast.Node, op: ast.BinaryExprOp, right_n:
             }
             const left = try eval(c, left_n);
             defer c.heap.destructValue(left);
-            if (left.type.kind() == .int or left.type.kind() == .raw or left.type.kind() == .float) {
+            if (left.type.kind() == .int or left.type.kind() == .raw or left.type.kind() == .float or left.type.id() == bt.EvalInt) {
                 const right = try evalCheck(c, right_n, left.type);
                 defer c.heap.destructValue(right);
                 return eval_bin_expr2(c, left, left_n, right, right_n, op, node);
@@ -2658,7 +2685,7 @@ fn evalSignedLiteral(c: *cy.Chunk, literal: []const u8, target_t: *cy.Type, base
             const val = try sema.semaParseInt(c, u64, literal, base, node);
             return Expr.initValue(.{
                 .type = c.sema.eval_int_t,
-                .value = Value.initGenericInt(@bitCast(val)),
+                .value = Value.init_eval_int(@bitCast(val)),
             });
         },
         bt.F32 => {
@@ -2736,7 +2763,7 @@ fn evalUnsignedLiteral(c: *cy.Chunk, literal: []const u8, target_t: *cy.Type, ba
             const val = try sema.semaParseInt(c, u64, literal, base, node);
             return Expr.initValue(.{
                 .type = c.sema.eval_int_t,
-                .value = Value.initGenericInt(@bitCast(val)),
+                .value = Value.init_eval_int(@bitCast(val)),
             });
         },
         bt.F32 => {

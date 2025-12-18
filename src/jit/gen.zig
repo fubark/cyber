@@ -497,7 +497,7 @@ fn gen_slot_inline(buf: *CodeBuffer, reg: as.LRegister, slot: u16) !void {
     if (buf.const_slots.items[slot]) |pc| {
         // Contains inline constant.
         switch (pc[0].opcode()) {
-            .const_16si => {
+            .const_16s => {
                 const val: i64 = @as(i16, @bitCast(pc[2]));
                 try as.genMovImm(buf, reg, @bitCast(val));
             },
@@ -628,7 +628,7 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
             },
             .lt => {
                 const dst = pc[1].val;
-                if (pc[inst_len].opcode() == .jump_f) {
+                if (pc[0].temp_dst() and pc[inst_len].opcode() == .jump_f) {
                     if (pc[inst_len + 1].val == dst) {
                         const bc_target_pc = pc_off + inst_len + pc[inst_len + 2].val;
                         try gen_cmp_jmp(buf, stencils.jump_ge[0..stencils.jump_ge_br4], pc[2].val, pc[3].val, c, bc_target_pc);
@@ -644,7 +644,7 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
             },
             .le => {
                 const dst = pc[1].val;
-                if (pc[inst_len].opcode() == .jump_f) {
+                if (pc[0].temp_dst() and pc[inst_len].opcode() == .jump_f) {
                     if (pc[inst_len + 1].val == dst) {
                         const bc_target_pc = pc_off + inst_len + pc[inst_len + 2].val;
                         try gen_cmp_jmp(buf, stencils.jump_gt[0..stencils.jump_gt_br4], pc[2].val, pc[3].val, c, bc_target_pc);
@@ -660,7 +660,7 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
             },
             .gt => {
                 const dst = pc[1].val;
-                if (pc[inst_len].opcode() == .jump_f) {
+                if (pc[0].temp_dst() and pc[inst_len].opcode() == .jump_f) {
                     if (pc[inst_len + 1].val == dst) {
                         const bc_target_pc = pc_off + inst_len + pc[inst_len + 2].val;
                         try gen_cmp_jmp(buf, stencils.jump_le[0..stencils.jump_le_br4], pc[2].val, pc[3].val, c, bc_target_pc);
@@ -676,7 +676,7 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
             },
             .ge => {
                 const dst = pc[1].val;
-                if (pc[inst_len].opcode() == .jump_f) {
+                if (pc[0].temp_dst() and pc[inst_len].opcode() == .jump_f) {
                     if (pc[inst_len + 1].val == dst) {
                         const bc_target_pc = pc_off + inst_len + pc[inst_len + 2].val;
                         try gen_cmp_jmp(buf, stencils.jump_lt[0..stencils.jump_lt_br4], pc[2].val, pc[3].val, c, bc_target_pc);
@@ -691,15 +691,17 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
                 try buf.push(&stencils.ge);
             },
             .const_16s => {
+                if (pc[0].temp_dst()) {
+                    const dst = pc[1].val;
+                    const_slots[dst] = pc;
+                    pc += inst_len;
+                    continue;
+                }
                 const dst = pc[1].val;
                 try as.genMovImm(buf, .arg0, dst);
                 const val: i64 = @as(i16, @bitCast(pc[2]));
                 try as.genMovImm(buf, .arg1, @bitCast(val));
                 try buf.push(&stencils.store_const);
-            },
-            .const_16si => {
-                const dst = pc[1].val;
-                const_slots[dst] = pc;
             },
             .chk_stk => {
                 try as.genMovImm(buf, .arg0, pc[1].val);

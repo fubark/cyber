@@ -212,6 +212,18 @@ pub const ByteCodeBuffer = struct {
         }
     }
 
+    pub fn pushOpSlice2(self: *ByteCodeBuffer, code: OpCode, tmp_dst: bool, args: []const u16) !void {
+        const start = self.ops.items.len;
+        try self.ops.resize(self.alloc, self.ops.items.len + args.len + 1);
+        self.ops.items[start] = Inst.initOpCode2(code, tmp_dst);
+        if (RecordOpcodes) {
+            try self.opcodes.append(self.alloc, code);
+        }
+        for (args, 0..) |arg, i| {
+            self.ops.items[start+i+1] = .{ .val = arg };
+        }
+    }
+
     pub fn pushOpSlice(self: *ByteCodeBuffer, code: OpCode, args: []const u16) !void {
         const start = self.ops.items.len;
         try self.ops.resize(self.alloc, self.ops.items.len + args.len + 1);
@@ -492,7 +504,6 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
             const val = pc[2].val;
             try w.print("%{} = {}", .{dst, val});
         },
-        .const_16si,
         .const_16s => {
             const dst = pc[1].val;
             const val: i16 = @bitCast(pc[2].val);
@@ -798,9 +809,19 @@ pub const Inst = packed struct {
         };
     }
 
+    pub inline fn initOpCode2(code_: OpCode, tmp_dst: bool) Inst {
+        return .{
+            .val = @intFromEnum(code_) | @as(u16, if (tmp_dst) 0x100 else 0),
+        };
+    }
+
     pub inline fn opcode(self: *const Inst) OpCode {
         const code: u8 = @truncate(self.val);
         return @enumFromInt(code);
+    }
+
+    pub inline fn temp_dst(self: *const Inst) bool {
+        return (self.val >> 8) == 1;
     }
 
     pub fn initArg(arg: u8) Inst {
@@ -866,7 +887,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .jump => {
             return 2;
         },
-        .const_16si,
         .const_16s,
         .const_16 => {
             return 3;
@@ -944,7 +964,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .cmp_8,
         .cmp,
         .cmp_str,
-        .ucmp,
         .castAbstract,
         .memsetz,
         .feq32,
@@ -961,6 +980,10 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .gt,
         .le,
         .ge,
+        .ult,
+        .ugt,
+        .ule,
+        .uge,
         .add_i16,
         .mov_n,
         .new,
@@ -1014,7 +1037,6 @@ pub const OpCode = enum(u8) {
     const_64 = vmc.CodeCONST_64,
     const_str = vmc.CodeCONST_STR,
     const_16s = vmc.CodeCONST_16S,
-    const_16si = vmc.CodeCONST_16SI,
     const_16 = vmc.CodeCONST_16,
     const_32 = vmc.CodeCONST_32,
     true = vmc.CodeTrue,
@@ -1103,7 +1125,10 @@ pub const OpCode = enum(u8) {
     gt = vmc.CodeGT,
     le = vmc.CodeLE,
     ge = vmc.CodeGE,
-    ucmp = vmc.CodeUCMP,
+    ult = vmc.CodeULT,
+    ugt = vmc.CodeUGT,
+    ule = vmc.CodeULE,
+    uge = vmc.CodeUGE,
 
     new = vmc.CodeNEW,
     trait = vmc.CodeTrait,
@@ -1175,7 +1200,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(128, std.enums.values(OpCode).len);
+    try t.eq(130, std.enums.values(OpCode).len);
     try t.eq(@sizeOf(Inst), 2);
     try t.eq(@sizeOf(DebugSym), 16);
 }

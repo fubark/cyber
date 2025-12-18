@@ -1514,8 +1514,8 @@ fn pushCmp(c: *Chunk, val_t: *cy.Type, dst: Reg, left: Reg, right: Reg, node: *a
 
 fn genCompare(c: *Chunk, expr: *ir.Compare, cstr: Cstr, node: *ast.Node) !GenValue {
     const dst = try bc.selectReg(c, expr.base.type, cstr, node);
-    const left = try genExpr(c, expr.left, Cstr.localOrTemp().inlinec());
-    const right = try genExpr(c, expr.right, Cstr.localOrTemp().inlinec());
+    const left = try genExpr(c, expr.left, Cstr.localOrTemp());
+    const right = try genExpr(c, expr.right, Cstr.localOrTemp());
     if (expr.left.type.kind() == .float) {
         if (expr.left.type.id() == bt.F64) {
             const code: cy.OpCode = switch (expr.cond) {
@@ -1543,8 +1543,8 @@ fn genCompare(c: *Chunk, expr: *ir.Compare, cstr: Cstr, node: *ast.Node) !GenVal
         } else {
             bits = expr.left.type.cast(.int).bits;
         }
-        const unsigned = expr.cond.isUnsigned();
         if (bits < 64) {
+            const unsigned = expr.cond.isUnsigned();
             if (unsigned) {
                 try push_zext(c, left.reg, left.reg, @intCast(bits), node);
                 try push_zext(c, right.reg, right.reg, @intCast(bits), node);
@@ -1554,20 +1554,17 @@ fn genCompare(c: *Chunk, expr: *ir.Compare, cstr: Cstr, node: *ast.Node) !GenVal
             }
         }
         const code: cy.OpCode = switch (expr.cond) {
-            .ult,
+            .ult => .ult,
             .lt => .lt,
-            .ule,
+            .ule => .ule,
             .le => .le,
-            .ugt,
+            .ugt => .ugt,
             .gt => .gt,
-            .uge,
+            .uge => .uge,
             .ge => .ge,
             else => return error.TODO,
         };
-        try c.pushCode(code, &.{ dst.reg, left.reg, right.reg }, node);
-        if (unsigned) {
-            try c.pushCode(.ucmp, &.{ dst.reg, left.reg, right.reg }, node);
-        }
+        try c.pushCode2(code, dst.isTemp(), &.{ dst.reg, left.reg, right.reg }, node);
     }
     try pop_temp_value(c, right, node);
     try pop_temp_value(c, left, node);
@@ -1591,9 +1588,9 @@ fn gen_fmod(c: *Chunk, expr: *ir.BinOp2, cstr: Cstr, node: *ast.Node) !GenValue 
     const leftv = try genExpr(c, expr.left, Cstr.localOrTemp());
     const rightv = try genExpr(c, expr.right, Cstr.localOrTemp());
     if (expr.base.type.id() == bt.F64) {
-        try pushInlineBinExpr(c, .fmod, dst.reg, leftv.reg, rightv.reg, node);
+        try pushInlineBinExpr(c, .fmod, dst, leftv.reg, rightv.reg, node);
     } else {
-        try pushInlineBinExpr(c, .fmod32, dst.reg, leftv.reg, rightv.reg, node);
+        try pushInlineBinExpr(c, .fmod32, dst, leftv.reg, rightv.reg, node);
     }
     try pop_temp_value(c, rightv, node);
     try pop_temp_value(c, leftv, node);
@@ -1605,9 +1602,9 @@ fn gen_fdiv(c: *Chunk, expr: *ir.BinOp2, cstr: Cstr, node: *ast.Node) !GenValue 
     const leftv = try genExpr(c, expr.left, Cstr.localOrTemp());
     const rightv = try genExpr(c, expr.right, Cstr.localOrTemp());
     if (expr.base.type.id() == bt.F64) {
-        try pushInlineBinExpr(c, .fdiv, dst.reg, leftv.reg, rightv.reg, node);
+        try pushInlineBinExpr(c, .fdiv, dst, leftv.reg, rightv.reg, node);
     } else {
-        try pushInlineBinExpr(c, .fdiv32, dst.reg, leftv.reg, rightv.reg, node);
+        try pushInlineBinExpr(c, .fdiv32, dst, leftv.reg, rightv.reg, node);
     }
     try pop_temp_value(c, rightv, node);
     try pop_temp_value(c, leftv, node);
@@ -1619,9 +1616,9 @@ fn gen_fmul(c: *Chunk, expr: *ir.BinOp2, cstr: Cstr, node: *ast.Node) !GenValue 
     const leftv = try genExpr(c, expr.left, Cstr.localOrTemp());
     const rightv = try genExpr(c, expr.right, Cstr.localOrTemp());
     if (expr.base.type.id() == bt.F64) {
-        try pushInlineBinExpr(c, .fmul, dst.reg, leftv.reg, rightv.reg, node);
+        try pushInlineBinExpr(c, .fmul, dst, leftv.reg, rightv.reg, node);
     } else {
-        try pushInlineBinExpr(c, .fmul32, dst.reg, leftv.reg, rightv.reg, node);
+        try pushInlineBinExpr(c, .fmul32, dst, leftv.reg, rightv.reg, node);
     }
     try pop_temp_value(c, rightv, node);
     try pop_temp_value(c, leftv, node);
@@ -1633,9 +1630,9 @@ fn gen_fsub(c: *Chunk, expr: *ir.BinOp2, cstr: Cstr, node: *ast.Node) !GenValue 
     const leftv = try genExpr(c, expr.left, Cstr.localOrTemp());
     const rightv = try genExpr(c, expr.right, Cstr.localOrTemp());
     if (expr.base.type.id() == bt.F64) {
-        try pushInlineBinExpr(c, .fsub, dst.reg, leftv.reg, rightv.reg, node);
+        try pushInlineBinExpr(c, .fsub, dst, leftv.reg, rightv.reg, node);
     } else {
-        try pushInlineBinExpr(c, .fsub32, dst.reg, leftv.reg, rightv.reg, node);
+        try pushInlineBinExpr(c, .fsub32, dst, leftv.reg, rightv.reg, node);
     }
     try pop_temp_value(c, rightv, node);
     try pop_temp_value(c, leftv, node);
@@ -1647,9 +1644,9 @@ fn gen_fadd(c: *Chunk, expr: *ir.BinOp2, cstr: Cstr, node: *ast.Node) !GenValue 
     const leftv = try genExpr(c, expr.left, Cstr.localOrTemp());
     const rightv = try genExpr(c, expr.right, Cstr.localOrTemp());
     if (expr.base.type.id() == bt.F64) {
-        try pushInlineBinExpr(c, .fadd, dst.reg, leftv.reg, rightv.reg, node);
+        try pushInlineBinExpr(c, .fadd, dst, leftv.reg, rightv.reg, node);
     } else {
-        try pushInlineBinExpr(c, .fadd32, dst.reg, leftv.reg, rightv.reg, node);
+        try pushInlineBinExpr(c, .fadd32, dst, leftv.reg, rightv.reg, node);
     }
     try pop_temp_value(c, rightv, node);
     try pop_temp_value(c, leftv, node);
@@ -1658,9 +1655,9 @@ fn gen_fadd(c: *Chunk, expr: *ir.BinOp2, cstr: Cstr, node: *ast.Node) !GenValue 
 
 fn genBinOp2(c: *Chunk, expr: *ir.BinOp2, op: cy.OpCode, cstr: Cstr, node: *ast.Node) !GenValue {
     const dst = try bc.selectReg(c, expr.base.type, cstr, node);
-    const leftv = try genExpr(c, expr.left, Cstr.localOrTemp().inlinec());
-    const rightv = try genExpr(c, expr.right, Cstr.localOrTemp().inlinec());
-    try pushInlineBinExpr(c, op, dst.reg, leftv.reg, rightv.reg, node);
+    const leftv = try genExpr(c, expr.left, Cstr.localOrTemp());
+    const rightv = try genExpr(c, expr.right, Cstr.localOrTemp());
+    try pushInlineBinExpr(c, op, dst, leftv.reg, rightv.reg, node);
     try pop_temp_value(c, rightv, node);
     try pop_temp_value(c, leftv, node);
     return dst;
@@ -1676,14 +1673,14 @@ fn genBinOp(c: *Chunk, expr: *ir.BinOp, cstr: Cstr, node: *ast.Node) !GenValue {
     switch (expr.op) {
         .bitwiseXor => {
             if (expr.leftT.id() == bt.I64) {
-                try pushInlineBinExpr(c, getIntOpCode(expr.op), dst.reg, leftv.reg, rightv.reg, node);
+                try pushInlineBinExpr(c, getIntOpCode(expr.op), dst, leftv.reg, rightv.reg, node);
             } else return error.Unexpected;
         },
         .pow => {
             if (expr.leftT.id() == bt.F64) {
-                try pushInlineBinExpr(c, getFloatOpCode(expr.op), dst.reg, leftv.reg, rightv.reg, node);
+                try pushInlineBinExpr(c, getFloatOpCode(expr.op), dst, leftv.reg, rightv.reg, node);
             } else if (expr.leftT.id() == bt.I64) {
-                try pushInlineBinExpr(c, getIntOpCode(expr.op), dst.reg, leftv.reg, rightv.reg, node);
+                try pushInlineBinExpr(c, getIntOpCode(expr.op), dst, leftv.reg, rightv.reg, node);
             } else return error.Unexpected;
         },
         .bang_equal,
@@ -2175,15 +2172,15 @@ fn gen_for_range_stmt(c: *Chunk, stmt: *ir.ForRangeStmt, node: *ast.Node) !void 
     // Perform comparison.
     if (stmt.increment) {
         if (stmt.end_inclusive) {
-            try pushInlineBinExpr(c, .le, cond, counter, rangeEnd, node);
+            try pushInlineBinExpr(c, .le, GenValue.initTemp(cond), counter, rangeEnd, node);
         } else {
-            try pushInlineBinExpr(c, .lt, cond, counter, rangeEnd, node);
+            try pushInlineBinExpr(c, .lt, GenValue.initTemp(cond), counter, rangeEnd, node);
         }
     } else {
         if (stmt.end_inclusive) {
-            try pushInlineBinExpr(c, .ge, cond, counter, rangeEnd, node);
+            try pushInlineBinExpr(c, .ge, GenValue.initTemp(cond), counter, rangeEnd, node);
         } else {
-            try pushInlineBinExpr(c, .gt, cond, counter, rangeEnd, node);
+            try pushInlineBinExpr(c, .gt, GenValue.initTemp(cond), counter, rangeEnd, node);
         }
     }
 
@@ -2714,7 +2711,7 @@ fn gen_const64(c: *Chunk, expr: *ir.Const64, cstr: Cstr, node: *ast.Node) !GenVa
     const dst = try bc.selectReg(c, expr.base.type, cstr, node);
     switch (expr.base.type.id()) {
         bt.I64 => {
-            try genConstInt(c, @bitCast(expr.val), dst.reg, cstr.inline_constant, node);
+            try genConstInt(c, @bitCast(expr.val), dst, node);
         },
         else => {
             try genConst64_(c, expr.val, dst.reg, node);
@@ -2723,18 +2720,14 @@ fn gen_const64(c: *Chunk, expr: *ir.Const64, cstr: Cstr, node: *ast.Node) !GenVa
     return dst;
 }
 
-fn genConstInt(c: *Chunk, val: i64, dst: Reg, inline_: bool, node: *ast.Node) !void {
+fn genConstInt(c: *Chunk, val: i64, dst: GenValue, node: *ast.Node) !void {
     // TODO: Can be constU8.
     if (val >= 0 and val <= std.math.maxInt(i16)) {
-        if (inline_) {
-            try c.pushCode(.const_16si, &.{ dst, @bitCast(@as(i16, @intCast(val))) }, node);
-        } else {
-            try c.pushCode(.const_16s, &.{ dst, @bitCast(@as(i16, @intCast(val))) }, node);
-        }
+        try c.pushCode2(.const_16s, dst.isTemp(), &.{ dst.reg, @bitCast(@as(i16, @intCast(val))) }, node);
         return;
     }
     // const idx = try c.buf.getOrPushConst(false, cy.Value.initInt(@intCast(val)));
-    try genConst64_(c, @bitCast(val), dst, node);
+    try genConst64_(c, @bitCast(val), dst.reg, node);
 }
 
 fn get_uniq_ptr_layout(c: *cy.Chunk, layout: []const bool) !usize {
@@ -2793,8 +2786,8 @@ fn pushInlineUnExpr(c: *cy.Chunk, code: cy.OpCode, dst: Reg, child: Reg, node: *
     try c.pushFCode(code, &.{ dst, child }, node);
 }
 
-fn pushInlineBinExpr(c: *cy.Chunk, code: cy.OpCode, dst: Reg, left: Reg, right: Reg, node: *ast.Node) !void {
-    try c.pushFCode(code, &.{ dst, left, right }, node);
+fn pushInlineBinExpr(c: *cy.Chunk, code: cy.OpCode, dst: GenValue, left: Reg, right: Reg, node: *ast.Node) !void {
+    try c.pushFCode2(code, dst.isTemp(), &.{ dst.reg, left, right }, node);
 }
 
 fn mainEnd(c: *cy.Chunk, node: *ast.Node) !void {
@@ -2988,9 +2981,6 @@ pub const Cstr = struct {
         uninit: void,
     } = .{ .uninit = {} },
 
-    // Hint for JIT.
-    inline_constant: bool = false,
-
     /// TODO: provide hint whether the allocated reill be used or not.
     /// e.g. For expr statements, the top level expr reg isn't used.
     /// If it's not used and the current expr does not produce side-effects, it can omit generating its code.
@@ -2998,12 +2988,6 @@ pub const Cstr = struct {
     pub const none = Cstr{
         .type = .none,
     };
-
-    pub fn inlinec(self: *const Cstr) Cstr {
-        var new = self.*;
-        new.inline_constant = true;
-        return new;
-    }
 
     pub fn localOrTemp() Cstr {
         return .{

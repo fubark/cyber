@@ -634,7 +634,7 @@ fn checkBytecode(c: *cy.Chunk) void {
     var pc_off: u32 = 0;
     var inst: u32 = 0;
     while (pc_off < c.buf.ops.items.len) {
-        if (pc[0].val >= vmc.NumCodes) {
+        if (pc[0].opcode() >= vmc.NumCodes) {
             std.debug.panic("Bad instruction at {}.", .{pc_off});
         }
         const code = pc[0].opcode();

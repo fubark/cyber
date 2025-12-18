@@ -790,14 +790,6 @@ pub fn dumpValue(vm: *const VM, val: Value) void {
     }
 }
 
-inline fn deoptimizeBinOp(pc: [*]cy.Inst) void {
-    pc[0] = cy.Inst.initOpCode(.callObjSym);
-    pc[1] = pc[8];
-    pc[2] = pc[9];
-    pc[3] = pc[10];
-    pc[4] = pc[11];
-}
-
 fn z_write_ptr(buf: C.Bytes, ptr: ?*anyopaque) callconv(.c) usize {
     const res = std.fmt.bufPrint(C.from_bytes(buf), "{*}", .{ptr}) catch @panic("error");
     return res.len;

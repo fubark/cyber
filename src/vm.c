@@ -408,7 +408,7 @@ ResultCode execBytecode(ZThread* t) {
     #define PRE_TRACE() \
         /* Stop at call depth. */ \
         /* if (vm->c.trace_indent > 15) zFatal(); */ \
-        t->c.trace->opCounts[pc[0]].count += 1; \
+        t->c.trace->opCounts[*(u8*)pc].count += 1; \
         t->c.trace->totalOpCounts += 1; \
         t->heap.c.ctx = (u64)pc; \
         /* Persist context before each inst for segfault/internal panic reporting */ \
@@ -433,7 +433,6 @@ ResultCode execBytecode(ZThread* t) {
         JENTRY(CONST_64),
         JENTRY(CONST_STR),
         JENTRY(CONST_16S),
-        JENTRY(CONST_16SI),
         JENTRY(CONST_16),
         JENTRY(CONST_32),
         JENTRY(True),
@@ -501,7 +500,10 @@ ResultCode execBytecode(ZThread* t) {
         JENTRY(GT),
         JENTRY(LE),
         JENTRY(GE),
-        JENTRY(UCMP),
+        JENTRY(ULT),
+        JENTRY(UGT),
+        JENTRY(ULE),
+        JENTRY(UGE),
         JENTRY(FADD),
         JENTRY(FSUB),
         JENTRY(FMUL),
@@ -572,7 +574,7 @@ ResultCode execBytecode(ZThread* t) {
     #define NEXT() \
         do { \
             PRE_TRACE(); \
-            goto *jumpTable[*pc]; \
+            goto *jumpTable[*(u8*)pc]; \
         } while (false)
 #else
     // case name matches enum.
@@ -595,7 +597,7 @@ ResultCode execBytecode(ZThread* t) {
     NEXT();
 #else 
 beginSwitch:
-    switch ((OpCode)*pc) {
+    switch ((OpCode)*(u8*)pc) {
 #endif
     CASE(CONST_64): {
         u16 dst = pc[1];
@@ -615,12 +617,6 @@ beginSwitch:
         NEXT();
     }
     CASE(CONST_16S): {
-        i64 i = (i64)(i16)pc[2];
-        stack[pc[1]] = BITCAST(u64, i);
-        pc += 3;
-        NEXT();
-    }
-    CASE(CONST_16SI): {
         i64 i = (i64)(i16)pc[2];
         stack[pc[1]] = BITCAST(u64, i);
         pc += 3;
@@ -1191,16 +1187,17 @@ beginSwitch:
     CASE(GE): {
         INTEGER_BINOP(stack[dst] = left >= right)
     }
-    CASE(UCMP): {
-        u16 dst = pc[1];
-        u16 left = pc[2];
-        u16 right = pc[3];
-        u64 sign_xor = (stack[pc[2]] >> 63) ^ (stack[pc[3]] >> 63);
-        if (sign_xor != 0) {
-            stack[dst] = !(stack[dst]);
-        }
-        pc += 4;
-        NEXT();
+    CASE(ULT): {
+        UINT_BINOP(stack[dst] = left < right)
+    }
+    CASE(ULE): {
+        UINT_BINOP(stack[dst] = left <= right)
+    }
+    CASE(UGT): {
+        UINT_BINOP(stack[dst] = left > right)
+    }
+    CASE(UGE): {
+        UINT_BINOP(stack[dst] = left >= right)
     }
     CASE(FADD): {
         FLOAT_BINOP(stack[dst] = VALUE_FLOAT(left + right))

@@ -694,11 +694,15 @@ pub const Chunk = struct {
         }
     }
 
-    /// An instruction that can fail (can throw or panic).
     pub fn pushFCode(c: *Chunk, code: cy.OpCode, args: []const u16, node: *ast.Node) !void {
+        return c.pushFCode2(code, false, args, node);
+    }
+
+    /// An instruction that can fail (can throw or panic).
+    pub fn pushFCode2(c: *Chunk, code: cy.OpCode, tmp_dst: bool, args: []const u16, node: *ast.Node) !void {
         log.tracev("pushFCode: {s} {}", .{@tagName(code), c.buf.ops.items.len});
         try c.pushFailableDebugSym(node);
-        try c.buf.pushOpSlice(code, args);
+        try c.buf.pushOpSlice2(code, tmp_dst, args);
         if (cy.Trace) {
             const exp = cy.bytecode.getInstLenAt(c.buf.ops.items.ptr + c.buf.ops.items.len - 1 - args.len) - 1;
             if (args.len != exp) {
@@ -708,9 +712,13 @@ pub const Chunk = struct {
     }
 
     pub fn pushCode(c: *Chunk, code: cy.OpCode, args: []const u16, node: *ast.Node) !void {
+        return c.pushCode2(code, false, args, node);
+    }
+
+    pub fn pushCode2(c: *Chunk, code: cy.OpCode, tmp_dst: bool, args: []const u16, node: *ast.Node) !void {
         log.tracev("pushCode: {s} {}", .{@tagName(code), c.buf.ops.items.len});
         try c.pushOptionalDebugSym(node);
-        try c.buf.pushOpSlice(code, args);
+        try c.buf.pushOpSlice2(code, tmp_dst, args);
         if (cy.Trace) {
             const exp = cy.bytecode.getInstLenAt(c.buf.ops.items.ptr + c.buf.ops.items.len - 1 - args.len) - 1;
             if (args.len != exp) {

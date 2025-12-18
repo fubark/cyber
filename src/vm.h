@@ -155,7 +155,6 @@ typedef enum {
     
     /// Sets an immediate i16 value sign extended.
     CodeCONST_16S,
-    CodeCONST_16SI, // JIT inline hint.
 
     CodeCONST_16,
     CodeCONST_32,
@@ -231,7 +230,10 @@ typedef enum {
     CodeGT,
     CodeLE,
     CodeGE,
-    CodeUCMP,
+    CodeULT,
+    CodeUGT,
+    CodeULE,
+    CodeUGE,
     CodeFADD,
     CodeFSUB,
     CodeFMUL,

@@ -27,6 +27,7 @@ PcFpResult cont4(ZThread* t, Value* fp, u64 a, u64 b) __attribute__((preserve_no
 PcFpResult cont5(ZThread* t, Value* fp, u64 a, u64 b, u64 c) __attribute__((preserve_none));
 void cont6(VM* vm, Value* fp, u64 a, u64 b, u64 c, u64 d);
 PcFpResult br3(ZThread* t, Value* fp, u64 a) __attribute__((preserve_none));
+PcFpResult br4(ZThread* t, Value* fp, u64 a, u64 b) __attribute__((preserve_none));
 void interrupt(VM* vm, Value* fp);
 void interrupt4(VM* vm, Value* fp, u64 a, u64 b);
 void interrupt5(VM* vm, Value* fp, u64 a, u64 b, u64 c);
@@ -63,6 +64,27 @@ PcFpResult lt(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__
     i64 left_i = BITCAST(i64, left);
     i64 right_i = BITCAST(i64, right);
     fp[dst] = left_i < right_i;
+    [[clang::musttail]] return cont5(t, fp, dst, left, right);
+}
+
+PcFpResult le(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
+    i64 left_i = BITCAST(i64, left);
+    i64 right_i = BITCAST(i64, right);
+    fp[dst] = left_i <= right_i;
+    [[clang::musttail]] return cont5(t, fp, dst, left, right);
+}
+
+PcFpResult gt(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
+    i64 left_i = BITCAST(i64, left);
+    i64 right_i = BITCAST(i64, right);
+    fp[dst] = left_i > right_i;
+    [[clang::musttail]] return cont5(t, fp, dst, left, right);
+}
+
+PcFpResult ge(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
+    i64 left_i = BITCAST(i64, left);
+    i64 right_i = BITCAST(i64, right);
+    fp[dst] = left_i >= right_i;
     [[clang::musttail]] return cont5(t, fp, dst, left, right);
 }
 
@@ -151,7 +173,7 @@ PcFpResult pre_call(ZThread* t, Value* fp, u64 base) __attribute__((preserve_non
     uintptr_t ret_fp = (uintptr_t)fp;
     fp += base;
     fp[0] = JIT_CALLINFO(0, 0);
-    // return addr saved in callee jit_prologue.
+    // return addr saved in callee `func_prologue`.
     fp[2] = ret_fp;
     [[clang::musttail]] return cont3(t, fp, base);
 }
@@ -161,9 +183,33 @@ PcFpResult jit_log(ZThread* t, Value* fp, u64 msg, u64 msg_len) __attribute__((p
     [[clang::musttail]] return cont4(t, fp, msg, msg_len);
 }
 
-// void intPair(VM* vm, Value* fp, Value left, Value right) {
-//     [[clang::musttail]] return cont4(vm, fp, VALUE_AS_INTEGER(left), VALUE_AS_INTEGER(right));
-// }
+PcFpResult jump_ge(ZThread* t, Value* fp, u64 left, u64 right) __attribute__((preserve_none)) {
+    if (GUARD_COND(BITCAST(i64, left) < BITCAST(i64, right))) {
+        [[clang::musttail]] return br4(t, fp, left, right);
+    }
+    [[clang::musttail]] return cont4(t, fp, left, right);
+}
+
+PcFpResult jump_gt(ZThread* t, Value* fp, u64 left, u64 right) __attribute__((preserve_none)) {
+    if (GUARD_COND(BITCAST(i64, left) <= BITCAST(i64, right))) {
+        [[clang::musttail]] return br4(t, fp, left, right);
+    }
+    [[clang::musttail]] return cont4(t, fp, left, right);
+}
+
+PcFpResult jump_le(ZThread* t, Value* fp, u64 left, u64 right) __attribute__((preserve_none)) {
+    if (GUARD_COND(BITCAST(i64, left) > BITCAST(i64, right))) {
+        [[clang::musttail]] return br4(t, fp, left, right);
+    }
+    [[clang::musttail]] return cont4(t, fp, left, right);
+}
+
+PcFpResult jump_lt(ZThread* t, Value* fp, u64 left, u64 right) __attribute__((preserve_none)) {
+    if (GUARD_COND(BITCAST(i64, left) >= BITCAST(i64, right))) {
+        [[clang::musttail]] return br4(t, fp, left, right);
+    }
+    [[clang::musttail]] return cont4(t, fp, left, right);
+}
 
 // void isTrue(VM* vm, Value* fp, Value cond) {
 //     [[clang::musttail]] return cont3(vm, fp, VALUE_IS_BOOLEAN(cond) ? VALUE_AS_BOOLEAN(cond) : VALUE_ASSUME_NOT_BOOL_TO_BOOL(cond));

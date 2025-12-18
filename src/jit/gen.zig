@@ -47,6 +47,7 @@ const ChunkIr = struct {
 pub const RelocType = enum {
     jumpToFunc,
     jump_f,
+    jump_cond,
 
     // BC entering JIT.
     jit_entry,
@@ -60,6 +61,11 @@ pub const Reloc = struct {
             temp_pc: u32,
         },
         jump_f: struct {
+            pc: u32,
+            chunk: *cy.Chunk,
+            bc_target_pc: u32,
+        },
+        jump_cond: struct {
             pc: u32,
             chunk: *cy.Chunk,
             bc_target_pc: u32,
@@ -94,6 +100,7 @@ pub const CodeBuffer = struct {
     relocs: std.ArrayListUnmanaged(Reloc),
 
     funcs: std.AutoHashMapUnmanaged(*cy.Func, JitFunc),
+
     labels: std.AutoHashMapUnmanaged(LabelKey, usize),
 
     const_slots: std.ArrayList(?[*]const cy.Inst),
@@ -164,6 +171,12 @@ pub const CodeBuffer = struct {
         // }
     }
 
+    pub fn ensure_label(self: *CodeBuffer, key: LabelKey) !void {
+        if (!self.labels.contains(key)) {
+            try self.labels.putNoClobber(self.gpa, key, 0);
+        }
+    }
+
     pub fn raw(self: *CodeBuffer) []const u8 {
         return self.buf.items;
     }
@@ -217,17 +230,7 @@ pub const ChunkExt = struct {
     pub const jitCopyAdvance = copyAdvance;
     pub const jitPushU64 = pushU64;
     pub const jitPushStencil = pushStencil;
-    pub const jitGetA64Inst = getA64Inst;
 };
-
-pub fn getA64Inst(c: *cy.Chunk, pos: usize, comptime T: type) *align(4)T {
-    if (cy.Trace) {
-        if (pos % 4 != 0) {
-            cy.panic("Unaligned inst access.");
-        }
-    }
-    return @ptrCast(@alignCast(&c.jit.buf.items[pos]));
-}
 
 pub fn copyAdvance(c: *cy.Chunk, dst: usize, src: []const u8) void {
     const to: []u8 = @ptrCast(c.jit.buf.items.ptr[dst..dst+src.len]);
@@ -288,7 +291,6 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
         // .forIterStmt        => try forIterStmt(c, idx, nodeId),
         // .forRangeStmt       => try forRangeStmt(c, idx, nodeId),
         .funcBlock          => try funcBlock(c, idx, node),
-        .ifStmt             => try ifStmt(c, idx, node),
         .mainBlock          => try mainBlock(c, idx, node),
         // .opSet              => try opSet(c, idx, nodeId),
         // .pushDebugLabel     => try pushDebugLabel(c, idx),
@@ -395,440 +397,27 @@ pub fn prepareFunc(c: *cy.Compiler, func: *cy.Func) !void {
     }
 }
 
-const BinOpOptions = struct {
-    left: ?GenValue = null,
-};
-
-fn genBinOp(c: *cy.Chunk, idx: usize, cstr: Cstr, opts: BinOpOptions, nodeId: *ast.Node) !GenValue {
-    const data = c.ir.getExprData(idx, .preBinOp).binOp;
-    const ret_t = c.ir.getExprType(idx).id;
-    log.tracev("binop {} {}", .{data.op, data.leftT});
-
-    if (data.op == .and_op) {
-        // return genAndOp(c, idx, data, cstr, nodeId, jit);
-        return error.TODO;
-    } else if (data.op == .or_op) {
-        // return genOr(c, idx, data, cstr, nodeId, jit);
-        return error.TODO;
-    }
-
-    // Most builtin binOps do not retain.
-    var willRetain = false;
-    switch (data.op) {
-        .index => {
-            willRetain = true;
-        },
-        else => {},
-    }
-    const inst = try bc.selectForDstInst(c, cstr, ret_t, willRetain, nodeId);
-
-    var prefer = bc.PreferDst{
-        .dst = inst.dst,
-        .canUseDst = !bc.isParamOrLocalVar(c, inst.dst),
-    };
-
-    // Lhs.
-    var leftv: GenValue = undefined;
-    if (opts.left) |left| {
-        leftv = left;
-    } else {
-        var lcstr = Cstr.preferVolatileIf(prefer.canUseDst, prefer.dst);
-        lcstr.jitPreferConstant = true;
-        leftv = try genExpr(c, data.left, lcstr);
-    }
-
-    // Rhs.
-    var rcstr = prefer.nextCstr(leftv);
-    rcstr.jitPreferConstant = true;
-    const rightv = try genExpr(c, data.right, rcstr);
-
-    var optCondFlag: ?JitCondFlagType = null;
-    const retained = false;
-    switch (data.op) {
-        // .index => {
-        //     if (data.leftT == bt.List) {
-        //         try pushInlineBinExpr(c, .indexList, leftv.local, rightv.local, inst.dst, nodeId);
-        //     } else if (data.leftT == bt.Tuple) {
-        //         try pushInlineBinExpr(c, .indexTuple, leftv.local, rightv.local, inst.dst, nodeId);
-        //     } else if (data.leftT == bt.Map) {
-        //         try pushInlineBinExpr(c, .indexMap, leftv.local, rightv.local, inst.dst, nodeId);
-        //     } else return error.Unexpected;
-        //     retained = true;
-        // },
-        // .bitwiseAnd,
-        // .bitwiseOr,
-        // .bitwiseXor,
-        // .bitwiseLeftShift,
-        // .bitwiseRightShift => {
-        //     if (data.leftT == bt.Integer) {
-        //         try pushInlineBinExpr(c, getIntOpCode(data.op), leftv.local, rightv.local, inst.dst, nodeId);
-        //     } else return error.Unexpected;
-        // },
-        .greater,
-        .greater_equal,
-        .less,
-        .less_equal => {
-            if (data.leftT == bt.Float) {
-                // try pushInlineBinExpr(c, getFloatOpCode(data.op), leftv.local, rightv.local, inst.dst, nodeId);
-                return error.TODO;
-            } else if (data.leftT == bt.Integer) {
-                // try pushInlineBinExpr(c, getIntOpCode(data.op), leftv.local, rightv.local, inst.dst, nodeId);
-                if (cstr.type == .simple and cstr.jitPreferCondFlag)  {
-                    // Load operands.
-                    if (leftv.type == .constant) {
-                        try as.genMovImm(c, .arg0, leftv.data.constant.val.val);
-                    } else {
-                        try as.genLoadSlot(c, .arg0, leftv.reg);
-                    }
-                    if (rightv.type == .constant) {
-                        try as.genMovImm(c, .arg1, rightv.data.constant.val.val);
-                    } else {
-                        try as.genLoadSlot(c, .arg1, rightv.reg);
-                    }
-                    try c.jitPush(&stencils.intPair);
-
-                    // Compare.
-                    try as.genCmp(c, .arg0, .arg1);
-                    optCondFlag = .lt;
-                } else {
-                    return error.TODO;
-                }
-            } else return error.Unexpected;
-        },
-        .star,
-        .slash,
-        .percent,
-        .caret,
-        .plus,
-        .minus => {
-            if (data.leftT == bt.Float) {
-                // try pushInlineBinExpr(c, getFloatOpCode(data.op), leftv.local, rightv.local, inst.dst, nodeId);
-
-                // Load operands.
-                if (leftv.type == .constant) {
-                    try as.genMovImm(c, .arg0, leftv.data.constant.val.val);
-                } else {
-                    try as.genLoadSlot(c, .arg0, leftv.reg);
-                }
-
-                if (rightv.type == .constant) {
-                    try as.genMovImm(c, .arg1, rightv.data.constant.val.val);
-                } else {
-                    try as.genLoadSlot(c, .arg1, rightv.reg);
-                }
-
-                if (data.op == .minus) {
-                    try c.jitPush(&stencils.subFloat);
-                } else if (data.op == .plus) {
-                    try c.jitPush(&stencils.addFloat);
-                } else if (data.op == .star) {
-                    try c.jitPush(&stencils.mulFloat);
-                } else if (data.op == .slash) {
-                    try c.jitPush(&stencils.divFloat);
-                } else {
-                    return error.TODO;
-                }
-
-                // Save result.
-                try as.genStoreSlot(c, inst.dst, .arg0);
-            } else if (data.leftT == bt.Integer) {
-                // try pushInlineBinExpr(c, getIntOpCode(data.op), leftv.reg, rightv.reg, inst.dst, nodeId);
-
-                // Load operands.
-                if (leftv.type == .constant) {
-                    try as.genMovImm(c, .arg0, leftv.data.constant.val.val);
-                } else {
-                    try as.genLoadSlot(c, .arg0, leftv.reg);
-                }
-
-                if (rightv.type == .constant) {
-                    try as.genMovImm(c, .arg1, rightv.data.constant.val.val);
-                } else {
-                    try as.genLoadSlot(c, .arg1, rightv.reg);
-                }
-
-                if (data.op == .minus) {
-                    try c.jitPush(&stencils.subInt);
-                } else if (data.op == .plus) {
-                    try c.jitPush(&stencils.addInt);
-                } else if (data.op == .star) {
-                    try c.jitPush(&stencils.mulInt);
-                } else if (data.op == .slash) {
-                    try c.jitPush(&stencils.divInt);
-                } else {
-                    return error.TODO;
-                }
-
-                // Save result.
-                try as.genStoreSlot(c, inst.dst, .arg0);
-            } else return error.Unexpected;
-        },
-        // .equal_equal => {
-        //     try c.pushOptionalDebugSym(nodeId);
-        //     try c.buf.pushOp3Ext(.compare, leftv.reg, rightv.reg, inst.dst, c.desc(nodeId));
-        // },
-        // .bang_equal => {
-        //     try c.pushOptionalDebugSym(nodeId);
-        //     try c.buf.pushOp3Ext(.compareNot, leftv.reg, rightv.reg, inst.dst, c.desc(nodeId));
-        // },
-        else => {
-            return c.reportErrorFmt("Unsupported op: {}", &.{v(data.op)}, nodeId);
-        },
-    }
-
-    // const leftRetained = if (opts.left == null) bc.unwindTempKeepDst(c, leftv, inst.dst) else false;
-    // const rightRetained = bc.unwindTempKeepDst(c, rightv, inst.dst);
-
-    // ARC cleanup.
-    // _ = leftRetained;
-    // _ = rightRetained;
-    // try pushReleaseOpt2(c, leftRetained, leftv.reg, rightRetained, rightv.reg, nodeId);
-
-    var val = regValue(c, inst.dst, retained);
-    if (optCondFlag) |condFlag| {
-        val.type = .jitCondFlag;
-        val.data.jitCondFlag.type = condFlag;
-    }
-    return finishInst(c, val, inst.finalDst);
-}
-
-pub const JitCondFlagType = enum {
-    lt,
-};
-
-fn ifStmt(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
-    // const data = c.ir.getStmtData(idx, .ifStmt);
-    const bodyEndJumpsStart = c.listDataStack.items.len;
-
-    const condIdx = c.ir.advanceStmt(idx, .ifStmt);
-    // var condNodeId = c.ir.getNode(condIdx);
-
-    var cstr = Cstr.simple;
-    cstr.jitPreferCondFlag = true;
-    const condv = try genExpr(c, condIdx, cstr);
-
-    var prevCaseMissJump: usize = undefined;
-    var prevCaseMissJumpFromCondFlag: bool = undefined;
-    if (condv.type == .jitCondFlag) {
-        prevCaseMissJump = c.jitGetPos();
-        prevCaseMissJumpFromCondFlag = true;
-        if (condv.data.jitCondFlag.type == .lt) {
-            try as.genJumpCond(c, .ge, 0);
-        } else {
-            return error.TODO;
-        }
-    } else {
-        return error.TODO;
-    }
-
-    // ARC cleanup for true case.
-    try bc.popTempAndUnwind(c, condv);
-    // try bc.releaseTempValue(c, condv, condNodeId);
-
-    try bc.pushBlock(c, false, nodeId);
-    // try genStmts(c, data.body_head);
-    try bc.popBlock(c);
-
-    const hasElse = false;
-
-    // if (data.numElseBlocks > 0) {
-    //     const elseBlocks = c.ir.getArray(data.elseBlocks, u32, data.numElseBlocks);
-
-    //     for (elseBlocks) |elseIdx| {
-    //         const elseBlockNodeId = c.ir.getNode(elseIdx);
-    //         const elseBlock = c.ir.getExprData(elseIdx, .elseBlock);
-
-    //         const bodyEndJump = try c.pushEmptyJump();
-    //         try c.listDataStack.append(c.alloc, .{ .pc = bodyEndJump });
-
-    //         // Jump here from prev case miss.
-    //         c.patchJumpNotCondToCurPc(prevCaseMissJump);
-
-    //         if (!elseBlock.isElse) {
-    //             condIdx = c.ir.advanceExpr(elseIdx, .elseBlock);
-    //             condNodeId = c.ir.getNode(condIdx);
-    //             condv = try genExpr(c, condIdx, RegisterCstr.localOrTemp, jit);
-    //             prevCaseMissJump = try c.pushEmptyJumpNotCond(condv.reg);
-
-    //             // ARC cleanup for true case.
-    //             if (unwindAndFreeTemp(c, condv)) {
-    //                 try pushRelease(c, condv.reg, condNodeId);
-    //             }
-    //         } else {
-    //             hasElse = true;
-    //         }
-
-    //         try pushSubBlock(c, false, elseBlockNodeId);
-    //         try genStmts(c, elseBlock.bodyHead, jit);
-    //         try popSubBlock(c);
-    //     }
-    // }
-
-    // Jump here from all body ends.
-    const bodyEndJumps = c.listDataStack.items[bodyEndJumpsStart..];
-    for (bodyEndJumps) |jump| {
-        c.patchJumpToCurPc(jump.pc);
-    }
-    c.listDataStack.items.len = bodyEndJumpsStart;
-
-    if (!hasElse) {
-        // Jump here from prev case miss.
-        // c.patchJumpNotCondToCurPc(prevCaseMissJump);
-
-        if (prevCaseMissJumpFromCondFlag) {
-            as.patchJumpCond(c, prevCaseMissJump, c.jitGetPos());
-        } else {
-            return error.TODO;
-        }
-    }
-}
-
-fn genFloat(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: *ast.Node) !GenValue {
-    const data = c.ir.getExprData(idx, .float);
-    const inst = try bc.selectForNoErrNoDepInst(c, cstr, bt.Float, false, nodeId);
-    if (inst.requiresPreRelease) {
-        // try pushRelease(c, inst.dst, nodeId);
-    }
-
-    const val = cy.Value.initFloat64(data.val);
-    try as.genStoreSlotValue(c, inst.dst, val);
-
-    const value = regValue(c, inst.dst, false);
-    return finishInst(c, value, inst.finalDst);
-}
-
-fn genInt(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: *ast.Node) !GenValue {
-    const data = c.ir.getExprData(idx, .int);
-
-    const val = cy.Value.initInt(@intCast(data.val));
-    if (cstr.jitPreferConstant) {
-        return GenValue.initConstant(val);
-    }
-
-    const inst = try bc.selectForNoErrNoDepInst(c, cstr, bt.Integer, false, nodeId);
-    if (inst.requiresPreRelease) {
-        // try pushRelease(c, inst.dst, nodeId);
-    }
-
-    try as.genStoreSlotValue(c, inst.dst, val);
-
-    const value = regValue(c, inst.dst, false);
-    return finishInst(c, value, inst.finalDst);
-}
-
-fn finishInst(c: *cy.Chunk, val: GenValue, optDst: ?Cstr, node: *ast.Node) !GenValue {
-    if (optDst) |dst| {
-        const final = try genToFinalDst(c, val, dst, node);
-        try bc.pushUnwindValue(c, final);
-        return final;
-    } else {
-        try bc.pushUnwindValue(c, val);
-        return val;
-    }
-}
-
-fn genToFinalDst(c: *cy.Chunk, val: GenValue, dst: Cstr, node: *ast.Node) !GenValue {
-    log.tracev("genToFinalDst src: {} dst: {s}", .{val.reg, @tagName(dst.type)});
-
-    const res = try genToExact(c, val, dst, null);
-
-    // Check to remove the temp that is used to move to final dst.
-    if (val.isTemp()) try bc.popTemp(c, val.reg, node);
-    return res;
-}
-
-fn genToExact(c: *cy.Chunk, val: GenValue, dst: Cstr, desc: ?u32) !GenValue {
-    _ = desc;
-    switch (dst.type) {
-        .localReg => {
-            const reg = dst.data.slot;
-            if (val.reg == reg.dst) return error.Unexpected;
-            if (reg.releaseDst) {
-                // try c.buf.pushOp2Ext(.copyReleaseDst, val.reg, local.reg, desc);
-                return error.TODO;
-            } else {
-                // try c.buf.pushOp2Ext(.copy, val.reg, local.reg, desc);
-                try as.genLoadSlot(c, .temp, val.reg);
-                try as.genStoreSlot(c, reg.dst, .temp);
-            }
-            // Parent only cares about the retained property.
-            return GenValue.initOwned(val.tracked);
-        },
-        // .boxedLocal => {
-        //     const boxed = dst.data.boxedLocal;
-        //     if (val.reg == boxed.reg) return error.Unexpected;
-        //     if (boxed.retained) {
-        //         try c.buf.pushOp2Ext(.setBoxValueRelease, boxed.reg, val.reg, desc);
-        //     } else {
-        //         try c.buf.pushOp2Ext(.setBoxValue, boxed.reg, val.reg, desc);
-        //     }
-        //     return GenValue.initRetained(val.retained);
-        // },
-        // .varSym => {
-        //     // Set var assumes retained src.
-        //     const pc = c.buf.len();
-        //     try c.buf.pushOp3(.setStaticVar, 0, 0, val.reg);
-        //     c.buf.setOpArgU16(pc + 1, @intCast(dst.data.varSym));
-        //     return GenValue.initRetained(val.retained);
-        // },
-        // .captured => {
-        //     const captured = dst.data.captured;
-        //     try c.buf.pushOp3Ext(.setCaptured, c.curBlock.closureLocal, captured.idx, val.reg, desc);
-        //     return GenValue.initRetained(val.retained);
-        // },
-        // .exact => {
-        //     if (val.reg == dst.data.exact) return error.Unexpected;
-        //     try c.buf.pushOp2(.copy, val.reg, dst.data.exact);
-        //     return genValue(c, dst.data.exact, val.retained);
-        // },
-        else => {
-            log.tracev("{}", .{dst.type});
-            return error.TODO;
-        },
-    }
-}
-
 fn genCallFuncSym(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: *ast.Node) !GenValue {
-    const data = c.ir.getExprData(idx, .preCallFuncSym).callFuncSym;
-    const ret_t = c.ir.getExprType(idx).id;
-    const inst = try bc.beginCall(c, cstr, ret_t, false, nodeId);
+    _ = c;
+    _ = idx;
+    _ = cstr;
+    _ = nodeId;
+    // if (data.func.type == .hostFunc) {
+    //     // Populate callHost stencil args.
+    //     try as.genAddImm(c, .arg0, .fp, 8 * (inst.ret + cy.vm.CallArgStart));
+    //     try as.genMovImm(c, .arg1, data.numArgs);
 
-    const args = c.ir.getArray(data.args, u32, data.numArgs);
+    //     try c.jitPush(stencils.callHost[0..stencils.callHost_hostFunc]);
+    //     try as.genCallFuncPtr(c, data.func.data.hostFunc.ptr);
+    //     try c.jitPush(stencils.callHost[stencils.callHost_hostFunc+CallHoleLen..]);
 
-    const argStart = bc.numSlots(c);
-    for (args, 0..) |argIdx, i| {
-        const arg_t = c.ir.getExprType(argIdx).id;
-        const temp = try bc.reserveTemp(c, arg_t);
-        if (cy.Trace and temp != argStart + i) return error.Unexpected;
-        _ = try genExpr(c, argIdx, Cstr.toTemp(temp));
-    }
-
-    if (data.func.type == .hostFunc) {
-        // Populate callHost stencil args.
-        try as.genAddImm(c, .arg0, .fp, 8 * (inst.ret + cy.vm.CallArgStart));
-        try as.genMovImm(c, .arg1, data.numArgs);
-
-        try c.jitPush(stencils.callHost[0..stencils.callHost_hostFunc]);
-        try as.genCallFuncPtr(c, data.func.data.hostFunc.ptr);
-        try c.jitPush(stencils.callHost[stencils.callHost_hostFunc+CallHoleLen..]);
-
-        // Copy result to ret.
-        // TODO: Copy directly to final dst.
-        try as.genStoreSlot(c, inst.ret, .arg2);
-    } else if (data.func.type == .userFunc) {
-        try as.genCallFunc(c, inst.ret, data.func);
-    } else return error.TODO;
-
-    try bc.popTemps(c, data.numArgs, nodeId);
-
-    const retRetained = c.sema.isTrackedType(data.func.retType);
-    return endCall(c, inst, retRetained);
-}
-
-fn endCall(c: *cy.Chunk, inst: bc.CallInst, retained: bool) !GenValue {
-    bc.popNullSlots(c, inst.numPreludeTemps);
-    const val = regValue(c, inst.ret, retained);
-    return finishInst(c, val, inst.finalDst, inst.node);
+    //     // Copy result to ret.
+    //     // TODO: Copy directly to final dst.
+    //     try as.genStoreSlot(c, inst.ret, .arg2);
+    // } else if (data.func.type == .userFunc) {
+    //     try as.genCallFunc(c, inst.ret, data.func);
+    // } else return error.TODO;
+    return undefined;
 }
 
 fn zDumpJitStmtSection(vm: *cy.VM, fp: [*]const cy.Value, chunkId: u64, irIdx: u64, startPc: [*]const u8, endPc: [*]const u8) void {
@@ -890,42 +479,7 @@ fn genExpr(c: *cy.Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
         }
     }
     const res = try switch (code) {
-        // .captured           => genCaptured(c, idx, cstr, nodeId),
-        // .cast               => genCast(c, idx, cstr, nodeId),
-        // .coinitCall         => genCoinitCall(c, idx, cstr, nodeId),
-        // .condExpr           => genCondExpr(c, idx, cstr, nodeId),
-        // .coresume           => genCoresume(c, idx, cstr, nodeId),
-        // .coyield            => genCoyield(c, idx, cstr, nodeId),
-        // .enumMemberSym      => genEnumMemberSym(c, idx, cstr, nodeId),
-        // .errorv             => genError(c, idx, cstr, nodeId),
-        // .falsev             => genFalse(c, cstr, nodeId),
-        // .fieldDynamic       => genFieldDynamic(c, idx, cstr, .{}, nodeId),
-        // .fieldStatic        => genFieldStatic(c, idx, cstr, .{}, nodeId),
-        .float              => genFloat(c, idx, cstr, nodeId),
-        // .funcSym            => genFuncSym(c, idx, cstr, nodeId),
-        .int                => genInt(c, idx, cstr, nodeId),
-        // .lambda             => genLambda(c, idx, cstr, nodeId),
-        // .list               => genList(c, idx, cstr, nodeId),
-        .local              => genLocal(c, idx, cstr, nodeId),
-        // .map                => genMap(c, idx, cstr, nodeId),
-        // .none               => genNone(c, cstr, nodeId),
-        // .objectInit         => genObjectInit(c, idx, cstr, nodeId),
-        // .pre                => return error.Unexpected,
-        .preBinOp           => genBinOp(c, idx, cstr, .{}, nodeId),
-        // .preCall            => genCall(c, idx, cstr, nodeId),
         .preCallFuncSym     => genCallFuncSym(c, idx, cstr, nodeId),
-        // .preCallObjSym      => genCallObjSym(c, idx, cstr, nodeId),
-        // .preCallObjSymBinOp => genCallObjSymBinOp(c, idx, cstr, nodeId),
-        // .preCallObjSymUnOp  => genCallObjSymUnOp(c, idx, cstr, nodeId),
-        // .preUnOp            => genUnOp(c, idx, cstr, nodeId),
-        // .string             => genString(c, idx, cstr, nodeId),
-        // .switchBlock        => genSwitchBlock(c, idx, cstr, nodeId),
-        // .symbol             => genSymbol(c, idx, cstr, nodeId),
-        // .throw              => genThrow(c, idx, nodeId),
-        // .truev              => genTrue(c, cstr, nodeId),
-        // .tryExpr            => genTryExpr(c, idx, cstr, nodeId),
-        // .typeSym            => genTypeSym(c, idx, cstr, nodeId),
-        // .varSym             => genVarSym(c, idx, cstr, nodeId),
         else => return error.TODO,
     };
     log.tracev("{s}: end", .{@tagName(code)});
@@ -958,6 +512,26 @@ fn gen_slot_inline(buf: *CodeBuffer, reg: as.LRegister, slot: u16) !void {
     }
 }
 
+fn gen_cmp_jmp(buf: *CodeBuffer, stencil: []const u8, left: u16, right: u16, c: *cy.Chunk, bc_target_pc: usize) !void {
+    try gen_slot_inline(buf, .arg0, left);
+    try gen_slot_inline(buf, .arg1, right);
+    const pos = buf.pos();
+    try buf.push(stencil);
+
+    var patch_pc: u32 = undefined;
+    if (builtin.cpu.arch == .aarch64) {
+        patch_pc = @intCast(pos + stencil.len - 4);
+    } else {
+        @panic("unsupported");
+    }
+    try buf.relocs.append(buf.gpa, .{ .type = .jump_cond, .data = .{ .jump_cond = .{
+        .chunk = c,
+        .pc = patch_pc,
+        .bc_target_pc = @intCast(bc_target_pc),
+    }}});
+    try buf.ensure_label(.{ .chunk=c, .bc_pc=@intCast(bc_target_pc) });
+}
+
 fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
     const sym = c.compiler.genSymMap.get(func).?;
     const pc_len = sym.func.end_pc - sym.func.pc;
@@ -983,6 +557,11 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
     const const_slots = c.jit.const_slots.items;
     @memset(const_slots, null);
 
+    // Load all BC backward labels.
+    for (c.buf.labels.items) |bc_pc| {
+        try c.jit.labels.putNoClobber(c.alloc, .{.chunk=c, .bc_pc=bc_pc}, 0);
+    }
+
     while (@intFromPtr(pc) < @intFromPtr(end)) {
         // TODO: A better way to map jump labels is for each function to hold the start idx to `Chunk.buf.labels`.
         //       As JIT iterates the BC, keep a rolling next label to match with. This would avoid a hashtable lookup for every inst.
@@ -991,12 +570,13 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
             try c.jit.labels.put(c.alloc, .{.chunk=c, .bc_pc=pc_off}, c.jit.pos());
         }
 
-        // var buf: [1024]u8 = undefined;
-        // const msg = try std.fmt.bufPrint(&buf, "{}", .{pc[0].opcode()});
+        // var msg_buf: [1024]u8 = undefined;
+        // const msg = try std.fmt.bufPrint(&msg_buf, "{}", .{pc[0].opcode()});
         // const heap_msg = try c.buf.getOrPushConstString(msg);
         // try as.gen_log(c.jit, heap_msg.slice);
         // try as.genBreakpoint(c);
 
+        const inst_len = cy.bytecode.getInstLenAt(pc);
         switch (pc[0].opcode()) {
             .ret => {
                 try buf.push(&stencils.pre_ret);
@@ -1010,12 +590,15 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
             .jump_f => {
                 try as.genMovImm(buf, .arg0, pc[1].val);
                 const pos = buf.pos();
+                // TODO: Push up to the cond jump and patch that instead.
                 try buf.push(&stencils.jump_f);
+                const jump_off = pc[2].val;
                 try buf.relocs.append(c.alloc, .{ .type = .jump_f, .data = .{ .jump_f = .{
                     .chunk = c,
                     .pc = @intCast(pos + stencils.jump_f_br3),
-                    .bc_target_pc = @intCast(pc_off + pc[2].val),
+                    .bc_target_pc = @intCast(pc_off + jump_off),
                 }}});
+                try buf.ensure_label(.{ .chunk=c, .bc_pc=pc_off + jump_off });
             },
             .call => {
                 try as.genMovImm(buf, .arg0, pc[1].val);
@@ -1044,10 +627,68 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
                 try buf.push(&stencils.sub);
             },
             .lt => {
-                try as.genMovImm(buf, .arg0, pc[1].val);
+                const dst = pc[1].val;
+                if (pc[inst_len].opcode() == .jump_f) {
+                    if (pc[inst_len + 1].val == dst) {
+                        const bc_target_pc = pc_off + inst_len + pc[inst_len + 2].val;
+                        try gen_cmp_jmp(buf, stencils.jump_ge[0..stencils.jump_ge_br4], pc[2].val, pc[3].val, c, bc_target_pc);
+                        pc += inst_len;
+                        pc += cy.bytecode.getInstLenAt(pc);
+                        continue;
+                    }
+                }
+                try as.genMovImm(buf, .arg0, dst);
                 try gen_slot_inline(buf, .arg1, pc[2].val);
                 try gen_slot_inline(buf, .arg2, pc[3].val);
                 try buf.push(&stencils.lt);
+            },
+            .le => {
+                const dst = pc[1].val;
+                if (pc[inst_len].opcode() == .jump_f) {
+                    if (pc[inst_len + 1].val == dst) {
+                        const bc_target_pc = pc_off + inst_len + pc[inst_len + 2].val;
+                        try gen_cmp_jmp(buf, stencils.jump_gt[0..stencils.jump_gt_br4], pc[2].val, pc[3].val, c, bc_target_pc);
+                        pc += inst_len;
+                        pc += cy.bytecode.getInstLenAt(pc);
+                        continue;
+                    }
+                }
+                try as.genMovImm(buf, .arg0, dst);
+                try gen_slot_inline(buf, .arg1, pc[2].val);
+                try gen_slot_inline(buf, .arg2, pc[3].val);
+                try buf.push(&stencils.le);
+            },
+            .gt => {
+                const dst = pc[1].val;
+                if (pc[inst_len].opcode() == .jump_f) {
+                    if (pc[inst_len + 1].val == dst) {
+                        const bc_target_pc = pc_off + inst_len + pc[inst_len + 2].val;
+                        try gen_cmp_jmp(buf, stencils.jump_le[0..stencils.jump_le_br4], pc[2].val, pc[3].val, c, bc_target_pc);
+                        pc += inst_len;
+                        pc += cy.bytecode.getInstLenAt(pc);
+                        continue;
+                    }
+                }
+                try as.genMovImm(buf, .arg0, dst);
+                try gen_slot_inline(buf, .arg1, pc[2].val);
+                try gen_slot_inline(buf, .arg2, pc[3].val);
+                try buf.push(&stencils.gt);
+            },
+            .ge => {
+                const dst = pc[1].val;
+                if (pc[inst_len].opcode() == .jump_f) {
+                    if (pc[inst_len + 1].val == dst) {
+                        const bc_target_pc = pc_off + inst_len + pc[inst_len + 2].val;
+                        try gen_cmp_jmp(buf, stencils.jump_lt[0..stencils.jump_lt_br4], pc[2].val, pc[3].val, c, bc_target_pc);
+                        pc += inst_len;
+                        pc += cy.bytecode.getInstLenAt(pc);
+                        continue;
+                    }
+                }
+                try as.genMovImm(buf, .arg0, dst);
+                try gen_slot_inline(buf, .arg1, pc[2].val);
+                try gen_slot_inline(buf, .arg2, pc[3].val);
+                try buf.push(&stencils.ge);
             },
             .const_16s => {
                 const dst = pc[1].val;
@@ -1070,7 +711,7 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
                 return error.Unsupported;
             },
         }
-        pc += cy.bytecode.getInstLenAt(pc);
+        pc += inst_len;
     }
 
     if (cy.Trace) {
@@ -1243,7 +884,14 @@ pub fn relocate(buf: *CodeBuffer) !void {
             .jump_f => {
                 const data = reloc.data.jump_f;
                 const target_pc = buf.labels.get(.{.chunk=data.chunk, .bc_pc=data.bc_target_pc}).?;
+                std.debug.assert(target_pc != 0);
                 as.patch_jump_rel(buf, data.pc, target_pc);
+            },
+            .jump_cond => {
+                const data = reloc.data.jump_cond;
+                const target_pc = buf.labels.get(.{.chunk=data.chunk, .bc_pc=data.bc_target_pc}).?;
+                std.debug.assert(target_pc != 0);
+                as.patchJumpCond(buf, data.pc, target_pc);
             },
             .jit_entry => {
                 const data = reloc.data.jit_entry;
@@ -1290,49 +938,6 @@ pub fn gen_funcs(c: *cy.Chunk, funcs: []const *cy.Func) !void {
             DumpCodeFrom = null;
         }
     }
-}
-
-fn genLocalReg(c: *cy.Chunk, reg: SlotId, cstr: Cstr, nodeId: *ast.Node) !GenValue {
-    _ = nodeId;
-
-    const local = bc.getSlot(c, reg);
-
-    if (!local.boxed_up) {
-        const srcv = regValue(c, reg, false);
-        var exact_cstr = cstr;
-        switch (cstr.type) {
-            .preferVolatile => {
-                exact_cstr = Cstr.toLocal(reg, false);
-                exact_cstr.data.slot.own = false;
-            },
-            .simple => {
-                exact_cstr = Cstr.toLocal(reg, false);
-                exact_cstr.data.slot.own = local.isBoxed() and cstr.data.simple.own;
-            },
-            else => {},
-        }
-        return genToExact(c, srcv, exact_cstr, null);
-    } else {
-        // // Special case when src local is boxed.
-        // const retainSrc = local.some.rcCandidate and (cstr.mustRetain or cstr.type == .local or cstr.type == .boxedLocal);
-        // const inst = try c.rega.selectForDstInst(cstr, retainSrc);
-
-        // if (retainSrc) {
-        //     try c.buf.pushOp2Ext(.boxValueRetain, reg, inst.dst, c.desc(nodeId));
-        // } else {
-        //     try c.buf.pushOp2Ext(.boxValue, reg, inst.dst, c.desc(nodeId));
-        // }
-
-        // const val = genValue(c, inst.dst, retainSrc);
-        // return finishInst(c, val, inst.finalDst);
-        return error.TODO;
-    }
-}
-
-fn genLocal(c: *cy.Chunk, idx: usize, cstr: Cstr, nodeId: *ast.Node) !GenValue {
-    const data = c.ir.getExprData(idx, .local);
-    const reg = bc.toLocalReg(c, data.id);
-    return genLocalReg(c, reg, cstr, nodeId);
 }
 
 fn retExprStmt(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {

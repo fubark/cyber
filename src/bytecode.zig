@@ -68,6 +68,7 @@ pub const ByteCodeBuffer = struct {
     markers: std.AutoHashMapUnmanaged(u32, *cy.Func),
 
     /// JIT requires BC label locations to know how to map jumps.
+    /// Only labels for backward jumps. (loops).
     labels: std.ArrayList(u32),
 
     /// The required stack size for the main frame.
@@ -506,16 +507,16 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
         .mov_3,
         .mov_2,
         .mov => {
-            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const src = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const dst = pc[1].val;
+            const src = pc[2].val;
             try w.print("%{} = %{}", .{dst, src});
         },
         .cmp_str,
         .cmp_8,
         .cmp => {
-            const dst = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const left = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
-            const right = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
+            const dst = pc[1].val;
+            const left = pc[2].val;
+            const right = pc[3].val;
             try w.print("%{} = (%{} == %{})", .{dst, left, right});
         },
         // .indexMap => {
@@ -531,7 +532,7 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
         //     _ = try fmt.printCount(w, "%{} = %{}[%{}]", &.{v(dst), v(list), v(index)});
         // },
         .jump => {
-            const jump = @as(*const align(1) i16, @ptrCast(pc + 1)).*;
+            const jump = pc[1].val;
             const abs = @abs(jump);
             if (jump < 0) {
                 if (pc_off) |off| {
@@ -548,8 +549,8 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
             }
         },
         .jump_t => {
-            const cond = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const jump = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const cond = pc[1].val;
+            const jump = pc[2].val;
             if (pc_off) |off| {
                 try w.print("if (%{}) jmp @{}", .{cond, off + jump});
             } else {
@@ -557,8 +558,8 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
             }
         },
         .jump_f => {
-            const cond = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-            const jump = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
+            const cond = pc[1].val;
+            const jump = pc[2].val;
             if (pc_off) |off| {
                 try w.print("if (!%{}) jmp @{}", .{cond, off + jump});
             } else {

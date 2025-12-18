@@ -53,16 +53,25 @@ pub fn patch_imm64(buf: *gen.CodeBuffer, pc: usize, reg: LRegister, imm: u64) vo
     buf.buf.items.len = start;
 }
 
-pub fn genCmp(c: *cy.Chunk, left: LRegister, right: LRegister) !void {
-    try c.jitPushU32(A64.AddSubShifted.cmp(toReg(left), toReg(right)).bitCast());
+pub fn genCmp(buf: *CodeBuffer, left: LRegister, right: LRegister) !void {
+    try buf.push_u32(A64.AddSubShifted.cmp(toReg(left), toReg(right)).bitCast());
 }
 
-pub fn genJumpCond(c: *cy.Chunk, cond: assm.LCond, offset: i32) !void {
-    try c.jitPushU32(A64.BrCond.init(toCond(cond), @intCast(offset)).bitCast());
+pub fn genJumpCond(buf: *CodeBuffer, cond: assm.LCond, offset: i32) !void {
+    try buf.push_u32(A64.BrCond.init(toCond(cond), @intCast(offset)).bitCast());
 }
 
-pub fn patchJumpCond(c: *cy.Chunk, pc: usize, to: usize) void {
-    const inst = c.jitGetA64Inst(pc, A64.BrCond);
+pub fn as_inst(buf: *CodeBuffer, pos: usize, comptime T: type) *align(4)T {
+    if (cy.Trace) {
+        if (pos % 4 != 0) {
+            cy.panic("Unaligned inst access.");
+        }
+    }
+    return @ptrCast(@alignCast(&buf.buf.items[pos]));
+}
+
+pub fn patch_jump_cond(buf: *CodeBuffer, pc: usize, to: usize) void {
+    const inst = as_inst(buf, pc, A64.BrCond);
     inst.imm19 = @intCast((to - pc) >> 2);
 }
 

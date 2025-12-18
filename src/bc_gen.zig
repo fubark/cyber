@@ -2263,7 +2263,6 @@ fn gen_if_block(c: *cy.Chunk, stmt: *ir.IfBlock, node: *ast.Node) !void {
     try genStmts(c, stmt.body_head);
     try popBlock(c);
 
-    try c.buf.push_label();
     c.patchJumpNotCondToCurPc(jump_miss);
 
     try pop_temp_value(c, condv, cond_n);
@@ -2637,7 +2636,6 @@ const LocalId = u8;
 
 const GenValueType = enum {
     discard,
-    jitCondFlag,
     constant,
     local,
     temp,
@@ -2651,9 +2649,6 @@ pub const GenValue = struct {
     reg: Reg = undefined,
 
     data: union {
-        jitCondFlag: struct {
-            type: jitgen.JitCondFlagType,
-        },
         constant: struct {
             val: cy.Value,
         },
@@ -2666,15 +2661,6 @@ pub const GenValue = struct {
                 .val = val,
             }
         }};
-    }
-
-    fn initJitCondFlag(condt: jitgen.JitCondFlagType) GenValue {
-        return .{ .type = .jitCondFlag,
-            .reg = undefined, 
-            .data = .{ .jitCondFlag = .{
-                .type = condt,
-            }},
-        };
     }
 
     fn discard() GenValue {
@@ -3004,10 +2990,6 @@ pub const Cstr = struct {
 
     // Hint for JIT.
     inline_constant: bool = false,
-
-    /// Only relevant for constraints that allow temps: exact, simple
-    jitPreferCondFlag: bool = false,
-    jitPreferConstant: bool = false,
 
     /// TODO: provide hint whether the allocated reill be used or not.
     /// e.g. For expr statements, the top level expr reg isn't used.

@@ -56,18 +56,18 @@ pub fn genMovImm(buf: *CodeBuffer, dst: LRegister, imm: u64) !void {
     }
 }
 
-pub fn genJumpCond(c: *cy.Chunk, cond: LCond, offset: i32) !void {
+pub fn genJumpCond(buf: *CodeBuffer, cond: LCond, offset: i32) !void {
     switch (builtin.cpu.arch) {
-        .aarch64 => try a64.genJumpCond(c, cond, offset),
-        .x86_64 => try x64.genJumpCond(c, cond, offset),
+        .aarch64 => try a64.genJumpCond(buf, cond, offset),
+        // .x86_64 => try x64.genJumpCond(buf, cond, offset),
         else => return error.Unsupported,
     }
 }
 
-pub fn patchJumpCond(c: *cy.Chunk, pc: usize, to: usize) void {
+pub fn patchJumpCond(buf: *CodeBuffer, pc: usize, to: usize) void {
     switch (builtin.cpu.arch) {
-        .aarch64 => a64.patchJumpCond(c, pc, to),
-        .x86_64 => x64.patchJumpCond(c, pc, to),
+        .aarch64 => a64.patch_jump_cond(buf, pc, to),
+        // .x86_64 => x64.patchJumpCond(buf, pc, to),
         else => unreachable,
     }
 }
@@ -80,7 +80,7 @@ pub fn genPatchableJumpRel(c: *cy.Chunk) !void {
     }
 }
 
-pub fn patch_imm64(buf: *cy.jitgen.CodeBuffer, pc: usize, reg: LRegister, value: u64) void {
+pub fn patch_imm64(buf: *CodeBuffer, pc: usize, reg: LRegister, value: u64) void {
     switch (builtin.cpu.arch) {
         .aarch64 => a64.patch_imm64(buf, pc, reg, value),
         // .x86_64 => x64.patchJumpRel(c, pc, to),
@@ -88,7 +88,7 @@ pub fn patch_imm64(buf: *cy.jitgen.CodeBuffer, pc: usize, reg: LRegister, value:
     }
 }
 
-pub fn patch_jump_rel(buf: *cy.jitgen.CodeBuffer, pc: usize, to: usize) void {
+pub fn patch_jump_rel(buf: *CodeBuffer, pc: usize, to: usize) void {
     switch (builtin.cpu.arch) {
         .aarch64 => a64.patch_jump_rel(buf, pc, to),
 //        .x86_64 => x64.patchJumpRel(buf, pc, to),
@@ -96,10 +96,10 @@ pub fn patch_jump_rel(buf: *cy.jitgen.CodeBuffer, pc: usize, to: usize) void {
     }
 }
 
-pub fn genCmp(c: *cy.Chunk, left: LRegister, right: LRegister) !void {
+pub fn genCmp(buf: *CodeBuffer, left: LRegister, right: LRegister) !void {
     switch (builtin.cpu.arch) {
-        .aarch64 => try a64.genCmp(c, left, right),
-        .x86_64 => try x64.genCmp(c, left, right),
+        .aarch64 => try a64.genCmp(buf, left, right),
+        // .x86_64 => try x64.genCmp(buf, left, right),
         else => return error.Unsupported,
     }
 }

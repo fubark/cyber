@@ -2,17 +2,18 @@ const std = @import("std");
 const stdx = @import("stdx");
 const cy = @import("../cyber.zig");
 const t = stdx.testing;
-const Slot = u8;
+const Slot = u16;
 const assm = @import("assembler.zig");
 const A64 = @import("a64.zig");
 const LRegister = assm.LRegister;
 const Register = A64.Register;
 const gen = @import("gen.zig");
+const CodeBuffer = gen.CodeBuffer;
 
 pub const FpReg: A64.Register = .x22;
 
-pub fn genLoadSlot(c: *cy.Chunk, dst: LRegister, src: Slot) !void {
-    try c.jitPushU32(A64.LoadStore.ldrImmOff(FpReg, src, toReg(dst)).bitCast());
+pub fn gen_load_slot(buf: *CodeBuffer, dst: LRegister, src: Slot) !void {
+    try buf.push_u32(A64.LoadStore.ldrImmOff(FpReg, @intCast(src), toReg(dst)).bitCast());
 }
 
 pub fn genStoreSlot(c: *cy.Chunk, dst: Slot, src: LRegister) !void {
@@ -23,8 +24,8 @@ pub fn genAddImm(c: *cy.Chunk, dst: LRegister, src: LRegister, imm: u64) !void {
     try c.jitPushU32(A64.AddSubImm.add(toReg(dst), toReg(src), @intCast(imm)).bitCast());
 }
 
-pub fn genMovImm(c: *cy.Chunk, dst: LRegister, imm: u64) !void {
-    try copyImm64(c.jit, toReg(dst), imm);
+pub fn gen_imm(buf: *CodeBuffer, dst: LRegister, imm: u64) !void {
+    try copyImm64(buf, toReg(dst), imm);
 }
 
 pub fn genPatchableJumpRel(c: *cy.Chunk) !void {

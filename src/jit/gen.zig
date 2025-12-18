@@ -96,6 +96,8 @@ pub const CodeBuffer = struct {
     funcs: std.AutoHashMapUnmanaged(*cy.Func, JitFunc),
     labels: std.AutoHashMapUnmanaged(LabelKey, usize),
 
+    const_slots: std.ArrayList(?[*]const cy.Inst),
+
     pub fn init(gpa: std.mem.Allocator) CodeBuffer {
         return .{
             .gpa = gpa,
@@ -105,6 +107,7 @@ pub const CodeBuffer = struct {
             .funcs = .{},
             .labels = .{},
             .executable = false,
+            .const_slots = .{},
         };
     }
 
@@ -113,6 +116,7 @@ pub const CodeBuffer = struct {
         self.relocs.clearRetainingCapacity();
         self.funcs.clearRetainingCapacity();
         self.labels.clearRetainingCapacity();
+        self.const_slots.clearRetainingCapacity();
     }
 
     pub fn deinit(self: *CodeBuffer) void {
@@ -127,6 +131,7 @@ pub const CodeBuffer = struct {
         self.relocs.deinit(self.gpa);
         self.funcs.deinit(self.gpa);
         self.labels.deinit(self.gpa);
+        self.const_slots.deinit(self.gpa);
     }
 
     pub fn unset_executable(self: *CodeBuffer) !void {
@@ -934,9 +939,30 @@ fn genExpr(c: *cy.Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
     return res;
 }
 
+fn gen_slot_inline(buf: *CodeBuffer, reg: as.LRegister, slot: u16) !void {
+    if (buf.const_slots.items[slot]) |pc| {
+        // Contains inline constant.
+        switch (pc[0].opcode()) {
+            .const_16si => {
+                const val: i64 = @as(i16, @bitCast(pc[2]));
+                try as.genMovImm(buf, reg, @bitCast(val));
+            },
+            else => {
+                std.debug.print("jit: Unsupported const inst: {}\n", .{pc[0].opcode()});
+                return error.Unsupported;
+            },
+        }
+        buf.const_slots.items[slot] = null;
+    } else {
+        try as.genLoadSlot(buf, reg, slot);
+    }
+}
+
 fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
     const sym = c.compiler.genSymMap.get(func).?;
     const pc_len = sym.func.end_pc - sym.func.pc;
+
+    const buf = c.jit;
 
     var pc = sym.func.static_pc;
     const end = sym.func.static_pc + pc_len;
@@ -950,6 +976,12 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
     // Skip `enter_jit` inst.
     std.debug.assert(pc[0].opcode() == .enter_jit);
     pc += cy.bytecode.getInstLenAt(pc);
+
+    std.debug.assert(pc[0].opcode() == .chk_stk);
+    const frame_size = pc[2].val;
+    try c.jit.const_slots.resize(c.alloc, @intCast(frame_size));
+    const const_slots = c.jit.const_slots.items;
+    @memset(const_slots, null);
 
     while (@intFromPtr(pc) < @intFromPtr(end)) {
         // TODO: A better way to map jump labels is for each function to hold the start idx to `Chunk.buf.labels`.
@@ -967,27 +999,27 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
 
         switch (pc[0].opcode()) {
             .ret => {
-                try c.jit.push(&stencils.pre_ret);
-                try c.jit.push_u32(A64.Br.ret().bitCast());
+                try buf.push(&stencils.pre_ret);
+                try buf.push_u32(A64.Br.ret().bitCast());
             },
             .mov => {
-                try as.genMovImm(c, .arg0, pc[1].val);
-                try as.genMovImm(c, .arg1, pc[2].val);
-                try c.jit.push(&stencils.mov);
+                try as.genMovImm(buf, .arg0, pc[1].val);
+                try as.genMovImm(buf, .arg1, pc[2].val);
+                try buf.push(&stencils.mov);
             },
             .jump_f => {
-                try as.genMovImm(c, .arg0, pc[1].val);
-                const pos = c.jit.pos();
-                try c.jit.push(&stencils.jump_f);
-                try c.jit.relocs.append(c.alloc, .{ .type = .jump_f, .data = .{ .jump_f = .{
+                try as.genMovImm(buf, .arg0, pc[1].val);
+                const pos = buf.pos();
+                try buf.push(&stencils.jump_f);
+                try buf.relocs.append(c.alloc, .{ .type = .jump_f, .data = .{ .jump_f = .{
                     .chunk = c,
                     .pc = @intCast(pos + stencils.jump_f_br3),
                     .bc_target_pc = @intCast(pc_off + pc[2].val),
                 }}});
             },
             .call => {
-                try as.genMovImm(c, .arg0, pc[1].val);
-                try c.jit.push(&stencils.pre_call);
+                try as.genMovImm(buf, .arg0, pc[1].val);
+                try buf.push(&stencils.pre_call);
                 const func_vm_pc: usize = @intCast(@as(*const align(2) u48, @ptrCast(pc + 2)).*);
                 const func_id: u32 = @as(*const align(2) u32, @ptrFromInt(func_vm_pc - 4)).*;
                 const callee = c.vm.funcSymDetails.items[func_id].func.?;
@@ -1000,40 +1032,54 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
                 try as.genBreakpoint(c);
             },
             .add => {
-                try as.genMovImm(c, .arg0, pc[1].val);
-                try as.genMovImm(c, .arg1, pc[2].val);
-                try as.genMovImm(c, .arg2, pc[3].val);
-                try c.jit.push(&stencils.add);
+                try as.genMovImm(buf, .arg0, pc[1].val);
+                try gen_slot_inline(buf, .arg1, pc[2].val);
+                try gen_slot_inline(buf, .arg2, pc[3].val);
+                try buf.push(&stencils.add);
             },
             .sub => {
-                try as.genMovImm(c, .arg0, pc[1].val);
-                try as.genMovImm(c, .arg1, pc[2].val);
-                try as.genMovImm(c, .arg2, pc[3].val);
-                try c.jit.push(&stencils.sub);
+                try as.genMovImm(buf, .arg0, pc[1].val);
+                try gen_slot_inline(buf, .arg1, pc[2].val);
+                try gen_slot_inline(buf, .arg2, pc[3].val);
+                try buf.push(&stencils.sub);
             },
             .lt => {
-                try as.genMovImm(c, .arg0, pc[1].val);
-                try as.genMovImm(c, .arg1, pc[2].val);
-                try as.genMovImm(c, .arg2, pc[3].val);
-                try c.jit.push(&stencils.lt);
+                try as.genMovImm(buf, .arg0, pc[1].val);
+                try gen_slot_inline(buf, .arg1, pc[2].val);
+                try gen_slot_inline(buf, .arg2, pc[3].val);
+                try buf.push(&stencils.lt);
             },
             .const_16s => {
                 const dst = pc[1].val;
-                try as.genMovImm(c, .arg0, dst);
+                try as.genMovImm(buf, .arg0, dst);
                 const val: i64 = @as(i16, @bitCast(pc[2]));
-                try as.genMovImm(c, .arg1, @bitCast(val));
-                try c.jit.push(&stencils.store_const);
+                try as.genMovImm(buf, .arg1, @bitCast(val));
+                try buf.push(&stencils.store_const);
+            },
+            .const_16si => {
+                const dst = pc[1].val;
+                const_slots[dst] = pc;
             },
             .chk_stk => {
-                try as.genMovImm(c, .arg0, pc[1].val);
-                try as.genMovImm(c, .arg1, pc[2].val);
-                try c.jit.push(&stencils.chk_stk);
+                try as.genMovImm(buf, .arg0, pc[1].val);
+                try as.genMovImm(buf, .arg1, pc[2].val);
+                try buf.push(&stencils.chk_stk);
             },
             else => {
-                return c.reportErrorFmt("jit: Unsupported bytecode instruction: {}", &.{v(pc[0].opcode())}, func.decl);
+                std.debug.print("jit: Unsupported bytecode instruction: {}\n", .{pc[0].opcode()});
+                return error.Unsupported;
             },
         }
         pc += cy.bytecode.getInstLenAt(pc);
+    }
+
+    if (cy.Trace) {
+        for (const_slots) |slot| {
+            if (slot != null) {
+                std.debug.print("jit: Unconsumed inline const.\n", .{});
+                return error.Unexpected;
+            }
+        }
     }
 }
 
@@ -1228,7 +1274,9 @@ pub fn gen_funcs(c: *cy.Chunk, funcs: []const *cy.Func) !void {
     c.listDataStack.clearRetainingCapacity();
 
     for (funcs) |func| {
-        try gen_func(c, func);
+        gen_func(c, func) catch |err| {
+            return c.reportErrorFmt("jit: {}", &.{v(err)}, func.decl);
+        };
     }
 
     if (cy.Trace and !cy.isWasm) {

@@ -1514,8 +1514,8 @@ fn pushCmp(c: *Chunk, val_t: *cy.Type, dst: Reg, left: Reg, right: Reg, node: *a
 
 fn genCompare(c: *Chunk, expr: *ir.Compare, cstr: Cstr, node: *ast.Node) !GenValue {
     const dst = try bc.selectReg(c, expr.base.type, cstr, node);
-    const left = try genExpr(c, expr.left, Cstr.localOrTemp());
-    const right = try genExpr(c, expr.right, Cstr.localOrTemp());
+    const left = try genExpr(c, expr.left, Cstr.localOrTemp().inlinec());
+    const right = try genExpr(c, expr.right, Cstr.localOrTemp().inlinec());
     if (expr.left.type.kind() == .float) {
         if (expr.left.type.id() == bt.F64) {
             const code: cy.OpCode = switch (expr.cond) {
@@ -1658,8 +1658,8 @@ fn gen_fadd(c: *Chunk, expr: *ir.BinOp2, cstr: Cstr, node: *ast.Node) !GenValue 
 
 fn genBinOp2(c: *Chunk, expr: *ir.BinOp2, op: cy.OpCode, cstr: Cstr, node: *ast.Node) !GenValue {
     const dst = try bc.selectReg(c, expr.base.type, cstr, node);
-    const leftv = try genExpr(c, expr.left, Cstr.localOrTemp());
-    const rightv = try genExpr(c, expr.right, Cstr.localOrTemp());
+    const leftv = try genExpr(c, expr.left, Cstr.localOrTemp().inlinec());
+    const rightv = try genExpr(c, expr.right, Cstr.localOrTemp().inlinec());
     try pushInlineBinExpr(c, op, dst.reg, leftv.reg, rightv.reg, node);
     try pop_temp_value(c, rightv, node);
     try pop_temp_value(c, leftv, node);
@@ -2728,7 +2728,7 @@ fn gen_const64(c: *Chunk, expr: *ir.Const64, cstr: Cstr, node: *ast.Node) !GenVa
     const dst = try bc.selectReg(c, expr.base.type, cstr, node);
     switch (expr.base.type.id()) {
         bt.I64 => {
-            try genConstInt(c, @bitCast(expr.val), dst.reg, node);
+            try genConstInt(c, @bitCast(expr.val), dst.reg, cstr.inline_constant, node);
         },
         else => {
             try genConst64_(c, expr.val, dst.reg, node);
@@ -2737,10 +2737,14 @@ fn gen_const64(c: *Chunk, expr: *ir.Const64, cstr: Cstr, node: *ast.Node) !GenVa
     return dst;
 }
 
-fn genConstInt(c: *Chunk, val: i64, dst: Reg, node: *ast.Node) !void {
+fn genConstInt(c: *Chunk, val: i64, dst: Reg, inline_: bool, node: *ast.Node) !void {
     // TODO: Can be constU8.
     if (val >= 0 and val <= std.math.maxInt(i16)) {
-        try c.pushCode(.const_16s, &.{ dst, @bitCast(@as(i16, @intCast(val))) }, node);
+        if (inline_) {
+            try c.pushCode(.const_16si, &.{ dst, @bitCast(@as(i16, @intCast(val))) }, node);
+        } else {
+            try c.pushCode(.const_16s, &.{ dst, @bitCast(@as(i16, @intCast(val))) }, node);
+        }
         return;
     }
     // const idx = try c.buf.getOrPushConst(false, cy.Value.initInt(@intCast(val)));
@@ -2998,6 +3002,9 @@ pub const Cstr = struct {
         uninit: void,
     } = .{ .uninit = {} },
 
+    // Hint for JIT.
+    inline_constant: bool = false,
+
     /// Only relevant for constraints that allow temps: exact, simple
     jitPreferCondFlag: bool = false,
     jitPreferConstant: bool = false,
@@ -3009,6 +3016,12 @@ pub const Cstr = struct {
     pub const none = Cstr{
         .type = .none,
     };
+
+    pub fn inlinec(self: *const Cstr) Cstr {
+        var new = self.*;
+        new.inline_constant = true;
+        return new;
+    }
 
     pub fn localOrTemp() Cstr {
         return .{

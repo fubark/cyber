@@ -433,6 +433,7 @@ ResultCode execBytecode(ZThread* t) {
         JENTRY(CONST_64),
         JENTRY(CONST_STR),
         JENTRY(CONST_16S),
+        JENTRY(CONST_16SI),
         JENTRY(CONST_16),
         JENTRY(CONST_32),
         JENTRY(True),
@@ -614,6 +615,12 @@ beginSwitch:
         NEXT();
     }
     CASE(CONST_16S): {
+        i64 i = (i64)(i16)pc[2];
+        stack[pc[1]] = BITCAST(u64, i);
+        pc += 3;
+        NEXT();
+    }
+    CASE(CONST_16SI): {
         i64 i = (i64)(i16)pc[2];
         stack[pc[1]] = BITCAST(u64, i);
         pc += 3;

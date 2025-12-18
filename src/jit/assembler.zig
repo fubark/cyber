@@ -1,6 +1,7 @@
 const builtin = @import("builtin");
 const cy = @import("../cyber.zig");
-const Slot = u8;
+const Slot = u16;
+const CodeBuffer = cy.jitgen.CodeBuffer;
 
 const a64 = @import("a64_assembler.zig");
 const x64 = @import("x64_assembler.zig");
@@ -23,10 +24,10 @@ pub const LCond = enum(u8) {
     _,
 };
 
-pub fn genLoadSlot(c: *cy.Chunk, dst: LRegister, src: Slot) !void {
+pub fn genLoadSlot(buf: *CodeBuffer, dst: LRegister, src: Slot) !void {
     switch (builtin.cpu.arch) {
-        .aarch64 => try a64.genLoadSlot(c, dst, src),
-        .x86_64 => try x64.genLoadSlot(c, dst, src),
+        .aarch64 => try a64.gen_load_slot(buf, dst, src),
+        // .x86_64 => try x64.genLoadSlot(c, dst, src),
         else => return error.Unsupported,
     }
 }
@@ -47,10 +48,10 @@ pub fn genAddImm(c: *cy.Chunk, dst: LRegister, src: LRegister, imm: u64) !void {
     }
 }
 
-pub fn genMovImm(c: *cy.Chunk, dst: LRegister, imm: u64) !void {
+pub fn genMovImm(buf: *CodeBuffer, dst: LRegister, imm: u64) !void {
     switch (builtin.cpu.arch) {
-        .aarch64 => try a64.genMovImm(c, dst, imm),
-        .x86_64 => try x64.genMovImm(c, dst, imm),
+        .aarch64 => try a64.gen_imm(buf, dst, imm),
+        // .x86_64 => try x64.genMovImm(c, dst, imm),
         else => return error.Unsupported,
     }
 }

@@ -60,8 +60,8 @@ PcFpResult mov(ZThread* t, Value* fp, u64 dst, u64 src) __attribute__((preserve_
 }
 
 PcFpResult lt(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
-    i64 left_i = BITCAST(i64, fp[left]);
-    i64 right_i = BITCAST(i64, fp[right]);
+    i64 left_i = BITCAST(i64, left);
+    i64 right_i = BITCAST(i64, right);
     fp[dst] = left_i < right_i;
     [[clang::musttail]] return cont5(t, fp, dst, left, right);
 }
@@ -87,46 +87,45 @@ PcFpResult chk_stk(ZThread* t, Value* fp, u64 ret_size, u64 frame_size) __attrib
 }
 
 PcFpResult fadd(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
-    fp[dst] = VALUE_FLOAT(VALUE_AS_FLOAT(fp[left]) + VALUE_AS_FLOAT(fp[right]));
+    fp[dst] = VALUE_FLOAT(VALUE_AS_FLOAT(left) + VALUE_AS_FLOAT(right));
     [[clang::musttail]] return cont5(t, fp, dst, left, right);
 }
 
 PcFpResult fsub(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
-    fp[dst] = VALUE_FLOAT(VALUE_AS_FLOAT(fp[left]) - VALUE_AS_FLOAT(fp[right]));
+    fp[dst] = VALUE_FLOAT(VALUE_AS_FLOAT(left) - VALUE_AS_FLOAT(right));
     [[clang::musttail]] return cont5(t, fp, dst, left, right);
 }
 
 PcFpResult fmul(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
-    fp[dst] = VALUE_FLOAT(VALUE_AS_FLOAT(fp[left]) * VALUE_AS_FLOAT(fp[right]));
+    fp[dst] = VALUE_FLOAT(VALUE_AS_FLOAT(left) * VALUE_AS_FLOAT(right));
     [[clang::musttail]] return cont5(t, fp, dst, left, right);
 }
 
 PcFpResult fdiv(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
-    fp[dst] = VALUE_FLOAT(VALUE_AS_FLOAT(fp[left]) / VALUE_AS_FLOAT(fp[right]));
+    fp[dst] = VALUE_FLOAT(VALUE_AS_FLOAT(left) / VALUE_AS_FLOAT(right));
     [[clang::musttail]] return cont5(t, fp, dst, left, right);
 }
 
 PcFpResult add(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
-    fp[dst] = fp[left] + fp[right];
+    fp[dst] = left + right;
     [[clang::musttail]] return cont5(t, fp, dst, left, right);
 }
 
 PcFpResult sub(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
-    fp[dst] = fp[left] - fp[right];
+    fp[dst] = left - right;
     [[clang::musttail]] return cont5(t, fp, dst, left, right);
 }
 
 PcFpResult mul(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
-    fp[dst] = fp[left] * fp[right];
+    fp[dst] = left * right;
     [[clang::musttail]] return cont5(t, fp, dst, left, right);
 }
 
 PcFpResult div(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute__((preserve_none)) {
-    u64 rightv = fp[right];
-    if (GUARD_COND(rightv == 0)) {
+    if (GUARD_COND(right == 0)) {
         [[clang::musttail]] return div_by_zero(t, fp, dst, left, right);
     }
-    fp[dst] = fp[left] / fp[right];
+    fp[dst] = left / right;
     [[clang::musttail]] return cont5(t, fp, dst, left, right);
 }
 

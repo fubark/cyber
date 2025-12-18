@@ -19,6 +19,7 @@ const a64 = @import("a64_assembler.zig");
 const A64 = @import("a64.zig");
 const x64 = @import("x64_assembler.zig");
 const X64 = @import("x64.zig");
+const is_wasm = builtin.cpu.arch.isWasm();
 
 const Cstr = bc.Cstr;
 const GenValue = bc.GenValue;
@@ -1209,6 +1210,9 @@ pub fn relocate(buf: *CodeBuffer) !void {
 }
 
 pub fn gen_funcs(c: *cy.Chunk, funcs: []const *cy.Func) !void {
+    if (is_wasm) {
+        @panic("unsupported");
+    }
     // // Prepare host funcs.
     // for (chunk.funcs.items) |func| {
     //     try prepareFunc(self, func);

@@ -1218,7 +1218,7 @@ pub fn gen_funcs(c: *cy.Chunk, funcs: []const *cy.Func) !void {
     c.jit = &c.compiler.jitBuf;
 
     if (builtin.cpu.arch == .x86_64) {
-        c.x64Enc = X64.Encoder{ .buf = &c.jit.buf, .alloc = c.alloc };
+        c.x64Enc = X64.Encoder{ .buf = c.jit, .alloc = c.alloc };
     }
 
     c.listDataStack.clearRetainingCapacity();

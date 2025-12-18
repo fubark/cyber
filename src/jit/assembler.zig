@@ -90,7 +90,7 @@ pub fn patch_imm64(buf: *cy.jitgen.CodeBuffer, pc: usize, reg: LRegister, value:
 pub fn patch_jump_rel(buf: *cy.jitgen.CodeBuffer, pc: usize, to: usize) void {
     switch (builtin.cpu.arch) {
         .aarch64 => a64.patch_jump_rel(buf, pc, to),
-        .x86_64 => x64.patchJumpRel(buf, pc, to),
+//        .x86_64 => x64.patchJumpRel(buf, pc, to),
         else => unreachable,
     }
 }
@@ -157,7 +157,7 @@ pub fn gen_log(buf: *cy.jitgen.CodeBuffer, msg: []const u8) !void {
 pub fn genCallFunc(c: *cy.Chunk, func: *cy.Func) !void {
     switch (builtin.cpu.arch) {
         .aarch64 => try a64.genCallFunc(c, func),
-        .x86_64 => try x64.genCallFunc(c, func),
+//        .x86_64 => try x64.genCallFunc(c, func),
         else => return error.Unsupported,
     }
 }

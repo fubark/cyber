@@ -605,8 +605,8 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
         try buf.push_u32(A64.LoadStore.strImmOff(a64.FpReg, @intCast(ret_size+1), .x30).bitCast());
     } else if (builtin.cpu.arch == .x86_64) {
         // try c.x64Enc.int3();
-        try c.x64Enc.movMem(.rax, x64.MemSibBase(x64.BaseReg(.rsp), (ret_size+1)*8));
-        try c.x64Enc.movToMem(x64.MemSibBase(x64.BaseReg(x64.FpReg), (ret_size+1)*8), .rax);
+        try c.x64Enc.movMem(.rax, x64.MemSibBase(x64.BaseReg.initReg(.rsp), (ret_size+1)*8));
+        try c.x64Enc.movToMem(x64.MemSibBase(x64.BaseReg.initReg(x64.FpReg), (ret_size+1)*8), .rax);
     }
 
     while (@intFromPtr(pc) < @intFromPtr(end)) {

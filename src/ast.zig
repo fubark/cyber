@@ -402,7 +402,7 @@ pub const Attribute = extern struct {
             return null;
         };
         if (value.type() != .sq_string_lit) {
-            return error.Unsupported;
+            return null;
         }
         return value.cast(.sq_string_lit).asString();
     }

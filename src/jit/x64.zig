@@ -38,7 +38,7 @@ pub const Register = enum(u8) {
         };
     }
 
-    fn lowEnc(self: Register) u3 {
+    pub fn lowEnc(self: Register) u3 {
         return @truncate(self.enc());
     }
 
@@ -49,7 +49,7 @@ pub const Register = enum(u8) {
         };
     }
 
-    fn isExtended(self: Register) bool {
+    pub fn isExtended(self: Register) bool {
         return switch (@intFromEnum(self)) {
             @intFromEnum(Register.r8)...@intFromEnum(Register.r15) => true,
             else => false,
@@ -65,404 +65,69 @@ pub const Register = enum(u8) {
     // }
 };
 
-pub const Encoder = struct {
-    alloc: std.mem.Allocator,
-    buf: *gen.CodeBuffer,
-
-    fn ensureUnusedCap(self: Encoder, size: usize) !void {
-        _ = try self.buf.ensureUnusedCap(size);
-    }
-
-    /// TODO: Support rel8.
-    pub fn jumpCond(self: Encoder, code: u8, offset: i32) !void {
-        try self.buf.push(&.{0x0f, code});
-        try self.buf.push_u32(@bitCast(offset));
-    }
-
-    /// TODO: Support rel8.
-    pub fn jumpRel(self: Encoder, offset: i32) !void {
-        try self.buf.push(&.{0xe9});
-        try self.buf.push_u32(@bitCast(offset));
-    }
-
-    pub fn jumpReg(self: Encoder, reg: Register) !void {
-        const enc = Encoding.init(.m, 4, .none, .none);
-        const out = try self.prepInstBuf();
-        var len = self.encodeHeader(out, enc, &.{0xff}, &.{Op.reg(reg)});
-        self.encodeMOp(out, &len, enc, Op.reg(reg));
-        self.buf.buf.items.len += len;
-    }
-
-    pub fn cmp(self: Encoder, left: Register, right: Register) !void {
-        const enc = Encoding.init(.mr, 0, .long, .none);
-        const out = try self.prepInstBuf();
-        var len = self.encodeHeader(out, enc, &.{0x3b}, &.{ Op.reg(left), Op.reg(right) });
-        self.encodeRMOps(out, &len, enc, Op.reg(left), Op.reg(right));
-        self.buf.buf.items.len += len;
-    }
-
-    pub fn lea(self: Encoder, dst: Register, src: Memory) !void {
-        const enc = Encoding.init(.rm, 0, .long, .none);
-        try self.encode(enc, &.{0x8d}, &.{ Op.reg(dst), Op.mem(src) });
-    }
-
-    pub fn pushReg(self: Encoder, r: Register) !void {
-        const enc = Encoding.init(.o, 0, .none, .none);
-        const out = try self.prepInstBuf();
-        const len = self.encodeHeader(out, enc, &.{0x50}, &.{Op.reg(r)});
-        self.buf.buf.items.len += len;
-    }
-
-    pub fn movImm(self: Encoder, dst: Register, imm: u64) !void {
-        const enc = Encoding.init(.oi, 0, .long, .none);
-        const out = try self.prepInstBuf();
-        var len = self.encodeHeader(out, enc, &.{0xb8}, &.{ Op.reg(dst), Op.imm(imm) });
-        encodeImm64(out, &len, imm);
-        self.buf.buf.items.len += len;
-    }
-
-    pub fn movReg(self: Encoder, dst: Register, src: Register) !void {
-        const enc = Encoding.init(.rm, 0, .long, .none);
-        const out = try self.prepInstBuf();
-        var len = self.encodeHeader(out, enc, &.{0x8b}, &.{ Op.reg(dst), Op.reg(src) });
-        self.encodeRMOps(out, &len, enc, Op.reg(dst), Op.reg(src));
-        self.buf.buf.items.len += len;
-    }
-
-    pub fn movMem(self: Encoder, dst: Register, mem: Memory) !void {
-        const enc = Encoding.init(.rm, 0, .long, .none);
-        const out = try self.prepInstBuf();
-        var len = self.encodeHeader(out, enc, &.{0x8b}, &.{ Op.reg(dst), Op.mem(mem) });
-        self.encodeRMOps(out, &len, enc, Op.reg(dst), Op.mem(mem));
-        self.buf.buf.items.len += len;
-    }
-
-    pub fn movToMem(self: Encoder, mem: Memory, dst: Register) !void {
-        const enc = Encoding.init(.mr, 0, .long, .none);
-        const out = try self.prepInstBuf();
-        var len = self.encodeHeader(out, enc, &.{0x89}, &.{ Op.mem(mem), Op.reg(dst) });
-        self.encodeRMOps(out, &len, enc, Op.reg(dst), Op.mem(mem));
-        self.buf.buf.items.len += len;
-    }
-
-    pub fn callRel(self: Encoder, offset: i32) !void {
-        const buf = try self.buf.reserve_slice(5);
-        buf[0] = 0xe8;
-        @memcpy(buf[1..5], std.mem.asBytes(&offset));
-    }
-
-    pub fn callReg(self: Encoder, reg: Register) !void {
-        const enc = Encoding.init(.m, 2, .none, .none);
-        const out = try self.prepInstBuf();
-        var len = self.encodeHeader(out, enc, &.{0xff}, &.{Op.reg(reg)});
-        self.encodeMOp(out, &len, enc, Op.reg(reg));
-        self.buf.buf.items.len += len;
-    }
-
-    pub fn int3(self: Encoder) !void {
-        try self.buf.push(&.{0xcc});
-    }
-
-    pub fn ret(self: Encoder) !void {
-        try self.buf.push(&.{0xc3});
-    }
-
-    fn prepInstBuf(self: Encoder) ![]u8 {
-        try self.ensureUnusedCap(32);
-        return self.buf.buf.items.ptr[self.buf.buf.items.len .. self.buf.buf.items.len + 32];
-    }
-
-    fn encodeHeader(_: Encoder, out: []u8, enc: Encoding, opc: []const u8, ops: []const Op) usize {
-        // const prefix = Prefix.none;
-        var len: usize = 0;
-
-        var hasMandatoryPrefix = false;
-        if (mandatoryPrefix(opc)) |byte| {
-            out[len] = byte;
-            len += 1;
-            hasMandatoryPrefix = true;
-        }
-
-        encodeRexPrefix(out, &len, enc, ops);
-
-        // Encode opcode.
-        const first = @intFromBool(hasMandatoryPrefix);
-        const final = opc.len - 1;
-        const finalOpc = opc[first..final];
-        if (finalOpc.len > 0) {
-            @memcpy(out[len .. len + finalOpc.len], finalOpc);
-            len += finalOpc.len;
-        }
-        if (enc.opEn == .oi or enc.opEn == .o) {
-            // First assign to var to get around miscompilation.
-            out[len] = opc[final] | ops[0].data.reg.lowEnc();
-            len += 1;
-        } else {
-            out[len] = opc[final];
-            len += 1;
-        }
-        return len;
-    }
-
-    fn encodeMOp(_: Encoder, out: []u8, len: *usize, enc: Encoding, op: Op) void {
-        const rm = enc.modRmExt();
-        switch (op.type) {
-            .reg => {
-                out[len.*] = ModRM.direct(rm, op.data.reg.lowEnc());
-                len.* += 1;
-            },
-            .mem => |_| {
-                unreachable;
-            },
-            else => unreachable,
-        }
-    }
-
-    fn encodeRMOps(_: Encoder, out: []u8, len: *usize, enc: Encoding, r: Op, m: Op) void {
-        switch (m.type) {
-            .reg => {
-                const rm = r.data.reg.lowEnc();
-                out[len.*] = ModRM.direct(rm, m.data.reg.lowEnc());
-                len.* += 1;
-            },
-            .mem => {
-                encodeMemory(out, len, enc, m.data.mem, r);
-            },
-            else => unreachable,
-        }
-    }
-
-    fn encode(self: Encoder, enc: Encoding, opc: []const u8, ops: []const Op) !void {
-        var out = try self.prepInstBuf();
-        var len = self.encodeHeader(out, enc, opc, ops);
-
-        // Encode operands.
-        switch (enc.opEn) {
-            .rm, .rmi => {
-                const memop = ops[1];
-                switch (memop.type) {
-                    .reg => {
-                        const rm = switch (enc.opEn) {
-                            .rm, .rmi => ops[0].data.reg.lowEnc(),
-                            else => unreachable,
-                        };
-                        out[len] = ModRM.direct(rm, memop.data.reg.lowEnc());
-                        len += 1;
-                    },
-                    .mem => {
-                        const op = ops[0];
-                        encodeMemory(out, &len, enc, memop.data.mem, op);
-                    },
-                    else => return error.Unexpected,
-                }
-
-                switch (enc.opEn) {
-                    // .rmi => encodeImm(out, &len, ops[2].imm, ops[2].immBitSize()),
-                    else => {},
-                }
-            },
-            else => return error.Unexpected,
-        }
-
-        // Increase buffer length by inst len.
-        self.buf.buf.items.len += len;
-    }
-};
-
-const SIBByte = packed struct {
+pub const SIBByte = packed struct {
     base: u3,
     index: u3,
     scale: u2,
 
-    fn disp32() u8 {
+    pub fn disp32() u8 {
         return @bitCast(SIBByte{ .base = 5, .index = 4, .scale = 0 });
     }
 
-    fn baseDisp8(base: u3) u8 {
+    pub fn baseDisp8(base: u3) u8 {
         return @bitCast(SIBByte{ .base = base, .index = 4, .scale = 0 });
     }
 
-    fn initBase(base: u3) u8 {
+    pub fn initBase(base: u3) u8 {
         return @bitCast(SIBByte{ .base = base, .index = 4, .scale = 0 });
     }
 };
 
-const ModRM = packed struct {
+pub const ModRM = packed struct {
     rm: u3,
     regOrOpx: u3,
     mod: u2,
 
-    fn direct(regOrOpx: u3, rm: u3) u8 {
+    pub fn direct(regOrOpx: u3, rm: u3) u8 {
         return @bitCast(ModRM{ .rm = rm, .regOrOpx = regOrOpx, .mod = 0b11 });
     }
 
-    fn sibDisp0(regOrOpx: u3) u8 {
+    pub fn sibDisp0(regOrOpx: u3) u8 {
         return @bitCast(ModRM{ .rm = 0b100, .regOrOpx = regOrOpx, .mod = 0b00 });
     }
 
-    fn sibDisp8(regOrOpx: u3) u8 {
+    pub fn sibDisp8(regOrOpx: u3) u8 {
         return @bitCast(ModRM{ .rm = 0b100, .regOrOpx = regOrOpx, .mod = 0b01 });
     }
 
-    fn indirectDisp0(regOrOpx: u3, rm: u3) u8 {
+    pub fn indirectDisp0(regOrOpx: u3, rm: u3) u8 {
         return @bitCast(ModRM{ .rm = rm, .regOrOpx = regOrOpx, .mod = 0b00 });
     }
 
-    fn indirectDisp8(regOrOpx: u3, rm: u3) u8 {
+    pub fn indirectDisp8(regOrOpx: u3, rm: u3) u8 {
         return @bitCast(ModRM{ .rm = rm, .regOrOpx = regOrOpx, .mod = 0b01 });
     }
 
-    fn indirectDisp32(regOrOpx: u3, rm: u3) u8 {
+    pub fn indirectDisp32(regOrOpx: u3, rm: u3) u8 {
         return @bitCast(ModRM{ .rm = rm, .regOrOpx = regOrOpx, .mod = 0b10 });
     }
 
-    fn ripDisp32(regOrOpx: u3) u8 {
+    pub fn ripDisp32(regOrOpx: u3) u8 {
         return @bitCast(ModRM{ .rm = 0b101, .regOrOpx = regOrOpx, .mod = 0b00 });
     }
 };
 
-const Rex = struct {
+pub const Rex = struct {
     w: bool = false,
     r: bool = false,
     x: bool = false,
     b: bool = false,
     present: bool = false,
 
-    fn isSet(self: Rex) bool {
+    pub fn isSet(self: Rex) bool {
         return self.w or self.r or self.x or self.b;
     }
 };
-
-fn encodeImm64(buf: []u8, len: *usize, imm: u64) void {
-    @memcpy(buf[len.* .. len.* + 8], std.mem.asBytes(&imm));
-    len.* += 8;
-}
-
-fn encodeMemory(buf: []u8, len: *usize, enc: Encoding, mem: Memory, op: Op) void {
-    const opEnc: u3 = switch (op.type) {
-        .reg => op.data.reg.lowEnc(),
-        .none => enc.modRmExt(),
-        else => unreachable,
-    };
-
-    switch (mem) {
-        .sib => |sib| {
-            switch (sib.base) {
-                .none => {
-                    buf[len.*] = ModRM.sibDisp0(opEnc);
-                    len.* += 1;
-
-                    if (sib.scaleIndex.scale > 0) {
-                        unreachable;
-                    } else {
-                        buf[len.*] = SIBByte.disp32();
-                        len.* += 1;
-                    }
-
-                    @memcpy(buf[len.* .. len.* + 4], std.mem.asBytes(&sib.disp));
-                    len.* += 4;
-                },
-                .reg => |base| {
-                    if (false) {
-                        // TODO: base.class() == .segment
-                    } else {
-                        const baseEnc = base.lowEnc();
-                        if (baseEnc == 4 or sib.scaleIndex.scale > 0) {
-                            if (sib.disp == 0 and baseEnc != 5) {
-                                buf[len.*] = ModRM.sibDisp0(opEnc);
-                                len.* += 1;
-                                if (sib.scaleIndex.scale > 0) {
-                                    unreachable;
-                                } else {
-                                    buf[len.*] = SIBByte.initBase(baseEnc);
-                                    len.* += 1;
-                                }
-                            } else if (std.math.cast(i8, sib.disp)) |disp| {
-                                buf[len.*] = ModRM.sibDisp8(opEnc);
-                                len.* += 1;
-
-                                if (sib.scaleIndex.scale > 0) {
-                                    unreachable;
-                                } else {
-                                    buf[len.*] = SIBByte.baseDisp8(baseEnc);
-                                    len.* += 1;
-                                }
-
-                                buf[len.*] = @bitCast(disp);
-                                len.* += 1;
-                            } else {
-                                unreachable;
-                            }
-                        } else {
-                            if (sib.disp == 0 and baseEnc != 5) {
-                                buf[len.*] = ModRM.indirectDisp0(opEnc, baseEnc);
-                                len.* += 1;
-                            } else if (std.math.cast(i8, sib.disp)) |disp| {
-                                buf[len.*] = ModRM.indirectDisp8(opEnc, baseEnc);
-                                len.* += 1;
-
-                                buf[len.*] = @bitCast(disp);
-                                len.* += 1;
-                            } else {
-                                buf[len.*] = ModRM.indirectDisp32(opEnc, baseEnc);
-                                len.* += 1;
-
-                                @memcpy(buf[len.* .. len.* + 4], std.mem.asBytes(&sib.disp));
-                                len.* += 4;
-                            }
-                        }
-                    }
-                },
-                else => unreachable,
-            }
-        },
-        .rip => |rip| {
-            buf[len.*] = ModRM.ripDisp32(opEnc);
-            len.* += 1;
-
-            @memcpy(buf[len.* .. len.* + 4], std.mem.asBytes(&rip));
-            len.* += 4;
-        },
-        else => unreachable,
-    }
-}
-
-fn encodeRexPrefix(buf: []u8, len: *usize, enc: Encoding, ops: []const Op) void {
-    var rex = Rex{
-        .present = enc.mode == .rex,
-        .w = enc.mode == .long,
-    };
-
-    switch (enc.opEn) {
-        .o, .oi => {
-            rex.b = ops[0].data.reg.isExtended();
-        },
-        .m, .mr, .rm, .rmi => {
-            const rop = switch (enc.opEn) {
-                .mr => ops[1],
-                .m, .rm, .rmi => ops[0],
-                else => unreachable,
-            };
-            rex.r = rop.isBaseExtended();
-            const bxop = switch (enc.opEn) {
-                .m, .mr => ops[0],
-                else => ops[1],
-            };
-            rex.b = bxop.isBaseExtended();
-            rex.x = bxop.isIndexExtended();
-        },
-    }
-
-    if (!rex.present and !rex.isSet()) return;
-    var byte: u8 = 0b0100_0000;
-    if (rex.w) byte |= 0b1000;
-    if (rex.r) byte |= 0b0100;
-    if (rex.x) byte |= 0b0010;
-    if (rex.b) byte |= 0b0001;
-
-    buf[len.*] = byte;
-    len.* += 1;
-}
 
 const Prefix = enum(u3) {
     none,
@@ -499,7 +164,7 @@ pub const Op = struct {
         return .{ .type = .imm, .data = .{ .imm = Immediate.u(u) } };
     }
 
-    fn isBaseExtended(self: Op) bool {
+    pub fn isBaseExtended(self: Op) bool {
         return switch (self.type) {
             .none, .imm => false,
             .reg => self.data.reg.isExtended(),
@@ -512,7 +177,7 @@ pub const Op = struct {
         };
     }
 
-    fn isIndexExtended(self: Op) bool {
+    pub fn isIndexExtended(self: Op) bool {
         return switch (self.type) {
             .none, .reg, .imm => false,
             .mem => {
@@ -591,13 +256,13 @@ const Immediate = union(enum) {
 
 const modrm_ext = u3;
 
-const Encoding = struct {
+pub const Encoding = struct {
     opEn: OpEn,
     modrm_ext: modrm_ext,
     mode: Mode,
     feature: Feature,
 
-    fn init(opEn_: OpEn, modrm_ext_: modrm_ext, mode_: Mode, feature_: Feature) Encoding {
+    pub fn init(opEn_: OpEn, modrm_ext_: modrm_ext, mode_: Mode, feature_: Feature) Encoding {
         const new = Encoding{
             .opEn = opEn_,
             .modrm_ext = modrm_ext_,
@@ -607,7 +272,7 @@ const Encoding = struct {
         return new;
     }
 
-    fn modRmExt(self: Encoding) u3 {
+    pub fn modRmExt(self: Encoding) u3 {
         return switch (self.opEn) {
             .m => self.modrm_ext,
             else => unreachable,
@@ -615,7 +280,7 @@ const Encoding = struct {
     }
 };
 
-fn mandatoryPrefix(opc: []const u8) ?u8 {
+pub fn mandatoryPrefix(opc: []const u8) ?u8 {
     const prefix = opc[0];
     return switch (prefix) {
         0x66, 0xf2, 0xf3 => prefix,
@@ -641,69 +306,3 @@ const Mode = enum(u8) {
 const Feature = enum(u8) {
     none,
 };
-
-test "x64 encoding" {
-    var buf = gen.CodeBuffer.init(t.alloc);
-    defer buf.deinit();
-    const encoder = Encoder{ .alloc = t.alloc, .buf = &buf };
-
-    buf.buf.clearRetainingCapacity();
-    try encoder.pushReg(.rbp);
-    try t.eqSlice(u8, buf.raw(), &.{0x55});
-
-    buf.buf.clearRetainingCapacity();
-    try encoder.movReg(.rbp, .rsp);
-    try t.eqSlice(u8, buf.raw(), &.{ 0x48, 0x8b, 0xec });
-
-    buf.buf.clearRetainingCapacity();
-    try encoder.cmp(.rdx, .rcx);
-    try t.eqSlice(u8, buf.raw(), &.{ 0x48, 0x3b, 0xd1 });
-
-    buf.buf.clearRetainingCapacity();
-    try encoder.jumpRel(100);
-    try t.eqSlice(u8, buf.raw(), &.{ 0xe9, 0x64, 0x00, 0x00, 0x00 });
-
-    buf.buf.clearRetainingCapacity();
-    try encoder.jumpReg(.rax);
-    try t.eqSlice(u8, buf.raw(), &.{ 0xff, 0xe0 });
-
-    buf.buf.clearRetainingCapacity();
-    try encoder.jumpCond(jge, 100);
-    try t.eqSlice(u8, buf.raw(), &.{ 0x0f, 0x8d, 0x64, 0x00, 0x00, 0x00 });
-
-    buf.buf.clearRetainingCapacity();
-    try encoder.lea(.rcx, Memory.sibBase(Base{ .reg = .rdx }, 100));
-    try t.eqSlice(u8, buf.raw(), &.{ 0x48, 0x8d, 0x4a, 0x64 });
-
-    buf.buf.clearRetainingCapacity();
-    try encoder.lea(.rax, Memory{ .rip = 16 });
-    try t.eqSlice(u8, buf.raw(), &.{ 0x48, 0x8d, 0x05, 0x10, 0x00, 0x00, 0x00 });
-
-    buf.buf.clearRetainingCapacity();
-    try encoder.movMem(.rcx, Memory.sibBase(Base{ .reg = .rbp }, 8));
-    try t.eqSlice(u8, buf.raw(), &.{ 0x48, 0x8b, 0x4d, 0x08 });
-
-    buf.buf.clearRetainingCapacity();
-    try encoder.movToMem(Memory.sibBase(Base{ .reg = .rbp }, 8), .rcx);
-    try t.eqSlice(u8, buf.raw(), &.{ 0x48, 0x89, 0x4d, 0x08 });
-
-    buf.buf.clearRetainingCapacity();
-    try encoder.movImm(.rdx, 0x7ffc000100000001);
-    try t.eqSlice(u8, buf.raw(), &.{ 0x48, 0xba, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0xfc, 0x7f });
-
-    buf.buf.clearRetainingCapacity();
-    try encoder.callRel(100);
-    try t.eqSlice(u8, buf.raw(), &.{ 0xe8, 0x64, 0x00, 0x00, 0x00 });
-
-    buf.buf.clearRetainingCapacity();
-    try encoder.callReg(.rax);
-    try t.eqSlice(u8, buf.raw(), &.{ 0xff, 0xd0 });
-
-    buf.buf.clearRetainingCapacity();
-    try encoder.ret();
-    try t.eqSlice(u8, buf.raw(), &.{0xc3});
-
-    buf.buf.clearRetainingCapacity();
-    try encoder.int3();
-    try t.eqSlice(u8, buf.raw(), &.{0xcc});
-}

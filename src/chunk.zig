@@ -156,7 +156,6 @@ pub const Chunk = struct {
 
     buf: cy.ByteCodeBuffer,
     jit: *jitgen.CodeBuffer,
-    x64Enc: X64.Encoder,
 
     /// This chunk's sym.
     sym: *cy.sym.Chunk,
@@ -223,7 +222,6 @@ pub const Chunk = struct {
             .cur_proc = undefined,
             .buf = cy.ByteCodeBuffer.init(c.alloc, c.vm),
             .jit = undefined,
-            .x64Enc = undefined,
             .curNode = null,
             .cur_cont_expr = null,
             .tempBufU8 = .{},

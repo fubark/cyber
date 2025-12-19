@@ -441,8 +441,8 @@ fn zDumpJitExprSection(vm: *cy.VM, fp: [*]const cy.Value, chunkId: u64, irIdx: u
 }
 
 fn genCallDumpJitSection(c: *cy.Chunk, idx: usize, isStmt: bool) !usize {
-    try as.genMovImm(c, .arg0, c.id);
-    try as.genMovImm(c, .arg1, idx);
+    try as.gen_imm(c, .arg0, c.id);
+    try as.gen_imm(c, .arg1, idx);
     const dumpStartPc = c.jitGetPos();
     try as.genPatchableMovPcRel(c, .arg2);
 
@@ -549,7 +549,7 @@ fn gen_slot_inline(buf: *CodeBuffer, reg: as.LRegister, slot: u16) !void {
     switch (operand.kind) {
         .reg => {},
         .constant => {
-            try as.genMovImm(buf, reg, operand.data.constant);
+            try as.gen_imm(buf, reg, operand.data.constant);
         },
     }
 }
@@ -605,8 +605,8 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
         try buf.push_u32(A64.LoadStore.strImmOff(a64.FpReg, @intCast(ret_size+1), .x30).bitCast());
     } else if (builtin.cpu.arch == .x86_64) {
         // try c.x64Enc.int3();
-        try c.x64Enc.movMem(.rax, x64.MemSibBase(.initReg(.rsp), (ret_size+1)*8));
-        try c.x64Enc.movToMem(x64.MemSibBase(.initReg(x64.FpReg), (ret_size+1)*8), .rax);
+        try x64.push_load(buf, .rax, .sibBase(.initReg(.rsp), (ret_size+1)*8));
+        try x64.push_store(buf, .sibBase(.initReg(x64.FpReg), (ret_size+1)*8), .rax);
     }
 
     while (@intFromPtr(pc) < @intFromPtr(end)) {
@@ -634,7 +634,7 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
                 try as.genStoreSlot(buf, pc[1].val, .temp);
             },
             .jump_f => {
-                try as.genMovImm(buf, .arg0, pc[1].val);
+                try as.gen_imm(buf, .arg0, pc[1].val);
                 const pos = buf.pos();
                 // TODO: Push up to the cond jump and patch that instead.
                 try buf.push(&stencils.jump_f);
@@ -688,7 +688,7 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
                         try as.gen_add_imm(buf, .temp, .temp, right.data.constant);
                     },
                     .reg => {
-                        try as.gen_add(buf, .temp, .temp, right.data.reg);
+                        try as.gen_add(buf, .temp, right.data.reg);
                     },
                 }
                 try as.genStoreSlot(buf, dst, .temp);
@@ -702,7 +702,7 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
                         try as.gen_sub_imm(buf, .temp, .temp, right.data.constant);
                     },
                     .reg => {
-                        try as.gen_sub(buf, .temp, .temp, right.data.reg);
+                        try as.gen_sub(buf, .temp, right.data.reg);
                     },
                 }
                 try as.genStoreSlot(buf, dst, .temp);
@@ -718,7 +718,7 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
                         continue;
                     }
                 }
-                try as.genMovImm(buf, .arg0, dst);
+                try as.gen_imm(buf, .arg0, dst);
                 try gen_slot_inline(buf, .arg1, pc[2].val);
                 try gen_slot_inline(buf, .arg2, pc[3].val);
                 try buf.push(&stencils.lt);
@@ -734,7 +734,7 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
                         continue;
                     }
                 }
-                try as.genMovImm(buf, .arg0, dst);
+                try as.gen_imm(buf, .arg0, dst);
                 try gen_slot_inline(buf, .arg1, pc[2].val);
                 try gen_slot_inline(buf, .arg2, pc[3].val);
                 try buf.push(&stencils.le);
@@ -750,7 +750,7 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
                         continue;
                     }
                 }
-                try as.genMovImm(buf, .arg0, dst);
+                try as.gen_imm(buf, .arg0, dst);
                 try gen_slot_inline(buf, .arg1, pc[2].val);
                 try gen_slot_inline(buf, .arg2, pc[3].val);
                 try buf.push(&stencils.gt);
@@ -766,7 +766,7 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
                         continue;
                     }
                 }
-                try as.genMovImm(buf, .arg0, dst);
+                try as.gen_imm(buf, .arg0, dst);
                 try gen_slot_inline(buf, .arg1, pc[2].val);
                 try gen_slot_inline(buf, .arg2, pc[3].val);
                 try buf.push(&stencils.ge);
@@ -779,13 +779,13 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
                     continue;
                 }
                 const dst = pc[1].val;
-                try as.genMovImm(buf, .arg0, dst);
+                try as.gen_imm(buf, .arg0, dst);
                 const val: i64 = @as(i16, @bitCast(pc[2]));
-                try as.genMovImm(buf, .arg1, @bitCast(val));
+                try as.gen_imm(buf, .arg1, @bitCast(val));
                 try buf.push(&stencils.store_const);
             },
             .chk_stk => {
-                try as.genMovImm(buf, .arg0, frame_size);
+                try as.gen_imm(buf, .arg0, frame_size);
                 try buf.push(&stencils.chk_stk);
             },
             else => {
@@ -850,7 +850,7 @@ fn mainBlock(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
 fn mainEnd(c: *cy.Chunk, optReg: ?u8) !void {
     const retSlot = optReg orelse cy.NullU8;
 
-    try as.genMovImm(c, .arg0, retSlot);
+    try as.gen_imm(c, .arg0, retSlot);
     try c.jitPush(&stencils.end);
     try as.genMainReturn(c);
 }
@@ -998,10 +998,6 @@ pub fn gen_funcs(c: *cy.Chunk, funcs: []const *cy.Func) !void {
 
     // c.buf = &c.compiler.buf;
     c.jit = &c.compiler.jitBuf;
-
-    if (builtin.cpu.arch == .x86_64) {
-        c.x64Enc = X64.Encoder{ .buf = c.jit, .alloc = c.alloc };
-    }
 
     c.listDataStack.clearRetainingCapacity();
 

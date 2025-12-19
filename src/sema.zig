@@ -1552,7 +1552,7 @@ fn semaAssignStmt(c: *cy.Chunk, node: *ast.Node, left_n: *ast.Node, right: *ast.
             if (!rec.addressable) {
                 rec = try semaManage(c, rec, left.left);
             }
-            const name = left.right.name();
+            const name = left.right.as_name();
             try semaAssignToAccessStmt(c, var_start, left.left, rec, left.right, name, right, opts, node);
             try popLocals(c, var_start, node);
             if (cy.Trace) {
@@ -2248,7 +2248,7 @@ pub fn resolveFuncTemplate(c: *cy.Chunk, template: *cy.sym.FuncTemplate) !void {
     template.params = try c.alloc.alloc(cy.sym.FuncTemplateParam, decl.params.len);
     var param_group_end: usize = cy.NullId;
     for (decl.params, 0..) |param, idx| {
-        const name = param.name_type.name();
+        const name = param.name_type.as_name();
         var type_idx: u32 = undefined;
         if (param.type == null) {
             if (param_group_end == cy.NullId or idx > param_group_end) {
@@ -2278,7 +2278,7 @@ pub fn resolveFuncTemplate(c: *cy.Chunk, template: *cy.sym.FuncTemplate) !void {
 fn resolve_with_cstrs(c: *cy.Chunk, with: *ast.With) ![]cy.sym.WithCstr {
     const with_cstrs = try c.alloc.alloc(cy.sym.WithCstr, with.params.len);
     for (with.params.slice(), 0..) |param, i| {
-        const param_name = param.name_type.name();
+        const param_name = param.name_type.as_name();
         const cstr_t = try cte.eval_type2(c, false, param.type.?);
         with_cstrs[i] = .{
             .name = param_name,
@@ -2322,7 +2322,9 @@ pub fn resolveTemplate(c: *cy.Chunk, sym: *cy.sym.Template) !void {
     const tparams = try c.alloc.alloc(cy.sym.TemplateParam, sym.decl.params.len);
     errdefer c.alloc.free(tparams);
     for (sym.decl.params, 0..) |param, i| {
-        const param_name = param.name_type.name();
+        const param_name = param.name_type.nameOrNull() orelse {
+            return c.reportErrorFmt("Expected name, found {}.", &.{v(param.name_type.type())}, param.name_type);
+        };
         tparams[i] = .{
             .name = param_name,
         };
@@ -2331,7 +2333,7 @@ pub fn resolveTemplate(c: *cy.Chunk, sym: *cy.sym.Template) !void {
 }
 
 pub fn reserveUseAlias(c: *cy.Chunk, node: *ast.UseAlias) !*cy.sym.UseAlias {
-    const name = node.name.name();
+    const name = node.name.as_name();
     return c.reserveUseAlias(@ptrCast(c.sym), name, @ptrCast(node));
 }
 
@@ -2421,7 +2423,7 @@ pub fn declareUseImport(c: *cy.Chunk, node: *ast.ImportStmt) !void {
             alias.resolve_with_sym = true;
         }
     } else {
-        const name = node.name.name();
+        const name = node.name.as_name();
         const alias = try c.reserveUseAlias(@ptrCast(c.sym), name, @ptrCast(node));
         alias.sym = @ptrCast(import_c.sym);
         alias.resolve_with_sym = true;
@@ -2429,11 +2431,11 @@ pub fn declareUseImport(c: *cy.Chunk, node: *ast.ImportStmt) !void {
 }
 
 pub fn declareModuleAlias(c: *cy.Chunk, node: *ast.ImportStmt) !void {
-    const name = node.name.name();
+    const name = node.name.as_name();
 
     var specPath: []const u8 = undefined;
     if (node.spec) |spec| {
-        specPath = spec.name();
+        specPath = spec.as_name();
     } else {
         specPath = name;
     }
@@ -2916,7 +2918,9 @@ pub fn resolveHostBindFunc(c: *cy.Chunk, func: *cy.Func, host_attr: *ast.Attribu
     };
     log.tracev("Lookup embedded func for: {s}", .{bind_name});
     return src_c.host_funcs.get(bind_name) orelse {
-        return c.reportErrorFmt("Host func `{}` failed to load.", &.{v(bind_name)}, @ptrCast(func.decl));
+        return src_c.fallback_bind_func orelse {
+            return c.reportErrorFmt("Host func `{}` failed to load.", &.{v(bind_name)}, @ptrCast(func.decl));
+        };
     };
 }
 
@@ -3246,7 +3250,7 @@ fn declareParam(c: *cy.Chunk, param: *ast.FuncParam, isSelf: bool, paramIdx: usi
     if (isSelf) {
         name = "self";
     } else {
-        name = param.name_type.name();
+        name = param.name_type.as_name();
     }
 
     const proc = c.proc();
@@ -4194,13 +4198,13 @@ pub fn ensureResolvedTemplate(c: *cy.Chunk, template: *cy.sym.Template) !void {
 }
 
 fn ensureLocalNamePathSym(c: *cy.Chunk, path: []*ast.Node) !*Sym {
-    const name = path[0].name();
+    const name = path[0].as_name();
     var sym = (try getResolvedSym(c, name, path[0])) orelse {
         return c.reportErrorFmt("Undeclared symbol: `{}`", &.{v(name)}, path[0]);
     };
     try c.checkResolvedSymIsDistinct(sym, path[0]);
     for (path[1..]) |n| {
-        sym = try c.getResolvedSymOrFail(sym, n.name(), n);
+        sym = try c.getResolvedSymOrFail(sym, n.as_name(), n);
         try c.checkResolvedSymIsDistinct(sym, n);
     }
     return sym;
@@ -4278,7 +4282,7 @@ fn resolveFuncSig(c: *cy.Chunk, func: *cy.Func, resolve_new_types: bool, out_gen
 
     for (start_idx..params.len) |i| {
         const param = params[i];
-        const paramName = param.name_type.name();
+        const paramName = param.name_type.as_name();
         if (std.mem.eql(u8, paramName, "self")) {
             return c.reportError("`self` is a reserved parameter for methods.", @ptrCast(param));
         }
@@ -4360,7 +4364,7 @@ fn pushLambdaFuncParams(c: *cy.Chunk, params: []const *ast.FuncParam) !void {
     var param_group_t: ?*cy.Type = null;
     var param_group_end: usize = undefined;
     for (params, 0..) |param, i| {
-        const paramName = param.name_type.name();
+        const paramName = param.name_type.as_name();
         if (std.mem.eql(u8, paramName, "self")) {
             return c.reportError("`self` is a reserved parameter for methods.", @ptrCast(param));
         }
@@ -4432,10 +4436,10 @@ pub fn ensureDeclNamePath(c: *cy.Chunk, mod: *cy.Sym, parent_opt: ?*ast.Node, na
     var parent_name: []const u8 = undefined;
     var variant = false;
     if (parent.type() == .ident) {
-        parent_name = parent.name();
+        parent_name = parent.as_name();
     } else if (parent.type() == .generic_expand) {
         variant = true;
-        parent_name = parent.cast(.generic_expand).left.name();
+        parent_name = parent.cast(.generic_expand).left.as_name();
     } else {
         return c.reportErrorFmt("TODO", &.{}, parent);
     }
@@ -5294,12 +5298,12 @@ fn semaSwitchBody(c: *cy.Chunk, info: *SwitchInfo, block: *ast.SwitchBlock, cont
                     // NOTE: Only one variable before case block so avoid pushing another ct block.
                     if (for_stmt.each) |each| {
                         const cx = sema.getResolveContext(c);
-                        try cx.initCtVar2(c.alloc, each.name(), value_t, value);
+                        try cx.initCtVar2(c.alloc, each.as_name(), value_t, value);
                     }
                     defer {
                         if (for_stmt.each) |each| {
                             const cx = sema.getResolveContext(c);
-                            cx.unsetCtParam(c.heap, each.name());
+                            cx.unsetCtParam(c.heap, each.as_name());
                         }
                     }
                     
@@ -5865,7 +5869,7 @@ pub fn semaInitStruct(c: *cy.Chunk, struct_t: *cy.types.Struct, initializer: *as
 
     for (initializer.args.slice()) |arg| {
         const pair = arg.cast(.keyValue);
-        const fieldName = pair.key.name();
+        const fieldName = pair.key.as_name();
         const info = try checkSymInitField(c, @ptrCast(sym), fieldName, pair.key);
         // if (info.use_get_method) {
         //     try c.listDataStack.append(c.alloc, .{ .node = entryId });
@@ -6279,7 +6283,7 @@ pub fn semaExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: Cstr) anyerror!ExprR
             return c.semaNone(target_t, node);
         },
         .error_lit => {
-            const name = node.cast(.error_lit).name.name();
+            const name = node.cast(.error_lit).name.as_name();
             const id = try c.sema.ensureSymbol(name);
             return c.semaConst(@intCast(id), c.sema.error_t, node);
         },
@@ -6807,7 +6811,7 @@ pub fn semaExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: Cstr) anyerror!ExprR
                 choice = try semaEnsureAddressable(c, choice, unwrap.left);
 
                 const choice_t = choice.type.cast(.choice);
-                const name = unwrap.right.name();
+                const name = unwrap.right.as_name();
                 const case = choice_t.getCase(name) orelse {
                     return c.reportErrorFmt("Choice case `{}` does not exist.", &.{v(name)}, unwrap.right);
                 };
@@ -6829,7 +6833,7 @@ pub fn semaExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: Cstr) anyerror!ExprR
                 if (pointer.child_t.kind() == .choice) {
                     choice = try semaManage(c, choice, unwrap.left);
                     const choice_t = pointer.child_t.cast(.choice);
-                    const name = unwrap.right.name();
+                    const name = unwrap.right.as_name();
                     const case = choice_t.getCase(name) orelse {
                         return c.reportErrorFmt("Choice case `{}` does not exist.", &.{v(name)}, unwrap.right);
                     };
@@ -7421,7 +7425,7 @@ pub fn semaCallExpr(c: *cy.Chunk, node: *ast.Node, opt_target: ?*cy.Type) !ExprR
         const callee = call.callee.cast(.accessExpr);
         var leftRes = try c.semaExprSkipSym(callee.left, .{});
 
-        const right_name = callee.right.name();
+        const right_name = callee.right.as_name();
         if (leftRes.resType == .sym) {
             const leftSym = leftRes.data.sym;
 
@@ -7499,7 +7503,7 @@ pub fn semaCallExpr(c: *cy.Chunk, node: *ast.Node, opt_target: ?*cy.Type) !ExprR
         const init_sym = try requireFuncSym(c, sym, node);
         return c.semaCallFuncSym(init_sym, call.args.slice(), false, node);
     } else if (call.callee.type() == .ident or call.callee.type() == .at_lit) {
-        const name = call.callee.name();
+        const name = call.callee.as_name();
         const varRes = try lookupIdent(c, name, call.callee);
         switch (varRes) {
             .local => {
@@ -8532,7 +8536,7 @@ fn semaInitLitTarget(c: *cy.Chunk, init_lit: *ast.InitLit, target_t: *cy.Type, r
 }
 
 pub fn semaAccessExpr(c: *cy.Chunk, access: *ast.AccessExpr, prefer_ct_sym: bool, target_t: ?*cy.Type) !ExprResult {
-    const right_name = access.right.name();
+    const right_name = access.right.as_name();
     return semaAccessExpr2(c, access.left, right_name, access.right, prefer_ct_sym, target_t);
 }
 

@@ -527,6 +527,7 @@ void cl_mod_add_type(CLSym* mod, CLBytes name, CLBindType binding);
 void cl_mod_add_global(CLSym* mod, CLBytes name, CLBindGlobal binding);
 void cl_mod_on_destroy(CLSym* mod, CLModuleOnDestroyFn on_destroy);
 void cl_mod_on_load(CLSym* mod, CLModuleOnLoadFn on_load);
+void cl_mod_set_fallback_func(CLSym* mod, CLBindFunc binding);
 
 // Each module binding registers the relevant functions and returns the source that should be returned to the module loader.
 // Source returned is static memory. When returning the source to the module loader either `manage_src` should be false or it should be duplicated with `cl_vm_allocb` .

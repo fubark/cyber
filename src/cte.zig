@@ -41,7 +41,7 @@ pub fn evalFunc(c: *cy.Chunk, func: *cy.Func, args: []const Value, node: *ast.No
         }
         const param_node = param_nodes[param_node_idx];
         param_node_idx += 1;
-        const name = param_node.name_type.name();
+        const name = param_node.name_type.as_name();
         try ctx.setCtParam(c.heap, name, params[i].get_type(), arg);
         try ctx.ct_locals.append(c.alloc, name);
     }
@@ -149,7 +149,7 @@ pub fn switchStmt(c: *cy.Chunk, switch_stmt: *ast.SwitchBlock, req_ct_case: bool
                                     return c.reportErrorFmt("Expected variable identifier.", &.{}, @ptrCast(capture));
                                 }
                                 const capturev = try c.heap.unwrapChoice(control.type, control.value, case_name);
-                                try localDecl2(c, capture.name(), choice_case.payload_t, capturev, capture);
+                                try localDecl2(c, capture.as_name(), choice_case.payload_t, capturev, capture);
                             }
 
                             try cb(c, case, data, opt_target);
@@ -211,12 +211,12 @@ pub fn switchStmt(c: *cy.Chunk, switch_stmt: *ast.SwitchBlock, req_ct_case: bool
                         // NOTE: Only one variable before case block so avoid pushing another ct block.
                         if (for_stmt.each) |each| {
                             const cx = sema.getResolveContext(c);
-                            try cx.initCtVar2(c.alloc, each.name(), value_t, value);
+                            try cx.initCtVar2(c.alloc, each.as_name(), value_t, value);
                         }
                         defer {
                             if (for_stmt.each) |each| {
                                 const cx = sema.getResolveContext(c);
-                                cx.unsetCtParam(c.heap, each.name());
+                                cx.unsetCtParam(c.heap, each.as_name());
                             }
                         }
 
@@ -295,7 +295,7 @@ fn evalCase(c: *cy.Chunk, case: *ast.CaseStmt, captured_opt: ?cy.TypeValue, cb: 
 
     if (captured_opt) |captured| {
         const capture_n = case.data.case.capture.?;
-        try localDecl2(c, capture_n.name(), captured.type, captured.value, capture_n);
+        try localDecl2(c, capture_n.as_name(), captured.type, captured.value, capture_n);
     }
 
     try cb(c, case, data, opt_target);
@@ -330,7 +330,7 @@ pub fn forRangeStmt(c: *cy.Chunk, node: *ast.ForRangeStmt, cb: *const fn(*cy.Chu
         const local_start = push_ct_block(c);
 
         if (node.each) |each| {
-            const each_name = each.name();
+            const each_name = each.as_name();
             try localDecl2(c, each_name, start.type, Value.initInt(i), each);
         }
 
@@ -405,7 +405,7 @@ fn eval_assign(c: *cy.Chunk, left_n: *ast.Node, right_n: *ast.Node, op_opt: ?ast
     const rec_op: ?RecOp = if (op_opt) |op| .{ .left = left_n, .op = op, .node = node } else null;
     switch (left_n.type()) {
         .ident => {
-            const name = left_n.name();
+            const name = left_n.as_name();
             const left = try sema.lookupStaticIdent(c, name, left_n) orelse {
                 return c.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, left_n);
             };
@@ -644,7 +644,7 @@ fn evalCallExpr(c: *cy.Chunk, call: *ast.CallExpr) !Expr {
                 }
 
                 // Look for sym under left module.
-                const right_name = callee.right.name();
+                const right_name = callee.right.as_name();
                 const right_sym = try c.getResolvedSymOrFail(sym, right_name, callee.right);
 
                 const res = try sema.callSym(c, right_sym, callee.right, call.args.slice(), true, node);
@@ -653,7 +653,7 @@ fn evalCallExpr(c: *cy.Chunk, call: *ast.CallExpr) !Expr {
             .value => {
                 const left_value = left.data.value;
                 // Look for sym under left type's module.
-                const right_name = callee.right.name();
+                const right_name = callee.right.as_name();
                 const right_sym = try c.accessResolvedSymOrFail(left_value.type, right_name, callee.right);
 
                 if (right_sym.type == .func) {
@@ -679,7 +679,7 @@ fn evalCallExpr(c: *cy.Chunk, call: *ast.CallExpr) !Expr {
         }
     } else if (call.callee.type() == .ident or call.callee.type() == .at_lit) {
 
-        const name = call.callee.name();
+        const name = call.callee.as_name();
 
         const callee = try sema.lookupStaticIdent(c, name, node) orelse {
             return c.reportErrorFmt("Could not find the symbol `{}`.", &.{v(name)}, node);
@@ -1211,7 +1211,7 @@ pub fn evalInitStruct(c: *cy.Chunk, struct_t: *cy.types.Struct, init_lit: *ast.I
 
     for (init_lit.args.slice()) |arg| {
         const pair = arg.cast(.keyValue);
-        const fieldName = pair.key.name();
+        const fieldName = pair.key.as_name();
         const info = try sema.checkSymInitField(c, @ptrCast(sym), fieldName, pair.key);
         fieldNodes[info.idx] = .{ .node = pair.value };
     }
@@ -1642,7 +1642,7 @@ pub fn evalExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: ExprCstr) anyerror!E
             return Expr.initValue(val);
         },
         .infer_param => {
-            const name = node.cast(.infer_param).name.name();
+            const name = node.cast(.infer_param).name.as_name();
 
             const ctx = sema.getResolveContext(c);
             if (ctx.data.func.instance != null) {
@@ -1702,7 +1702,7 @@ pub fn evalExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: ExprCstr) anyerror!E
             defer c.heap.destructValue(choice);
 
             const choice_t = choice.type.cast(.choice);
-            const name = unwrap.right.name();
+            const name = unwrap.right.as_name();
             const case = choice_t.getCase(name) orelse {
                 return c.reportErrorFmt("Choice case `{}` does not exist.", &.{v(name)}, unwrap.right);
             };
@@ -1875,7 +1875,7 @@ pub fn evalExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: ExprCstr) anyerror!E
             if (access_expr.right.type() != .ident) {
                 return c.reportErrorFmt("Expected identifier.", &.{}, access_expr.right);
             }
-            const name = access_expr.right.name();
+            const name = access_expr.right.as_name();
             switch (parent.kind) {
                 .value => {
                     return accessValue(c, parent.data.value, name, access_expr.right);

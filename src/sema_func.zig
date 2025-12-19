@@ -166,7 +166,7 @@ pub fn matchGenericFuncCt(c: *cy.Chunk, template: *cy.sym.FuncTemplate,
             c.typeStack.items[argt_start + arg_idx] = final_arg.res.ct.type;
             arg_idx += 1;
         } else if (final_arg.resolve_t == .template) {
-            const name = template.func_params[i].name_type.name();
+            const name = template.func_params[i].name_type.as_name();
             try template_ctx.initCtParam(c.alloc, name, final_arg.res.template);
         } else if (final_arg.resolve_t == .incompat) {
             return error.Unexpected;
@@ -226,7 +226,7 @@ pub fn matchGenericFuncRt(c: *cy.Chunk, func: *cy.Func,
             args[arg_idx] = final_arg.res.rt.ir;
             arg_idx += 1;
         } else if (final_arg.resolve_t == .template) {
-            const name = template.func_params[i].name_type.name();
+            const name = template.func_params[i].name_type.as_name();
             try template_ctx.initCtParam(c.alloc, name, final_arg.res.template);
         } else if (final_arg.resolve_t == .incompat) {
             return error.Unexpected;
@@ -983,7 +983,7 @@ fn resolveRtArg(c: *cy.Chunk, arg: Argument, node: *ast.Node, opt_target: ?sema.
 }
 
 fn getFuncTemplateParamType(c: *cy.Chunk, template: *cy.sym.FuncTemplate, ctx: *sema.ResolveContext, idx: usize) !*cy.Type {
-    if (idx == 0 and std.mem.eql(u8, template.func_params[idx].name_type.name(), "self")) {
+    if (idx == 0 and std.mem.eql(u8, template.func_params[idx].name_type.as_name(), "self")) {
         return template.head.parent.?.getStaticType().?;
     } else {
         const spec_idx = sema.indexOfTypedParam(template.func_params, idx).?;
@@ -1318,7 +1318,7 @@ fn expectTypeFromTemplate(c: *cy.Chunk, type_: *cy.Type, exp: *cy.sym.Template, 
 fn inferCtArgs(c: *cy.Chunk, arg: cy.TypeValue, template: *cy.sym.FuncTemplate, template_ctx: *sema.ResolveContext, template_n: *ast.Node, node: *ast.Node) !void {
     switch (template_n.type()) {
         .infer_param => {
-            const name = template_n.cast(.infer_param).name.name();
+            const name = template_n.cast(.infer_param).name.as_name();
             const new = try c.heap.copyValue2(arg.type, arg.value);
             try template_ctx.initCtParam(c.alloc, name, cy.TypeValue.init(arg.type, new));
         },

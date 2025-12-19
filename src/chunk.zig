@@ -115,6 +115,7 @@ pub const Chunk = struct {
     funcs: std.ArrayListUnmanaged(*cy.Func),
 
     host_funcs: std.StringHashMapUnmanaged(C.BindFunc),
+    fallback_bind_func: ?C.BindFunc = null,
     host_types: std.StringHashMapUnmanaged(C.BindType),
     host_globals: std.StringHashMapUnmanaged(C.BindGlobal),
 

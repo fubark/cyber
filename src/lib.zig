@@ -549,6 +549,11 @@ export fn cl_mod_add_func(mod: *C.Sym, name: C.Bytes, binding: C.BindFunc) void 
     c.chunk.host_funcs.put(c.chunk.alloc, C.from_bytes(name), binding) catch @panic("error");
 }
 
+export fn cl_mod_set_fallback_func(mod: *C.Sym, binding: C.BindFunc) void {
+    const c: *cy.sym.Chunk = @ptrCast(@alignCast(mod));
+    c.chunk.fallback_bind_func = binding;
+}
+
 export fn cl_mod_add_global(mod: *C.Sym, name: C.Bytes, binding: C.BindGlobal) void {
     const c: *cy.sym.Chunk = @ptrCast(@alignCast(mod));
     c.chunk.host_globals.put(c.chunk.alloc, C.from_bytes(name), binding) catch @panic("error");

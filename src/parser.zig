@@ -2821,7 +2821,7 @@ pub const Parser = struct {
         if (arg.type() != .ident) {
             return self.reportError("Expected attribute name.", &.{});
         }
-        const name = arg.name();
+        const name = arg.as_name();
         const attr_t = attributes.get(name) orelse {
             return self.reportError("Unknown attribute.", &.{});
         };
@@ -3377,7 +3377,7 @@ pub const Parser = struct {
                 },
                 .sq_string => {
                     if (left.type() == .ident) {
-                        if (special_strings.get(left.name())) |kind| {
+                        if (special_strings.get(left.as_name())) |kind| {
                             const lit = try self.newLitNode(.sq_string_lit, self.next_pos);
                             self.advance();
                             left = try self.ast.newNodeErase(.special_string_lit, .{
@@ -3392,7 +3392,7 @@ pub const Parser = struct {
                 },
                 .sq_string_multi => {
                     if (left.type() == .ident) {
-                        if (special_strings.get(left.name())) |kind| {
+                        if (special_strings.get(left.as_name())) |kind| {
                             const lit = try self.newLitNode(.sq_string_multi_lit, self.next_pos);
                             self.advance();
                             left = try self.ast.newNodeErase(.special_string_lit, .{
@@ -3407,7 +3407,7 @@ pub const Parser = struct {
                 },
                 .string => {
                     if (left.type() == .ident) {
-                        if (special_strings.get(left.name())) |kind| {
+                        if (special_strings.get(left.as_name())) |kind| {
                             const lit = try self.newLitNode(.string_lit, self.next_pos);
                             self.advance();
                             left = try self.ast.newNodeErase(.special_string_lit, .{
@@ -3422,7 +3422,7 @@ pub const Parser = struct {
                 },
                 .string_multi => {
                     if (left.type() == .ident) {
-                        if (special_strings.get(left.name())) |kind| {
+                        if (special_strings.get(left.as_name())) |kind| {
                             const lit = try self.newLitNode(.string_multi_lit, self.next_pos);
                             self.advance();
                             left = try self.ast.newNodeErase(.special_string_lit, .{

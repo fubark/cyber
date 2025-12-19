@@ -225,12 +225,12 @@ pub fn ensure_resolved_type(c: *cy.Chunk, type_: *cy.Type, node: *ast.Node) anye
 }
 
 pub fn reserve_type_const(c: *cy.Chunk, node: *ast.TypeConstDecl) !*cy.sym.TypeConst {
-    const name = node.name.name();
+    const name = node.name.as_name();
     return c.reserve_type_const(&c.sym.head, name, node);
 }
 
 pub fn reserve_type_alias(c: *cy.Chunk, node: *ast.TypeAliasDecl) !*cy.sym.TypeAlias {
-    const name = node.name.name();
+    const name = node.name.as_name();
     const decl_path = try sema.ensureDeclNamePath(c, @ptrCast(c.sym), node.parent, node.name);
     return c.reserveTypeAlias(decl_path.parent, name, node);
 }
@@ -311,7 +311,7 @@ pub fn declare_enum_cases(c: *cy.Chunk, enum_t: *cy.types.Enum, decl: *ast.EnumD
     }
     const cases = try c.alloc.alloc(*cy.sym.EnumCase, decl.members.len);
     for (decl.members.slice(), 0..) |member, i| {
-        const mName = member.name.name();
+        const mName = member.name.as_name();
         cases[i] = try c.declareEnumCase(@ptrCast(enum_t.base.sym()), mName, @ptrCast(enum_t), @intCast(i), member);
     }
     enum_t.cases_ptr = cases.ptr;
@@ -356,7 +356,7 @@ pub fn resolve_cunion_type(c: *cy.Chunk, c_union: *cy.types.CUnion, node: *ast.N
     const decl = sym.decl.?.cast(.cunion_decl);
     const cases = try c.alloc.alloc(cy.types.CUnionCase, decl.cases.len);
     for (decl.cases.slice(), 0..) |case, i| {
-        const case_name = case.name.name();
+        const case_name = case.name.as_name();
         const payload_t = try cte.eval_type2(c, true, case.payload_t);
         try ensure_resolved_type(c, payload_t, @ptrCast(case.payload_t));
 
@@ -432,7 +432,7 @@ pub fn declare_choice_cases(c: *cy.Chunk, choice_t: *cy.types.Choice, decl: *ast
     var has_ct_child = false;
     const cases = try c.alloc.alloc(cy.types.Case, decl.members.len);
     for (decl.members.slice(), 0..) |member, i| {
-        const mName = member.name.name();
+        const mName = member.name.as_name();
         var payload_t: *cy.Type = undefined;
         if (member.typeSpec != null) {
             payload_t = try cte.eval_type2(c, true, member.typeSpec.?);
@@ -637,7 +637,7 @@ pub fn resolve_type_sym(c: *cy.Chunk, sym: *cy.Sym, node: *ast.Node) anyerror!vo
 }
 
 pub fn reserveCUnion(c: *cy.Chunk, node: *ast.CUnionDecl) !*cy.sym.TypeSym {
-    const name = node.name.name();
+    const name = node.name.as_name();
     const type_id = try resolveTypeIdFromDecl(c, c, name, node.attrs.slice(), @ptrCast(node));
     const new_t = try c.sema.createTypeWithId(.c_union, type_id, .{
     });
@@ -646,7 +646,7 @@ pub fn reserveCUnion(c: *cy.Chunk, node: *ast.CUnionDecl) !*cy.sym.TypeSym {
 }
 
 pub fn reserveStruct(c: *cy.Chunk, node: *ast.StructDecl, cstruct: bool) !*cy.sym.TypeSym {
-    const name = node.name.name();
+    const name = node.name.as_name();
     const type_id = try resolveTypeIdFromDecl(c, c, name, node.attrs.slice(), @ptrCast(node));
     const new_t = try c.sema.createTypeWithId(.struct_t, type_id, .{
         .cstruct = cstruct,
@@ -812,7 +812,7 @@ pub fn resolveStructFields(c: *cy.Chunk, struct_t: *cy.types.Struct, decl: *ast.
     var field_group_t: ?*cy.Type = null;
     var field_group_end: usize = undefined;
     for (decl.fields.slice(), 0..) |field, i| {
-        const fieldName = field.name.name();
+        const fieldName = field.name.as_name();
         var field_t: *cy.Type = undefined;
 
         if (field.typeSpec == null) {
@@ -1147,7 +1147,7 @@ pub fn resolveOptionType(c: *cy.Chunk, option_t: *cy.types.Option, decl: *ast.No
 }
 
 pub fn reserve_trait_type(c: *cy.Chunk, decl: *ast.TraitDecl) !*cy.sym.TypeSym {
-    const name = decl.name.name();
+    const name = decl.name.as_name();
 
     const type_id = try resolveTypeIdFromDecl(c, c, name, decl.attrs.slice(), @ptrCast(decl));
     const new_t = try c.sema.createTypeWithId(.generic_trait, type_id, .{
@@ -1162,7 +1162,7 @@ pub fn reserve_trait_type(c: *cy.Chunk, decl: *ast.TraitDecl) !*cy.sym.TypeSym {
 fn findInferParams(c: *cy.Chunk, node: *ast.Node) !void {
     switch (node.type()) {
         .infer_param => {
-            const name = node.cast(.infer_param).name.name();
+            const name = node.cast(.infer_param).name.as_name();
             const ctx = sema.getResolveContext(c);
 
             // Building template params for `resolveFuncSig`.

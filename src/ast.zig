@@ -1083,7 +1083,7 @@ pub const Node = struct {
         }
     }
 
-    pub fn name(self: *Node) []const u8 {
+    pub fn as_name(self: *Node) []const u8 {
         return self.nameOrNull() orelse {
             std.debug.panic("Expected name. {}", .{self.type()});
         };

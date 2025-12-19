@@ -946,12 +946,22 @@ beginSwitch:
         JitEntry entry = (JitEntry)READ_U48(1);
         // Save the BC caller return pc so that the jit entry can save the VM return address.
         Inst* return_pc = (Inst*)stack[1];
+        Value* return_fp = (Value*)stack[2];
+
+        // VM: Subtract CHK_STK's ret_size from base. 
+        stack -= pc[5];
+
+        // __builtin_debugtrap();
+        // __builtin___clear_cache((char*)entry, ((char*)entry) + 4096);
         PcFpResult res = entry(t, stack);
-        stack = res.fp;
-        if (res.code != RES_SUCCESS) {
-            RETURN(res.code);
-        }
+
+        // TODO: Handle stack overflow and JIT -> VM re-entry.
+        // stack = res.fp;
+        // if (res.code != RES_SUCCESS) {
+        //     RETURN(res.code);
+        // }
         pc = return_pc;
+        stack = return_fp;
         NEXT();
     }
     CASE(RET_0): {

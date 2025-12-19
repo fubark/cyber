@@ -85,6 +85,8 @@ pub const Cond = enum(u4) {
     ne = 1,
     ge = 10,
     lt = 11,
+    gt = 12,
+    le = 13,
 };
 
 pub const AddSubShifted = packed struct {
@@ -101,6 +103,32 @@ pub const AddSubShifted = packed struct {
 
     pub fn bitCast(self: AddSubShifted) u32 {
         return @bitCast(self);
+    }
+
+    pub fn add(rd: Register, rn: Register, rm: Register) AddSubShifted {
+        return .{
+            .rd = rd.enc(),
+            .rn = rn.enc(),
+            .rm = rm.enc(),
+            .imm6 = 0,
+            .shift = 0b00, // LSL #0
+            .s = 0,
+            .op = 0,
+            .sf = rd.encBitSize(),
+        };
+    }
+
+    pub fn sub(rd: Register, rn: Register, rm: Register) AddSubShifted {
+        return .{
+            .rd = rd.enc(),
+            .rn = rn.enc(),
+            .rm = rm.enc(),
+            .imm6 = 0,
+            .shift = 0b00, // LSL #0
+            .s = 0,
+            .op = 1,
+            .sf = rd.encBitSize(),
+        };
     }
 
     pub fn cmp(rn: Register, rm: Register) AddSubShifted {
@@ -139,6 +167,18 @@ pub const AddSubImm = packed struct {
             .sh = 0,
             .s = 0b0,
             .op = 0b0,
+            .sf = rd.encBitSize(),
+        };
+    }
+
+    pub fn sub(rd: Register, rn: Register, imm: u12) AddSubImm {
+        return .{
+            .rd = rd.enc(),
+            .rn = rn.enc(),
+            .imm12 = imm,
+            .sh = 0,
+            .s = 0b0,
+            .op = 0b1,
             .sf = rd.encBitSize(),
         };
     }

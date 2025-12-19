@@ -16,28 +16,40 @@ pub fn gen_load_slot(buf: *CodeBuffer, dst: LRegister, src: Slot) !void {
     try buf.push_u32(A64.LoadStore.ldrImmOff(FpReg, @intCast(src), toReg(dst)).bitCast());
 }
 
-pub fn genStoreSlot(c: *cy.Chunk, dst: Slot, src: LRegister) !void {
-    try c.jitPushU32(A64.LoadStore.strImmOff(FpReg, dst, toReg(src)).bitCast());
+pub fn gen_store_slot(buf: *CodeBuffer, dst: Slot, src: LRegister) !void {
+    try buf.push_u32(A64.LoadStore.strImmOff(FpReg, @intCast(dst), toReg(src)).bitCast());
 }
 
-pub fn genAddImm(c: *cy.Chunk, dst: LRegister, src: LRegister, imm: u64) !void {
-    try c.jitPushU32(A64.AddSubImm.add(toReg(dst), toReg(src), @intCast(imm)).bitCast());
+pub fn gen_add(buf: *CodeBuffer, dst: LRegister, left: LRegister, right: LRegister) !void {
+    try buf.push_u32(A64.AddSubShifted.add(toReg(dst), toReg(left), toReg(right)).bitCast());
+}
+
+pub fn gen_add_imm(buf: *CodeBuffer, dst: LRegister, src: LRegister, imm: u64) !void {
+    try buf.push_u32(A64.AddSubImm.add(toReg(dst), toReg(src), @intCast(imm)).bitCast());
+}
+
+pub fn gen_sub(buf: *CodeBuffer, dst: LRegister, left: LRegister, right: LRegister) !void {
+    try buf.push_u32(A64.AddSubShifted.sub(toReg(dst), toReg(left), toReg(right)).bitCast());
+}
+
+pub fn gen_sub_imm(buf: *CodeBuffer, dst: LRegister, src: LRegister, imm: u64) !void {
+    try buf.push_u32(A64.AddSubImm.sub(toReg(dst), toReg(src), @intCast(imm)).bitCast());
 }
 
 pub fn gen_imm(buf: *CodeBuffer, dst: LRegister, imm: u64) !void {
     try copyImm64(buf, toReg(dst), imm);
 }
 
-pub fn genPatchableJumpRel(c: *cy.Chunk) !void {
-    try c.jitPushU32(A64.BrImm.bl(0).bitCast());
+pub fn genPatchableJumpRel(buf: *CodeBuffer) !void {
+    try buf.push_u32(A64.BrImm.bl(0).bitCast());
 }
 
-pub fn patch_jump_rel(buf: *gen.CodeBuffer, pc: usize, to: usize) void {
+pub fn patch_jump_rel(buf: *CodeBuffer, pc: usize, to: usize) void {
     var inst: *A64.BrImm = @ptrCast(@alignCast(&buf.buf.items[pc]));
     inst.setOffsetFrom(pc, to);
 }
 
-pub fn patch_imm64(buf: *gen.CodeBuffer, pc: usize, reg: LRegister, imm: u64) void {
+pub fn patch_imm64(buf: *CodeBuffer, pc: usize, reg: LRegister, imm: u64) void {
     const start = buf.pos();
     copyImm64(buf, toReg(reg), imm) catch @panic("error");
     const src = buf.buf.items[start..];
@@ -101,37 +113,40 @@ pub fn genMainReturn(c: *cy.Chunk) !void {
     try c.jitPushU32(A64.Br.ret().bitCast());
 }
 
-pub fn genCallFunc(c: *cy.Chunk, func: *cy.Func) !void {
-    // Reserve immediate for jump address.
-    const pc = try c.jit.reserve(4 * 4); 
+pub fn genCallFunc(buf: *CodeBuffer, func: *cy.Func) !void {
+    // // Reserve immediate for jump address.
+    // const pc = try c.jit.reserve(4 * 4); 
+
+    const pc = buf.pos();
+    try genPatchableJumpRel(buf);
 
     // Push empty branch.
-    try c.jit.relocs.append(c.alloc, .{ .type = .jumpToFunc, .data = .{ .jumpToFunc = .{
+    try buf.relocs.append(buf.gpa, .{ .type = .jumpToFunc, .data = .{ .jumpToFunc = .{
         .func = func,
-        .temp_pc = @intCast(pc),
+        .pc = @intCast(pc),
     }}});
-    try c.jit.push_u32(A64.Br.blr(toReg(.temp)).bitCast());
+    // try c.jit.push_u32(A64.Br.blr(toReg(.temp)).bitCast());
 }
 
-pub fn genCallFuncPtr(buf: *gen.CodeBuffer, ptr: *const anyopaque) !void {
+pub fn genCallFuncPtr(buf: *CodeBuffer, ptr: *const anyopaque) !void {
     // No reloc needed, copy address to x30 (since it's already spilled) and invoke with blr.
     try copyImm64(buf, .x30, @intFromPtr(ptr));
     try buf.push_u32(A64.Br.blr(.x30).bitCast());
 }
 
-pub fn genFuncReturn(c: *cy.Chunk) !void {
+pub fn gen_func_ret(buf: *CodeBuffer, ret_size: u16) !void {
     // Load ret addr back into x30.
-    try c.jitPushU32(A64.LoadStore.ldrImmOff(FpReg, 2, .x30).bitCast());
+    try buf.push_u32(A64.LoadStore.ldrImmOff(FpReg, @intCast(ret_size + 1), .x30).bitCast());
 
     // Load prev fp.
-    try c.jitPushU32(A64.LoadStore.ldrImmOff(FpReg, 3, FpReg).bitCast());
+    try buf.push_u32(A64.LoadStore.ldrImmOff(FpReg, @intCast(ret_size + 2), FpReg).bitCast());
 
     // Return.
-    try c.jitPushU32(A64.Br.ret().bitCast());
+    try buf.push_u32(A64.Br.ret().bitCast());
 }
 
-pub fn genBreakpoint(c: *cy.Chunk) !void {
-    try c.jit.push_u32(A64.Exception.brk(0xf000).bitCast());
+pub fn genBreakpoint(buf: *gen.CodeBuffer) !void {
+    try buf.push_u32(A64.Exception.brk(0xf000).bitCast());
 }
 
 pub fn gen_log(buf: *gen.CodeBuffer, msg: []const u8) !void {
@@ -145,6 +160,9 @@ pub fn gen_log(buf: *gen.CodeBuffer, msg: []const u8) !void {
 fn toCond(cond: assm.LCond) A64.Cond {
     return switch (cond) {
         .ge => .ge,
+        .gt => .gt,
+        .lt => .lt,
+        .le => .le,
         else => unreachable,
     };
 }
@@ -158,6 +176,7 @@ fn toReg(reg: LRegister) Register {
         .arg3 => .x26,
         .fp => FpReg,
         .temp => .x8,
+        .temp2 => .x9,
     };
 }
 

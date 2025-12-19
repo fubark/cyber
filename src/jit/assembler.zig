@@ -3,6 +3,7 @@ const cy = @import("../cyber.zig");
 const Slot = u16;
 const CodeBuffer = cy.jitgen.CodeBuffer;
 
+const A64 = @import("a64.zig");
 const a64 = @import("a64_assembler.zig");
 const x64 = @import("x64_assembler.zig");
 
@@ -17,10 +18,14 @@ pub const LRegister = enum {
     arg2,
     arg3,
     temp,
+    temp2,
 };
 
 pub const LCond = enum(u8) {
     ge,
+    gt,
+    le,
+    lt,
     _,
 };
 
@@ -32,18 +37,42 @@ pub fn genLoadSlot(buf: *CodeBuffer, dst: LRegister, src: Slot) !void {
     }
 }
 
-pub fn genStoreSlot(c: *cy.Chunk, dst: Slot, src: LRegister) !void {
+pub fn genStoreSlot(buf: *CodeBuffer, dst: Slot, src: LRegister) !void {
     switch (builtin.cpu.arch) {
-        .aarch64 => try a64.genStoreSlot(c, dst, src),
-        .x86_64 => try x64.genStoreSlot(c, dst, src),
+        .aarch64 => try a64.gen_store_slot(buf, dst, src),
+        // .x86_64 => try x64.genStoreSlot(buf, dst, src),
         else => return error.Unsupported,
     }
 }
 
-pub fn genAddImm(c: *cy.Chunk, dst: LRegister, src: LRegister, imm: u64) !void {
+pub fn gen_add(buf: *CodeBuffer, dst: LRegister, left: LRegister, right: LRegister) !void {
     switch (builtin.cpu.arch) {
-        .aarch64 => try a64.genAddImm(c, dst, src, imm),
-        .x86_64 => try x64.genAddImm(c, dst, src, imm),
+        .aarch64 => try a64.gen_add(buf, dst, left, right),
+        // .x86_64 => try x64.genAddImm(buf, dst, src, imm),
+        else => return error.Unsupported,
+    }
+}
+
+pub fn gen_add_imm(buf: *CodeBuffer, dst: LRegister, src: LRegister, imm: u64) !void {
+    switch (builtin.cpu.arch) {
+        .aarch64 => try a64.gen_add_imm(buf, dst, src, imm),
+        // .x86_64 => try x64.genAddImm(buf, dst, src, imm),
+        else => return error.Unsupported,
+    }
+}
+
+pub fn gen_sub(buf: *CodeBuffer, dst: LRegister, left: LRegister, right: LRegister) !void {
+    switch (builtin.cpu.arch) {
+        .aarch64 => try a64.gen_sub(buf, dst, left, right),
+        // .x86_64 => try x64.genAddImm(buf, dst, src, imm),
+        else => return error.Unsupported,
+    }
+}
+
+pub fn gen_sub_imm(buf: *CodeBuffer, dst: LRegister, src: LRegister, imm: u64) !void {
+    switch (builtin.cpu.arch) {
+        .aarch64 => try a64.gen_sub_imm(buf, dst, src, imm),
+        // .x86_64 => try x64.genAddImm(buf, dst, src, imm),
         else => return error.Unsupported,
     }
 }
@@ -140,24 +169,32 @@ pub fn genStoreSlotValue(c: *cy.Chunk, dst: Slot, val: cy.Value) !void {
     return genStoreSlotImm(c, dst, val.val);
 }
 
-pub fn genBreakpoint(c: *cy.Chunk) !void {
+pub fn gen_nop(buf: *CodeBuffer) !void {
     switch (builtin.cpu.arch) {
-        .aarch64 => try a64.genBreakpoint(c),
-        .x86_64 => try x64.genBreakpoint(c),
+        .aarch64 => try buf.push_u32(A64.NoOp.init().bitCast()),
+        // .x86_64 => try x64.gen_nop(c),
         else => return error.Unsupported,
     }
 }
 
-pub fn gen_log(buf: *cy.jitgen.CodeBuffer, msg: []const u8) !void {
+pub fn genBreakpoint(buf: *CodeBuffer) !void {
+    switch (builtin.cpu.arch) {
+        .aarch64 => try a64.genBreakpoint(buf),
+        // .x86_64 => try x64.genBreakpoint(buf),
+        else => return error.Unsupported,
+    }
+}
+
+pub fn gen_log(buf: *CodeBuffer, msg: []const u8) !void {
     switch (builtin.cpu.arch) {
         .aarch64 => try a64.gen_log(buf, msg),
         else => return error.Unsupported,
     }
 }
 
-pub fn genCallFunc(c: *cy.Chunk, func: *cy.Func) !void {
+pub fn genCallFunc(buf: *CodeBuffer, func: *cy.Func) !void {
     switch (builtin.cpu.arch) {
-        .aarch64 => try a64.genCallFunc(c, func),
+        .aarch64 => try a64.genCallFunc(buf, func),
 //        .x86_64 => try x64.genCallFunc(c, func),
         else => return error.Unsupported,
     }
@@ -171,10 +208,10 @@ pub fn genCallFuncPtr(c: *cy.Chunk, ptr: *const anyopaque) !void {
     }
 }
 
-pub fn genFuncReturn(c: *cy.Chunk) !void {
+pub fn gen_func_ret(buf: *CodeBuffer, ret_size: u16) !void {
     switch (builtin.cpu.arch) {
-        .aarch64 => try a64.genFuncReturn(c),
-        .x86_64 => try x64.genFuncReturn(c),
+        .aarch64 => try a64.gen_func_ret(buf, ret_size),
+        // .x86_64 => try x64.genFuncReturn(buf),
         else => return error.Unsupported,
     }
 }

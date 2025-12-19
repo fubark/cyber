@@ -566,13 +566,14 @@ pub const VM = struct {
         return &self.main_thread.c.stack_ptr[1];
     }
 
-    pub fn addFunc(self: *VM, sema_func: ?*cy.Func, name: []const u8, sig: cy.sema.FuncSigId, func: FuncSymbol) !u32 {
+    pub fn addFunc(self: *VM, sema_func: ?*cy.Func, name: []const u8, sig: *cy.sema.FuncSig, func: FuncSymbol) !u32 {
         const id = self.funcSyms.items.len;
         try self.funcSyms.append(self.alloc, func);
 
         try self.funcSymDetails.append(self.alloc, .{
             .func = sema_func,
-            .name_ptr = name.ptr, .name_len = @intCast(name.len), .sig = sig,
+            .ret_size = @intCast(sig.ret.reg_size()),
+            .name_ptr = name.ptr, .name_len = @intCast(name.len), .sig = sig.id,
         });
         return @intCast(id);
     }
@@ -1257,6 +1258,7 @@ pub const FuncSymbolType = enum(u8) {
 
 pub const FuncSymDetail = struct {
     func: ?*cy.Func,
+    ret_size: u16, // Reg size.
 
     // Some functions don't map to a sema func, so the details are provided.
     name_ptr: [*]const u8,

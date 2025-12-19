@@ -320,8 +320,8 @@ pub const ExternFunc = struct {
 pub fn ensureExternFunc(c: *cy.Compiler, func: *cy.Func) !ExternFunc {
     const res = try c.genSymMap.getOrPut(c.alloc, func);
     if (!res.found_existing) {
-        const id = try c.vm.addFunc(func, func.name(), func.sig.id, cy.vm.FuncSymbol.initNull());
-        const vm_id = try c.vm.addFunc(func, func.name(), func.sig.id, cy.vm.FuncSymbol.initNull());
+        const id = try c.vm.addFunc(func, func.name(), func.sig, cy.vm.FuncSymbol.initNull());
+        const vm_id = try c.vm.addFunc(func, func.name(), func.sig, cy.vm.FuncSymbol.initNull());
         res.value_ptr.* = .{ .extern_func = .{ .id = id, .vm_id = vm_id, .vm_pc = cy.NullId }};
     }
     return res.value_ptr.extern_func;
@@ -330,7 +330,7 @@ pub fn ensureExternFunc(c: *cy.Compiler, func: *cy.Func) !ExternFunc {
 pub fn ensureFunc(c: *cy.Compiler, func: *cy.Func) !u32 {
     const res = try c.genSymMap.getOrPut(c.alloc, func);
     if (!res.found_existing) {
-        const id = try c.vm.addFunc(func, func.name(), func.sig.id, cy.vm.FuncSymbol.initNull());
+        const id = try c.vm.addFunc(func, func.name(), func.sig, cy.vm.FuncSymbol.initNull());
         res.value_ptr.* = .{ .func = .{ .static_pc = undefined, .id = id, .pc = 0, .end_pc = 0 }};
     }
     return res.value_ptr.func.id;
@@ -339,7 +339,7 @@ pub fn ensureFunc(c: *cy.Compiler, func: *cy.Func) !u32 {
 pub fn ensureExternFuncPtrDispatch(c: *cy.Compiler, func_ptr: *cy.types.FuncPtr) !u32 {
     const res = try c.genSymMap.getOrPut(c.alloc, func_ptr);
     if (!res.found_existing) {
-        const id = try c.vm.addFunc(null, "extern_func_ptr", func_ptr.sig.id, cy.vm.FuncSymbol.initNull());
+        const id = try c.vm.addFunc(null, "extern_func_ptr", func_ptr.sig, cy.vm.FuncSymbol.initNull());
         res.value_ptr.* = .{ .func = .{ .static_pc = undefined, .id = id, .pc = 0, .end_pc = 0 }};
     }
     return res.value_ptr.func.id;

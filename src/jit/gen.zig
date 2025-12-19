@@ -58,7 +58,7 @@ pub const Reloc = struct {
     data: union {
         jumpToFunc: struct {
             func: *cy.Func,
-            temp_pc: u32,
+            pc: u32,
         },
         jump_f: struct {
             pc: u32,
@@ -270,7 +270,7 @@ fn genStmt(c: *cy.Chunk, idx: u32) anyerror!void {
 
         if (GenBreakpointAtIr) |chunkIr| {
             if (c.id == chunkIr.chunkId and idx == chunkIr.irIdx) {
-                try as.genBreakpoint(c);
+                try as.genBreakpoint(c.jit);
             }
         }
     }
@@ -493,40 +493,78 @@ fn genExpr(c: *cy.Chunk, idx: usize, cstr: Cstr) anyerror!GenValue {
     return res;
 }
 
-fn gen_slot_inline(buf: *CodeBuffer, reg: as.LRegister, slot: u16) !void {
+const OperandKind = enum(u8) {
+    reg,
+    constant,
+};
+
+const Operand = struct {
+    kind: OperandKind,
+    data: union {
+        reg: as.LRegister,
+        constant: u64,
+    },
+
+    pub fn constant(x: u64) Operand {
+        return .{
+            .kind = .constant,
+            .data = .{
+                .constant = x,
+            },
+        };
+    }
+
+    pub fn reg(r: as.LRegister) Operand {
+        return .{
+            .kind = .reg,
+            .data = .{
+                .reg = r,
+            },
+        };
+    }
+};
+
+fn gen_slot(buf: *CodeBuffer, reg: as.LRegister, slot: u16) !Operand {
     if (buf.const_slots.items[slot]) |pc| {
         // Contains inline constant.
         switch (pc[0].opcode()) {
             .const_16s => {
                 const val: i64 = @as(i16, @bitCast(pc[2]));
-                try as.genMovImm(buf, reg, @bitCast(val));
+                buf.const_slots.items[slot] = null;
+                return Operand.constant(@bitCast(val));
             },
             else => {
                 std.debug.print("jit: Unsupported const inst: {}\n", .{pc[0].opcode()});
                 return error.Unsupported;
             },
         }
-        buf.const_slots.items[slot] = null;
     } else {
         try as.genLoadSlot(buf, reg, slot);
+        return Operand.reg(reg);
     }
 }
 
-fn gen_cmp_jmp(buf: *CodeBuffer, stencil: []const u8, left: u16, right: u16, c: *cy.Chunk, bc_target_pc: usize) !void {
-    try gen_slot_inline(buf, .arg0, left);
-    try gen_slot_inline(buf, .arg1, right);
-    const pos = buf.pos();
-    try buf.push(stencil);
-
-    var patch_pc: u32 = undefined;
-    if (builtin.cpu.arch == .aarch64) {
-        patch_pc = @intCast(pos + stencil.len - 4);
-    } else {
-        @panic("unsupported");
+fn gen_slot_inline(buf: *CodeBuffer, reg: as.LRegister, slot: u16) !void {
+    const operand = try gen_slot(buf, reg, slot);
+    switch (operand.kind) {
+        .reg => {},
+        .constant => {
+            try as.genMovImm(buf, reg, operand.data.constant);
+        },
     }
+}
+
+fn gen_cmp_jmp(buf: *CodeBuffer, cond: as.LCond, left: u16, right: u16, c: *cy.Chunk, bc_target_pc: usize) !void {
+    try gen_slot_inline(buf, .temp, left);
+    try gen_slot_inline(buf, .temp2, right);
+
+    try as.genCmp(buf, .temp, .temp2);
+    const pos = buf.pos();
+    try as.genJumpCond(buf, cond, 0);
+
     try buf.relocs.append(buf.gpa, .{ .type = .jump_cond, .data = .{ .jump_cond = .{
         .chunk = c,
-        .pc = patch_pc,
+        .pc = @intCast(pos),
         .bc_target_pc = @intCast(bc_target_pc),
     }}});
     try buf.ensure_label(.{ .chunk=c, .bc_pc=@intCast(bc_target_pc) });
@@ -541,17 +579,12 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
     var pc = sym.func.static_pc;
     const end = sym.func.static_pc + pc_len;
 
-    // Record pc.
-    try c.jit.funcs.put(c.alloc, func, .{ .pc = c.jit.pos() });
-
-    // Emit VM/JIT -> JIT prologue.     
-    try c.jit.push(&stencils.func_prologue);
-
     // Skip `enter_jit` inst.
     std.debug.assert(pc[0].opcode() == .enter_jit);
     pc += cy.bytecode.getInstLenAt(pc);
 
     std.debug.assert(pc[0].opcode() == .chk_stk);
+    const ret_size = pc[1].val;
     const frame_size = pc[2].val;
     try c.jit.const_slots.resize(c.alloc, @intCast(frame_size));
     const const_slots = c.jit.const_slots.items;
@@ -560,6 +593,20 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
     // Load all BC backward labels.
     for (c.buf.labels.items) |bc_pc| {
         try c.jit.labels.putNoClobber(c.alloc, .{.chunk=c, .bc_pc=bc_pc}, 0);
+    }
+
+    // Record pc.
+    try c.jit.funcs.put(c.alloc, func, .{ .pc = c.jit.pos() });
+
+    // Emit VM/JIT -> JIT prologue.     
+
+    // Persist return addr reg into stack.
+    if (builtin.cpu.arch == .aarch64) {
+        try buf.push_u32(A64.LoadStore.strImmOff(a64.FpReg, @intCast(ret_size+1), .x30).bitCast());
+    } else if (builtin.cpu.arch == .x86_64) {
+        // try c.x64Enc.int3();
+        try c.x64Enc.movMem(.rax, x64.MemSibBase(x64.BaseReg(.rsp), (ret_size+1)*8));
+        try c.x64Enc.movToMem(x64.MemSibBase(x64.BaseReg(x64.FpReg), (ret_size+1)*8), .rax);
     }
 
     while (@intFromPtr(pc) < @intFromPtr(end)) {
@@ -573,19 +620,18 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
         // var msg_buf: [1024]u8 = undefined;
         // const msg = try std.fmt.bufPrint(&msg_buf, "{}", .{pc[0].opcode()});
         // const heap_msg = try c.buf.getOrPushConstString(msg);
+        // try as.gen_nop(buf); // Indicates skipped bytecode generation if this is first inst at breakpoint.
         // try as.gen_log(c.jit, heap_msg.slice);
-        // try as.genBreakpoint(c);
+        // try as.genBreakpoint(buf);
 
         const inst_len = cy.bytecode.getInstLenAt(pc);
         switch (pc[0].opcode()) {
             .ret => {
-                try buf.push(&stencils.pre_ret);
-                try buf.push_u32(A64.Br.ret().bitCast());
+                try as.gen_func_ret(buf, 1);
             },
             .mov => {
-                try as.genMovImm(buf, .arg0, pc[1].val);
-                try as.genMovImm(buf, .arg1, pc[2].val);
-                try buf.push(&stencils.mov);
+                try as.genLoadSlot(buf, .temp, pc[2].val);
+                try as.genStoreSlot(buf, pc[1].val, .temp);
             },
             .jump_f => {
                 try as.genMovImm(buf, .arg0, pc[1].val);
@@ -601,37 +647,72 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
                 try buf.ensure_label(.{ .chunk=c, .bc_pc=pc_off + jump_off });
             },
             .call => {
-                try as.genMovImm(buf, .arg0, pc[1].val);
-                try buf.push(&stencils.pre_call);
+                const base = pc[1].val;
                 const func_vm_pc: usize = @intCast(@as(*const align(2) u48, @ptrCast(pc + 2)).*);
                 const func_id: u32 = @as(*const align(2) u32, @ptrFromInt(func_vm_pc - 4)).*;
-                const callee = c.vm.funcSymDetails.items[func_id].func.?;
+                const details = &c.vm.funcSymDetails.items[func_id];
+                const callee = details.func.?;
                 if (!callee.info.jit) {
                     return c.reportError("Unsupported JIT -> VM call.", func.decl);
                 }
-                try as.genCallFunc(c, callee);
+
+                // Can omit for now.
+                // fp[0] = JIT_CALLINFO(0, 0);
+
+                // return addr saved in callee func prologue.
+
+                // Save current fp.
+                // Fewer ops when generating imm base and base+offset than to a stencil variable.
+                try as.genStoreSlot(buf, base + 2, .fp);
+
+                // Advance fp. Unlike BC, skips base and goes directly to the frame start.
+                try as.gen_add_imm(buf, .fp, .fp, 8 * (base - details.ret_size));
+
+                try as.genCallFunc(buf, callee);
             },
             .trap => {
-                try as.genBreakpoint(c);
+                try as.genBreakpoint(buf);
             },
             .add => {
-                try as.genMovImm(buf, .arg0, pc[1].val);
-                try gen_slot_inline(buf, .arg1, pc[2].val);
-                try gen_slot_inline(buf, .arg2, pc[3].val);
-                try buf.push(&stencils.add);
+                const dst = pc[1].val;
+                const left = try gen_slot(buf, .temp, pc[2].val);
+                var right: Operand = undefined;
+                if (left.kind == .constant) {
+                    try gen_slot_inline(buf, .temp, pc[3].val);
+                    right = left;
+                } else {
+                    right = try gen_slot(buf, .temp2, pc[3].val);
+                }
+                switch (right.kind) {
+                    .constant => {
+                        try as.gen_add_imm(buf, .temp, .temp, right.data.constant);
+                    },
+                    .reg => {
+                        try as.gen_add(buf, .temp, .temp, right.data.reg);
+                    },
+                }
+                try as.genStoreSlot(buf, dst, .temp);
             },
             .sub => {
-                try as.genMovImm(buf, .arg0, pc[1].val);
-                try gen_slot_inline(buf, .arg1, pc[2].val);
-                try gen_slot_inline(buf, .arg2, pc[3].val);
-                try buf.push(&stencils.sub);
+                const dst = pc[1].val;
+                try gen_slot_inline(buf, .temp, pc[2].val);
+                const right = try gen_slot(buf, .temp2, pc[3].val);
+                switch (right.kind) {
+                    .constant => {
+                        try as.gen_sub_imm(buf, .temp, .temp, right.data.constant);
+                    },
+                    .reg => {
+                        try as.gen_sub(buf, .temp, .temp, right.data.reg);
+                    },
+                }
+                try as.genStoreSlot(buf, dst, .temp);
             },
             .lt => {
                 const dst = pc[1].val;
-                if (pc[0].temp_dst() and pc[inst_len].opcode() == .jump_f) {
-                    if (pc[inst_len + 1].val == dst) {
+                if (pc[inst_len].opcode() == .jump_f) {
+                    if (pc[0].temp_dst() and pc[inst_len + 1].val == dst) {
                         const bc_target_pc = pc_off + inst_len + pc[inst_len + 2].val;
-                        try gen_cmp_jmp(buf, stencils.jump_ge[0..stencils.jump_ge_br4], pc[2].val, pc[3].val, c, bc_target_pc);
+                        try gen_cmp_jmp(buf, .ge, pc[2].val, pc[3].val, c, bc_target_pc);
                         pc += inst_len;
                         pc += cy.bytecode.getInstLenAt(pc);
                         continue;
@@ -644,10 +725,10 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
             },
             .le => {
                 const dst = pc[1].val;
-                if (pc[0].temp_dst() and pc[inst_len].opcode() == .jump_f) {
-                    if (pc[inst_len + 1].val == dst) {
+                if (pc[inst_len].opcode() == .jump_f) {
+                    if (pc[0].temp_dst() and pc[inst_len + 1].val == dst) {
                         const bc_target_pc = pc_off + inst_len + pc[inst_len + 2].val;
-                        try gen_cmp_jmp(buf, stencils.jump_gt[0..stencils.jump_gt_br4], pc[2].val, pc[3].val, c, bc_target_pc);
+                        try gen_cmp_jmp(buf, .le, pc[2].val, pc[3].val, c, bc_target_pc);
                         pc += inst_len;
                         pc += cy.bytecode.getInstLenAt(pc);
                         continue;
@@ -660,10 +741,10 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
             },
             .gt => {
                 const dst = pc[1].val;
-                if (pc[0].temp_dst() and pc[inst_len].opcode() == .jump_f) {
-                    if (pc[inst_len + 1].val == dst) {
+                if (pc[inst_len].opcode() == .jump_f) {
+                    if (pc[0].temp_dst() and pc[inst_len + 1].val == dst) {
                         const bc_target_pc = pc_off + inst_len + pc[inst_len + 2].val;
-                        try gen_cmp_jmp(buf, stencils.jump_le[0..stencils.jump_le_br4], pc[2].val, pc[3].val, c, bc_target_pc);
+                        try gen_cmp_jmp(buf, .gt, pc[2].val, pc[3].val, c, bc_target_pc);
                         pc += inst_len;
                         pc += cy.bytecode.getInstLenAt(pc);
                         continue;
@@ -676,10 +757,10 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
             },
             .ge => {
                 const dst = pc[1].val;
-                if (pc[0].temp_dst() and pc[inst_len].opcode() == .jump_f) {
-                    if (pc[inst_len + 1].val == dst) {
+                if (pc[inst_len].opcode() == .jump_f) {
+                    if (pc[0].temp_dst() and pc[inst_len + 1].val == dst) {
                         const bc_target_pc = pc_off + inst_len + pc[inst_len + 2].val;
-                        try gen_cmp_jmp(buf, stencils.jump_lt[0..stencils.jump_lt_br4], pc[2].val, pc[3].val, c, bc_target_pc);
+                        try gen_cmp_jmp(buf, .ge, pc[2].val, pc[3].val, c, bc_target_pc);
                         pc += inst_len;
                         pc += cy.bytecode.getInstLenAt(pc);
                         continue;
@@ -704,8 +785,7 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
                 try buf.push(&stencils.store_const);
             },
             .chk_stk => {
-                try as.genMovImm(buf, .arg0, pc[1].val);
-                try as.genMovImm(buf, .arg1, pc[2].val);
+                try as.genMovImm(buf, .arg0, frame_size);
                 try buf.push(&stencils.chk_stk);
             },
             else => {
@@ -880,8 +960,10 @@ pub fn relocate(buf: *CodeBuffer) !void {
                 if (data.func.type == .hostFunc) {
                     return error.Unexpected;
                 }
-                const func_pc = buf.buf.items.ptr + buf.funcs.get(data.func).?.pc;
-                as.patch_imm64(buf, data.temp_pc, .temp, @intFromPtr(func_pc));
+                // const func_pc = buf.buf.items.ptr + buf.funcs.get(data.func).?.pc;
+                // as.patch_imm64(buf, data.temp_pc, .temp, @intFromPtr(func_pc));
+                const func_pc = buf.funcs.get(data.func).?.pc;
+                as.patch_jump_rel(buf, data.pc, func_pc);
             },
             .jump_f => {
                 const data = reloc.data.jump_f;
@@ -962,7 +1044,7 @@ fn retExprStmt(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
         // try c.buf.pushOp1(.end, @intCast(childv.local));
         return error.TODO;
     } else {
-        try as.genFuncReturn(c);
+        try as.gen_func_ret(c);
     }
 }
 

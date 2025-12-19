@@ -150,6 +150,7 @@ fn toReg(reg: LRegister) Register {
         .arg3 => .r9,
         .fp => FpReg,
         .temp => .rax,
+        .temp2 => .rcx,
         //.vm => .rdi,
     };
 }

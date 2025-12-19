@@ -512,62 +512,62 @@ test "x64 encoding" {
     defer buf.deinit();
 
     buf.buf.clearRetainingCapacity();
-    try pushReg(buf, .rbp);
+    try pushReg(&buf, .rbp);
     try t.eqSlice(u8, buf.raw(), &.{0x55});
 
     buf.buf.clearRetainingCapacity();
-    try push_mov(buf, .rbp, .rsp);
+    try push_mov(&buf, .rbp, .rsp);
     try t.eqSlice(u8, buf.raw(), &.{ 0x48, 0x8b, 0xec });
 
     buf.buf.clearRetainingCapacity();
-    try push_cmp(buf, .rdx, .rcx);
+    try push_cmp(&buf, .rdx, .rcx);
     try t.eqSlice(u8, buf.raw(), &.{ 0x48, 0x3b, 0xd1 });
 
     buf.buf.clearRetainingCapacity();
-    try push_jump_rel(buf, 100);
+    try push_jump_rel(&buf, 100);
     try t.eqSlice(u8, buf.raw(), &.{ 0xe9, 0x64, 0x00, 0x00, 0x00 });
 
     buf.buf.clearRetainingCapacity();
-    try push_jump_reg(buf, .rax);
+    try push_jump_reg(&buf, .rax);
     try t.eqSlice(u8, buf.raw(), &.{ 0xff, 0xe0 });
 
     buf.buf.clearRetainingCapacity();
-    try push_jump_cond(buf, X64.jge, 100);
+    try push_jump_cond(&buf, X64.jge, 100);
     try t.eqSlice(u8, buf.raw(), &.{ 0x0f, 0x8d, 0x64, 0x00, 0x00, 0x00 });
 
     buf.buf.clearRetainingCapacity();
-    try push_lea(buf, .rcx, Memory.sibBase(.Base{ .reg = .rdx }, 100));
+    try push_lea(&buf, .rcx, Memory.sibBase(.initReg(.rdx), 100));
     try t.eqSlice(u8, buf.raw(), &.{ 0x48, 0x8d, 0x4a, 0x64 });
 
     buf.buf.clearRetainingCapacity();
-    try push_lea(buf, .rax, Memory{ .rip = 16 });
+    try push_lea(&buf, .rax, Memory{ .rip = 16 });
     try t.eqSlice(u8, buf.raw(), &.{ 0x48, 0x8d, 0x05, 0x10, 0x00, 0x00, 0x00 });
 
     buf.buf.clearRetainingCapacity();
-    try push_load(buf, .rcx, Memory.sibBase(.Base{ .reg = .rbp }, 8));
+    try push_load(&buf, .rcx, Memory.sibBase(.initReg(.rbp), 8));
     try t.eqSlice(u8, buf.raw(), &.{ 0x48, 0x8b, 0x4d, 0x08 });
 
     buf.buf.clearRetainingCapacity();
-    try push_store(buf, Memory.sibBase(.Base{ .reg = .rbp }, 8), .rcx);
+    try push_store(&buf, Memory.sibBase(.initReg(.rbp), 8), .rcx);
     try t.eqSlice(u8, buf.raw(), &.{ 0x48, 0x89, 0x4d, 0x08 });
 
     buf.buf.clearRetainingCapacity();
-    try push_imm(buf, .rdx, 0x7ffc000100000001);
+    try push_imm(&buf, .rdx, 0x7ffc000100000001);
     try t.eqSlice(u8, buf.raw(), &.{ 0x48, 0xba, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0xfc, 0x7f });
 
     buf.buf.clearRetainingCapacity();
-    try push_call_rel(100);
+    try push_call_rel(&buf, 100);
     try t.eqSlice(u8, buf.raw(), &.{ 0xe8, 0x64, 0x00, 0x00, 0x00 });
 
     buf.buf.clearRetainingCapacity();
-    try push_call_reg(buf, .rax);
+    try push_call_reg(&buf, .rax);
     try t.eqSlice(u8, buf.raw(), &.{ 0xff, 0xd0 });
 
     buf.buf.clearRetainingCapacity();
-    try push_ret(buf);
+    try push_ret(&buf);
     try t.eqSlice(u8, buf.raw(), &.{0xc3});
 
     buf.buf.clearRetainingCapacity();
-    try push_int3(buf);
+    try push_int3(&buf);
     try t.eqSlice(u8, buf.raw(), &.{0xcc});
 }

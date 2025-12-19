@@ -745,7 +745,7 @@ pub fn semaStmt(c: *cy.Chunk, node: *ast.Node) !void {
                 });
                 try popLocals2(c, var_start, false, node);
             } else {
-                return error.TODO;
+                return c.reportErrorFmt("TODO", &.{}, node);
             }
         },
         .returnStmt => {
@@ -1031,7 +1031,7 @@ fn semaCaptureUnwrap(c: *cy.Chunk, opt_t: *cy.Type, get_opt: ExprResult, capture
         const decls = capture.cast(.seqDestructure).args;
         for (decls, 0..) |decl, i| {
             {
-                return error.TODO;
+                return c.reportErrorFmt("TODO", &.{}, capture);
             }
             const name = decl.cast(.ident).name;
             var index = try c.semaConst(@intCast(i), c.sema.i64_t, capture);
@@ -1316,7 +1316,9 @@ fn semaElseStmt(c: *cy.Chunk, node: *ast.Node, outer: usize, is_last_else: bool,
 
         try semaStmts(c, block.stmts);
         end_reachable.* = c.block().endReachable;
-    } else return error.TODO;
+    } else {
+        return c.reportErrorFmt("TODO {}", &.{v(node.type())}, node);
+    }
 }
 
 fn semaAssignToIndexStmt(c: *cy.Chunk, left: *ast.IndexExpr, right: *ast.Node, node: *ast.Node) !void {
@@ -2384,7 +2386,7 @@ pub fn declareUseImport(c: *cy.Chunk, node: *ast.ImportStmt) !void {
     if (node.spec) |spec| {
         if (spec.type() != .sq_string_lit) {
             // use alias.
-            return error.TODO;
+            return c.reportErrorFmt("TODO", &.{}, spec);
         }
         specPath = spec.cast(.sq_string_lit).asString();
     } else {
@@ -2393,7 +2395,7 @@ pub fn declareUseImport(c: *cy.Chunk, node: *ast.ImportStmt) !void {
             specPath = node.name.cast(.ident).name.slice();
         } else {
             // use path.
-            return error.TODO;
+            return c.reportErrorFmt("TODO", &.{}, @ptrCast(node));
         }
     }
 
@@ -2881,7 +2883,7 @@ fn resolveHostFunc2(c: *cy.Chunk, func: *cy.Func, bind_func: C.BindFunc, sig: *F
             }
         },
         else => {
-            return error.Unsupported;
+            return c.reportErrorFmt("Unsupported", &.{}, func.decl);
         },
     }
 }
@@ -3856,7 +3858,7 @@ pub fn symbol2(c: *cy.Chunk, sym: *Sym, prefer_ct_sym: bool, opt_target: ?*cy.Ty
                 if (prefer_ct_sym) {
                     return ExprResult.initCustom(undefined, .sym, c.sema.void_t, .{ .sym = sym });
                 }
-                return error.AmbiguousSymbol;
+                return c.reportError("AmbiguousSymbol", node);
             }
             return sema_func_sym(c, func.first, prefer_ct_sym, opt_target, node);
         },
@@ -4435,7 +4437,7 @@ pub fn ensureDeclNamePath(c: *cy.Chunk, mod: *cy.Sym, parent_opt: ?*ast.Node, na
         variant = true;
         parent_name = parent.cast(.generic_expand).left.name();
     } else {
-        return error.TODO;
+        return c.reportErrorFmt("TODO", &.{}, parent);
     }
     const sym = mod.getMod().?.getSym(parent_name) orelse {
         return c.reportErrorFmt("Undeclared symbol: `{}`", &.{v(parent_name)}, parent);
@@ -5415,7 +5417,7 @@ fn semaSwitchCase(c: *cy.Chunk, info: *SwitchInfo, case: *ast.CaseStmt, control:
                     case_capture_type = payload_t;
                 } else {
                     // TODO: Handle multiple cond capture types.
-                    return error.TODO;
+                    return c.reportErrorFmt("TODO", &.{}, cond);
                 }
             } else {
                 try semaCaseCond(c, info, &conds_buf, info.control_n, control, cond);
@@ -6099,10 +6101,10 @@ pub fn semaExprSkipSym(c: *cy.Chunk, node: *ast.Node, cstr: Cstr) !ExprResult {
                         return sema.symbol2(c, res.data.sym, true, cstr.target_t, node);
                     },
                     .ct_value => {
-                        return error.TODO;
+                        return c.reportErrorFmt("TODO ct_value", &.{}, node);
                     },
                     .ct_var => {
-                        return error.TODO;
+                        return c.reportErrorFmt("TODO ct_var", &.{}, node);
                     },
                 }
             }
@@ -6422,7 +6424,7 @@ pub fn semaExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: Cstr) anyerror!ExprR
                     return c.semaConst(cp, c.sema.i64_t, node);
                 },
                 else => {
-                    return error.TODO;
+                    return c.reportErrorFmt("TODO", &.{}, node);
                 },
             }
         },
@@ -7513,7 +7515,7 @@ pub fn semaCallExpr(c: *cy.Chunk, node: *ast.Node, opt_target: ?*cy.Type) !ExprR
                 return callSym(c, sym, call.callee, call.args.slice(), false, node);
             },
             .ct_var => {
-                return error.TODO;
+                return c.reportErrorFmt("TODO ct_var", &.{}, call.callee);
             },
             .ct_value => |ct_value| {
                 defer c.heap.destructValue(ct_value);
@@ -7526,7 +7528,7 @@ pub fn semaCallExpr(c: *cy.Chunk, node: *ast.Node, opt_target: ?*cy.Type) !ExprR
                         const func = ct_value.value.asPtr(*cy.Func);
                         return c.semaCallFunc(func, call.args.slice(), node);
                     } else {
-                        return error.TODO;
+                        return c.reportErrorFmt("TODO ct_value", &.{}, call.callee);
                     }
                 }
             },
@@ -7574,7 +7576,7 @@ pub fn semaStringTarget(c: *cy.Chunk, lit: []const u8, opt_target: ?*cy.Type, no
             target_bits = base_t.cast(.raw).bits;
         }
         if (target_bits) |bits| {
-            if (try semaTryStringLitCodepoint(c, lit, bits)) |val| {
+            if (try semaTryStringLitCodepoint(c, lit, bits, node)) |val| {
                 switch (bits) {
                     8 => return semaConst8(c, val.byte, base_t, node),
                     16 => return semaConst16(c, val.u16, base_t, node),
@@ -9562,6 +9564,12 @@ pub const FuncSigKeyContext = struct {
     }
 };
 
+pub fn sema_unescape_str(c: *cy.Chunk, buf: []u8, literal: []const u8, always_copy: bool, node: *ast.Node) ![]const u8 {
+    return unescapeString(buf, literal, always_copy) catch |err| {
+        return c.reportError("Unescape error: {}", &.{v(err)}, node);
+    };
+}
+
 /// `buf` is assumed to be big enough.
 pub fn unescapeString(buf: []u8, literal: []const u8, always_copy: bool) ![]const u8 {
     var i = std.mem.indexOfScalar(u8, literal, '\\') orelse {
@@ -9890,13 +9898,14 @@ pub fn getToPrintStringFunc(c: *cy.Chunk, type_: *cy.Type, node: *ast.Node) !*cy
     return func;
 }
 
-pub fn semaTryStringLitCodepoint(c: *cy.Chunk, lit: []const u8, bits: u32) !?cy.Value {
-    _ = c;
+pub fn semaTryStringLitCodepoint(c: *cy.Chunk, lit: []const u8, bits: u32, node: *ast.Node) !?cy.Value {
     if (lit.len == 0) {
         return null;
     }
     if (lit[0] == '\\') {
-        const res = try unescapeSeq(lit[1..]);
+        const res = unescapeSeq(lit[1..]) catch |err| {
+            return c.reportErrorFmt("Unescape error: {}", &.{v(err)}, node);
+        };
         if (lit.len > res.advance + 1) {
             return null;
         }
@@ -9931,7 +9940,9 @@ pub fn semaStringLitCodepoint(c: *cy.Chunk, lit: []const u8, node: *ast.Node) !u
     }
     var val: u64 = undefined;
     if (lit[0] == '\\') {
-        const res = try unescapeSeq(lit[1..]);
+        const res = unescapeSeq(lit[1..]) catch |err| {
+            return c.reportErrorFmt("Unescape error: {}", &.{v(err)}, node);
+        };
         val = res.char;
         if (lit.len > res.advance + 1) {
             return c.reportErrorFmt("Invalid escape sequence.", &.{}, node);

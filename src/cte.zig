@@ -273,7 +273,7 @@ pub fn switchStmt(c: *cy.Chunk, switch_stmt: *ast.SwitchBlock, req_ct_case: bool
                                         try evalCase(c, case, null, cb, data, opt_target);
                                         return;
                                     } else {
-                                        return error.TODO;
+                                        return c.reportErrorFmt("TODO: {}", &.{v(case.kind)}, cond);
                                     }
                                     return;
                                 }
@@ -361,7 +361,7 @@ fn switchCaseInner(c: *cy.Chunk, case_stmt: *ast.CaseStmt, data: ?*anyopaque, op
     _ = opt_target;
     const ctx: *EvalContextAndResult = @ptrCast(@alignCast(data));
     if (case_stmt.body_kind != .block) {
-        return error.Unsupported;
+        return c.reportErrorFmt("Unsupported", &.{}, @ptrCast(case_stmt));
     }
     ctx.res = try evalStmts(c, ctx.ctx, case_stmt.body_data.block.slice());
 }
@@ -369,7 +369,7 @@ fn switchCaseInner(c: *cy.Chunk, case_stmt: *ast.CaseStmt, data: ?*anyopaque, op
 fn switchExprCaseInner(c: *cy.Chunk, case_stmt: *ast.CaseStmt, data: ?*anyopaque, opt_target: ?*cy.Type) anyerror!void {
     const ctx: *EvalContextAndResult = @ptrCast(@alignCast(data));
     if (case_stmt.body_kind != .expr) {
-        return error.Unsupported;
+        return c.reportErrorFmt("Unsupported", &.{}, @ptrCast(case_stmt));
     }
     var res: cy.TypeValue = undefined;
     if (opt_target) |target_t| {
@@ -520,7 +520,7 @@ fn evalStmt(c: *cy.Chunk, ctx: EvalContext, stmt: *ast.Node) !EvalStmtResult {
                         const else_block = block.cast(.else_block);
                         return evalStmts(c, ctx, else_block.stmts);
                     } else {
-                        return error.Unsupported;
+                        return c.reportErrorFmt("Unsupported: {}", &.{v(block.type())}, block);
                     }
                 }
             }
@@ -640,7 +640,7 @@ fn evalCallExpr(c: *cy.Chunk, call: *ast.CallExpr) !Expr {
                     return c.reportErrorFmt("Can not access function symbol `{}`.", &.{v(sym.name())}, callee.right);
                 }
                 if (sym.isValue()) {
-                    return error.Unexpected;
+                    return c.reportErrorFmt("Unsupported.", &.{}, @ptrCast(call));
                 }
 
                 // Look for sym under left module.
@@ -736,7 +736,7 @@ fn evalCallExpr(c: *cy.Chunk, call: *ast.CallExpr) !Expr {
                     return c.reportErrorFmt("Expected function `{}`.", &.{v(sym.name())}, call.callee);
                 }
                 if (sym.isValue()) {
-                    return error.Unexpected;
+                    return c.reportErrorFmt("Unsupported.", &.{}, call.callee);
                 }
                 const res = try sema.callSym(c, sym, call.callee, call.args.slice(), true, node);
                 return Expr.initValue(res.data.ct_value);
@@ -951,7 +951,7 @@ fn deriveCtExprSym(c: *cy.Chunk, expr: Expr, node: *ast.Node) !*cy.Sym {
         },
         .ct_var,
         .func => {
-            return error.TODO;
+            return c.reportErrorFmt("TODO {}", &.{v(expr.kind)}, node);
         },
         .value => {
             defer c.heap.destructValue(expr.data.value);
@@ -1396,8 +1396,8 @@ pub fn evalExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: ExprCstr) anyerror!E
                     if (init_expr.lit.array_like) {
                         if (try c.getResolvedSym(sym, "@init_sequence", node)) |init_elems| {
                             _ = init_elems;
-                        
-                            return error.TODO;
+
+                            return c.reportErrorFmt("TODO {}", &.{}, node);
                             // return evalInitArray(c, init_elems, node.lit);
                         }
                     } 
@@ -1502,12 +1502,12 @@ pub fn evalExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: ExprCstr) anyerror!E
         .sq_string_lit => {
             // TODO: Escape.
             const str = node.cast(.sq_string_lit).asString();
-            return evalStringLiteral(c, str, opt_target);
+            return evalStringLiteral(c, str, opt_target, node);
         },
         .string_lit => {
             // TODO: Escape.
             const str = node.cast(.string_lit).asString();
-            return evalStringLiteral(c, str, opt_target);
+            return evalStringLiteral(c, str, opt_target, node);
         },
         .raw_string_lit => {
             const lit = node.cast(.raw_string_lit).asRawString();
@@ -1659,7 +1659,7 @@ pub fn evalExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: ExprCstr) anyerror!E
                         return Expr.initSym(sym);
                     },
                     .ct_var => {
-                        return error.TODO;
+                        return c.reportErrorFmt("TODO ct_var", &.{}, node);
                     },
                     .ct_value => |ct_value| {
                         return Expr.initValue(ct_value);
@@ -1748,7 +1748,7 @@ pub fn evalExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: ExprCstr) anyerror!E
 
             switch (rec_expr.kind) {
                 .ct_var => {
-                    return error.TODO;
+                    return c.reportErrorFmt("TODO ct_var", &.{}, index_expr.left);
                 },
                 .value => {
                     const rec = rec_expr.data.value;
@@ -1798,7 +1798,7 @@ pub fn evalExprNoCheck(c: *cy.Chunk, node: *ast.Node, cstr: ExprCstr) anyerror!E
                     return c.reportErrorFmt("Inline eval: Cannot index receiver.", &.{}, index_expr.args.ptr[0]);
                 },
                 .func => {
-                    return error.TODO;
+                    return c.reportErrorFmt("TODO func", &.{}, index_expr.left);
                 },
                 .sym => {
                     const sym = rec_expr.data.sym;
@@ -2454,7 +2454,7 @@ fn eval_bin_expr(c: *cy.Chunk, left_n: *ast.Node, op: ast.BinaryExprOp, right_n:
     }
 }
 
-fn evalStringLiteral(c: *cy.Chunk, str: []const u8, opt_target: ?*cy.Type) !Expr {
+fn evalStringLiteral(c: *cy.Chunk, str: []const u8, opt_target: ?*cy.Type, node: *ast.Node) !Expr {
     if (opt_target) |target_t| {
         // if (target_t.isPointer()) {
         //     const target_ptr = target_t.cast(.pointer);
@@ -2467,7 +2467,7 @@ fn evalStringLiteral(c: *cy.Chunk, str: []const u8, opt_target: ?*cy.Type) !Expr
         // }
 
         if (target_t.id() == bt.EvalInt) {
-            if (try sema.semaTryStringLitCodepoint(c, str, 64)) |val| {
+            if (try sema.semaTryStringLitCodepoint(c, str, 64, node)) |val| {
                 return Expr.initValue(.{
                     .type = c.sema.eval_int_t,
                     .value = val,
@@ -2476,14 +2476,14 @@ fn evalStringLiteral(c: *cy.Chunk, str: []const u8, opt_target: ?*cy.Type) !Expr
         }
 
         if (target_t.kind() == .int) {
-            if (try sema.semaTryStringLitCodepoint(c, str, target_t.cast(.int).bits)) |val| {
+            if (try sema.semaTryStringLitCodepoint(c, str, target_t.cast(.int).bits, node)) |val| {
                 return Expr.initValue(.{
                     .type = target_t,
                     .value = val,
                 });
             }
         } else if (target_t.kind() == .raw) {
-            if (try sema.semaTryStringLitCodepoint(c, str, target_t.cast(.raw).bits)) |val| {
+            if (try sema.semaTryStringLitCodepoint(c, str, target_t.cast(.raw).bits, node)) |val| {
                 return Expr.initValue(.{
                     .type = target_t,
                     .value = val,
@@ -2550,7 +2550,7 @@ pub fn callFuncSymRec(c: *cy.Chunk, sym: *cy.sym.FuncSym, rec: *ast.Node, rec_re
     args: []const *ast.Node, node: *ast.Node) !TypeValue {
     const rec_arg = cy.sema_func.Argument.initReceiver(rec, rec_res);
     if (sym.first.type == .trait) {
-        return error.TODO;
+        return c.reportErrorFmt("TODO", &.{}, node);
     } else {
         const res = try cy.sema_func.matchFuncSym2(c, sym, &.{rec_arg}, args, true, node);
         if (res.resType != .ct_value) {

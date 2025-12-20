@@ -394,7 +394,7 @@ pub fn write_inst(vm: *cy.VM, w: *std.Io.Writer, code: OpCode, chunk_id: ?usize,
         },
         .call => {
             const base = pc[1].val;
-            const func_pc: usize = @intCast(@as(*const align(2) u48, @ptrCast(pc + 2)).*);
+            const func_pc = std.mem.readInt(u48, @ptrCast(pc + 2), .little);
             const func_id: u32 = @as(*const align(2) u32, @ptrFromInt(func_pc - 4)).*;
 
             const name = vm.funcSymDetails.items[func_id].name();

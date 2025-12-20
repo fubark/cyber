@@ -332,12 +332,12 @@ pub fn ifStmt(c: *cy.Chunk, if_stmt: *ast.IfStmt) !void {
                     continue;
                 }
                 const start = try pushCtBlock(c, @ptrCast(else_b));
-                try sema.semaStmts(c, else_.stmts);
+                try evalStmts(c, else_.stmts);
                 try popInlineCtBlock(c, start);
             } else {
                 const else_ = else_b.cast(.else_block);
                 const start = try pushCtBlock(c, @ptrCast(else_b));
-                try sema.semaStmts(c, else_.stmts);
+                try evalStmts(c, else_.stmts);
                 try popInlineCtBlock(c, start);
             }
             return;

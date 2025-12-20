@@ -399,6 +399,11 @@ static Value buildGenCallInfo(bool cont, u8 call_inst_off, u8 stack_size) {
     pc += 4; \
     NEXT();
 
+__attribute__((naked))
+void i2c();
+
+typedef PcFpResult (*i2c_ptr)(ZThread* t, Value* fp, u64 jit_ptr) __attribute__((preserve_none));
+
 ResultCode execBytecode(ZThread* t) {
     #define READ_U32(offset) ((uint32_t)pc[offset] | ((uint32_t)pc[offset+1] << 16))
     #define READ_U48(offset) ((uint64_t)pc[offset] | ((uint64_t)pc[offset+1] << 16) | ((uint64_t)pc[offset+2] << 32))
@@ -953,7 +958,13 @@ beginSwitch:
 
         // __builtin_debugtrap();
         // __builtin___clear_cache((char*)entry, ((char*)entry) + 4096);
+#ifdef __x86_64__
+        i2c_ptr ptr;
+        __asm__ volatile ("": "=r"(ptr): "0"(i2c)); // Make sure i2c is reinterpreted as opaque function.
+        PcFpResult res = ptr(t, stack, (u64)entry);
+#else
         PcFpResult res = entry(t, stack);
+#endif
 
         // TODO: Handle stack overflow and JIT -> VM re-entry.
         // stack = res.fp;
@@ -1719,3 +1730,22 @@ beginSwitch:
     }
 #endif
 }
+
+// VM -> JIT adapter.
+// Lets JIT functions use branching without stack side effects (call, ret).
+// Reinterpreted as `PcFpResult (ZThread* t, Value* fp, u64 jit_ptr) __attribute__((preserve_none))
+__attribute__((naked))
+void i2c() {
+    // Rip offset = (pushq) 1 + (jmp) 3
+    __asm__ volatile (
+        "leaq 4(%%rip), %%rax\n"
+        "pushq %%rax\n"
+        "jmp *%%r15\n"  // jit_ptr
+        "popq %%rax\n"
+        "ret\n"
+        :
+        :
+        :
+    );
+}
+

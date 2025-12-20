@@ -188,6 +188,7 @@ pub fn genBreakpoint(buf: *CodeBuffer) !void {
 pub fn gen_log(buf: *CodeBuffer, msg: []const u8) !void {
     switch (builtin.cpu.arch) {
         .aarch64 => try a64.gen_log(buf, msg),
+        .x86_64 => try x64.gen_log(buf, msg),
         else => return error.Unsupported,
     }
 }

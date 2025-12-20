@@ -22,7 +22,7 @@ comptime {
     std.testing.refAllDecls(X64);
 }
 
-pub const FpReg: X64.Register = .rsi;
+pub const FpReg: X64.Register = .r14;
 
 fn encodeRexPrefix(buf: []u8, len: *usize, enc: Encoding, ops: []const Op) void {
     var rex = X64.Rex{
@@ -237,6 +237,10 @@ fn prepInstBuf(buf: *CodeBuffer) ![]u8 {
     return buf.buf.items.ptr[buf.buf.items.len .. buf.buf.items.len + 32];
 }
 
+pub fn push_nop(buf: *CodeBuffer) !void {
+    try buf.push(&.{0x90});
+}
+
 pub fn push_int3(buf: *CodeBuffer) !void {
     try buf.push(&.{0xcc});
 }
@@ -397,6 +401,14 @@ pub fn genPatchableJumpRel(c: *cy.Chunk) !void {
     try c.x64Enc.jumpRel(0);
 }
 
+pub fn gen_log(buf: *gen.CodeBuffer, msg: []const u8) !void {
+    try gen_imm(buf, .arg0, @intFromPtr(msg.ptr));
+    try gen_imm(buf, .arg1, @intCast(msg.len));
+    try buf.push(gen.stencils.jit_log[0..gen.stencils.jit_log_z_log]);
+    try genCallFuncPtr(buf, cy.vm.z_log);
+    try buf.push(gen.stencils.jit_log[gen.stencils.jit_log_z_log_end..]);
+}
+
 pub fn patch_jump_rel(buf: *CodeBuffer, pc: usize, to: usize) void {
     const jumpInstLen = 5;
     const offset: i32 = @intCast(@as(isize, @bitCast(to -% (pc + jumpInstLen))));
@@ -453,9 +465,10 @@ pub fn genCallFunc(buf: *CodeBuffer, func: *cy.Func) !void {
     // // Advance fp.
     // try gen_add_imm(buf, .fp, .fp, 8 * ret);
 
-    // Save pc to rax. Callee saves it to the stack.
-    const jumpInstLen = 5;
+    // Save pc to [rsi] which then gets saved by the callee.
+    const jumpInstLen = 5 + 4; // push_store + push_jump_rel
     try push_lea(buf, .rax, .initRip(jumpInstLen));
+    try push_store(buf, .sibBase(.initReg(.rsp), 0), .rax);
 
     // Push empty call.
     const jumpPc = buf.pos();
@@ -466,10 +479,10 @@ pub fn genCallFunc(buf: *CodeBuffer, func: *cy.Func) !void {
     try push_jump_rel(buf, 0);
 }
 
-pub fn genCallFuncPtr(c: *cy.Chunk, ptr: *const anyopaque) !void {
+pub fn genCallFuncPtr(buf: *CodeBuffer, ptr: *const anyopaque) !void {
     // No reloc, copy address to rax.
-    try c.x64Enc.movImm(.rax, @intFromPtr(ptr));
-    try c.x64Enc.callReg(.rax);
+    try push_imm(buf, .rax, @intFromPtr(ptr));
+    try push_call_reg(buf, .rax);
 }
 
 pub fn gen_func_ret(buf: *CodeBuffer, ret_size: u16) !void {
@@ -489,9 +502,9 @@ pub fn genBreakpoint(buf: *CodeBuffer) !void {
 
 fn toReg(reg: LRegister) Register {
     return switch (reg) {
-        .arg0 => .rdx,
-        .arg1 => .rcx,
-        .arg2 => .r8,
+        .arg0 => .r15,
+        .arg1 => .rdi,
+        .arg2 => .rsi,
         .arg3 => .r9,
         .fp => FpReg,
         .temp => .rax,

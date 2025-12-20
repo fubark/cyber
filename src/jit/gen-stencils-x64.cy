@@ -108,9 +108,10 @@ while llvm.IsRelocationIteratorAtEnd(llSectIter, llRelocIter) == 0:
     value := c.from_strz(cname)
 
     instOffset := 0
+    inst_size := 0
 
     -- Find func where the relocation is in.
-    var found ?Sym = none
+    var found ?int = none
     for syms |i, sym|:
         if offset >= sym.addr:
             if i < syms.len()-1 and offset >= syms[i+1].addr:
@@ -121,26 +122,30 @@ while llvm.IsRelocationIteratorAtEnd(llSectIter, llRelocIter) == 0:
                 if prev_byte == 0xe9 or prev_byte == 0xe8:
                     -- Assume 'e9 xx xx xx xx' variation.
                     instOffset = 1
+                    inst_size = 5
                 else:
                     -- Assume '0f 82 xx xx xx xx' variation.
                     instOffset = 2
+                    inst_size = 6
 
-            found = sym
+            found = i 
             break
 
-    sym := found ?else panic('MissingSym')
+    sym_idx := found ?else panic('MissingSym')
+    sym := syms[sym_idx]
 
     inst_offset := (offset - instOffset) - sym.addr
     if symName.starts_with('cont'):
         -- Remove relocation to cont if it's the last inst.
         if relocType == R_X86_64_PLT32 and (offset + 4) == sym.addr + sym.code.len():
-            sym.code = sym.code[0..inst_offset] 
+            syms[sym_idx].code = sym.code[0..inst_offset] 
 
             llvm.MoveToNextRelocation(llRelocIter)
             continue
 
     print('reloc in %{sym.name} to %{symName} at inst_offset %{inst_offset}')
     out += 'pub const %{sym.name}_%{symName} = %{inst_offset};\n'
+    out += 'pub const %{sym.name}_%{symName}_end = %{inst_offset + inst_size};\n'
 
     llvm.MoveToNextRelocation(llRelocIter)
 

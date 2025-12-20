@@ -605,7 +605,8 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
         try buf.push_u32(A64.LoadStore.strImmOff(a64.FpReg, @intCast(ret_size+1), .x30).bitCast());
     } else if (builtin.cpu.arch == .x86_64) {
         // try c.x64Enc.int3();
-        try x64.push_load(buf, .rax, .sibBase(.initReg(.rsp), (ret_size+1)*8));
+        // TODO: Currently still pass return address from [rsp] but the i2c allows a dedicated register.
+        try x64.push_load(buf, .rax, .sibBase(.initReg(.rsp), 0));
         try x64.push_store(buf, .sibBase(.initReg(x64.FpReg), (ret_size+1)*8), .rax);
     }
 
@@ -648,7 +649,7 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
             },
             .call => {
                 const base = pc[1].val;
-                const func_vm_pc: usize = @intCast(@as(*const align(2) u48, @ptrCast(pc + 2)).*);
+                const func_vm_pc: usize = std.mem.readInt(u48, @ptrCast(pc + 2), .little);
                 const func_id: u32 = @as(*const align(2) u32, @ptrFromInt(func_vm_pc - 4)).*;
                 const details = &c.vm.funcSymDetails.items[func_id];
                 const callee = details.func.?;
@@ -786,7 +787,13 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
             },
             .chk_stk => {
                 try as.gen_imm(buf, .arg0, frame_size);
-                try buf.push(&stencils.chk_stk);
+                if (builtin.cpu.arch == .aarch64) {
+                    try buf.push(&stencils.chk_stk);
+                } else {
+                    const start = buf.pos();
+                    try buf.push(&stencils.chk_stk);
+                    as.patchJumpCond(buf, start + stencils.chk_stk_cont3, buf.pos());
+                }
             },
             else => {
                 std.debug.print("jit: Unsupported bytecode instruction: {}\n", .{pc[0].opcode()});

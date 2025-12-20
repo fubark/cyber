@@ -12,7 +12,10 @@ type c_int = c.c_int
 type c_uint = c.c_uint
 type c_char = c.c_char
 #if meta.is_vm_target():
-    #c.bind_lib('libLLVM.dylib')
+    #if meta.system() == .macos:
+        #c.bind_lib('libLLVM.dylib')
+    #else meta.system() == .linux:
+        #c.bind_lib('libLLVM.so')
 type Bool = c_int
 
 type MemoryBufferRef = Ptr[OpaqueMemoryBuffer_S]

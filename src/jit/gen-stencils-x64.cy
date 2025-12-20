@@ -91,6 +91,8 @@ while llvm.ObjectFileIsSectionIteratorAtEnd(llBin, llSectIter) == 0:
 
     llvm.MoveToNextSection(llSectIter)
 
+const R_X86_64_PLT32 = 4
+
 -- Visit relocation entries and record them as Zig constants.
 llRelocIter := llvm.GetRelocations(llSectIter)
 while llvm.IsRelocationIteratorAtEnd(llSectIter, llRelocIter) == 0:
@@ -106,43 +108,49 @@ while llvm.IsRelocationIteratorAtEnd(llSectIter, llRelocIter) == 0:
     value := c.from_strz(cname)
 
     instOffset := 0
-    R_X86_64_PLT32 := 4
-    if relocType == R_X86_64_PLT32:
-        instOffset = 1
 
-    -- Find relevant func sym.
+    -- Find func where the relocation is in.
     var found ?Sym = none
     for syms |i, sym|:
         if offset >= sym.addr:
             if i < syms.len()-1 and offset >= syms[i+1].addr:
                 continue
+
+            if relocType == R_X86_64_PLT32:
+                prev_byte := sym.code[offset - sym.addr - 1]
+                if prev_byte == 0xe9 or prev_byte == 0xe8:
+                    -- Assume 'e9 xx xx xx xx' variation.
+                    instOffset = 1
+                else:
+                    -- Assume '0f 82 xx xx xx xx' variation.
+                    instOffset = 2
+
             found = sym
             break
 
-    if found == none:
-        panic('MissingSym')
+    sym := found ?else panic('MissingSym')
 
-    roffset := (offset - instOffset) - found.?.addr
+    inst_offset := (offset - instOffset) - sym.addr
     if symName.starts_with('cont'):
-        -- Remove code after continuation.
-        found.?.code = found.?.code[0..roffset]
+        -- Remove relocation to cont if it's the last inst.
+        if relocType == R_X86_64_PLT32 and (offset + 4) == sym.addr + sym.code.len():
+            sym.code = sym.code[0..inst_offset] 
 
-        -- Skip continuations.
-        llvm.MoveToNextRelocation(llRelocIter)
-        continue
+            llvm.MoveToNextRelocation(llRelocIter)
+            continue
 
-    out += 'pub const %{found.?.name}_%{symName} = %{roffset};\n'
+    print('reloc in %{sym.name} to %{symName} at inst_offset %{inst_offset}')
+    out += 'pub const %{sym.name}_%{symName} = %{inst_offset};\n'
 
     llvm.MoveToNextRelocation(llRelocIter)
 
 -- After continuations are removed, gen sym's code.
 for syms |i, sym|:
-    print('%{sym.name} %{sym.addr} %{sym.code.fmt_bytes(.hex)}')
-
     bytes := []str{}
     for sym.code |b|:
         bytes += '0x%{b.fmt(.hex, {pad='0', width=2})}'
 
+    print('%{sym.name} %{sym.addr} %{sym.code.fmt_bytes(.hex)}')
     out += 'pub const %{sym.name} = [_]u8{ %{bytes.join(', ')} };\n'
 
 os.write_file('%{curDir}/x64_stencils.zig', out)!

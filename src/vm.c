@@ -1736,6 +1736,7 @@ beginSwitch:
 // Reinterpreted as `PcFpResult (ZThread* t, Value* fp, u64 jit_ptr) __attribute__((preserve_none))
 __attribute__((naked))
 void i2c() {
+#ifdef __x86_64__
     // Rip offset = (pushq) 1 + (jmp) 3
     __asm__ volatile (
         "leaq 4(%%rip), %%rax\n"
@@ -1747,5 +1748,6 @@ void i2c() {
         :
         :
     );
+#endif
 }
 

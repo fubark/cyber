@@ -401,10 +401,20 @@ pub const Attribute = extern struct {
         const value = self.value orelse {
             return null;
         };
-        if (value.type() != .sq_string_lit) {
-            return null;
+        switch (value.type()) {
+            .sq_string_lit => {
+                return value.cast(.sq_string_lit).asString();
+            },
+            .string_lit => {
+                return value.cast(.string_lit).asString();
+            },
+            .raw_string_lit => {
+                return value.cast(.raw_string_lit).asRawString();
+            },
+            else => {
+                return null;
+            }
         }
-        return value.cast(.sq_string_lit).asString();
     }
 };
 

@@ -44,8 +44,8 @@ pub fn genPatchableJumpRel(buf: *CodeBuffer) !void {
     try buf.push_u32(A64.BrImm.bl(0).bitCast());
 }
 
-pub fn patch_jump_rel(buf: *CodeBuffer, pc: usize, to: usize) void {
-    var inst: *A64.BrImm = @ptrCast(@alignCast(&buf.buf.items[pc]));
+pub fn patch_jump_rel(buf: []align(std.heap.page_size_min) u8, pc: usize, to: usize) void {
+    var inst: *A64.BrImm = @ptrCast(@alignCast(&buf[pc]));
     inst.setOffsetFrom(pc, to);
 }
 
@@ -73,16 +73,16 @@ pub fn genJumpCond(buf: *CodeBuffer, cond: assm.LCond, offset: i32) !void {
     try buf.push_u32(A64.BrCond.init(toCond(cond), @intCast(offset)).bitCast());
 }
 
-pub fn as_inst(buf: *CodeBuffer, pos: usize, comptime T: type) *align(4)T {
+pub fn as_inst(buf: []align(std.heap.page_size_min) u8, pos: usize, comptime T: type) *align(4)T {
     if (cy.Trace) {
         if (pos % 4 != 0) {
             cy.panic("Unaligned inst access.");
         }
     }
-    return @ptrCast(@alignCast(&buf.buf.items[pos]));
+    return @ptrCast(@alignCast(&buf[pos]));
 }
 
-pub fn patch_jump_cond(buf: *CodeBuffer, pc: usize, to: usize) void {
+pub fn patch_jump_cond(buf: []align(std.heap.page_size_min) u8, pc: usize, to: usize) void {
     const inst = as_inst(buf, pc, A64.BrCond);
     inst.imm19 = @intCast((to - pc) >> 2);
 }
@@ -174,6 +174,7 @@ fn toReg(reg: LRegister) Register {
         .arg1 => .x24,
         .arg2 => .x25,
         .arg3 => .x26,
+        .thread => .x21,
         .fp => FpReg,
         .temp => .x8,
         .temp2 => .x9,

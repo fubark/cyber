@@ -265,7 +265,9 @@ if (!aot) {
         if (builtin.os.tag != .windows) {
             run.case("modules/libc.cy");
         }
-        run.case("modules/os.cy");
+        if (builtin.abi != .msvc) {
+            run.case("modules/os.cy");
+        }
         // run.case("modules/io.cy");
     }
 }
@@ -492,7 +494,7 @@ fn compileCase(path: []const u8) !void {
 }
 
 test "FFI." {
-    if (is_wasm) {
+    if (is_wasm or builtin.abi == .msvc) {
         return;
     }
 

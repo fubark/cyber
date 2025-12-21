@@ -157,10 +157,20 @@ jobs:
         run: |
           zig build test ${{ env.ZIG_TARGET_FLAG }} 
 
+      - name: Run tests. (debug, msvc)
+        if: env.BUILD_CMD == 'lib' && env.BUILD_TARGET == 'x86_64-windows-msvc'
+        run: |
+          zig build test ${{ env.ZIG_TARGET_FLAG }} -Dffi=false
+
       - name: Run tests. (release)
         if: env.BUILD_TARGET != 'wasm32-wasi' && (env.BUILD_CMD == 'cli' || (env.BUILD_CMD == 'lib' && env.BUILD_TARGET != 'x86_64-windows-msvc'))
         run: |
           zig build test ${{ env.ZIG_TARGET_FLAG }} -Doptimize=ReleaseSafe
+
+      - name: Run tests. (release, msvc)
+        if: env.BUILD_CMD == 'lib' && env.BUILD_TARGET == 'x86_64-windows-msvc'
+        run: |
+          zig build test ${{ env.ZIG_TARGET_FLAG }} -Doptimize=ReleaseSafe -Dffi=false
 
       - name: Run tests.
         if: env.BUILD_TARGET == 'wasm32-freestanding' || env.BUILD_TARGET == 'wasm32-wasi'

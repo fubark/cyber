@@ -87,11 +87,20 @@ const LabelKey = struct {
     bc_pc: usize,
 };
 
+//extern "kernel32" fn FlushInstructionCache(
+//    hProcess: std.os.windows.HANDLE,
+//    lpBaseAddress: ?*const anyopaque,
+//    dwSize: std.os.windows.SIZE_T,
+//) callconv(.winapi) std.os.windows.BOOL;
+
 pub const CodeBuffer = struct {
     gpa: std.mem.Allocator,
 
     executable: bool,
     buf: std.ArrayListAligned(u8, std.mem.Alignment.fromByteUnits(std.heap.page_size_min)),
+
+    /// Forced abstraction by Windows needing a buffer allocated with VirtualAlloc.
+    final_buf: []align(std.heap.page_size_min) u8,
 
     /// Where main begins. Currently only jit code uses this.
     mainPc: u32,
@@ -109,6 +118,7 @@ pub const CodeBuffer = struct {
         return .{
             .gpa = gpa,
             .buf = .{},
+            .final_buf = &.{},
             .mainPc = 0,
             .relocs = .{},
             .funcs = .{},
@@ -148,8 +158,12 @@ pub const CodeBuffer = struct {
         if (!self.executable) {
             return;
         }
-        const PROT_WRITE = 2;
-        try std.posix.mprotect(self.buf.items.ptr[0..self.buf.capacity], PROT_WRITE);
+        if (builtin.os.tag == .windows) {
+            try std.posix.mprotect(self.final_buf, std.c.PROT.READ | std.c.PROT.WRITE);
+            std.os.windows.VirtualFree(self.final_buf.ptr, 0, std.os.windows.MEM_RELEASE);
+        } else {
+            try std.posix.mprotect(self.buf.items.ptr[0..self.buf.capacity], std.c.PROT.WRITE);
+        }
         self.executable = false;
     }
 
@@ -159,9 +173,12 @@ pub const CodeBuffer = struct {
         }
 
         // Mark code executable.
-        const PROT_READ = 1;
-        const PROT_EXEC = 4;
-        try std.posix.mprotect(self.buf.items.ptr[0..self.buf.capacity], PROT_READ | PROT_EXEC);
+        try std.posix.mprotect(self.final_buf, std.c.PROT.READ | std.c.PROT.EXEC);
+        if (builtin.os.tag == .windows) {
+            // const flush_res = FlushInstructionCache(std.os.windows.GetCurrentProcess(), self.exe_buf.ptr, self.exe_buf.len);
+            // var info: std.os.windows.MEMORY_BASIC_INFORMATION = undefined;
+            // const res = try std.os.windows.VirtualQuery(self.exe_buf.ptr, &info, @sizeOf(std.os.windows.MEMORY_BASIC_INFORMATION));
+        }
         self.executable = true;
 
         // if (jitRes.buf.items.len > 500*4) {
@@ -792,7 +809,7 @@ fn gen_func(c: *cy.Chunk, func: *cy.Func) !void {
                 } else {
                     const start = buf.pos();
                     try buf.push(&stencils.chk_stk);
-                    as.patchJumpCond(buf, start + stencils.chk_stk_cont3, buf.pos());
+                    as.patchJumpCond(buf.buf.items, start + stencils.chk_stk_cont3, buf.pos());
                 }
             },
             else => {
@@ -954,6 +971,17 @@ fn funcBlock(c: *cy.Chunk, idx: usize, nodeId: *ast.Node) !void {
 }
 
 pub fn relocate(buf: *CodeBuffer) !void {
+    if (builtin.os.tag == .windows) {
+        const code_ptr = try std.os.windows.VirtualAlloc(null, buf.buf.capacity, std.os.windows.MEM_COMMIT | std.os.windows.MEM_RESERVE, std.os.windows.PAGE_READWRITE);
+        const code_buf = @as([*]align(std.heap.page_size_min) u8, @ptrCast(@alignCast(code_ptr)))[0..buf.buf.capacity];
+        @memcpy(code_buf[0..buf.buf.items.len], buf.buf.items);
+        buf.final_buf = code_buf;
+    } else {
+        buf.final_buf = buf.buf.items.ptr[0..buf.buf.capacity];
+    }
+
+    // From this point on, only reference final_buf for relocations.
+
     // Ensure enough scratch capacity for patching imm64.
     if (builtin.cpu.arch == .aarch64) {
         _ = try buf.ensureUnusedCap(4 * 4);
@@ -970,23 +998,23 @@ pub fn relocate(buf: *CodeBuffer) !void {
                 // const func_pc = buf.buf.items.ptr + buf.funcs.get(data.func).?.pc;
                 // as.patch_imm64(buf, data.temp_pc, .temp, @intFromPtr(func_pc));
                 const func_pc = buf.funcs.get(data.func).?.pc;
-                as.patch_jump_rel(buf, data.pc, func_pc);
+                as.patch_jump_rel(buf.final_buf, data.pc, func_pc);
             },
             .jump_f => {
                 const data = reloc.data.jump_f;
                 const target_pc = buf.labels.get(.{.chunk=data.chunk, .bc_pc=data.bc_target_pc}).?;
                 std.debug.assert(target_pc != 0);
-                as.patch_jump_rel(buf, data.pc, target_pc);
+                as.patch_jump_rel(buf.final_buf, data.pc, target_pc);
             },
             .jump_cond => {
                 const data = reloc.data.jump_cond;
                 const target_pc = buf.labels.get(.{.chunk=data.chunk, .bc_pc=data.bc_target_pc}).?;
                 std.debug.assert(target_pc != 0);
-                as.patchJumpCond(buf, data.pc, target_pc);
+                as.patchJumpCond(buf.final_buf, data.pc, target_pc);
             },
             .jit_entry => {
                 const data = reloc.data.jit_entry;
-                const func_pc = buf.buf.items.ptr + buf.funcs.get(data.func).?.pc;
+                const func_pc = buf.final_buf.ptr + buf.funcs.get(data.func).?.pc;
                 const addr: usize = @intFromPtr(func_pc);
                 data.chunk.buf.setOpArgU48(data.bc_pc, @intCast(addr));
             },

@@ -137,10 +137,10 @@ PcFpResult div(ZThread* t, Value* fp, u64 dst, u64 left, u64 right) __attribute_
 
 #define JIT_CALLINFO(callInstOff, stack_size) ((Value)(((u32)callInstOff << 1) | ((u32)stack_size << 8)) | ((u32)FRAME_JIT << 16))
 
-PcFpResult jit_log(ZThread* t, Value* fp, u64 msg, u64 msg_len) __attribute__((preserve_none)) {
-    z_log(t, (const char*)msg, msg_len);
-    [[clang::musttail]] return cont4(t, fp, msg, msg_len);
-}
+//PcFpResult jit_log(ZThread* t, Value* fp, u64 msg, u64 msg_len) __attribute__((preserve_none)) {
+//    z_log(t, (const char*)msg, msg_len);
+//    [[clang::musttail]] return cont4(t, fp, msg, msg_len);
+//}
 
 // PcFpResult jump_ge(ZThread* t, Value* fp, u64 left, u64 right) __attribute__((preserve_none)) {
 //     if (GUARD_COND(BITCAST(i64, left) < BITCAST(i64, right))) {

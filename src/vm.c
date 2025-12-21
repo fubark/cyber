@@ -1737,6 +1737,7 @@ beginSwitch:
 __attribute__((naked))
 void i2c() {
 #ifdef __x86_64__
+#ifdef _WIN32
     // Rip offset = (pushq) 1 + (jmp) 3
     __asm__ volatile (
         "leaq 4(%%rip), %%rax\n"
@@ -1748,6 +1749,22 @@ void i2c() {
         :
         :
     );
+#else
+    // Keep rsp 16-byte aligned.
+    // Rip offset = (pushq) 1*2 + (jmp) 3
+    __asm__ volatile (
+        "leaq 5(%%rip), %%rax\n"
+        "pushq %%rax\n"
+        "pushq %%rax\n"
+        "jmp *%%r15\n"  // jit_ptr
+        "popq %%rax\n"
+        "popq %%rax\n"
+        "ret\n"
+        :
+        :
+        :
+    );
+#endif
 #endif
 }
 

@@ -1,3 +1,4 @@
+const std = @import("std");
 const builtin = @import("builtin");
 const cy = @import("../cyber.zig");
 const Slot = u16;
@@ -12,6 +13,7 @@ const x64 = @import("x64_assembler.zig");
 
 /// Logical register.
 pub const LRegister = enum {
+    thread,
     fp,
     arg0,
     arg1,
@@ -93,7 +95,7 @@ pub fn genJumpCond(buf: *CodeBuffer, cond: LCond, offset: i32) !void {
     }
 }
 
-pub fn patchJumpCond(buf: *CodeBuffer, pc: usize, to: usize) void {
+pub fn patchJumpCond(buf: []align(std.heap.page_size_min) u8, pc: usize, to: usize) void {
     switch (builtin.cpu.arch) {
         .aarch64 => a64.patch_jump_cond(buf, pc, to),
         .x86_64 => x64.patchJumpCond(buf, pc, to),
@@ -117,7 +119,7 @@ pub fn patch_imm64(buf: *CodeBuffer, pc: usize, reg: LRegister, value: u64) void
     }
 }
 
-pub fn patch_jump_rel(buf: *CodeBuffer, pc: usize, to: usize) void {
+pub fn patch_jump_rel(buf: []align(std.heap.page_size_min) u8, pc: usize, to: usize) void {
     switch (builtin.cpu.arch) {
         .aarch64 => a64.patch_jump_rel(buf, pc, to),
         .x86_64 => x64.patch_jump_rel(buf, pc, to),

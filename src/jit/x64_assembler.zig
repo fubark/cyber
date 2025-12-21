@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const stdx = @import("stdx");
 const cy = @import("../cyber.zig");
 const t = stdx.testing;
@@ -368,7 +369,11 @@ pub fn gen_add(buf: *CodeBuffer, dst: LRegister, src: LRegister) !void {
 }
 
 pub fn gen_add_imm(buf: *CodeBuffer, dst: LRegister, src: LRegister, imm: u64) !void {
-    try push_lea(buf, toReg(dst), .sibBase(.initReg(toReg(src)), @intCast(imm)));
+    try push_add_imm(buf, toReg(dst), toReg(src), imm);
+}
+
+pub fn push_add_imm(buf: *CodeBuffer, dst: Register, src: Register, imm: u64) !void {
+    try push_lea(buf, dst, .sibBase(.initReg(src), @intCast(imm)));
 }
 
 pub fn gen_sub(buf: *CodeBuffer, dst: LRegister, src: LRegister) !void {
@@ -377,8 +382,12 @@ pub fn gen_sub(buf: *CodeBuffer, dst: LRegister, src: LRegister) !void {
 }
 
 pub fn gen_sub_imm(buf: *CodeBuffer, dst: LRegister, src: LRegister, imm: u64) !void {
+    try push_sub_imm(buf, toReg(dst), toReg(src), imm);
+}
+
+pub fn push_sub_imm(buf: *CodeBuffer, dst: Register, src: Register, imm: u64) !void {
     const disp: i32 = @intCast(imm);
-    try push_lea(buf, toReg(dst), .sibBase(.initReg(toReg(src)), -disp));
+    try push_lea(buf, dst, .sibBase(.initReg(src), -disp));
 }
 
 pub fn gen_imm(buf: *CodeBuffer, dst: LRegister, imm: u64) !void {
@@ -389,11 +398,11 @@ pub fn genJumpCond(buf: *CodeBuffer, cond: assm.LCond, offset: i32) !void {
     try push_jump_cond(buf, toCond(cond), offset);
 }
 
-pub fn patchJumpCond(buf: *CodeBuffer, pc: usize, to: usize) void {
+pub fn patchJumpCond(buf: []align(std.heap.page_size_min) u8, pc: usize, to: usize) void {
     const jumpInstLen = 6;
     const offset: i32 = @intCast(@as(isize, @bitCast(to -% (pc + jumpInstLen))));
     // Displacement bytes start at the 3rd byte.
-    const disp = buf.buf.items[pc+2..pc+2+4];
+    const disp = buf[pc+2..pc+2+4];
     @memcpy(disp, std.mem.asBytes(&offset));
 }
 
@@ -401,19 +410,54 @@ pub fn genPatchableJumpRel(c: *cy.Chunk) !void {
     try c.x64Enc.jumpRel(0);
 }
 
-pub fn gen_log(buf: *gen.CodeBuffer, msg: []const u8) !void {
-    try gen_imm(buf, .arg0, @intFromPtr(msg.ptr));
-    try gen_imm(buf, .arg1, @intCast(msg.len));
-    try buf.push(gen.stencils.jit_log[0..gen.stencils.jit_log_z_log]);
-    try genCallFuncPtr(buf, cy.vm.z_log);
-    try buf.push(gen.stencils.jit_log[gen.stencils.jit_log_z_log_end..]);
+fn push_value(buf: *CodeBuffer, dst: Register, src: Value) !void {
+    switch (src) {
+        .constant => |x| {
+            try push_imm(buf, dst, x);
+        },
+        .reg => |x| {
+            try push_mov(buf, dst, x);
+        },
+    }
 }
 
-pub fn patch_jump_rel(buf: *CodeBuffer, pc: usize, to: usize) void {
+fn push_call_host_windows1(buf: *CodeBuffer, ptr: *const anyopaque, a: Value) !void {
+    try push_sub_imm(buf, .rsp, .rsp, 0x28);
+    try push_value(buf, .rcx, a);
+    try genCallFuncPtr(buf, ptr);
+    try push_add_imm(buf, .rsp, .rsp, 0x28);
+}
+
+fn push_call_host_windows2(buf: *CodeBuffer, ptr: *const anyopaque, a: Value, b: Value) !void {
+    try push_sub_imm(buf, .rsp, .rsp, 0x28);
+    try push_value(buf, .rcx, a);
+    try push_value(buf, .rdx, b);
+    try genCallFuncPtr(buf, ptr);
+    try push_add_imm(buf, .rsp, .rsp, 0x28);
+}
+
+fn push_call_host_windows3(buf: *CodeBuffer, ptr: *const anyopaque, a: Value, b: Value, c: Value) !void {
+    try push_sub_imm(buf, .rsp, .rsp, 0x28);
+    try push_value(buf, .rcx, a);
+    try push_value(buf, .rdx, b);
+    try push_value(buf, .r8, c);
+    try genCallFuncPtr(buf, ptr);
+    try push_add_imm(buf, .rsp, .rsp, 0x28);
+}
+
+pub fn gen_log(buf: *gen.CodeBuffer, msg: []const u8) !void {
+    if (builtin.os.tag == .windows) {
+        try push_call_host_windows3(buf, cy.vm.z_log, .{.reg=toReg(.thread)}, .{.constant=@intFromPtr(msg.ptr)}, .{.constant=@intCast(msg.len)});
+    } else {
+        @panic("TODO");
+    }
+}
+
+pub fn patch_jump_rel(buf: []align(std.heap.page_size_min) u8, pc: usize, to: usize) void {
     const jumpInstLen = 5;
     const offset: i32 = @intCast(@as(isize, @bitCast(to -% (pc + jumpInstLen))));
     // Displacement bytes start at the 2nd byte.
-    const disp = buf.buf.items[pc+1..pc+1+4];
+    const disp = buf[pc+1..pc+1+4];
     @memcpy(disp, std.mem.asBytes(&offset));
 }
 
@@ -500,12 +544,18 @@ pub fn genBreakpoint(buf: *CodeBuffer) !void {
     try push_int3(buf);
 }
 
+const Value = union(enum) {
+    reg: Register,
+    constant: u64,
+};
+
 fn toReg(reg: LRegister) Register {
     return switch (reg) {
         .arg0 => .r15,
         .arg1 => .rdi,
         .arg2 => .rsi,
         .arg3 => .r9,
+        .thread => .r13,
         .fp => FpReg,
         .temp => .rax,
         .temp2 => .rcx,
